@@ -1,7 +1,7 @@
 # Visual Expression System
 
 > 文档类型：现行架构与剩余边界
-> 最后核对：2026-08-01
+> 最后核对：2026-08-12
 > 模板上传、内容自动选择与默认回退方案见
 > [Presentation 模板管理与自动选择](../roadmap/template-management.md)
 > （Proposed；零依赖 Grammar；对齐 SVG-native design-spec）
@@ -10,7 +10,7 @@
 
 产品 Agent **作者路径**仅为完整页面 SVG。Layout Grammar / element-IR 已从**产品作者表面
 下架**（默认注册表不含相关工具；见 `tests/svg-native-tool-surface.test.ts`）；共享库与
-未注册实现可能仍残留待清理。产品新建只写入 `visualSource.kind === "svg"` 的
+未注册实现已从仓库删除。产品新建只写入 `visualSource.kind === "svg"` 的
 Presentation，供 Editor / HTML / PPTX 使用。
 
 ```text
@@ -131,9 +131,10 @@ Grammar / 双轨 / 频谱残骸清扫已收工。以下按工作流分类，**�
 
 ### 9.3 风险 backlog（独立专项）
 
-Linux `basic_text` 凭据降级、后台 daemon、E2E/Office 视觉证据、AppData 迁移——见
-[capability-scorecard.md](../architecture/capability-scorecard.md)「风险 backlog」表；
-不并入清理轮，也不阻塞模板 Phase 1。
+Linux `basic_text` 凭据降级、后台 daemon、E2E Layer 1/3/4/5、AppData 迁移——见
+[capability-scorecard.md](../architecture/capability-scorecard.md)「风险 backlog」表与
+[端到端质量证据](../architecture/e2e-quality.md)。Layer 2 导出 golden 已落地，不阻塞
+模板 Phase 1。
 
 ### Grammar / element-IR 作者表面（已移除）
 

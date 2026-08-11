@@ -1,7 +1,7 @@
 # Agent PPT 工程能力地图
 
 > 文档类型：现行能力盘点
-> 最后核对：2026-08-02
+> 最后核对：2026-08-12
 > 事实来源：`src/`、`skills/`、`tests/` 与 `package.json`
 
 下文中 `src/...`、`tests/...` 和 `docs/...` 均相对本仓库根目录。
@@ -14,6 +14,7 @@
 2. 当前代码已经实现到哪里，哪些只是部分能力或路线图。
 
 量化分域评分见 [系统能力评价](./capability-scorecard.md)（评价快照，非行为契约）。
+端到端分层与 Layer 2 导出 golden 见 [端到端质量证据](./e2e-quality.md)。
 
 这里的“工程能力”不是功能菜单，而是运行时机制。能力状态统一使用：
 
@@ -390,13 +391,18 @@ dev 数据策略见
 
 ### P1：端到端质量证据
 
-单元测试可以证明协议和确定性编译，不等于证明真实模型、素材网络和 Office 渲染质量。发布验收还需要：
+分层契约见 [端到端质量证据](./e2e-quality.md)。**Layer 2 导出 golden 已进默认
+`npm.cmd test`**（`tests/export-golden.test.ts`）：固定 fixture 走
+`DeckExportService`，锁定抬升层与 PPTX 包内容。它证明导出回归，不证明模型发挥、
+Electron 缩略图或 Office 打开。
 
-- Anthropic/OpenAI 真实网关用例；
+其余层仍为 Proposed，发布验收还需要：
+
+- Layer 1：Anthropic/OpenAI 真实网关闭环（扩展现有 integration 门控）；
+- Layer 3：Electron 缩略图/HTML 像素对照；
+- Layer 4：LibreOffice 近似 + PowerPoint/WPS/Keynote 人工抽查；
 - 网络搜索和图片来源失败场景；
-- 生成样例的缩略图/HTML/PPTX 人工对照；
-- PowerPoint/WPS/Keynote 兼容抽查；
-- 商业质量评分表。
+- `evaluation.ts` 仅作离线分数漂移，不是产品门禁。
 
 ## 7. 验证矩阵
 
@@ -408,7 +414,7 @@ dev 数据策略见
 | 文件操作 / 项目文件管理 | `tests/workspace-file-service.test.ts`、`tests/project-file-editor-safety.test.ts` | 编辑 token 隔离、只读 artifact、并发修改、路径逃逸、UTF-8 与原子写失败；页面状态/交互测试 |
 | Multi-Agent | task、message bus、teammate recovery | background 与 shutdown 场景 |
 | Presentation model | schema、layout、design、compiler | sample fixture 与渲染快照 |
-| Export | exporter、postflight、deck export | 应用内 / deck export 后人工打开 PPTX |
+| Export | exporter、postflight、deck export、**`tests/export-golden.test.ts`** | Layer 4 LibreOffice / 人工打开 PPTX（见 [e2e-quality.md](./e2e-quality.md)） |
 | 全仓 | `npm.cmd run typecheck`、`npm.cmd test` | `npm.cmd run build` |
 
 文档更新至少应检查 Markdown 相对链接和代码路径是否存在。真实网关测试需要凭据，PPTX 视觉验收需要生成 artifact 后人工检查，二者不能被普通单元测试替代。
@@ -422,7 +428,7 @@ Grammar / 未接线双轨 / 频谱残骸清扫已结束。后续不要再开「�
 | **产品主线** | 模板管理与自动选择（已选定） | [template-management.md](../roadmap/template-management.md) |
 | **远期导出** | 原生可编辑图表/形状 | [visual-system.md](../presentation/visual-system.md) §6；不与模板争主线 |
 | **有意保留** | 空 Deferred 壳、`evaluation.ts`、Skill `allowed-tools` 不 enforce | [tools.md](../agent/tools.md)、design-system/evaluation |
-| **风险 backlog** | Linux `basic_text` 凭据降级、daemon、E2E/Office 证据、AppData 迁移 | [capability-scorecard.md](./capability-scorecard.md) |
+| **风险 backlog** | Linux `basic_text` 凭据降级、daemon、E2E Layer 1/3/4/5、AppData 迁移 | [capability-scorecard.md](./capability-scorecard.md)、[e2e-quality.md](./e2e-quality.md) |
 
 ## 9. 维护规则
 

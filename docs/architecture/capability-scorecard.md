@@ -1,8 +1,8 @@
 # Agent PPT 系统能力评价（完整评分）
 
 > 文档类型：能力评价快照（非行为契约）
-> 评分日期：2026-08-02
-> 事实来源：`docs/architecture/engineering-capabilities.md`、`docs/architecture/ui-themes.md`、`src/`、`tests/`
+> 评分日期：2026-08-12
+> 事实来源：`docs/architecture/engineering-capabilities.md`、`docs/architecture/e2e-quality.md`、`docs/architecture/ui-themes.md`、`src/`、`tests/`
 
 本文是对工程能力地图的**量化评价**，不替代现行架构契约。行为事实仍以代码与测试为准。
 
@@ -28,7 +28,7 @@
 | B. 安全与一致性 | 20% | **7.9** | 1.58 |
 | C. Presentation / SVG 领域 | 20% | **6.4** | 1.28 |
 | D. 产品体验与交付（含 CSS 主题） | 20% | **6.3** | 1.26 |
-| E. 工程卫生与可运营 | 15% | **6.2** | 0.93 |
+| E. 工程卫生与可运营 | 15% | **6.3** | 0.95 |
 | **综合** | 100% | | **7.1 / 10** |
 
 **一句话：** 工程内核 Solid（约 8），工作台 CSS/主题 Solid（约 7.2），产品交付 Early（约 6.3），综合 **7.1（Early–Solid 交界）**。Grammar 残骸清扫已收工；短板转向模板产品与风险专项。
@@ -146,11 +146,11 @@ quadrantChart
 | README / 对外叙事准确性 | **5.0** | Early | 仍有双路径/原生元素等过时表述 |
 | 死代码 / Grammar 清理 | **7.5** | Solid | 作者工具与 Grammar/layout 共享库已删；空 Deferred 壳有意保留且不进默认注册表 |
 | 单元测试密度 | **7.5** | Solid | ~140 tests；Runtime/Gate/生命周期/主题覆盖好 |
-| 集成 / E2E 质量证据 | **3.5** | Fragile | 仅可选网关集成；视觉/Office 人工；主题多为手工验收 |
+| 集成 / E2E 质量证据 | **4.5** | Fragile | Layer 2 导出 golden 进默认 CI；网关集成仍可选；视觉/Office 仍人工 |
 | 可观测性（日志/关联） | **6.0** | Early | JSONL + 关联身份；无 metrics 平台 |
 | 数据迁移 / 升级耐久 | **3.0** | Fragile | dev 明确不迁移旧 AppData |
 | Typecheck / 构建纪律 | **8.0** | Solid | strict TS；typecheck+build 脚本清晰 |
-| **E 类均** | **6.2** | | Grammar 清扫完成后卫生分回升；E2E/迁移仍拖后腿 |
+| **E 类均** | **6.3** | | Layer 2 落地后卫生分微升；Layer 1/3/4 与迁移仍拖后腿 |
 
 ---
 
@@ -163,11 +163,11 @@ quadrantChart
 | SVG/领域管线 | 6.4 |
 | 产品交付（含 CSS） | 6.3 |
 | 其中：工作台 CSS/主题 | **7.2** |
-| 工程可运营 | 6.2 |
+| 工程可运营 | 6.3 |
 | **综合加权** | **7.1** |
 
 最高：**Query / CommitGate / 文件 CAS（8.5）**；**UI↔DesignSystem 分离（8.5）**。  
-最低：**模板（2.5）、数据迁移（3.0）、E2E 质量证据（3.5）**。  
+最低：**模板（2.5）、数据迁移（3.0）、E2E 质量证据（4.5；Layer 2 已落地）**。  
 CSS 谷底：**主题包本地资源（4.5）、CSS sanitize（5.5）**——多为刻意边界，非遗漏实现。
 
 ---
@@ -179,7 +179,7 @@ CSS 谷底：**主题包本地资源（4.5）、CSS sanitize（5.5）**——多
 | 综合多少分？ | **7.1 / 10**（凭据边界加固；Grammar 清扫收工后工程卫生回升） |
 | CSS/主题多少分？ | **7.2 / 10（Solid）**——token/区域契约与加载链路成熟；资源包与消毒不做 |
 | 最强什么？ | Agent 协议、CommitGate、文件 CAS、UI/幻灯片视觉轴分离 |
-| 最弱什么？ | 模板、迁移、E2E 视觉/Office 证据、Linux 凭据降级后端 |
+| 最弱什么？ | 模板、迁移、E2E Layer 1/3/4（视觉/Office/真实网关）、Linux 凭据降级后端 |
 | 怎么用这个分？ | 按「严肃本地 Agent×PPT + 可换肤工作台」合理；按「主题市场/生产 SaaS」会高估 |
 
 ### 下一工作流（清扫已收工；勿再并入死代码轮次）
@@ -194,14 +194,14 @@ CSS 谷底：**主题包本地资源（4.5）、CSS sanitize（5.5）**——多
 |---|---|---|
 | Linux 凭据后端降级 | 6.0 | `safeStorage` 选择 `basic_text` 时可继续使用，但必须显示 `degraded`，不能视为安全后端 |
 | 后台 daemon / 跨进程 | 4.5 | 现有 background manager ≠ daemon；退出/恢复语义另开平台专项 |
-| E2E / 商业视觉证据 | 3.5 | 网关集成 + 导出人工矩阵；`evaluation.ts` 不是产品门禁 |
+| E2E / 商业视觉证据 | 4.5 | Layer 2 导出 golden 已进 CI；Layer 1/3/4 仍缺；`evaluation.ts` 不是产品门禁。见 [e2e-quality.md](./e2e-quality.md) |
 | Office 兼容矩阵 | 4.0 | 人工验收为主 |
 | AppData 迁移 | 3.0 | 当前无 backfill；是否做由产品决定 |
 
 提分顺序：
 
 1. 模板协议 Phase 1（产品主线）
-2. 真实网关 + 导出人工验收矩阵（风险/质量 backlog）
+2. Layer 1 真实网关 + Layer 4 导出/Office 验收矩阵（风险/质量 backlog）
 3. Linux 安全凭据服务配置与降级提示验证（安全 backlog）
 4. 若需要主题氛围图，再评估本地 `url()` 资源加载（仍保持无远程主题）
 

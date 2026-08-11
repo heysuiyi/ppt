@@ -25,7 +25,10 @@ decisions here. Read this file before making any changes.
     may use WebSearch); not lifecycle hard locks. Loader code lives in
     `src/main/agent/skills/` (scan/registry only).
   - `tests/`: unit tests; files matching `*.integration.test.ts` require real
-    model credentials and are excluded from the default test run
+    model credentials and are excluded from the default test run. Default
+    `npm.cmd test` includes Layer 2 export golden
+    (`tests/export-golden.test.ts`). Layered E2E plan:
+    `docs/architecture/e2e-quality.md`.
 - See `README.md` / `README.en.md` and the index at `docs/README.md` for
   design docs. Check whether a relevant plan already exists before making an
   architectural change, to avoid duplicating or conflicting with prior

@@ -1,0 +1,129 @@
+{
+  "slides": [
+    {
+      "id": "cover",
+      "texts": [
+        {
+          "content": "Export Golden",
+          "xIn": 3.0396,
+          "yIn": 2.3125,
+          "wIn": 3.9208000000000003,
+          "hIn": 0.625,
+          "fontSizePt": 36,
+          "fontFace": "Arial",
+          "color": "F8FAFC",
+          "bold": false,
+          "align": "center",
+          "charSpacingPt": 0,
+          "lineSpacingPt": 45
+        }
+      ],
+      "backgroundSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1280\" height=\"720\" viewBox=\"0 0 1280 720\"><rect width=\"1280\" height=\"720\" fill=\"#0f172a\"/></svg>",
+      "backgroundSha256": "2606aaeb844c1d2185acc3d3d361061786985e8cd6fda19e86f5b0f7c14ea909"
+    },
+    {
+      "id": "evidence",
+      "texts": [
+        {
+          "content": "Evidence stack",
+          "xIn": 0.625,
+          "yIn": 0.625,
+          "wIn": 2.6389999999999993,
+          "hIn": 0.390625,
+          "fontSizePt": 22.5,
+          "fontFace": "Arial",
+          "color": "E5E7EB",
+          "bold": false,
+          "align": "left",
+          "charSpacingPt": 0,
+          "lineSpacingPt": 28.125
+        },
+        {
+          "content": "First claim\nSecond claim\nThird claim",
+          "xIn": 0.625,
+          "yIn": 1.49375,
+          "wIn": 1.3571999999999997,
+          "hIn": 0.84375,
+          "fontSizePt": 13.5,
+          "fontFace": "Arial",
+          "color": "CBD5E1",
+          "bold": false,
+          "align": "left",
+          "charSpacingPt": 0,
+          "lineSpacingPt": 20.25
+        }
+      ],
+      "backgroundSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1280\" height=\"720\" viewBox=\"0 0 1280 720\"><rect width=\"1280\" height=\"720\" fill=\"#111827\"/></svg>",
+      "backgroundSha256": "22e0f4a70cd58e1a4b962023b10974e067c7e2c954a8095002093e24af15b79a"
+    },
+    {
+      "id": "cjk",
+      "texts": [
+        {
+          "content": "决策仍在「周」的节奏，\n业务已在「小时」的战场",
+          "xIn": 0.5625,
+          "yIn": 0.79375,
+          "wIn": 3.2175000000000002,
+          "hIn": 0.75,
+          "fontSizePt": 20.25,
+          "fontFace": "Arial",
+          "color": "F8FAFC",
+          "bold": true,
+          "align": "left",
+          "charSpacingPt": 0,
+          "lineSpacingPt": 27
+        }
+      ],
+      "backgroundSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1280\" height=\"720\" viewBox=\"0 0 1280 720\"><rect width=\"1280\" height=\"720\" fill=\"#0b1220\"/></svg>",
+      "backgroundSha256": "991d6b736a4a4fa5f8b306ecf0ee63fa5cc83f74dd10c559083c3d86552dbb0a"
+    },
+    {
+      "id": "decoration",
+      "texts": [],
+      "backgroundSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1280\" height=\"720\" viewBox=\"0 0 1280 720\"><rect width=\"1280\" height=\"720\" fill=\"#f8fafc\"/><circle cx=\"640\" cy=\"360\" r=\"120\" fill=\"#2563eb\"/></svg>",
+      "backgroundSha256": "8343e9b74c1d8b04b10e9f7b20cb4f11f5de8e764f329407813cabdee02e08a0"
+    },
+    {
+      "id": "hybrid",
+      "texts": [
+        {
+          "content": "Editable headline",
+          "xIn": 0.625,
+          "yIn": 0.9375,
+          "wIn": 3.204499999999999,
+          "hIn": 0.390625,
+          "fontSizePt": 22.5,
+          "fontFace": "Arial",
+          "color": "F8FAFC",
+          "bold": false,
+          "align": "left",
+          "charSpacingPt": 0,
+          "lineSpacingPt": 28.125
+        }
+      ],
+      "backgroundSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1280\" height=\"720\" viewBox=\"0 0 1280 720\"><rect width=\"1280\" height=\"720\" fill=\"#1e293b\"/><text x=\"80\" y=\"280\" font-size=\"28\" fill=\"#94a3b8\" transform=\"rotate(8 80 280)\">Stays in background</text></svg>",
+      "backgroundSha256": "f3481f56b63c6971b8abff6b29a3619d98ebd9990ad3f403e7634b16f99d94e9"
+    },
+    {
+      "id": "notes",
+      "texts": [
+        {
+          "content": "Ask for approval",
+          "xIn": 0.625,
+          "yIn": 1.1875,
+          "wIn": 3.619199999999999,
+          "hIn": 0.46875,
+          "fontSizePt": 27,
+          "fontFace": "Arial",
+          "color": "FFFFFF",
+          "bold": false,
+          "align": "left",
+          "charSpacingPt": 0,
+          "lineSpacingPt": 33.75
+        }
+      ],
+      "backgroundSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1280\" height=\"720\" viewBox=\"0 0 1280 720\"><rect width=\"1280\" height=\"720\" fill=\"#0f172a\"/></svg>",
+      "backgroundSha256": "2606aaeb844c1d2185acc3d3d361061786985e8cd6fda19e86f5b0f7c14ea909"
+    }
+  ]
+}
