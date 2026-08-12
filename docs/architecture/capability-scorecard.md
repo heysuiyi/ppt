@@ -182,30 +182,29 @@ CSS 谷底：**主题包本地资源（4.5）、CSS sanitize（5.5）**——多
 | 最弱什么？ | 模板、迁移、E2E Layer 3/4（视觉/Office）、Linux 凭据降级后端 |
 | 怎么用这个分？ | 按「严肃本地 Agent×PPT + 可换肤工作台」合理；按「主题市场/生产 SaaS」会高估 |
 
-### 下一工作流（清扫已收工；勿再并入死代码轮次）
+### 下一工作流（已冻结）
 
-**产品主线（已选定）：模板管理**  
-优先落地 [template-management.md](../roadmap/template-management.md)（Proposed → 实现）：内置 catalog、项目 policy、与 `design-spec` 单锁对齐。  
-**不**把「PPTX 原生可编辑图表/形状」并作本轮主线——现行整页 SVG 导出可接受；原生图表另开导出专项。
+**状态：参考实现冻结（2026-08-12）**
 
-**风险 backlog（独立专项，不并入清理轮）：**
+本仓库完成了它作为 harness 试验场的使命：Query/Loop、Gateway、CommitGate、
+文件 CAS 等工程内核已到 Solid。后续学习与验证迁至独立量尺项目
+`E:\Coding\harness-bench`（无头 CLI + 自动判定任务集 + 消融记分板）。
+
+- **不再推进产品主线**：模板管理、原生可编辑导出、主题市场等不作为本仓库活跃目标。
+- **保持可运行**：`typecheck` / `test` 应继续绿；修回归可以，不加功能表面积。
+- **可复用部分**：Gateway、loop、工具管线可作为零件参考搬到量尺，不在此仓继续扩张。
+
+历史路线图仍保留在 `docs/roadmap/`，仅作档案，不表示待办。
+
+**风险 backlog（仅文档存档，不排期）：**
 
 | 项 | 当前分 | 说明 |
 |---|---|---|
-| Linux 凭据后端降级 | 6.0 | `safeStorage` 选择 `basic_text` 时可继续使用，但必须显示 `degraded`，不能视为安全后端 |
-| 后台 daemon / 跨进程 | 4.5 | 现有 background manager ≠ daemon；退出/恢复语义另开平台专项 |
-| E2E / 商业视觉证据 | 5.0 | Layer 1 门控网关闭环 + Layer 2 导出 golden；Layer 3/4 仍缺。见 [e2e-quality.md](./e2e-quality.md) |
+| Linux 凭据后端降级 | 6.0 | `safeStorage` 选择 `basic_text` 时可继续使用，但必须显示 `degraded` |
+| 后台 daemon / 跨进程 | 4.5 | 现有 background manager ≠ daemon |
+| E2E / 商业视觉证据 | 5.0 | Layer 1+2 已落地；Layer 3/4 仍缺 |
 | Office 兼容矩阵 | 4.0 | 人工验收为主 |
-| AppData 迁移 | 3.0 | 当前无 backfill；是否做由产品决定 |
-
-提分顺序：
-
-1. 模板协议 Phase 1（产品主线）
-2. Layer 4 导出/Office 验收矩阵与 Layer 3 像素回归（风险/质量 backlog）
-3. Linux 安全凭据服务配置与降级提示验证（安全 backlog）
-4. 若需要主题氛围图，再评估本地 `url()` 资源加载（仍保持无远程主题）
-
-上述加固属于本地安全与工程卫生，不代表发布、代码签名或平台公证已经完成。
+| AppData 迁移 | 3.0 | 当前无 backfill |
 
 ## 维护
 

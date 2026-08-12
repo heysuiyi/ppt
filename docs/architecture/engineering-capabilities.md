@@ -423,14 +423,14 @@ dev 数据策略见
 
 ## 8. 清扫收工后的工作流划分
 
-Grammar / 未接线双轨 / 频谱残骸清扫已结束。后续不要再开「扫死代码」轮次覆盖下列事项：
+Grammar / 未接线双轨 / 频谱残骸清扫已结束。**2026-08-12 起本仓库冻结为参考实现**：不再推进产品主线；学习与 harness 消融迁至 `E:\Coding\harness-bench`。下列条目仅作档案，不排期。
 
 | 类别 | 内容 | 入口 |
 |---|---|---|
-| **产品主线** | 模板管理与自动选择（已选定） | [template-management.md](../roadmap/template-management.md) |
-| **远期导出** | 原生可编辑图表/形状 | [visual-system.md](../presentation/visual-system.md) §6；不与模板争主线 |
+| **已冻结（原产品主线）** | 模板管理与自动选择 | [template-management.md](../roadmap/template-management.md) |
+| **已冻结（远期导出）** | 原生可编辑图表/形状 | [visual-system.md](../presentation/visual-system.md) §6 |
 | **有意保留** | 空 Deferred 壳、`evaluation.ts`、Skill `allowed-tools` 不 enforce | [tools.md](../agent/tools.md)、design-system/evaluation |
-| **风险 backlog** | Linux `basic_text` 凭据降级、daemon、E2E Layer 3/4/5、AppData 迁移 | [capability-scorecard.md](./capability-scorecard.md)、[e2e-quality.md](./e2e-quality.md) |
+| **风险 backlog（存档）** | Linux `basic_text` 凭据降级、daemon、E2E Layer 3/4/5、AppData 迁移 | [capability-scorecard.md](./capability-scorecard.md)、[e2e-quality.md](./e2e-quality.md) |
 
 ## 9. 维护规则
 
