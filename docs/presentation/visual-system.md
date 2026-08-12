@@ -131,10 +131,10 @@ Grammar / 双轨 / 频谱残骸清扫已收工。以下按工作流分类，**�
 
 ### 9.3 风险 backlog（独立专项）
 
-Linux `basic_text` 凭据降级、后台 daemon、E2E Layer 1/3/4/5、AppData 迁移——见
+Linux `basic_text` 凭据降级、后台 daemon、E2E Layer 3/4/5、AppData 迁移——见
 [capability-scorecard.md](../architecture/capability-scorecard.md)「风险 backlog」表与
-[端到端质量证据](../architecture/e2e-quality.md)。Layer 2 导出 golden 已落地，不阻塞
-模板 Phase 1。
+[端到端质量证据](../architecture/e2e-quality.md)。Layer 1 网关闭环与 Layer 2 导出
+golden 已落地，不阻塞模板 Phase 1。
 
 ### Grammar / element-IR 作者表面（已移除）
 

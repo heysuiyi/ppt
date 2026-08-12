@@ -46,7 +46,7 @@ Superseded implementation plans are not archived in the main tree.
 | [Architecture overview](./architecture/overview.md) | Five layers, data flow, state boundaries, autonomy |
 | [Engineering capability map](./architecture/engineering-capabilities.md) | Capability placement, maturity, gaps, verification entry points |
 | [Capability scorecard](./architecture/capability-scorecard.md) | 0–10 domain scores (includes workbench CSS/UI themes); opinion snapshot, not a behavior contract |
-| [End-to-end quality evidence](./architecture/e2e-quality.md) | Layered verification: export golden (Implemented); gateway / visual / Office (Proposed) |
+| [End-to-end quality evidence](./architecture/e2e-quality.md) | Layered verification: Layer 1 agent loop + Layer 2 export golden (Implemented); visual / Office (Proposed) |
 | [Observability](./architecture/observability.md) | JSONL logs, correlation IDs, levels, redaction, capacity |
 | [Workbench UI themes](./architecture/ui-themes.md) | `themes/<name>/theme.css`, semantic tokens, `data-ui-region` |
 | [Query](./agent/query.md) | QueryParams, QueryState, IterationWorkspace, identity and recovery |

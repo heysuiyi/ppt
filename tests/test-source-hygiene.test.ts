@@ -26,6 +26,13 @@ const ALLOWED_CONDITIONAL_SKIPS: AllowedConditionalSkip[] = [
     reason: "Real Anthropic integration tests require an explicitly configured API key and model.",
   },
   {
+    file: "agent-loop.integration.test.ts",
+    condition: "!PROVIDER_AVAILABLE",
+    count: 1,
+    reason:
+      "Layer 1 AgentService loop requires a real OpenAI or Anthropic key and model; it is excluded from the default unit run.",
+  },
+  {
     file: "project-file-editor-safety.test.ts",
     condition: 'process.platform === "win32"',
     count: 1,

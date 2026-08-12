@@ -391,14 +391,15 @@ dev 数据策略见
 
 ### P1：端到端质量证据
 
-分层契约见 [端到端质量证据](./e2e-quality.md)。**Layer 2 导出 golden 已进默认
-`npm.cmd test`**（`tests/export-golden.test.ts`）：固定 fixture 走
-`DeckExportService`，锁定抬升层与 PPTX 包内容。它证明导出回归，不证明模型发挥、
-Electron 缩略图或 Office 打开。
+分层契约见 [端到端质量证据](./e2e-quality.md)。
+
+- **Layer 2** 导出 golden 已进默认 `npm.cmd test`（`tests/export-golden.test.ts`）。
+- **Layer 1** 真实网关闭环已进 `npm.cmd run test:integration:agent`
+  （`tests/agent-loop.integration.test.ts`）：`AgentService.start()` + CommitGate +
+  导出 postflight；`it.skipIf` 凭据门控；vitest 下缩略图被 stub。
 
 其余层仍为 Proposed，发布验收还需要：
 
-- Layer 1：Anthropic/OpenAI 真实网关闭环（扩展现有 integration 门控）；
 - Layer 3：Electron 缩略图/HTML 像素对照；
 - Layer 4：LibreOffice 近似 + PowerPoint/WPS/Keynote 人工抽查；
 - 网络搜索和图片来源失败场景；
@@ -409,7 +410,8 @@ Electron 缩略图或 Office 打开。
 | 变更范围 | 最小验证 | 扩展验证 |
 |---|---|---|
 | Query / Runtime | `agent-query-*`、`agent-runtime-*`、`tool-result-pairing` | cancellation、checkpoint、recovery |
-| Gateway | adapter、routing、response contract、model recovery | `npm.cmd run test:integration:agent` |
+| Gateway | adapter、routing、response contract、model recovery | `tests/agent-gateway.integration.test.ts` |
+| Layer 1 Agent 闭环 | — | `tests/agent-loop.integration.test.ts`（`npm.cmd run test:integration:agent`） |
 | Tool / Permission | tool pipeline、access policy、approval、hooks | 对应真实工具副作用测试 |
 | 文件操作 / 项目文件管理 | `tests/workspace-file-service.test.ts`、`tests/project-file-editor-safety.test.ts` | 编辑 token 隔离、只读 artifact、并发修改、路径逃逸、UTF-8 与原子写失败；页面状态/交互测试 |
 | Multi-Agent | task、message bus、teammate recovery | background 与 shutdown 场景 |
@@ -428,7 +430,7 @@ Grammar / 未接线双轨 / 频谱残骸清扫已结束。后续不要再开「�
 | **产品主线** | 模板管理与自动选择（已选定） | [template-management.md](../roadmap/template-management.md) |
 | **远期导出** | 原生可编辑图表/形状 | [visual-system.md](../presentation/visual-system.md) §6；不与模板争主线 |
 | **有意保留** | 空 Deferred 壳、`evaluation.ts`、Skill `allowed-tools` 不 enforce | [tools.md](../agent/tools.md)、design-system/evaluation |
-| **风险 backlog** | Linux `basic_text` 凭据降级、daemon、E2E Layer 1/3/4/5、AppData 迁移 | [capability-scorecard.md](./capability-scorecard.md)、[e2e-quality.md](./e2e-quality.md) |
+| **风险 backlog** | Linux `basic_text` 凭据降级、daemon、E2E Layer 3/4/5、AppData 迁移 | [capability-scorecard.md](./capability-scorecard.md)、[e2e-quality.md](./e2e-quality.md) |
 
 ## 9. 维护规则
 

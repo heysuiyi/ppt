@@ -27,8 +27,9 @@ decisions here. Read this file before making any changes.
   - `tests/`: unit tests; files matching `*.integration.test.ts` require real
     model credentials and are excluded from the default test run. Default
     `npm.cmd test` includes Layer 2 export golden
-    (`tests/export-golden.test.ts`). Layered E2E plan:
-    `docs/architecture/e2e-quality.md`.
+    (`tests/export-golden.test.ts`). Layer 1 real-gateway loop is
+    `tests/agent-loop.integration.test.ts` (excluded from default test).
+    Layered E2E plan: `docs/architecture/e2e-quality.md`.
 - See `README.md` / `README.en.md` and the index at `docs/README.md` for
   design docs. Check whether a relevant plan already exists before making an
   architectural change, to avoid duplicating or conflicting with prior
@@ -39,7 +40,7 @@ decisions here. Read this file before making any changes.
 ```powershell
 npm.cmd run dev                      # start dev environment
 npm.cmd test                         # unit tests (excludes *.integration.test.ts)
-npm.cmd run test:integration:agent   # real-gateway integration tests; requires OPENAI_API_KEY / ANTHROPIC_API_KEY
+npm.cmd run test:integration:agent   # gateway + Layer 1 loop; requires OPENAI_API_KEY / ANTHROPIC_API_KEY + matching MODEL
 npm.cmd run lint                     # Biome lint + format check
 npm.cmd run lint:fix                # Biome autofix (local only)
 npm.cmd run typecheck                # tsc --noEmit for both node and web tsconfigs

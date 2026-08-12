@@ -4,22 +4,18 @@ import {
   type AgentModelStreamChunk,
   textFromContentBlocks,
 } from "../src/main/agent/gateway";
+import {
+  hasEnvironment,
+  requiredEnvironment,
+  resolveAnthropicBaseURL,
+  resolveOpenAiBaseURL,
+} from "./integration-env";
 
 const OPENAI_AVAILABLE = hasEnvironment("OPENAI_API_KEY", "OPENAI_MODEL");
 const ANTHROPIC_AVAILABLE = hasEnvironment("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL");
 
-function environment(name: string): string | undefined {
-  return process.env[name]?.trim() || undefined;
-}
-
-function hasEnvironment(...names: string[]): boolean {
-  return names.every((name) => Boolean(environment(name)));
-}
-
-function requiredEnvironment(name: string): string {
-  const value = environment(name);
-  if (!value) throw new Error(`Missing ${name} in the process environment.`);
-  return value;
+function providerBaseURL(provider: "openai" | "anthropic"): string | undefined {
+  return provider === "openai" ? resolveOpenAiBaseURL() : resolveAnthropicBaseURL();
 }
 
 async function expectUsefulStream(
@@ -28,7 +24,13 @@ async function expectUsefulStream(
   apiKey: string,
 ): Promise<void> {
   const gateway = new AgentGateway();
-  const selection = gateway.configure({ provider, model, apiKey });
+  const baseURL = providerBaseURL(provider);
+  const selection = gateway.configure({
+    provider,
+    model,
+    apiKey,
+    ...(baseURL ? { baseURL } : {}),
+  });
   const chunks: AgentModelStreamChunk[] = [];
 
   for await (const chunk of gateway.queryModelStream(
@@ -62,10 +64,12 @@ describe.sequential("AgentGateway real provider integration", () => {
     async () => {
       const model = requiredEnvironment("OPENAI_MODEL");
       const gateway = new AgentGateway();
+      const baseURL = resolveOpenAiBaseURL();
       const selection = gateway.configure({
         provider: "openai",
         model,
         apiKey: requiredEnvironment("OPENAI_API_KEY"),
+        ...(baseURL ? { baseURL } : {}),
       });
 
       const response = await gateway.queryModel(
@@ -100,10 +104,12 @@ describe.sequential("AgentGateway real provider integration", () => {
     async () => {
       const model = requiredEnvironment("ANTHROPIC_MODEL");
       const gateway = new AgentGateway();
+      const baseURL = resolveAnthropicBaseURL();
       const selection = gateway.configure({
         provider: "anthropic",
         model,
         apiKey: requiredEnvironment("ANTHROPIC_API_KEY"),
+        ...(baseURL ? { baseURL } : {}),
       });
 
       const response = await gateway.queryModel(

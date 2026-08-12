@@ -25,7 +25,7 @@
 
 | 层 | 证明什么 | 状态 | 触发 | 入口 |
 |---|---|---|---|---|
-| 1 | 真实网关 Agent 闭环 | **Proposed** | nightly / 手动 | 扩展 `tests/agent-gateway.integration.test.ts` 范式；驱动 `AgentService.start()` |
+| 1 | 真实网关 Agent 闭环 | **Implemented** | nightly / 手动（`npm.cmd run test:integration:agent`） | `tests/agent-loop.integration.test.ts` |
 | 2 | 确定性导出回归 | **Implemented** | 每个 PR（默认 `npm.cmd test`） | `tests/export-golden.test.ts` |
 | 3 | Electron 视觉像素回归 | **Proposed** | PR 或 nightly | `SlideThumbnailService` golden PNG；非 Electron 的 vitest 不能渲 PNG |
 | 4 | Office 兼容近似 | **Proposed** | nightly / 发版 | LibreOffice headless 转 PDF/PNG + 人工真机矩阵 |
@@ -34,7 +34,37 @@
 `src/design-system/evaluation.ts` 是离线启发式，**不是**产品门禁。可挂在 Layer 1
 生成物上做分数漂移跟踪，不能单独当质量闸。
 
-## 3. Layer 2（现行）
+## 3. Layer 1（现行）
+
+真实 provider 驱动 `AgentService.start()`：临时 workspace + 固定 2 页 prompt → 工具 →
+CommitGate → 必要时 `resumeProposal` → `DeckExportService`。
+
+证明：
+
+- Query 能到达 proposal 或已应用 Presentation，而不是卡在 AskUser / 纯 chat；
+- workspace 写出 `design/design-spec.json`、`slides/page-plan.json`、至少一页 SVG；
+- 应用后的 deck 可经产品导出路径写出通过 postflight 的 PPTX。
+
+不证明：商业文案质量、Electron 缩略图保真、Office 打开。vitest 无 BrowserWindow，
+因此 `SlideThumbnailService.captureSlide` **被 stub 成通过预览门禁**；真实 PNG 是
+Layer 3。
+
+| 工件 | 路径 |
+|---|---|
+| 回归测试 | `tests/agent-loop.integration.test.ts` |
+
+门控：`OPENAI_API_KEY`+`OPENAI_MODEL` 或 `ANTHROPIC_API_KEY`+`ANTHROPIC_MODEL`。
+两者都有时用 OpenAI。自定义兼容端点用 `OPENAI_BASE_URL`（测试也认 `OPENAI_API_URL`）。
+改用户环境变量后必须**完全退出并重开 Cursor/终端**才会进 `process.env`。
+默认 `npm.cmd test` 排除本文件。超时 15 分钟。
+
+```powershell
+npm.cmd run test:integration:agent
+```
+
+只断言结构（页数 ≥ 1、SVG-native、锁文件存在、导出 postflight），不断言模型文案。
+
+## 4. Layer 2（现行）
 
 固定 golden deck → 真实 `DeckExportService`（校验 + `exportToPptx` + postflight）
 → 对比抬升层与 PPTX 包内容。
@@ -62,10 +92,7 @@ npm.cmd test -- tests/export-golden.test.ts
 
 审查 diff 后再提交 `export-golden-layers.json`。不要为了让测试变绿而盲更。
 
-## 4. 其余层（Proposed）
-
-**Layer 1**：真实 provider 驱动 `AgentService.start()`，临时 workspace + 固定 prompt。
-只断言协议/文件/页数等确定性事实，不断言模型文案。`it.skipIf` + 凭据环境变量。
+## 5. 其余层（Proposed）
 
 **Layer 3**：必须在 Electron 运行时截 PNG。vitest/jsdom 下
 `SlideThumbnailService.captureSlide` 返回 `null`。像素 diff 带容差。
@@ -75,7 +102,7 @@ npm.cmd test -- tests/export-golden.test.ts
 
 **Layer 5**：输入 → 审批 Proposal → 导出，最多 1–2 条 smoke。
 
-## 5. 与相邻文档
+## 6. 与相邻文档
 
 - 能力落点与验证矩阵：[工程能力地图](./engineering-capabilities.md)
 - 分域评分（评价快照）：[系统能力评价](./capability-scorecard.md)

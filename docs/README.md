@@ -46,7 +46,7 @@
 | [架构总览](./architecture/overview.md) | 五层架构、数据流、状态边界与自主性原则 |
 | [工程能力地图](./architecture/engineering-capabilities.md) | 能力落点、成熟度、缺口与验证入口 |
 | [系统能力评价](./architecture/capability-scorecard.md) | 0–10 分域评分（含工作台 CSS/UI 主题）；评价快照，非行为契约 |
-| [端到端质量证据](./architecture/e2e-quality.md) | 分层验收：导出 golden（Implemented）；网关/视觉/Office（Proposed） |
+| [端到端质量证据](./architecture/e2e-quality.md) | 分层验收：Layer 1 网关闭环 + Layer 2 导出 golden（Implemented）；视觉/Office（Proposed） |
 | [本地日志与运行诊断](./architecture/observability.md) | JSONL 日志、关联身份、事件级别、脱敏与容量边界 |
 | [工作台 UI 主题](./architecture/ui-themes.md) | `themes/<名>/theme.css`、semantic token、`data-ui-region` |
 | [Query](./agent/query.md) | QueryParams、QueryState、IterationWorkspace、身份与恢复 |
