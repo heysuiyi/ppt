@@ -4,8 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
+import { SettingsView } from "../src/renderer/src/app/SettingsView";
 import { MAX_UI_FONT_SIZE } from "../src/renderer/src/app/uiTypography";
-import { SettingsConsole } from "../src/renderer/src/components/SettingsConsole";
 import {
   DEFAULT_WEB_SEARCH_ENDPOINT,
   resolveAgentGatewayPreferences,
@@ -13,28 +13,57 @@ import {
 import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
 import { MAX_OUTPUT_TOKENS } from "../src/shared/generation-settings-inputs";
 
-function renderSearchSettings(overrides: Partial<ComponentProps<typeof SettingsConsole>> = {}) {
-  const props: ComponentProps<typeof SettingsConsole> = {
+type SettingsRegionProps = ComponentProps<typeof SettingsView>["controller"] &
+  Pick<
+    ComponentProps<typeof SettingsView>,
+    "activeCategory" | "activeSessionId" | "localStoragePath" | "onOpenWorkspace" | "notify"
+  >;
+
+function SettingsRegion({
+  activeCategory,
+  activeSessionId,
+  localStoragePath,
+  onOpenWorkspace,
+  notify,
+  ...controller
+}: SettingsRegionProps) {
+  return (
+    <SettingsView
+      activeCategory={activeCategory}
+      activeSessionId={activeSessionId}
+      localStoragePath={localStoragePath}
+      onOpenWorkspace={onOpenWorkspace}
+      notify={notify}
+      controller={controller}
+      onSelectCategory={vi.fn()}
+      onBackToWorkspace={vi.fn()}
+      onStartPanelResize={vi.fn()}
+    />
+  );
+}
+
+function renderSearchSettings(overrides: Partial<ComponentProps<typeof SettingsRegion>> = {}) {
+  const props: ComponentProps<typeof SettingsRegion> = {
+    saveStatus: "saved",
     activeCategory: "web-search",
     vendors: [],
     models: [],
     selectedModelId: "",
-    onSelectModel: vi.fn(),
-    onSaveVendor: vi.fn().mockResolvedValue(true),
-    onDeleteVendor: vi.fn().mockResolvedValue(true),
-    onDeleteModel: vi.fn().mockResolvedValue(true),
-    onSetVendorEnabled: vi.fn().mockResolvedValue(true),
-    onSetModelEnabled: vi.fn().mockResolvedValue(true),
+    selectModel: vi.fn(),
+    saveVendor: vi.fn().mockResolvedValue(true),
+    deleteVendor: vi.fn().mockResolvedValue(true),
+    deleteModel: vi.fn().mockResolvedValue(true),
+    setVendorEnabled: vi.fn().mockResolvedValue(true),
+    setModelEnabled: vi.fn().mockResolvedValue(true),
     credentialStorageStatus: {
       state: "degraded",
       backend: "basic_text",
       warning: "linux-basic-text",
     },
     webSearchCredentialConfigured: true,
-    onSaveWebSearchCredential: vi.fn().mockResolvedValue(true),
-    onDeleteWebSearchCredential: vi.fn().mockResolvedValue(true),
+    saveWebSearchCredential: vi.fn().mockResolvedValue(true),
+    deleteWebSearchCredential: vi.fn().mockResolvedValue(true),
     selectedDesignSystem: DEFAULT_DESIGN_SYSTEM,
-    setSelectedDesignSystem: vi.fn(),
     defaultTemplateId: "default",
     setDefaultTemplateId: vi.fn(),
     localStoragePath: "",
@@ -50,21 +79,21 @@ function renderSearchSettings(overrides: Partial<ComponentProps<typeof SettingsC
     uiThemeId: "studio",
     setUiThemeId: vi.fn(),
     uiThemes: [],
-    onRefreshUiThemes: vi.fn(),
-    onOpenUiThemesDirectory: vi.fn(),
+    refreshUiThemes: vi.fn(),
+    openUiThemesDirectory: vi.fn(),
     uiFontFamily: "system",
     setUiFontFamily: vi.fn(),
     uiFontSize: 14,
     setUiFontSize: vi.fn(),
     uiLineHeight: 1.5,
     setUiLineHeight: vi.fn(),
-    triggerToast: vi.fn(),
+    notify: vi.fn(),
     ...overrides,
   };
-  return { props, ...render(<SettingsConsole {...props} />) };
+  return { props, ...render(<SettingsRegion {...props} />) };
 }
 
-describe("SettingsConsole credential controls", () => {
+describe("SettingsRegion credential controls", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
@@ -79,8 +108,8 @@ describe("SettingsConsole credential controls", () => {
   });
 
   it("keeps the Tavily key in local draft state and saves it explicitly", async () => {
-    const onSaveWebSearchCredential = vi.fn().mockResolvedValue(true);
-    renderSearchSettings({ onSaveWebSearchCredential });
+    const saveWebSearchCredential = vi.fn().mockResolvedValue(true);
+    renderSearchSettings({ saveWebSearchCredential });
 
     expect(screen.getByText(/Linux basic_text/)).toBeTruthy();
     expect(screen.getByText(/已配置（系统安全存储或环境变量）/)).toBeTruthy();
@@ -89,7 +118,7 @@ describe("SettingsConsole credential controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
-      expect(onSaveWebSearchCredential).toHaveBeenCalledWith(
+      expect(saveWebSearchCredential).toHaveBeenCalledWith(
         "tvly-secret",
         DEFAULT_WEB_SEARCH_ENDPOINT,
       ),
@@ -98,12 +127,12 @@ describe("SettingsConsole credential controls", () => {
   });
 
   it("clears the secure-store entry only through the explicit action", async () => {
-    const onDeleteWebSearchCredential = vi.fn().mockResolvedValue(true);
-    renderSearchSettings({ onDeleteWebSearchCredential });
+    const deleteWebSearchCredential = vi.fn().mockResolvedValue(true);
+    renderSearchSettings({ deleteWebSearchCredential });
 
     fireEvent.click(screen.getByRole("button", { name: "清除" }));
 
-    await waitFor(() => expect(onDeleteWebSearchCredential).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(deleteWebSearchCredential).toHaveBeenCalledTimes(1));
   });
 
   it("excludes models without a resolved credential from fallback choices", () => {
@@ -154,11 +183,11 @@ describe("SettingsConsole credential controls", () => {
       target: { value: "tvly-unsaved" },
     });
 
-    view.rerender(<SettingsConsole {...view.props} activeCategory="agent" />);
+    view.rerender(<SettingsRegion {...view.props} activeCategory="agent" />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Agent 行为");
     expect(screen.queryByLabelText("Tavily API Key")).toBeNull();
 
-    view.rerender(<SettingsConsole {...view.props} activeCategory="web-search" />);
+    view.rerender(<SettingsRegion {...view.props} activeCategory="web-search" />);
     expect((screen.getByLabelText("Tavily API Key") as HTMLInputElement).value).toBe(
       "tvly-unsaved",
     );
@@ -196,7 +225,7 @@ describe("SettingsConsole credential controls", () => {
 
     const setUiFontSize = vi.fn();
     runtime.rerender(
-      <SettingsConsole
+      <SettingsRegion
         {...runtime.props}
         activeCategory="appearance"
         setUiFontSize={setUiFontSize}
@@ -209,7 +238,7 @@ describe("SettingsConsole credential controls", () => {
   });
 });
 
-describe("SettingsConsole presentation settings", () => {
+describe("SettingsRegion presentation settings", () => {
   afterEach(cleanup);
 
   const libraryTemplate = {
@@ -256,11 +285,11 @@ describe("SettingsConsole presentation settings", () => {
 
   it("applies a library template and reports success", async () => {
     const api = installPresentationApi();
-    const triggerToast = vi.fn();
+    const notify = vi.fn();
     renderSearchSettings({
       activeCategory: "templates",
       activeSessionId: "session-1",
-      triggerToast,
+      notify,
     });
 
     fireEvent.click(await screen.findByRole("button", { name: /Brand Template（仅在模板库）/ }));
@@ -272,20 +301,20 @@ describe("SettingsConsole presentation settings", () => {
       ),
     );
     await waitFor(() =>
-      expect(triggerToast).toHaveBeenCalledWith("已把「Brand Template」应用到当前项目"),
+      expect(notify).toHaveBeenCalledWith("已把「Brand Template」应用到当前项目"),
     );
   });
 
   it("reports a template application failure", async () => {
     installPresentationApi(vi.fn().mockRejectedValue(new Error("template failed")));
-    const triggerToast = vi.fn();
+    const notify = vi.fn();
     renderSearchSettings({
       activeCategory: "templates",
       activeSessionId: "session-1",
-      triggerToast,
+      notify,
     });
 
     fireEvent.click(await screen.findByRole("button", { name: /Brand Template（仅在模板库）/ }));
-    await waitFor(() => expect(triggerToast).toHaveBeenCalledWith("template failed"));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("template failed"));
   });
 });

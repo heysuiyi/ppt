@@ -1,6 +1,7 @@
 import type { SessionSummary } from "@shared/session";
 import { getWorkspaceLabel, groupSessionsByWorkspace } from "@shared/workspace";
 import React from "react";
+import type { WorkspacePage } from "../app/appViewState";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -16,7 +17,7 @@ import {
 interface LeftPanelProps {
   sessions: SessionSummary[];
   activeSessionId: string;
-  activeMode: "workspace" | "files";
+  page: WorkspacePage;
   onSelectSession: (id: string) => void;
   onNewSession: () => void;
   onNewSessionInWorkspace: (workspacePath: string) => void;
@@ -129,7 +130,7 @@ function WorkspaceSection({
 export const LeftPanel: React.FC<LeftPanelProps> = ({
   sessions,
   activeSessionId,
-  activeMode,
+  page,
   onSelectSession,
   onNewSession,
   onNewSessionInWorkspace,
@@ -251,21 +252,21 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
         </button>
         <button
           type="button"
-          className={`sidebar-rail-btn${activeMode === "workspace" ? " active" : ""}`}
+          className={`sidebar-rail-btn${page === "chat" ? " active" : ""}`}
           onClick={onOpenWorkspace}
           title="Agent 工作区"
           aria-label="Agent 工作区"
-          aria-current={activeMode === "workspace" ? "page" : undefined}
+          aria-current={page === "chat" ? "page" : undefined}
         >
           <FolderIcon size={17} />
         </button>
         <button
           type="button"
-          className={`sidebar-rail-btn${activeMode === "files" ? " active" : ""}`}
+          className={`sidebar-rail-btn${page === "files" ? " active" : ""}`}
           onClick={onOpenFiles}
           title="项目文件"
           aria-label="项目文件"
-          aria-current={activeMode === "files" ? "page" : undefined}
+          aria-current={page === "files" ? "page" : undefined}
         >
           <FileIcon size={17} />
         </button>
@@ -298,18 +299,18 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
         </button>
         <button
           type="button"
-          className={`workbench-sidebar-action-row${activeMode === "workspace" ? " active" : ""}`}
+          className={`workbench-sidebar-action-row${page === "chat" ? " active" : ""}`}
           onClick={onOpenWorkspace}
-          aria-current={activeMode === "workspace" ? "page" : undefined}
+          aria-current={page === "chat" ? "page" : undefined}
         >
           <FolderIcon size={14} className="workspace-icon" />
           <span>Agent 工作区</span>
         </button>
         <button
           type="button"
-          className={`workbench-sidebar-action-row${activeMode === "files" ? " active" : ""}`}
+          className={`workbench-sidebar-action-row${page === "files" ? " active" : ""}`}
           onClick={onOpenFiles}
-          aria-current={activeMode === "files" ? "page" : undefined}
+          aria-current={page === "files" ? "page" : undefined}
         >
           <FileIcon size={14} className="workspace-icon" />
           <span>项目文件</span>

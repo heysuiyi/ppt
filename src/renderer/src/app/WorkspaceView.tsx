@@ -3,10 +3,17 @@ import { ChatWorkspace } from "../components/ChatWorkspace";
 import { DeckPreviewModal } from "../components/DeckPreviewModal";
 import { LeftPanel } from "../components/LeftPanel";
 import { PPTMirror } from "../components/PPTMirror";
+import { ProjectFilesPage } from "../components/ProjectFilesPage";
+import type { AppLocation } from "./appViewState";
 import type { ResizablePanel } from "./useWorkbenchLayout";
 
 interface WorkspaceViewProps {
-  leftPanelProps: Omit<ComponentProps<typeof LeftPanel>, "collapsed" | "onToggleCollapsed">;
+  state: Extract<AppLocation, { area: "workspace" }>;
+  projectFilesProps: ComponentProps<typeof ProjectFilesPage>;
+  leftPanelProps: Omit<
+    ComponentProps<typeof LeftPanel>,
+    "collapsed" | "onToggleCollapsed" | "page"
+  >;
   chatWorkspaceProps: ComponentProps<typeof ChatWorkspace>;
   mirrorProps?: ComponentProps<typeof PPTMirror>;
   deckPreviewProps: ComponentProps<typeof DeckPreviewModal>;
@@ -19,6 +26,8 @@ interface WorkspaceViewProps {
 }
 
 export function WorkspaceView({
+  state,
+  projectFilesProps,
   leftPanelProps,
   chatWorkspaceProps,
   mirrorProps,
@@ -35,6 +44,7 @@ export function WorkspaceView({
       <div className="primary-sidebar-slot">
         <LeftPanel
           {...leftPanelProps}
+          page={state.page}
           collapsed={isPrimarySidebarCollapsed}
           onToggleCollapsed={onTogglePrimarySidebar}
         />
@@ -56,44 +66,50 @@ export function WorkspaceView({
       )}
 
       <div
-        key="workspace"
+        key={state.page}
         className="rounded-canvas workbench-main-surface view-enter"
         data-ui-region="canvas"
       >
-        <div
-          className={[
-            "workspace-canvas-content",
-            isMirrorVisible
-              ? "ppt-mirror-open"
-              : "ppt-mirror-closed workspace-canvas-content-chat-only",
-            isMirrorVisible && isMirrorExpanded ? "mirror-expanded" : "",
-            isSessionSwitching ? "is-session-switching" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          aria-busy={isSessionSwitching || undefined}
-        >
-          <ChatWorkspace {...chatWorkspaceProps} />
+        {state.page === "files" ? (
+          <ProjectFilesPage {...projectFilesProps} />
+        ) : (
+          <>
+            <div
+              className={[
+                "workspace-canvas-content",
+                isMirrorVisible
+                  ? "ppt-mirror-open"
+                  : "ppt-mirror-closed workspace-canvas-content-chat-only",
+                isMirrorVisible && isMirrorExpanded ? "mirror-expanded" : "",
+                isSessionSwitching ? "is-session-switching" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              aria-busy={isSessionSwitching || undefined}
+            >
+              <ChatWorkspace {...chatWorkspaceProps} />
 
-          {isMirrorVisible && mirrorProps ? (
-            <>
-              <div
-                className={`panel-resizer panel-resizer--secondary${isMirrorExpanded ? " is-disabled" : ""}`}
-                role="separator"
-                aria-label="调整预览面板宽度"
-                aria-orientation="vertical"
-                onPointerDown={(event) => {
-                  if (isMirrorExpanded) return;
-                  event.preventDefault();
-                  onStartPanelResize("secondary", event.clientX);
-                }}
-              />
-              <PPTMirror {...mirrorProps} />
-            </>
-          ) : null}
-        </div>
+              {isMirrorVisible && mirrorProps ? (
+                <>
+                  <div
+                    className={`panel-resizer panel-resizer--secondary${isMirrorExpanded ? " is-disabled" : ""}`}
+                    role="separator"
+                    aria-label="调整预览面板宽度"
+                    aria-orientation="vertical"
+                    onPointerDown={(event) => {
+                      if (isMirrorExpanded) return;
+                      event.preventDefault();
+                      onStartPanelResize("secondary", event.clientX);
+                    }}
+                  />
+                  <PPTMirror {...mirrorProps} />
+                </>
+              ) : null}
+            </div>
 
-        <DeckPreviewModal {...deckPreviewProps} />
+            <DeckPreviewModal {...deckPreviewProps} />
+          </>
+        )}
       </div>
     </>
   );

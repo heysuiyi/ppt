@@ -1,10 +1,10 @@
 import { type CSSProperties, type Dispatch, type SetStateAction, useEffect, useState } from "react";
 
-export type AppMode = "workspace" | "files" | "settings";
+import type { AppLocation } from "./appViewState";
 export type ResizablePanel = "primary" | "secondary";
 
 interface WorkbenchLayoutOptions {
-  activeMode: AppMode;
+  location: AppLocation;
   previewOpen: boolean;
   previewExpanded: boolean;
 }
@@ -34,10 +34,12 @@ function readStoredWidth(key: string, min: number, max: number, fallback: number
 }
 
 export function useWorkbenchLayout({
-  activeMode,
+  location,
   previewOpen,
   previewExpanded,
 }: WorkbenchLayoutOptions): WorkbenchLayoutController {
+  const activeMode =
+    location.area === "settings" ? "settings" : location.page === "files" ? "files" : "workspace";
   const [isPrimarySidebarCollapsed, setIsPrimarySidebarCollapsed] = useState(
     () => window.localStorage.getItem("agent-ppt:primary-sidebar") === "collapsed",
   );

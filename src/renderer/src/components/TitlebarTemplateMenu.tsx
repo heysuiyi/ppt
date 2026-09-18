@@ -11,7 +11,7 @@ export interface TitlebarTemplateMenuProps {
 
 /**
  * Compact titlebar menu for design-reference template import.
- * Reuses desktopApi import/list paths; does not embed SettingsConsole.
+ * Reuses desktopApi import/list paths; does not embed SettingsView.
  */
 export function TitlebarTemplateMenu({
   activeSessionId,

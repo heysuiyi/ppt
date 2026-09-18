@@ -258,7 +258,7 @@ teammate 适配器位于 `src/main/agent/subagent/workspace-tools.ts`。teammate
 - `src/main/project/project-file-service.ts`
 - `src/shared/ipc.ts`
 - `src/preload/index.ts`
-- `src/renderer/src/app/ProjectFilesView.tsx`
+- `src/renderer/src/app/WorkspaceView.tsx`（工作区内的文件页面分支）
 - `src/renderer/src/app/project/useProjectFiles.ts`
 - `src/renderer/src/components/ProjectFilesPage.tsx`
 

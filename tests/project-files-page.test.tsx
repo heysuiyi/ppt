@@ -367,13 +367,13 @@ describe("LeftPanel project file navigation", () => {
 
   it("shows project files in expanded and rail navigation", () => {
     const expanded = renderToStaticMarkup(
-      <LeftPanel {...commonProps} activeMode="files" collapsed={false} />,
+      <LeftPanel {...commonProps} page="files" collapsed={false} />,
     );
     expect(expanded).toContain("Agent 工作区");
     expect(expanded).toContain("项目文件");
     expect(expanded).toContain('aria-current="page"');
 
-    const rail = renderToStaticMarkup(<LeftPanel {...commonProps} activeMode="files" collapsed />);
+    const rail = renderToStaticMarkup(<LeftPanel {...commonProps} page="files" collapsed />);
     expect(rail).toContain('aria-label="项目文件"');
     expect(rail).toContain('aria-current="page"');
   });
