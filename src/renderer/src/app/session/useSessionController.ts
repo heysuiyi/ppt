@@ -210,7 +210,7 @@ export function useSessionController({
   }, [activeSessionId, presentation]);
 
   useEffect(() => {
-    if (!sessionLoaded || !activeSessionId) return;
+    if (busy || !sessionLoaded || !activeSessionId) return;
     const messages = toSessionChatMessages(chatMessages);
     const timer = window.setTimeout(() => {
       void window.desktopApi.saveSessionMessages(activeSessionId, messages).catch((error) => {
@@ -218,7 +218,7 @@ export function useSessionController({
       });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [activeSessionId, chatMessages, sessionLoaded]);
+  }, [activeSessionId, busy, chatMessages, sessionLoaded]);
 
   useEffect(() => {
     if (!sessionLoaded || !activeSessionId) return;

@@ -350,8 +350,19 @@ export class FileSessionStore {
   }
 
   async createSession(options?: CreateSessionOptions): Promise<SessionBootstrap> {
+    const snapshot = await this.prepareSession(options);
     const data = this.requireData();
-    const title = options?.title ?? createDefaultSessionTitle(data.sessions.length + 1);
+    data.sessions.unshift(snapshot);
+    data.activeSessionId = snapshot.session.id;
+    await this.persist();
+    await this.syncWorkspacePersistence(snapshot, { active: true });
+    return this.getBootstrap();
+  }
+
+  /** Materialize the workspace before admitting a new session; no conversation state is published. */
+  async prepareSession(options?: CreateSessionOptions): Promise<SessionSnapshot> {
+    const title =
+      options?.title ?? createDefaultSessionTitle(this.requireData().sessions.length + 1);
     const now = new Date().toISOString();
     const presentation = createSessionPresentation(title);
     const snapshot: SessionSnapshot = {
@@ -360,7 +371,6 @@ export class FileSessionStore {
       messages: [],
       displayCards: [],
     };
-
     if (options?.rootPath) {
       const workspaceRoot = normalizeWorkspacePath(options.rootPath);
       snapshot.session.workspacePath = workspaceRoot;
@@ -369,16 +379,11 @@ export class FileSessionStore {
         artifacts: defaultProjectArtifacts.map((artifact) => ({ ...artifact })),
       };
     }
-
     await this.materializeProjectSandbox(snapshot, {
       defaultTemplateId: options?.defaultTemplateId,
     });
     await this.seedUploadedDefaultTemplate(snapshot, options?.defaultTemplateId);
-    data.sessions.unshift(snapshot);
-    data.activeSessionId = snapshot.session.id;
-    await this.persist();
-    await this.syncWorkspacePersistence(snapshot, { active: true });
-    return this.getBootstrap();
+    return snapshot;
   }
 
   async openWorkspace(rootPath: string): Promise<SessionBootstrap> {
@@ -618,6 +623,55 @@ export class FileSessionStore {
       snapshot.session.lastMessageAt = new Date().toISOString();
     }
     await this.persist();
+  }
+
+  /** Accept input and its run in one database transaction before publishing memory state. */
+  async acceptAgentRun(
+    sessionId: string,
+    messages: SessionChatMessage[],
+    input: Parameters<ConversationDatabase["beginRun"]>[0],
+    newSession?: SessionSnapshot,
+  ): Promise<void> {
+    const write = this.writeQueue
+      .catch(() => undefined)
+      .then(() => {
+        const next = structuredClone(this.requireData());
+        if (newSession) next.sessions.unshift(structuredClone(newSession));
+        next.activeSessionId = sessionId;
+        const snapshot = next.sessions.find((item) => item.session.id === sessionId);
+        if (!snapshot) throw new Error("Session not found.");
+        snapshot.messages = sessionChatMessageSchema.array().parse(messages);
+        const retained = new Set(messages.map((message) => message.id));
+        snapshot.displayCards = snapshot.displayCards.filter(
+          (card) =>
+            !card.event.scope.anchorMessageId || retained.has(card.event.scope.anchorMessageId),
+        );
+        const settledRuns = new Set(
+          messages
+            .filter((message) => message.runStatus === "completed")
+            .map((message) => message.runId),
+        );
+        snapshot.displayCards = snapshot.displayCards.map((card) =>
+          card.event.kind === "interaction.question-requested" &&
+          settledRuns.has(card.event.scope.runId)
+            ? { ...card, status: "resolved" as const }
+            : card,
+        );
+        snapshot.session.updatedAt = new Date().toISOString();
+        snapshot.session.lastMessageAt = snapshot.session.updatedAt;
+        this.conversationDatabase.acceptRun(next, input);
+        this.data = next;
+      });
+    this.writeQueue = write;
+    await write;
+    if (newSession) {
+      try {
+        await this.syncWorkspacePersistence(this.findSession(sessionId), { active: true });
+      } catch (error) {
+        // Admission is already durable. A workspace mirror failure cannot turn it into a rejection.
+        logger.warn("session.workspace-mirror-failed", { sessionId, error });
+      }
+    }
   }
 
   /**

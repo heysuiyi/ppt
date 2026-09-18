@@ -1,41 +1,22 @@
 import type { AgentModelSelection, AgentProvider } from "@shared/agent";
+import type {
+  ModelCatalogEntry,
+  ModelTokenPricing,
+  ModelVendorConnection,
+  PresetVendorKind,
+  VendorKind,
+} from "@shared/model-catalog";
 import { markCredentialReentryRequired } from "./credentialMigration";
 
-export interface ModelTokenPricing {
-  currency: "CNY" | "USD";
-  inputPerMillion: number;
-  cachedInputPerMillion: number;
-  cacheCreationInputPerMillion?: number;
-  outputPerMillion: number;
-  updatedAt: string;
-}
+export type {
+  ModelCatalogEntry,
+  ModelTokenPricing,
+  ModelVendorConnection,
+  PresetVendorKind,
+  VendorKind,
+} from "@shared/model-catalog";
 
-export type VendorKind = "openai" | "anthropic" | "deepseek" | "custom";
-export type PresetVendorKind = Exclude<VendorKind, "custom">;
-
-export interface ModelCatalogEntry {
-  id: string;
-  name: string;
-  model: string;
-  openaiApiMode: "responses" | "chat-completions";
-  supports1MContext?: boolean;
-  enabled: boolean;
-  pricing?: ModelTokenPricing | null;
-}
-
-export interface ModelVendorConnection {
-  id: string;
-  kind: VendorKind;
-  label: string;
-  protocol: AgentProvider;
-  baseURL: string;
-  enabled: boolean;
-  models: ModelCatalogEntry[];
-  /** Runtime-only status from Main; never persisted. */
-  credentialConfigured?: boolean;
-}
-
-/** Flattened view for chat picker, token usage, and runtime wire. */
+/** Flattened display view for the chat picker and token usage. */
 export interface ManagedModel {
   id: string;
   vendorId: string;

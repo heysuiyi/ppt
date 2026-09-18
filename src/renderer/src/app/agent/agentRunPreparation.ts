@@ -1,27 +1,4 @@
-import type { AgentRunRequest } from "@shared/ipc";
 import type { ChatMessage } from "../chatMessageRuntime";
-
-interface BuildAgentRunRequestOptions {
-  prompt: string;
-  sessionId: string;
-  currentSlideId?: string;
-}
-
-export function buildAgentRunRequest({
-  prompt,
-  sessionId,
-  currentSlideId,
-}: BuildAgentRunRequestOptions): AgentRunRequest {
-  // 这里只构造 Renderer → Main 的业务请求；模型、Gateway 和步数限制属于执行配置。
-  return {
-    prompt,
-    sessionId,
-    editorContext: {
-      ...(currentSlideId ? { currentSlideId } : {}),
-      selectedElementIds: [],
-    },
-  };
-}
 
 interface PrepareAgentRunMessagesOptions {
   sourceMessages: ChatMessage[];

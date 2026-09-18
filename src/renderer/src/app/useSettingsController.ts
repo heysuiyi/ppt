@@ -16,8 +16,6 @@ import type { Presentation } from "@shared/presentation";
 import { getBuiltinTemplate } from "@shared/template-catalog";
 import { APPLICATION_DEFAULT_TEMPLATE_ID, isUploadedTemplateId } from "@shared/template-protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { saveAgentGatewayPreferences } from "../agentGatewayConfig";
-import { saveAgentStepLimits } from "../agentStepLimits";
 import {
   countUsableModels,
   flattenVendors,
@@ -25,9 +23,9 @@ import {
   type ManagedModel,
   type ModelVendorConnection,
   SELECTED_MODEL_STORAGE_KEY,
-  saveManagedVendors,
   vendorCredentialBinding,
 } from "../modelCatalog";
+import { saveExecutionSettings } from "./agentSettingsPersistence";
 import {
   type AppBootstrapSnapshot,
   type ComputedColorScheme,
@@ -87,7 +85,7 @@ export interface SettingsController {
   setUiFontSize: (value: number) => void;
   uiLineHeight: number;
   setUiLineHeight: (value: number) => void;
-  saveStatus: "saved" | "saving";
+  saveStatus: "saved" | "saving" | "failed";
   markSaving: () => void;
 }
 
@@ -112,6 +110,9 @@ export function useSettingsController(
 ): SettingsController {
   const persisted = bootstrap.persistedUiSettings;
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
+  const [executionSaveStatus, setExecutionSaveStatus] = useState<"saved" | "saving" | "failed">(
+    "saved",
+  );
   const saveTimerRef = useRef<number | null>(null);
   const [agentStepLimits, setAgentStepLimitsState] = useState(() => bootstrap.agentStepLimits);
   const [agentGatewayPreferences, setAgentGatewayPreferencesState] = useState(
@@ -191,18 +192,38 @@ export function useSettingsController(
   );
 
   useEffect(() => {
-    saveManagedVendors(vendors);
     if (!visibleModels.some((model) => model.id === selectedModelId) && visibleModels[0]) {
       setSelectedModelId(visibleModels[0].id);
     }
-  }, [vendors, selectedModelId, visibleModels]);
+  }, [selectedModelId, visibleModels]);
 
   useEffect(() => {
     window.localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, selectedModelId);
   }, [selectedModelId]);
 
-  useEffect(() => saveAgentStepLimits(agentStepLimits), [agentStepLimits]);
-  useEffect(() => saveAgentGatewayPreferences(agentGatewayPreferences), [agentGatewayPreferences]);
+  const executionSettingsJson = JSON.stringify({
+    vendors: vendors.map(({ credentialConfigured: _status, ...vendor }) => vendor),
+    gateway: agentGatewayPreferences,
+    stepLimits: agentStepLimits,
+    executionStrategy,
+    defaultTemplateId,
+  });
+  useEffect(() => {
+    let current = true;
+    setExecutionSaveStatus("saving");
+    void saveExecutionSettings(JSON.parse(executionSettingsJson))
+      .then(() => {
+        if (current) setExecutionSaveStatus("saved");
+      })
+      .catch((error: unknown) => {
+        if (!current) return;
+        setExecutionSaveStatus("failed");
+        notify(`执行配置保存失败：${error instanceof Error ? error.message : String(error)}`);
+      });
+    return () => {
+      current = false;
+    };
+  }, [executionSettingsJson, notify]);
 
   const clearFallbackIfMissing = useCallback((remainingModelIds: Set<string>) => {
     setAgentGatewayPreferencesState((current) => {
@@ -659,7 +680,7 @@ export function useSettingsController(
     setUiFontSize: update(setUiFontSizeState),
     uiLineHeight,
     setUiLineHeight: update(setUiLineHeightState),
-    saveStatus,
+    saveStatus: executionSaveStatus === "saved" ? saveStatus : executionSaveStatus,
     markSaving,
   };
 }

@@ -1,14 +1,23 @@
 import type { DesignSystemV2 } from "@design-system";
 import type { AgentExecutionStrategy } from "@shared/agent";
 import type { AgentGatewayPreferences } from "@shared/agent-gateway-config";
+import type { AgentSettings } from "@shared/agent-settings";
 import type { AgentStepLimits } from "@shared/agent-step-limits";
-import { loadAgentGatewayPreferences } from "../agentGatewayConfig";
-import { loadAgentStepLimits } from "../agentStepLimits";
+import { APPLICATION_DEFAULT_TEMPLATE_ID } from "@shared/template-protocol";
+import {
+  AGENT_GATEWAY_CONFIG_STORAGE_KEY,
+  LEGACY_AGENT_GATEWAY_CONFIG_STORAGE_KEY,
+  loadAgentGatewayPreferences,
+} from "../agentGatewayConfig";
+import { AGENT_STEP_LIMITS_STORAGE_KEY, loadAgentStepLimits } from "../agentStepLimits";
 import { consumeCredentialReentryNotice } from "../credentialMigration";
 import {
   flattenVendors,
+  LEGACY_MODEL_STORAGE_KEY,
+  LEGACY_MODEL_STORAGE_KEY_V2,
   loadManagedVendors,
   type ManagedModel,
+  MODEL_STORAGE_KEY,
   type ModelVendorConnection,
   SELECTED_MODEL_STORAGE_KEY,
 } from "../modelCatalog";
@@ -158,7 +167,8 @@ export function loadPersistedUiSettings(): Partial<PersistedUiSettings> {
 }
 
 export function savePersistedUiSettings(settings: PersistedUiSettings): void {
-  writeStorageItem(UI_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  const { executionStrategy: _strategy, defaultTemplateId: _template, ...uiSettings } = settings;
+  writeStorageItem(UI_SETTINGS_STORAGE_KEY, JSON.stringify(uiSettings));
 }
 
 export function resolveColorScheme(scheme: UiColorScheme | undefined): ComputedColorScheme {
@@ -174,23 +184,66 @@ export function resolveInitialColorScheme(settings: Partial<PersistedUiSettings>
   return "dark";
 }
 
+let mainSettings: AgentSettings | undefined;
+let migrationCredentialNotice = false;
+
+export async function initializeAgentSettings(): Promise<void> {
+  mainSettings = await window.desktopApi.getAgentSettings();
+  if (!mainSettings) {
+    const legacy = loadAppBootstrapSnapshot();
+    migrationCredentialNotice = legacy.credentialReentryRequired;
+    mainSettings = await window.desktopApi.migrateAgentSettings({
+      vendors: legacy.vendors.map(({ credentialConfigured: _status, ...vendor }) => vendor),
+      gateway: legacy.agentGatewayPreferences,
+      stepLimits: legacy.agentStepLimits,
+      executionStrategy: legacy.persistedUiSettings.executionStrategy ?? "REQUEST_APPROVAL",
+      defaultTemplateId:
+        legacy.persistedUiSettings.defaultTemplateId ?? APPLICATION_DEFAULT_TEMPLATE_ID,
+    });
+  }
+  for (const key of [
+    MODEL_STORAGE_KEY,
+    LEGACY_MODEL_STORAGE_KEY,
+    LEGACY_MODEL_STORAGE_KEY_V2,
+    AGENT_GATEWAY_CONFIG_STORAGE_KEY,
+    LEGACY_AGENT_GATEWAY_CONFIG_STORAGE_KEY,
+    AGENT_STEP_LIMITS_STORAGE_KEY,
+  ]) {
+    window.localStorage.removeItem(key);
+  }
+}
+
 export function loadAppBootstrapSnapshot(): AppBootstrapSnapshot {
   const persistedUiSettings = loadPersistedUiSettings();
   const initialColorScheme = resolveInitialColorScheme(persistedUiSettings);
-  const vendors = loadManagedVendors();
+  const vendors = mainSettings?.vendors ?? loadManagedVendors();
   const models = flattenVendors(vendors);
 
-  const agentGatewayPreferences = loadAgentGatewayPreferences();
+  const agentGatewayPreferences = mainSettings?.gateway ?? loadAgentGatewayPreferences();
 
   return {
-    persistedUiSettings,
+    persistedUiSettings: {
+      ...persistedUiSettings,
+      ...(mainSettings
+        ? {
+            executionStrategy: mainSettings.executionStrategy,
+            defaultTemplateId: mainSettings.defaultTemplateId,
+          }
+        : {}),
+    },
     initialColorScheme,
     initialComputedScheme: resolveColorScheme(initialColorScheme),
     vendors,
     models,
     selectedModelId: readStorageItem(SELECTED_MODEL_STORAGE_KEY) ?? models[0]?.id ?? "",
-    agentStepLimits: loadAgentStepLimits(),
+    agentStepLimits: mainSettings?.stepLimits ?? loadAgentStepLimits(),
     agentGatewayPreferences,
-    credentialReentryRequired: consumeCredentialReentryNotice(),
+    credentialReentryRequired: takeCredentialNotice(),
   };
+}
+
+function takeCredentialNotice(): boolean {
+  const notice = consumeCredentialReentryNotice() || migrationCredentialNotice;
+  migrationCredentialNotice = false;
+  return notice;
 }

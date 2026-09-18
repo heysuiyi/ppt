@@ -2,14 +2,7 @@ import { mkdirSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  type AgentExecutionStrategy,
-  type AgentModelSelection,
-  agentExecutionStrategySchema,
-} from "@shared/agent";
 import { formatPublicErrorMessage } from "@shared/agent-activity-display";
-import type { AgentRunServicesWire } from "@shared/agent-gateway-config";
-import { type AgentStepLimits, agentStepLimitsSchema } from "@shared/agent-step-limits";
 import type { PersistedDisplayCard } from "@shared/card-display-protocol";
 import { CommandBus } from "@shared/commands";
 import type { ConversationEventKind } from "@shared/conversation-events";
@@ -21,7 +14,6 @@ import {
 import {
   type AgentRunResult,
   type AgentStreamEvent,
-  agentRunRequestSchema,
   type CreateSessionOptions,
   type ExportPresentationOptions,
   exportPresentationOptionsSchema,
@@ -29,6 +21,7 @@ import {
   projectFileOpenRequestSchema,
   projectFileSaveRequestSchema,
   projectFileSessionIdSchema,
+  submitAgentRequestSchema,
 } from "@shared/ipc";
 import type { AppLogLevel, LogManagerSettings, RendererLogReport } from "@shared/logging";
 import {
@@ -39,7 +32,6 @@ import {
   type ProjectId,
 } from "@shared/presentation-lifecycle";
 import type { SessionChatMessage, SessionSnapshot } from "@shared/session";
-import { findRecoverableConversation } from "@shared/session-recovery";
 import { isTeammateProgressEvent } from "@shared/teammate-progress";
 import {
   app,
@@ -79,9 +71,11 @@ import {
   type SkillRegistry,
   scanSkills,
 } from "./agent/skills/loadSkillsDir";
+import { acceptAgentRequest } from "./agent/submit-agent-request";
 import { formatMailboxMessagesForHistory, MessageBus } from "./agent/teammate/message-bus";
 import { TeammateManager } from "./agent/teammate/spawn-teammate";
 import { createDefaultToolRegistry } from "./agent/tools/tool-registry";
+import { AgentSettingsStore } from "./agent-settings-store";
 import { configureApplicationDataRoot, getApplicationDataRoot } from "./application-data";
 import {
   getCredentialStatusWithEnvironment,
@@ -418,6 +412,9 @@ app.whenReady().then(async () => {
   const activeRuns = new Map<string, AbortController>(); // runId -> AbortController
   const trustedRendererWebContentsIds = new Set<number>();
   const credentialStore = new CredentialStore({ applicationDataRoot, safeStorage });
+  const agentSettingsStore = new AgentSettingsStore(
+    join(applicationDataRoot, "agent-settings.json"),
+  );
   let activeSessionId = sessionStore.getBootstrap().activeSession?.session.id ?? "";
 
   const ensureRuntime = async (snapshot: SessionSnapshot): Promise<SessionRuntime> => {
@@ -603,14 +600,18 @@ app.whenReady().then(async () => {
     });
   };
 
-  const parseAgentRequest = (operation: string, rawRequest: unknown) => {
-    try {
-      return agentRunRequestSchema.parse(rawRequest);
-    } catch (error) {
-      logger.warn("agent.request.invalid", { operation, error });
-      throw error;
-    }
-  };
+  ipcMain.handle("agent-settings:get", (event) => {
+    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
+    return agentSettingsStore.get();
+  });
+  ipcMain.handle("agent-settings:save", (event, settings: unknown) => {
+    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
+    return agentSettingsStore.save(settings);
+  });
+  ipcMain.handle("agent-settings:migrate", (event, settings: unknown) => {
+    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
+    return agentSettingsStore.save(settings, true);
+  });
 
   ipcMain.handle("session:get-state", () => sessionStore.getBootstrap());
   ipcMain.handle("token-usage:get-stats", () => tokenUsageStore.getStats());
@@ -763,8 +764,13 @@ app.whenReady().then(async () => {
     logger.info("session.deleted", { sessionId, nextSessionId: activeSessionId || undefined });
     return state;
   });
-  ipcMain.handle("session:save-messages", (_, sessionId: string, messages: SessionChatMessage[]) =>
-    sessionStore.saveMessages(sessionId, messages),
+  ipcMain.handle(
+    "session:save-messages",
+    (_, sessionId: string, messages: SessionChatMessage[]) => {
+      // An old debounced Renderer snapshot must not overwrite a newly accepted input/run.
+      if (activeRuns.size > 0) return;
+      return sessionStore.saveMessages(sessionId, messages);
+    },
   );
   ipcMain.handle(
     "session:save-display-cards",
@@ -1199,258 +1205,106 @@ app.whenReady().then(async () => {
   });
 
   /**
-   * 接收 Renderer 的新 query，完成协议/模型配置校验、并发控制和运行事件初始化，
-   * 并统一进入 Agent 的 SVG-native 工具循环。旧 Lean 请求在入口处明确拒绝。
+   * 接收用户意图；Main 持有配置和会话状态，在单次提交内完成受理、准备和运行。
    */
-  ipcMain.handle(
-    "agent:start",
-    async (
-      event,
-      rawRequest: unknown,
-      input?: AgentModelSelection,
-      strategy?: AgentExecutionStrategy,
-      rawStepLimits?: AgentStepLimits,
-      rawGatewayConfig?: AgentRunServicesWire,
-      runId?: string,
-    ) => {
-      const request = parseAgentRequest("start", rawRequest);
-      const sessionId = request.sessionId;
-      const currentRunId = runId || crypto.randomUUID();
-
-      // 当前桌面端采用单窗口、单前台运行模型；Main 同步执行这一约束，
-      // 让模型配置和交互状态在一次 run 内保持稳定。
-      if (activeRuns.size > 0) {
-        withLogContext(
-          { operation: "start", sessionId, runId: currentRunId, threadId: currentRunId },
-          () => {
-            logger.warn("agent.request.rejected", {
-              reason: "concurrency-conflict",
-              activeRunIds: [...activeRuns.keys()],
-              ...requestSummary(request.prompt),
+  ipcMain.handle("agent:submit", async (event, rawRequest: unknown) => {
+    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
+    const request = submitAgentRequestSchema.parse(rawRequest);
+    if (activeRuns.size > 0)
+      throw new Error("Concurrency Conflict: An active agent run is already in progress.");
+    const runId = request.requestId;
+    const controller = new AbortController();
+    activeRuns.set(runId, controller);
+    let sessionId: string | undefined;
+    let accepted = false;
+    try {
+      const settings = await agentSettingsStore.get();
+      if (!settings) throw new Error("Execution settings have not been initialized.");
+      controller.signal.throwIfAborted();
+      const admission = await acceptAgentRequest(sessionStore, settings, request);
+      sessionId = admission.sessionId;
+      accepted = true;
+      activeSessionId = sessionId;
+      sessionActiveRuns.set(sessionId, runId);
+      const emit = createAgentStreamEmitter(
+        event.sender,
+        sessionId,
+        runId,
+        admission.threadId ?? runId,
+        controller,
+      );
+      return await runAgentOperation(
+        "submit",
+        sessionId,
+        runId,
+        request.prompt,
+        { threadId: admission.threadId ?? runId },
+        controller.signal,
+        async () => {
+          if (!event.sender.isDestroyed())
+            event.sender.send("agent:accepted", {
+              requestId: request.requestId,
+              runId,
+              sessionId,
+              threadId: admission.threadId ?? runId,
+              bootstrap: admission.bootstrap,
             });
-          },
-        );
-        throw new Error("Concurrency Conflict: An active agent run is already in progress.");
-      }
-
-      const controller = new AbortController();
-      activeRuns.set(currentRunId, controller);
-      sessionActiveRuns.set(sessionId, currentRunId);
-
-      try {
-        const runtime = await getRuntimeForSession(sessionId);
-        const settings = input
-          ? await hydrateAgentModelSettings(credentialStore, input)
-          : undefined;
-        const executionStrategy = strategy
-          ? agentExecutionStrategySchema.parse(strategy)
-          : "REQUEST_APPROVAL";
-        const agentStepLimits = rawStepLimits
-          ? agentStepLimitsSchema.parse(rawStepLimits)
-          : undefined;
-        const services = await hydrateAgentRunServices(credentialStore, rawGatewayConfig ?? {});
-        agentGateway.clearPrimarySettings();
-        let selection: AgentModelSelection | undefined;
-        if (settings) {
-          selection = agentGateway.configure(settings, services.gateway, services.search);
-        } else {
-          agentGateway.applyGatewayConfig(services.gateway);
-          agentGateway.applySearchConfig(services.search);
-        }
-        sessionStore.conversationDatabase.beginRun({
-          runId: currentRunId,
-          sessionId,
-          threadId: currentRunId,
-          provider: selection?.provider,
-          model: selection?.model,
-          request: request.prompt,
-        });
-        const emit = createAgentStreamEmitter(
-          event.sender,
-          sessionId,
-          currentRunId,
-          currentRunId,
-          controller,
-        );
-
-        const result = await runAgentOperation(
-          "start",
-          sessionId,
-          currentRunId,
-          request.prompt,
-          {
-            threadId: currentRunId,
-            provider: selection?.provider,
-            model: selection?.model,
-            executionStrategy,
-          },
-          controller.signal,
-          async () => {
-            const result = await runtime.agentService.start(
-              request.prompt,
-              selection,
-              executionStrategy,
-              emit,
-              request.editorContext,
-              sessionStore.getAgentMessageHistory(sessionId, request.prompt),
-              controller.signal,
-              currentRunId,
-              agentStepLimits,
-            );
-            return finalizeAgentResult(sessionId, runtime, result, currentRunId);
-          },
-        );
-        if (!event.sender.isDestroyed()) {
-          event.sender.send("agent:stream", {
-            type: "stream-completed",
-            runId: currentRunId,
-            sessionId,
-          } satisfies AgentStreamEvent);
-        }
-        return result;
-      } finally {
-        toolApprovalBroker.finishForRun(currentRunId);
-        activeRuns.delete(currentRunId);
-        if (sessionActiveRuns.get(sessionId) === currentRunId) {
-          sessionActiveRuns.delete(sessionId);
-        }
-      }
-    },
-  );
-
-  ipcMain.handle(
-    "agent:continue",
-    async (
-      event,
-      threadId: string,
-      rawRequest: unknown,
-      rawModelSettings?: AgentModelSelection,
-      rawExecutionStrategy?: AgentExecutionStrategy,
-      rawStepLimits?: AgentStepLimits,
-      rawGatewayConfig?: AgentRunServicesWire,
-      runId?: string,
-    ) => {
-      const request = parseAgentRequest("continue-agent-run", rawRequest);
-      const sessionId = request.sessionId;
-      const currentRunId = runId || crypto.randomUUID();
-
-      // 与 start 保持同一条全局串行边界，避免继续会话与新运行交错。
-      if (activeRuns.size > 0) {
-        withLogContext(
-          { operation: "continue-agent-run", sessionId, runId: currentRunId, threadId },
-          () => {
-            logger.warn("agent.request.rejected", {
-              reason: "concurrency-conflict",
-              activeRunIds: [...activeRuns.keys()],
-              ...requestSummary(request.prompt),
-            });
-          },
-        );
-        throw new Error("Concurrency Conflict: An active agent run is already in progress.");
-      }
-
-      const controller = new AbortController();
-      activeRuns.set(currentRunId, controller);
-      sessionActiveRuns.set(sessionId, currentRunId);
-
-      try {
-        const runtime = await getRuntimeForSession(sessionId);
-        const settings = rawModelSettings
-          ? await hydrateAgentModelSettings(credentialStore, rawModelSettings)
-          : undefined;
-        const executionStrategy = rawExecutionStrategy
-          ? agentExecutionStrategySchema.parse(rawExecutionStrategy)
-          : undefined;
-        const agentStepLimits = rawStepLimits
-          ? agentStepLimitsSchema.parse(rawStepLimits)
-          : undefined;
-        const services = await hydrateAgentRunServices(credentialStore, rawGatewayConfig ?? {});
-        agentGateway.clearPrimarySettings();
-        let selection: AgentModelSelection | undefined;
-        if (settings) {
-          selection = agentGateway.configure(settings, services.gateway, services.search);
-        } else {
-          agentGateway.applyGatewayConfig(services.gateway);
-          agentGateway.applySearchConfig(services.search);
-        }
-        sessionStore.conversationDatabase.beginRun({
-          runId: currentRunId,
-          sessionId,
-          threadId,
-          provider: selection?.provider,
-          model: selection?.model,
-          request: request.prompt,
-        });
-        const emit = createAgentStreamEmitter(
-          event.sender,
-          sessionId,
-          currentRunId,
-          threadId,
-          controller,
-        );
-
-        const result = await runAgentOperation(
-          "continue-agent-run",
-          sessionId,
-          currentRunId,
-          request.prompt,
-          { threadId },
-          controller.signal,
-          async () => {
-            await runtime.agentService.restoreDurableThread(threadId);
-            if (!runtime.agentService.hasActiveConversation(threadId)) {
-              const recovered = findRecoverableConversation(
-                sessionStore.getSession(sessionId).messages,
+          controller.signal.throwIfAborted();
+          const runtime = await getRuntimeForSession(admission.sessionId);
+          const primary = await hydrateAgentModelSettings(credentialStore, admission.model);
+          const services = await hydrateAgentRunServices(credentialStore, admission.services);
+          controller.signal.throwIfAborted();
+          agentGateway.clearPrimarySettings();
+          const selection = agentGateway.configure(primary, services.gateway, services.search);
+          if (admission.threadId) {
+            const restored = await runtime.agentService.restoreDurableThread(admission.threadId);
+            if (!restored) throw new Error("The conversation can no longer be resumed.");
+          }
+          sessionStore.conversationDatabase.markRunRunning(runId);
+          const result = admission.threadId
+            ? await runtime.agentService.continueAgentRun(
+                admission.threadId,
+                request.prompt,
+                emit,
+                request.editorContext,
+                controller.signal,
+                runId,
+                admission.stepLimits,
+                selection,
+                admission.executionStrategy,
+              )
+            : await runtime.agentService.start(
+                request.prompt,
+                selection,
+                admission.executionStrategy,
+                emit,
+                request.editorContext,
+                admission.history,
+                controller.signal,
+                runId,
+                admission.stepLimits,
               );
-              if (recovered?.threadId === threadId) {
-                runtime.agentService.restoreAgentRunConversation(threadId, recovered.messages);
-              }
-            }
-
-            const run = runtime.agentService.hasActiveConversation(threadId)
-              ? runtime.agentService.continueAgentRun(
-                  threadId,
-                  request.prompt,
-                  emit,
-                  request.editorContext,
-                  controller.signal,
-                  currentRunId,
-                  agentStepLimits,
-                  selection,
-                  executionStrategy,
-                )
-              : runtime.agentService.start(
-                  request.prompt,
-                  selection,
-                  executionStrategy ?? "REQUEST_APPROVAL",
-                  emit,
-                  request.editorContext,
-                  sessionStore.getAgentMessageHistory(sessionId, request.prompt),
-                  controller.signal,
-                  currentRunId,
-                  agentStepLimits,
-                );
-
-            return finalizeAgentResult(sessionId, runtime, await run, currentRunId);
-          },
-        );
-        if (!event.sender.isDestroyed()) {
+          return finalizeAgentResult(admission.sessionId, runtime, result, runId);
+        },
+      );
+    } finally {
+      toolApprovalBroker.finishForRun(runId);
+      activeRuns.delete(runId);
+      if (sessionId && sessionActiveRuns.get(sessionId) === runId)
+        sessionActiveRuns.delete(sessionId);
+      if (accepted && !event.sender.isDestroyed()) {
+        try {
           event.sender.send("agent:stream", {
             type: "stream-completed",
-            runId: currentRunId,
+            runId,
             sessionId,
           } satisfies AgentStreamEvent);
-        }
-        return result;
-      } finally {
-        toolApprovalBroker.finishForRun(currentRunId);
-        activeRuns.delete(currentRunId);
-        if (sessionActiveRuns.get(sessionId) === currentRunId) {
-          sessionActiveRuns.delete(sessionId);
+        } catch (error) {
+          logger.warn("agent.stream-completion-undelivered", { runId, error });
         }
       }
-    },
-  );
+    }
+  });
 
   ipcMain.handle(
     "agent:resume",

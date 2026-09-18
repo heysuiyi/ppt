@@ -1,13 +1,8 @@
 import {
-  type AgentGatewayConfig,
   type AgentGatewayPreferences,
-  type AgentRunServicesWire,
-  type AgentSearchConfig,
   resolveAgentGatewayPreferences,
 } from "@shared/agent-gateway-config";
 import { markCredentialReentryRequired } from "./credentialMigration";
-import type { ManagedModel } from "./modelCatalog";
-import { isModelEnabled, toAgentModelSelection } from "./modelCatalog";
 
 export const AGENT_GATEWAY_CONFIG_STORAGE_KEY = "agent-ppt.gateway-config.v2";
 export const LEGACY_AGENT_GATEWAY_CONFIG_STORAGE_KEY = "agent-ppt.gateway-config.v1";
@@ -67,39 +62,4 @@ export function saveAgentGatewayPreferences(preferences: AgentGatewayPreferences
     AGENT_GATEWAY_CONFIG_STORAGE_KEY,
     JSON.stringify(resolveAgentGatewayPreferences(preferences)),
   );
-}
-
-export function buildAgentGatewayConfig(
-  preferences: AgentGatewayPreferences,
-  models: ManagedModel[],
-): AgentGatewayConfig {
-  const fallbackModel = preferences.fallbackModelId
-    ? models.find((model) => model.id === preferences.fallbackModelId && isModelEnabled(model))
-    : undefined;
-
-  return {
-    timeoutMs: preferences.timeoutMs,
-    maxOutputTokens: preferences.maxOutputTokens,
-    ...(fallbackModel ? { fallbackModel: toAgentModelSelection(fallbackModel) } : {}),
-  };
-}
-
-export function buildAgentSearchConfig(preferences: AgentGatewayPreferences): AgentSearchConfig {
-  return {
-    ...(preferences.webSearchEndpoint ? { webSearchEndpoint: preferences.webSearchEndpoint } : {}),
-    ...(preferences.webSearchTimeoutMs
-      ? { webSearchTimeoutMs: preferences.webSearchTimeoutMs }
-      : {}),
-  };
-}
-
-/** Flat wire payload for IPC (gateway + search); main splits once. */
-export function buildAgentRunServicesWire(
-  preferences: AgentGatewayPreferences,
-  models: ManagedModel[],
-): AgentRunServicesWire {
-  return {
-    ...buildAgentGatewayConfig(preferences, models),
-    ...buildAgentSearchConfig(preferences),
-  };
 }

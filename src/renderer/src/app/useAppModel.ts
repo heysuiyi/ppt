@@ -276,7 +276,11 @@ export function useAppModel(): AppModel {
                 },
                 run: {
                   activityTrace,
-                  phase: agentRunPhase,
+                  phase:
+                    agentRun.submissionPhase === "submitting" ||
+                    agentRun.submissionPhase === "preparing"
+                      ? agentRun.submissionPhase
+                      : agentRunPhase,
                   streamingMessageId,
                   busy,
                   activeRunId,

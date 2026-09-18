@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildAgentRunRequest,
-  prepareAgentRunMessages,
-} from "../src/renderer/src/app/agent/agentRunPreparation";
+import { prepareAgentRunMessages } from "../src/renderer/src/app/agent/agentRunPreparation";
 import type { ChatMessage } from "../src/renderer/src/app/chatMessageRuntime";
 
 const sourceMessages: ChatMessage[] = [
@@ -32,20 +29,6 @@ function prepare(overrides: Partial<Parameters<typeof prepareAgentRunMessages>[0
 }
 
 describe("agent run message branching", () => {
-  it("builds the IPC request without layoutChoice", () => {
-    expect(
-      buildAgentRunRequest({
-        prompt: "Create a deck",
-        sessionId: "session-1",
-        currentSlideId: "slide-2",
-      }),
-    ).toEqual({
-      prompt: "Create a deck",
-      sessionId: "session-1",
-      editorContext: { currentSlideId: "slide-2", selectedElementIds: [] },
-    });
-  });
-
   it("adds one stable running assistant turn with runId separate from threadId", () => {
     expect(prepare().runMessages.slice(-2)).toEqual([
       { id: "new-user-id", role: "user", content: "new prompt" },

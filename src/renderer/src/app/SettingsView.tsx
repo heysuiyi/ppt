@@ -215,7 +215,11 @@ export function SettingsView(props: SettingsViewProps) {
               <h1 className="settings-page-title">{categoryTitles[activeCategory]}</h1>
               {activeCategory !== "usage" ? (
                 <span className={cx("settings-status", saveStatus === "saving" && "is-saving")}>
-                  {saveStatus === "saving" ? "保存中…" : "已保存"}
+                  {saveStatus === "failed"
+                    ? "保存失败"
+                    : saveStatus === "saving"
+                      ? "保存中…"
+                      : "已保存"}
                 </span>
               ) : null}
             </header>

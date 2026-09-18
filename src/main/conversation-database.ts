@@ -362,6 +362,38 @@ export class ConversationDatabase {
     });
   }
 
+  hasRun(runId: string): boolean {
+    return Boolean(this.database.prepare("SELECT 1 FROM runs WHERE run_id = ?").get(runId));
+  }
+
+  latestSessionRun(sessionId: string): { runId: string; threadId: string } | undefined {
+    return this.database
+      .prepare(
+        "SELECT run_id AS runId, thread_id AS threadId FROM runs WHERE session_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1",
+      )
+      .get(sessionId) as { runId: string; threadId: string } | undefined;
+  }
+
+  acceptRun(
+    state: ConversationDatabaseState,
+    input: Parameters<ConversationDatabase["beginRun"]>[0],
+  ): void {
+    this.transaction(() => {
+      if (this.hasRun(input.runId)) throw new Error("This request has already been accepted.");
+      this.replaceState(state);
+      this.beginRun(input);
+      this.database
+        .prepare("UPDATE runs SET status = 'preparing' WHERE run_id = ?")
+        .run(input.runId);
+    });
+  }
+
+  markRunRunning(runId: string): void {
+    this.database
+      .prepare("UPDATE runs SET status = 'running' WHERE run_id = ? AND status = 'preparing'")
+      .run(runId);
+  }
+
   beginRun(input: {
     runId: string;
     sessionId: string;
@@ -502,7 +534,7 @@ export class ConversationDatabase {
       .prepare("SELECT status, result_json FROM runs WHERE run_id = ?")
       .get(runId) as
       | {
-          status: "running" | "completed" | "failed" | "interrupted";
+          status: "preparing" | "running" | "completed" | "failed" | "interrupted";
           result_json: string | null;
         }
       | undefined;
@@ -512,7 +544,9 @@ export class ConversationDatabase {
 
   interruptRunningRuns(error = "Application restarted before the run completed."): string[] {
     const rows = this.database
-      .prepare("SELECT run_id FROM runs WHERE status = 'running' ORDER BY started_at")
+      .prepare(
+        "SELECT run_id FROM runs WHERE status IN ('running', 'preparing') ORDER BY started_at",
+      )
       .all() as Array<{ run_id: string }>;
     for (const row of rows) {
       this.finishRun({

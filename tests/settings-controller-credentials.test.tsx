@@ -105,6 +105,7 @@ describe("useSettingsController credentials", () => {
     Object.defineProperty(window, "desktopApi", {
       configurable: true,
       value: {
+        saveAgentSettings: vi.fn(async (value) => value),
         getCredentialStatus: vi.fn().mockImplementation(async (request) => ({
           storage: { state: "secure", backend: "unknown" },
           models: request.models.map((binding: { vendorId: string; baseURL?: string }) => ({
@@ -148,6 +149,7 @@ describe("useSettingsController credentials", () => {
     Object.defineProperty(window, "desktopApi", {
       configurable: true,
       value: {
+        saveAgentSettings: vi.fn(async (value) => value),
         getCredentialStatus: vi.fn().mockReturnValue(status),
         setModelCredentials,
       },
@@ -177,6 +179,7 @@ describe("useSettingsController credentials", () => {
     Object.defineProperty(window, "desktopApi", {
       configurable: true,
       value: {
+        saveAgentSettings: vi.fn(async (value) => value),
         getCredentialStatus: vi.fn().mockRejectedValue(new Error("corrupt store")),
       },
     });
@@ -201,7 +204,7 @@ describe("useSettingsController credentials", () => {
       .mockRejectedValueOnce(new Error("refresh failed"));
     Object.defineProperty(window, "desktopApi", {
       configurable: true,
-      value: { getCredentialStatus },
+      value: { saveAgentSettings: vi.fn(async (value) => value), getCredentialStatus },
     });
 
     render(<SettingsHarness notify={notify} />);

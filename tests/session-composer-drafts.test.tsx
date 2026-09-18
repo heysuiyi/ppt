@@ -8,8 +8,6 @@ import type { AgentActivityStreamController } from "../src/renderer/src/app/agen
 import { useAgentRunController } from "../src/renderer/src/app/agent/useAgentRunController";
 import { useSessionController } from "../src/renderer/src/app/session/useSessionController";
 import { useProjectStore } from "../src/renderer/src/components/project-store";
-import { resolveAgentGatewayPreferences } from "../src/shared/agent-gateway-config";
-import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
 import { createSessionPresentation, type SessionBootstrap } from "../src/shared/session";
 
 vi.mock("../src/renderer/src/app/agent/agentRunExecution", () => ({ executeAgentRun: vi.fn() }));
@@ -105,8 +103,6 @@ async function setupRun() {
       notify: options.notify,
       activity,
       settings: {
-        agentStepLimits: DEFAULT_AGENT_STEP_LIMITS,
-        agentGatewayPreferences: resolveAgentGatewayPreferences(),
         enabledModels: [model],
         selectedModel: model,
         executionStrategy: "REQUEST_APPROVAL",
@@ -129,28 +125,49 @@ describe("composer submission boundaries", () => {
 
   it("keeps the initial draft and leaves the session uncreated when creation fails", async () => {
     const { result } = await setupRun();
-    createSession.mockRejectedValueOnce(new Error("create failed"));
+    vi.mocked(executeAgentRun).mockRejectedValueOnce(new Error("create failed"));
     act(() => result.current.session.setRequest("保留首次输入"));
     await act(async () => result.current.run.startAgent());
     expect(result.current.session.request).toBe("保留首次输入");
     expect(result.current.session.activeSessionId).toBe("");
     expect(result.current.busy).toBe(false);
-    expect(executeAgentRun).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
+    expect(saveSessionMessages).not.toHaveBeenCalled();
   });
 
-  it("retains the migrated draft when saving the user message fails", async () => {
+  it("retains the draft when Main rejects admission", async () => {
     const { result } = await setupRun();
-    saveSessionMessages.mockRejectedValueOnce(new Error("save failed"));
+    vi.mocked(executeAgentRun).mockRejectedValueOnce(new Error("save failed"));
     act(() => result.current.session.setRequest("保存失败时保留"));
     await act(async () => result.current.run.startAgent());
-    expect(result.current.session.activeSessionId).toBe("created");
+    expect(result.current.session.activeSessionId).toBe("");
     expect(result.current.session.request).toBe("保存失败时保留");
-    expect(executeAgentRun).not.toHaveBeenCalled();
+    expect(saveSessionMessages).not.toHaveBeenCalled();
   });
 
   it("consumes the submitted draft even if the model later fails, preserving the user message", async () => {
     const { result } = await setupRun();
-    vi.mocked(executeAgentRun).mockRejectedValueOnce(new Error("model failed"));
+    vi.mocked(executeAgentRun).mockImplementationOnce(async ({ request, onAccepted }) => {
+      const state = snapshot("created");
+      state.activeSession!.messages = [
+        { id: request.userMessageId, role: "user", content: request.prompt },
+        {
+          id: request.assistantMessageId,
+          role: "assistant",
+          content: "",
+          runId: request.requestId,
+          runStatus: "running",
+        },
+      ];
+      onAccepted({
+        requestId: request.requestId,
+        runId: request.requestId,
+        sessionId: "created",
+        threadId: request.requestId,
+        bootstrap: state,
+      });
+      throw new Error("model failed");
+    });
     act(() => result.current.session.setRequest("模型失败仍可重试"));
     await act(async () => result.current.run.startAgent());
     expect(result.current.session.request).toBe("");

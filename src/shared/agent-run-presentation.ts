@@ -5,6 +5,8 @@ import {
 } from "@shared/agent-activity-display";
 
 export type AgentRunPhase =
+  | "submitting"
+  | "preparing"
   | "idle"
   | "requesting"
   | "thinking"
@@ -32,6 +34,13 @@ export function deriveAgentRunPresentation(
   phase: AgentRunPhase,
   items: AgentActivityItem[],
 ): AgentRunPresentation {
+  if (phase === "submitting" || phase === "preparing") {
+    return {
+      phase,
+      label: phase === "submitting" ? "正在提交请求" : "正在准备运行",
+      animated: true,
+    };
+  }
   if (phase === "waiting") {
     return { phase, label: "等待你的确认", animated: false };
   }

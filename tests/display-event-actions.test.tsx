@@ -323,7 +323,7 @@ describe("display event approval actions", () => {
     expect(busy).toBe(false);
   });
 
-  it("settles the waiting question message before continuing its thread", () => {
+  it("sends the question identity for Main to validate before settling it", () => {
     render(<Harness />);
     const questionEvent = {
       protocolVersion: 1 as const,
@@ -360,6 +360,7 @@ describe("display event approval actions", () => {
     expect(messages[0]?.runStatus).toBe("completed");
     expect(startAgent).toHaveBeenCalledWith("面向管理层", undefined, {
       userDisplayContent: "管理层",
+      questionRunId: "run-1",
     });
   });
 

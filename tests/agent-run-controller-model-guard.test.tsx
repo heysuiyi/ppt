@@ -4,8 +4,6 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentActivityStreamController } from "../src/renderer/src/app/agent/useAgentActivityStream";
 import { useAgentRunController } from "../src/renderer/src/app/agent/useAgentRunController";
-import { resolveAgentGatewayPreferences } from "../src/shared/agent-gateway-config";
-import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
 
 describe("useAgentRunController model guard", () => {
   afterEach(() => {
@@ -61,8 +59,6 @@ describe("useAgentRunController model guard", () => {
         applySessionState,
         syncPresentation,
         settings: {
-          agentStepLimits: DEFAULT_AGENT_STEP_LIMITS,
-          agentGatewayPreferences: resolveAgentGatewayPreferences(),
           enabledModels: [],
           selectedModel: undefined,
           executionStrategy: "REQUEST_APPROVAL",

@@ -173,21 +173,12 @@ export function useDisplayEventActions({
 
   const resolveQuestion = useCallback(
     (event: QuestionEvent, resolved: AgentQuestionResolved) => {
-      const messageId = event.scope.anchorMessageId;
-      if (messageId) {
-        setChatMessages((current) =>
-          current.map((message) =>
-            message.id === messageId
-              ? { ...message, runStatus: "completed", runError: undefined }
-              : message,
-          ),
-        );
-      }
       void startAgent(resolved.value, undefined, {
         userDisplayContent: resolved.label ?? resolved.value,
+        questionRunId: event.scope.runId,
       });
     },
-    [setChatMessages, startAgent],
+    [startAgent],
   );
 
   const reviseOutline = useCallback(

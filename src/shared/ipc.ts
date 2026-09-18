@@ -1,8 +1,6 @@
 import { z } from "zod";
-import type { AgentExecutionStrategy, AgentModelSelection } from "./agent";
-import type { AgentRunServicesWire } from "./agent-gateway-config";
 import type { AgentQuestion } from "./agent-question";
-import type { AgentStepLimits } from "./agent-step-limits";
+import type { AgentSettings } from "./agent-settings";
 import type { AgentTaskNode } from "./agent-task-list";
 import type {
   AgentApprovalRequest,
@@ -70,23 +68,43 @@ export const agentEditorContextSchema = z.object({
   selectedElementIds: z.array(z.string()),
 });
 
-export const agentAttachmentSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  path: z.string(),
-  mimeType: z.string().optional(),
-});
-
-/** Renderer 发送给 Main 的 query 协议；Main 必须解析成功后才能进入 Agent 执行链。 */
-export const agentRunRequestSchema = z.object({
-  prompt: z.string().trim().min(1),
-  sessionId: z.string().trim().min(1),
-  editorContext: agentEditorContextSchema.optional(),
-  attachments: z.array(agentAttachmentSchema).optional(),
-});
-
-export type AgentAttachment = z.infer<typeof agentAttachmentSchema>;
-export type AgentRunRequest = z.infer<typeof agentRunRequestSchema>;
+export const submitAgentRequestSchema = z
+  .object({
+    requestId: z.string().uuid(),
+    userMessageId: z.string().uuid(),
+    assistantMessageId: z.string().uuid(),
+    target: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("session"), sessionId: z.string().trim().min(1) }).strict(),
+      z
+        .object({ type: z.literal("new-session"), rootPath: z.string().trim().min(1).optional() })
+        .strict(),
+    ]),
+    prompt: z.string().trim().min(1),
+    modelId: z.string().trim().min(1),
+    executionStrategy: z.enum(["AUTO", "REQUEST_APPROVAL"]).optional(),
+    editorContext: agentEditorContextSchema.optional(),
+    action: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("message") }).strict(),
+      z.object({ type: z.literal("edit"), messageId: z.string().min(1) }).strict(),
+      z
+        .object({
+          type: z.literal("answer"),
+          questionRunId: z.string().min(1),
+          displayContent: z.string().optional(),
+        })
+        .strict(),
+      z.object({ type: z.literal("inbox") }).strict(),
+    ]),
+  })
+  .strict();
+export type SubmitAgentRequest = z.infer<typeof submitAgentRequestSchema>;
+export interface AgentRunAccepted {
+  requestId: string;
+  runId: string;
+  sessionId: string;
+  threadId: string;
+  bootstrap: SessionBootstrap;
+}
 
 export const projectFileSessionIdSchema = z.string().trim().min(1).max(256);
 const projectFilePathSchema = z
@@ -325,23 +343,11 @@ export interface DesktopApi {
   getPptJob(sessionId: string): Promise<PptJobProjection | undefined>;
   onPptJobChanged(listener: (projection: PptJobProjection) => void): () => void;
   getPresentation(): Promise<Presentation>;
-  startAgentRun(
-    request: AgentRunRequest,
-    model?: AgentModelSelection,
-    executionStrategy?: AgentExecutionStrategy,
-    stepLimits?: AgentStepLimits,
-    gatewayConfig?: AgentRunServicesWire,
-    runId?: string,
-  ): Promise<AgentRunResult>;
-  continueAgentRun(
-    threadId: string,
-    request: AgentRunRequest,
-    model?: AgentModelSelection,
-    executionStrategy?: AgentExecutionStrategy,
-    stepLimits?: AgentStepLimits,
-    gatewayConfig?: AgentRunServicesWire,
-    runId?: string,
-  ): Promise<AgentRunResult>;
+  getAgentSettings(): Promise<AgentSettings | undefined>;
+  saveAgentSettings(settings: AgentSettings): Promise<AgentSettings>;
+  migrateAgentSettings(settings: AgentSettings): Promise<AgentSettings>;
+  submitAgentRun(request: SubmitAgentRequest): Promise<AgentRunResult>;
+  onAgentRunAccepted(listener: (event: AgentRunAccepted) => void): () => void;
   onAgentStream(listener: (event: AgentStreamEvent) => void): () => void;
   resumeAgentRun(sessionId: string, proposalId: string, approved: boolean): Promise<AgentRunResult>;
   exportPresentation(sessionId: string, options: ExportPresentationOptions): Promise<string | null>;

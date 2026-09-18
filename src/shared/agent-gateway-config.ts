@@ -12,7 +12,7 @@ export const DEFAULT_AGENT_SEARCH_CONFIG = {
 
 export const DEFAULT_WEB_SEARCH_ENDPOINT = "https://api.tavily.com/search";
 
-/** Persisted in renderer settings (fallback resolved to full model at run time). */
+/** Persisted by Main; fallbackModelId is resolved against the saved model catalog. */
 export const agentGatewayPreferencesSchema = z.object({
   timeoutMs: z.number().int().positive().default(DEFAULT_AGENT_GATEWAY_CONFIG.timeoutMs),
   maxOutputTokens: z
@@ -43,7 +43,7 @@ export const agentSearchConfigSchema = z.object({
   webSearchTimeoutMs: z.number().int().positive().optional(),
 });
 
-/** Secret-free Renderer -> Main run configuration. Main hydrates credentials locally. */
+/** Secret-free service configuration resolved inside Main before credential hydration. */
 export const agentRunServicesWireSchema = z
   .object({
     timeoutMs: z.number().int().positive().default(DEFAULT_AGENT_GATEWAY_CONFIG.timeoutMs),
@@ -85,7 +85,7 @@ export function resolveAgentSearchConfig(input?: Partial<AgentSearchConfig>): Ag
   });
 }
 
-/** Split the secret-free wire payload. Main adds credentials after this boundary. */
+/** Split resolved service configuration before Main adds credentials. */
 export function splitAgentRunServicesConfig(input?: Partial<AgentRunServicesWire>): {
   gateway: AgentGatewayConfig;
   search: AgentSearchConfig;

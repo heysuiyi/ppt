@@ -52,6 +52,7 @@
 | [Query](./agent/query.md) | QueryParams、QueryState、IterationWorkspace、身份与恢复 |
 | [Agent Loop](./agent/loop.md) | 独立 AsyncGenerator、显式 outcome、工具批次与事件 |
 | [Agent Runtime](./agent/runtime.md) | Service、RunFactory、RunScope、Runtime 与 Finalizer |
+| [UI 请求与后端受理](./agent/submission.md) | 单次提交、配置归属、受理事务、准备状态与旧配置迁移 |
 
 ## 用户手册
 
