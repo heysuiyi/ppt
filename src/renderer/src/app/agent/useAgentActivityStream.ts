@@ -62,6 +62,8 @@ export function useAgentActivityStream({
   const sidechainRunRef = useRef<string | null>(null);
   const completedStreamRunIdsRef = useRef(new Set<string>());
   const streamCompletionWaitersRef = useRef(new Map<string, () => void>());
+  const pendingReasoningRef = useRef<{ modelStep: number; text: string } | null>(null);
+  const reasoningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const syncActivityTrace = useCallback(
     (next: AgentActivityItem[]) => {
@@ -113,8 +115,23 @@ export function useAgentActivityStream({
     [setChatMessages],
   );
 
+  const flushReasoning = useCallback(() => {
+    if (reasoningTimerRef.current !== null) clearTimeout(reasoningTimerRef.current);
+    reasoningTimerRef.current = null;
+    const pending = pendingReasoningRef.current;
+    pendingReasoningRef.current = null;
+    if (pending) {
+      syncActivityTrace(
+        appendReasoningChunk(activeRunTraceRef.current, pending.text, pending.modelStep),
+      );
+    }
+  }, [syncActivityTrace]);
+
   useEffect(() => {
     const unsubscribe = window.desktopApi.onAgentStream((event: AgentStreamEvent) => {
+      if (event.runId === activeRunIdRef.current && event.type !== "thinking-chunk") {
+        flushReasoning();
+      }
       if (event.type === "stream-completed") {
         const resolve = streamCompletionWaitersRef.current.get(event.runId);
         if (resolve) {
@@ -274,10 +291,27 @@ export function useAgentActivityStream({
 
       if (event.type === "thinking-chunk") {
         const nextModelStep = event.modelStep ?? 0;
-        setAgentRunPhase("thinking");
-        syncActivityTrace(
-          appendReasoningChunk(activeRunTraceRef.current, event.chunk, nextModelStep),
+        if (pendingReasoningRef.current?.modelStep !== nextModelStep) flushReasoning();
+        const existing = activeRunTraceRef.current.find(
+          (item) => item.kind === "reasoning" && (item.modelStep ?? 0) === nextModelStep,
         );
+        const pending = pendingReasoningRef.current;
+        // Bound the live projection, not the canonical model response or its archive.
+        const remaining = 8_000 -
+          (existing?.kind === "reasoning" ? existing.content.length : 0) -
+          (pending?.text.length ?? 0);
+        if (remaining <= 0 || !event.chunk) return;
+        const text = event.chunk.length > remaining
+          ? `${event.chunk.slice(0, remaining)}\n[实时思考展示已达上限；完整响应以模型诊断档案为准。]`
+          : event.chunk;
+        pendingReasoningRef.current = {
+          modelStep: nextModelStep,
+          text: (pending?.text ?? "") + text,
+        };
+        if (reasoningTimerRef.current === null) {
+          setAgentRunPhase("thinking");
+          reasoningTimerRef.current = setTimeout(flushReasoning, 100);
+        }
         return;
       }
 
@@ -313,14 +347,18 @@ export function useAgentActivityStream({
     });
     return () => {
       unsubscribe();
+      if (reasoningTimerRef.current !== null) clearTimeout(reasoningTimerRef.current);
+      reasoningTimerRef.current = null;
+      pendingReasoningRef.current = null;
       for (const resolve of streamCompletionWaitersRef.current.values()) resolve();
       streamCompletionWaitersRef.current.clear();
       completedStreamRunIdsRef.current.clear();
     };
-  }, [activeSessionIdRef, setChatMessages, syncActivityTrace, syncRunTranscript]);
+  }, [activeSessionIdRef, setChatMessages, syncActivityTrace, syncRunTranscript, flushReasoning]);
 
   const beginRunActivity = useCallback(
     (runId: string, messageId: string, sidechain: boolean) => {
+      flushReasoning();
       syncActivityTrace([]);
       setAgentRunPhase("requesting");
       activeRunIdRef.current = runId;
@@ -330,11 +368,12 @@ export function useAgentActivityStream({
       streamMessageIdsRef.current.set(runId, messageId);
       sidechainRunRef.current = sidechain ? runId : null;
     },
-    [syncActivityTrace],
+    [syncActivityTrace, flushReasoning],
   );
 
   const finishRunActivity = useCallback(
     (runId: string) => {
+      if (activeRunIdRef.current === runId) flushReasoning();
       streamMessageIdsRef.current.delete(runId);
       completedStreamRunIdsRef.current.delete(runId);
       streamCompletionWaitersRef.current.delete(runId);
@@ -347,7 +386,7 @@ export function useAgentActivityStream({
       activeRunTraceRef.current = [];
       activeRunContentRef.current = "";
     },
-    [syncActivityTrace],
+    [syncActivityTrace, flushReasoning],
   );
 
   const waitForRunStreamCompletion = useCallback((runId: string) => {

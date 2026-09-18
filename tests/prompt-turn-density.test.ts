@@ -32,7 +32,9 @@ describe("prompt turn-density guidance", () => {
       enabledTools: [askUserTool, loadSkillTool, readFileTool, writeFileTool, previewSvgPageTool],
     });
     expect(section).toContain("多个 LoadSkill");
-    expect(section).toContain("同批写剩余 SVG");
+    expect(section).toContain("分批写剩余 SVG");
+    expect(section).not.toContain("parameterSummary");
+    expect(section).toContain('"approvalRequired"');
     expect(section).toContain("同批多个 PreviewSvgPage");
     expect(section).toContain("阶段切换");
     expect(section).toContain("可见 Markdown 意图");
@@ -67,13 +69,13 @@ describe("prompt turn-density guidance", () => {
   it("SVG lock contract and bootstrap prefer batched skills and post-P01 bulk writes", () => {
     const contract = formatSvgDeckLockContractBlock();
     expect(contract).toContain("可同批加载多个 Skill");
-    expect(contract).toContain("同批写剩余 SVG");
+    expect(contract).toContain("分批写剩余 SVG");
     expect(contract).toContain("SubmitSvgDeck（独批）");
 
     const bootstrap = formatSvgDeckLockBootstrapGuidance();
     expect(bootstrap).toContain("Batch LoadSkill");
-    expect(bootstrap).toContain("batch-write remaining SVGs");
-    expect(bootstrap).toContain("batch PreviewSvgPage");
+    expect(bootstrap).toContain("manageable batches");
+    expect(bootstrap).toContain("preview each batch");
   });
 
   it("LoadSkill tool card text allows multiple skills in one response", () => {

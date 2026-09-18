@@ -104,6 +104,9 @@ import { createWindow } from "./window/create-window";
 import { applyWindowThemeMode, normalizeWindowThemeMode } from "./window/theme";
 
 const { applicationDataRoot } = configureApplicationDataRoot(app);
+if (!app.isPackaged && !process.env.AGENT_LOG_DIR?.trim()) {
+  process.env.AGENT_LOG_DIR = resolve(app.getAppPath(), "logs");
+}
 ensureUiThemesDirectory(applicationDataRoot);
 
 const logger = createModuleLogger("main");

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { skillRecommendationForPlan } from "../../runtime/ppt-task/ppt-task-composer";
 import { isSkillRecommendedForStage } from "../../runtime/prompts/skill-stage-policy";
 import { SUB_AGENT_TOOL_PERMISSION_PROFILES } from "../../runtime/tools/tool-access-policy";
 import type { ToolDefinition } from "../tool-definition";
@@ -51,10 +52,27 @@ export const loadSkillTool: ToolDefinition<typeof loadSkillSchema, LoadSkillResu
     }
 
     const stage = context.promptStage ?? "discover";
-    const recommended = isSkillRecommendedForStage(entry.name, stage, entry);
+    const pathTier = skillRecommendationForPlan(context.pptTaskSession?.plan, entry.name);
+    const stageRecommended = isSkillRecommendedForStage(entry.name, stage, entry);
 
     const alreadyLoaded = context.skillSession?.loadedSkillNames.has(entry.name) ?? false;
     context.skillSession?.loadedSkillNames.add(entry.name);
+
+    let guidance: string;
+    if (alreadyLoaded) {
+      guidance = "Skill already loaded. Follow it; keep tool use minimal.";
+    } else if (pathTier === "now") {
+      guidance =
+        "This skill is marked as needed now on the current task path. Apply only the relevant parts.";
+    } else if (pathTier === "later") {
+      guidance =
+        "This skill is planned later on the current task path. Load now only if new evidence requires it.";
+    } else if (stageRecommended) {
+      guidance =
+        "This skill matches the current context stage. Apply only the parts relevant to the user's task.";
+    } else {
+      guidance = `This skill is not on the selected task path and is not normally suggested for '${stage}', but it remains available. Apply it only where the current task requires it.`;
+    }
 
     return {
       name: entry.name,
@@ -62,11 +80,7 @@ export const loadSkillTool: ToolDefinition<typeof loadSkillSchema, LoadSkillResu
       whenToUse: entry.whenToUse,
       content: entry.body,
       alreadyLoaded,
-      guidance: alreadyLoaded
-        ? "Skill already loaded. Follow it; keep tool use minimal."
-        : recommended
-          ? "This skill matches the current context. Apply only the parts relevant to the user's task."
-          : `This skill is not normally suggested for '${stage}', but it is available. Apply it only where the current task requires it.`,
+      guidance,
     };
   },
 };

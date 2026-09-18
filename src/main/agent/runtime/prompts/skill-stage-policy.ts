@@ -1,16 +1,12 @@
 import type { SkillCard, SkillEntry } from "../../skills/skill-types";
+import { resolveSkillTiers } from "../ppt-task/ppt-task-composer";
+import type { PptTaskPlan } from "../ppt-task/ppt-task-types";
 import type { PromptStage } from "./prompt-stage";
 import { normalizePromptStage } from "./prompt-stage";
 
-/**
- * Resolve recommended stages from SKILL.md frontmatter only.
- * Missing or empty stages means the skill is never marked as recommended.
- */
 export function resolveSkillStages(entry: SkillEntry): PromptStage[] {
   const fromFrontmatter = entry.frontmatter.stages;
-  if (!fromFrontmatter || fromFrontmatter.length === 0) {
-    return [];
-  }
+  if (!fromFrontmatter || fromFrontmatter.length === 0) return [];
   return fromFrontmatter.map((stage) => normalizePromptStage(stage));
 }
 
@@ -24,12 +20,29 @@ export function isSkillRecommendedForStage(
   return resolveSkillStages(entry).includes(stage);
 }
 
+export type SkillPathTier = "now" | "later" | "none";
+
+export function skillTierFromPlan(plan: PptTaskPlan | undefined, skillName: string): SkillPathTier {
+  if (!plan) return "none";
+  const tiers = resolveSkillTiers(plan);
+  if (tiers.now.includes(skillName)) return "now";
+  if (tiers.later.includes(skillName)) return "later";
+  return "none";
+}
+
 export function rankSkillCatalogForStage(
   cards: SkillCard[],
   stage: PromptStage,
   registry?: { get(name: string): SkillEntry | undefined },
+  plan?: PptTaskPlan,
 ): SkillCard[] {
   return [...cards].sort((left, right) => {
+    if (plan) {
+      const order = { now: 0, later: 1, none: 2 } as const;
+      const leftTier = order[skillTierFromPlan(plan, left.name)];
+      const rightTier = order[skillTierFromPlan(plan, right.name)];
+      if (leftTier !== rightTier) return leftTier - rightTier;
+    }
     const leftRecommended = isSkillRecommendedForStage(left.name, stage, registry?.get(left.name));
     const rightRecommended = isSkillRecommendedForStage(
       right.name,

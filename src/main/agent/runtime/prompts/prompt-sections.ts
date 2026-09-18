@@ -4,13 +4,19 @@ import type { SkillCard } from "../../skills/skill-types";
 import { formatSvgDeckLockContractBlock } from "../../tools/core/svg-deck-locks";
 import { toToolCard } from "../../tools/tool-card";
 import type { ToolDefinition } from "../../tools/tool-definition";
+import { formatPptTaskPlanProjection } from "../ppt-task/ppt-task-composer";
+import type { PptTaskPlan } from "../ppt-task/ppt-task-types";
 import type {
   WorkspaceArtifactProbeDetails,
   WorkspaceArtifacts,
 } from "../presentation/workspace-artifacts";
 import { describePromptStage, type PromptStage } from "./prompt-stage";
 import { buildContentBlockResponseGuidance } from "./response-guidance";
-import { isSkillRecommendedForStage, rankSkillCatalogForStage } from "./skill-stage-policy";
+import {
+  isSkillRecommendedForStage,
+  rankSkillCatalogForStage,
+  skillTierFromPlan,
+} from "./skill-stage-policy";
 
 export type PromptSectionId =
   | "identity"
@@ -71,6 +77,7 @@ export interface RuntimeContextSectionInput {
   requiredOutcome?: "any" | "command_proposal";
   stepLimits?: AgentStepLimits;
   enabledTools?: ToolDefinition<any, any>[];
+  pptTaskPlan?: PptTaskPlan;
 }
 
 export interface ToolsSectionInput {
@@ -78,6 +85,7 @@ export interface ToolsSectionInput {
   enabledTools: ToolDefinition<any, any>[];
   skillCatalog?: SkillCard[];
   skillRegistry?: SkillRegistry;
+  pptTaskPlan?: PptTaskPlan;
 }
 
 export interface WorkspaceSectionInput {
@@ -99,12 +107,16 @@ export function buildIdentitySection(_input: IdentitySectionInput = {}): string 
 
 - 先理解用户本轮真实目标；问答就直接回答，需要行动就使用工具完成，不把所有输入强行套入固定流程。
 - 普通问答不要创建 PPT capability。只要本 Query 将开始 create、edit、restyle 或 review，必须先且只需调用一次 \`BeginPptCapability\` 声明对应 capability；后续 Presentation 工具必须沿用该 Query 的 active request，不能用 runId 或 threadId 代替 QueryId。
-- 根据当前 Presentation、Workspace、任务状态和工具结果决定下一步。阶段标签只是上下文提示，不是控制流或能力白名单。
+- 实质 PPT 创作/修改前，可先调用 \`SetPptTaskAssessment\` 登记意图、难度与协作偏好，获取能力组合与 Skill 推荐；该工具不创建 capability、不授权修改、不写作者文件。已有评估时按路径推荐执行；新用户请求改变目标时重新评估。
+- **工具顺序**：create/edit/restyle/review 必须先 \`BeginPptCapability\`，再 \`ResolveProjectTemplate\` / 写作者文件 / Preview / Submit。不要把 Presentation 作者工具与首次评估同批抢跑；Begin 之前调用会返回 invalid-input。
+- **Capability 契约优先于路径文案**：\`SubmitSvgDeck\` 仅接受 create/edit/restyle；同一 Query 不能切换 capability。review Query 的交付终点是 \`SubmitPptReview\` QualityReport；审查并修复时，可执行方案是新开 edit/restyle capability 并在 inspect 套用检查表，或跨 Query 先报告再改稿。路径候选中的 unsupported 表示当前不可执行，不能靠放宽 ACL「修好」。
+- 根据当前 Presentation、Workspace、任务状态和工具结果决定下一步。阶段标签只是上下文提示，不是控制流或能力白名单。路径候选是能力组合建议，也不是权限表。
 - 在合理范围内自主推进：先检查必要事实，再修改，再验证。不要只描述将来会做什么。
 - 降低模型往返：每一轮尽量把参数已知且互不依赖的读取、写入、预览、技能加载放进同一 assistant 响应；只有必须看见 tool_result 才能填下一参数时才开新轮。不要为了“看起来一步一步”而把独立工作拆成多轮。
 - 新建整套 PPT 或整套重做时，以完整页面 SVG 为唯一视觉事实源：先锁定沟通契约、argument mode、visual style、reading mode 和逐页 audience move / rhythm / layout intent，再用 WriteFile 写 1280×720 的自包含 SVG，最后只用 SubmitSvgDeck 提交。每份 SVG 必须已经包含标题、背景、页码、图表、图片和装饰；不要调用固定 layout handler，也不要依赖预览器或导出器补视觉 chrome。
 - 不要让用户在“标准排版 / 创意装饰”、safe / shifted / bold 或其他内部设计候选中做流程选择。只有用户明确要求比较方案时才展示候选；只有用户明确说“只要内容草稿”时才允许在未排版草稿处结束。
 - 简单任务直接完成；只有工作确实可并行、需跨回合恢复或存在依赖时才创建 Task/teammate。
+- 用户明确要求多 Agent 时：在真实工具可用的前提下寻找最小可验收分工（Lead 作者/整合，teammate 独立核对或资料辅助），并写清委派契约；工具不可用时显式说明，不静默改口。Lead 始终持有锁文件与页面 SVG 的最终写入与提交。
 - 尊重用户范围和已有产物。不要因为模板流程而重做已完成工作，也不要把局部修改扩成整套重构。
 - 工具失败是可恢复信息：阅读错误结果，调整参数或检查持久化产物；有副作用不确定时不要盲目重试。
 - 真实变更必须通过本 Query 实际提供的受审 proposal 或 Workspace 写入能力完成；不要用文字假装已经执行。`;
@@ -141,12 +153,18 @@ export function buildRuntimeContextSection(input: RuntimeContextSectionInput): s
           }。`,
         ].join("\n")
       : "";
+  const planBlock = formatRuntimeTaskPlanBlock(input.pptTaskPlan);
 
   return `## Runtime Context
 
 - 建议阶段：\`${input.stage}\`（${describePromptStage(input.stage)}）
 - 阶段语义：仅用于排序相关 Skill 和解释现有产物；模型可以根据证据跨阶段选择能力。
-- 步骤预算：${budget}${requiredOutcome}`;
+- 步骤预算：${budget}${requiredOutcome}${planBlock}`;
+}
+
+function formatRuntimeTaskPlanBlock(plan?: PptTaskPlan): string {
+  if (!plan) return "";
+  return `\n\n### PPT Task Plan\n\n${formatPptTaskPlanProjection(plan)}`;
 }
 
 export function buildToolsSection(input: ToolsSectionInput): string {
@@ -157,29 +175,50 @@ export function buildToolsSection(input: ToolsSectionInput): string {
     input.skillCatalog ?? [],
     input.stage,
     input.skillRegistry,
+    input.pptTaskPlan,
   );
   const skills =
     catalog.length > 0
       ? catalog
           .map((skill) => {
             const entry = input.skillRegistry?.get(skill.name);
-            const recommended = isSkillRecommendedForStage(skill.name, input.stage, entry)
-              ? " [当前上下文推荐]"
-              : "";
+            const pathTier = skillTierFromPlan(input.pptTaskPlan, skill.name);
+            const stageRecommended = isSkillRecommendedForStage(
+              skill.name,
+              input.stage,
+              entry,
+            );
+            const badge =
+              pathTier === "now"
+                ? " [现在需要]"
+                : pathTier === "later"
+                  ? " [本路径稍后需要]"
+                  : stageRecommended
+                    ? " [当前上下文推荐]"
+                    : "";
             const whenToUse = skill.whenToUse ? ` | 适用: ${skill.whenToUse}` : "";
-            return `- \`${skill.name}\`${recommended}: ${skill.description}${whenToUse}`;
+            return `- \`${skill.name}\`${badge}: ${skill.description}${whenToUse}`;
           })
           .join("\n")
       : "（没有已注册 Skill）";
-  const tools = input.enabledTools.map((tool) => JSON.stringify(toToolCard(tool))).join("\n");
+  const tools = input.enabledTools
+    .map((tool) => {
+      const { name, risk, approvalRequired, execution } = toToolCard(tool);
+      return JSON.stringify({ name, risk, approvalRequired, execution });
+    })
+    .join("\n");
   const skillLoadingGuidance =
     skillLoaders.length > 0
-      ? `目录会把当前上下文相关项排在前面，但任何已注册 Skill 都可以在确有需要时通过 ${formatToolNames(
+      ? `目录会把当前任务路径相关项排在前面，但任何已注册 Skill 都可以在确有需要时通过 ${formatToolNames(
           skillLoaders,
-        )} 加载。`
-      : "目录会把当前上下文相关项排在前面，任何已注册 Skill 都保留在目录中；只有实际工具清单提供加载能力时才能展开全文。";
+        )} 加载。路径不隐藏或禁用 Skill；stages 仅作产物阶段提示。`
+      : "目录会把当前任务路径相关项排在前面，任何已注册 Skill 都保留在目录中；只有实际工具清单提供加载能力时才能展开全文。";
   const guidance = [
     "- 用最直接的能力完成任务，不要为了遵守阶段模板而制造额外 Task、文件或模型轮次。",
+    "- 默认交付可用结果：回答用户要求、事实与假设可区分、文字可读、没有明显裁切或重叠，当前版本预览与提交有效即可完成。没有具体缺陷时停止润色；不为追求完美构图扩大任务。",
+    "- 按用户明确范围与现有资料评估工作量，不把自行增加的页数、研究或装饰算成用户要求。缺少资料但用户要求直接开始时，明确采用示例假设；数字与来源不得伪装成真实内部数据。",
+    "- 每轮完成一个可验收的产物或合理批次。页面较多时分批写入，先完成下一页或少量页面，不在思考中预演整套 SVG。减少无效往返，不等于一次输出所有页面。",
+    "- 实质 PPT 创作/修改前可先调用 SetPptTaskAssessment 登记评估并取得路径推荐；普通问答无需调用。",
     "- 参数彼此独立的工具调用应在同一个 assistant 响应中一次发出；即使工具标记为 serial，也应通过同批调用减少模型往返。",
     "- 如果某个调用的参数依赖兄弟调用的结果，必须等待结果后在下一轮调用；execution.batch=exclusive 的工具必须单独调用。",
     "- execution.mode=parallel 的调用会由 Runtime 安全并发；conflictScope=workspace_path 时，同一路径读写保持有序、不同路径可以并发。",
@@ -242,7 +281,7 @@ ${skills}
 
 ## Core Tools
 
-以下清单来自本次 Query 的实际工具解析结果；未列出的工具不可直接调用。
+以下清单来自本次 Query 的实际工具解析结果；未列出的工具不可直接调用。用途和参数以原生 tools schema 为准，此处仅补充审批与批次约束。
 
 ${tools}
 
@@ -412,7 +451,7 @@ function buildIndependentBatchExamples(tools: readonly ToolDefinition<any, any>[
     examples.push("不同路径的多个 WriteFile");
     if (hasToolName(tools, "PreviewSvgPage")) {
       examples.push("锁文件写完后同批写 P01 再 PreviewSvgPage");
-      examples.push("P01 通过后同批写剩余 SVG");
+      examples.push("P01 通过后按可完整输出的规模分批写剩余 SVG");
     }
   }
   if (hasToolName(tools, "PreviewSvgPage")) {

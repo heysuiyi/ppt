@@ -13,6 +13,11 @@ import {
 import { textFromContentBlocks } from "./content-blocks";
 import type { AgentProviderDriver } from "./driver";
 import { AgentGatewayError, normalizeProviderError } from "./errors";
+import {
+  buildGatewayIoLogEntry,
+  buildGatewayIoLogRequest,
+  writeGatewayIoLog,
+} from "./gateway-io-log";
 import { chatDriver, responsesDriver } from "./openai";
 import {
   prepareAgentModelRequest,
@@ -128,12 +133,15 @@ export class AgentGateway implements AgentModelGateway {
   ): Promise<AgentModelResponse> {
     const gatewayRequestId = crypto.randomUUID();
     const startedAt = Date.now();
+    const startedAtDate = new Date();
     let config: DriverResolvedConfig | undefined;
+    let preparedRequest: ReturnType<typeof prepareAgentModelRequest> | undefined;
 
     try {
       config = this.resolveConfig(selection);
       const driver = resolveDriver(config.callPath);
-      const preparedRequest = prepareAgentModelRequest(request, config);
+      preparedRequest = prepareAgentModelRequest(request, config);
+      const requestLogPayload = buildGatewayIoLogRequest(preparedRequest);
       logger.info("model.request.started", {
         gatewayRequestId,
         provider: config.provider,
@@ -166,6 +174,20 @@ export class AgentGateway implements AgentModelGateway {
         responseLength: textFromContentBlocks(response.content).length,
         durationMs: Date.now() - startedAt,
       });
+      await writeGatewayIoLog(
+        buildGatewayIoLogEntry({
+          gatewayRequestId,
+          kind: "query",
+          status: "completed",
+          provider: config.provider,
+          model: config.model,
+          callPath: config.callPath,
+          startedAt: startedAtDate,
+          durationMs: Date.now() - startedAt,
+          request: requestLogPayload,
+          response,
+        }),
+      );
       return response;
     } catch (error) {
       const normalized = config
@@ -178,6 +200,29 @@ export class AgentGateway implements AgentModelGateway {
         durationMs: Date.now() - startedAt,
         error: normalized,
       });
+      await writeGatewayIoLog(
+        buildGatewayIoLogEntry({
+          gatewayRequestId,
+          kind: "query",
+          status: "failed",
+          provider: config?.provider ?? selection?.provider ?? "unknown",
+          model: config?.model ?? selection?.model ?? "unknown",
+          callPath: config?.callPath ?? "unknown",
+          startedAt: startedAtDate,
+          durationMs: Date.now() - startedAt,
+          request:
+            preparedRequest
+              ? buildGatewayIoLogRequest(preparedRequest)
+              : {
+                  messages: [],
+                  maxOutputTokens: config?.maxOutputTokens ?? 0,
+                  systemPromptLength: 0,
+                  messageCount: 0,
+                  toolNames: [],
+                },
+          error: normalized,
+        }),
+      );
       throw normalized;
     }
   }
@@ -189,12 +234,17 @@ export class AgentGateway implements AgentModelGateway {
   ): AsyncGenerator<AgentModelStreamChunk> {
     const gatewayRequestId = crypto.randomUUID();
     const startedAt = Date.now();
+    const startedAtDate = new Date();
     let config: DriverResolvedConfig | undefined;
+    let preparedRequest: ReturnType<typeof prepareAgentModelRequest> | undefined;
+    let requestLogPayload: ReturnType<typeof buildGatewayIoLogRequest> | undefined;
+    let completedResponse: AgentModelResponse | undefined;
 
     try {
       config = this.resolveConfig(selection);
       const driver = resolveDriver(config.callPath);
-      const preparedRequest = prepareAgentModelRequest(request, config);
+      preparedRequest = prepareAgentModelRequest(request, config);
+      requestLogPayload = buildGatewayIoLogRequest(preparedRequest);
       logger.info("model.stream.started", {
         gatewayRequestId,
         provider: config.provider,
@@ -223,6 +273,13 @@ export class AgentGateway implements AgentModelGateway {
           totalLength += chunk.text.length;
         } else if (chunk.type === "complete") {
           completed = true;
+          completedResponse = {
+            provider: config.provider,
+            model: config.model,
+            content: chunk.content,
+            ...(chunk.stopReason !== undefined ? { stopReason: chunk.stopReason } : {}),
+            ...(chunk.usage ? { usage: chunk.usage } : {}),
+          };
           if (chunk.usage) {
             await this.recordUsage({
               ...chunk.usage,
@@ -249,6 +306,20 @@ export class AgentGateway implements AgentModelGateway {
         totalLength,
         durationMs: Date.now() - startedAt,
       });
+      await writeGatewayIoLog(
+        buildGatewayIoLogEntry({
+          gatewayRequestId,
+          kind: "stream",
+          status: "completed",
+          provider: config.provider,
+          model: config.model,
+          callPath: config.callPath,
+          startedAt: startedAtDate,
+          durationMs: Date.now() - startedAt,
+          request: requestLogPayload,
+          ...(completedResponse ? { response: completedResponse } : {}),
+        }),
+      );
     } catch (error) {
       const normalized = config
         ? normalizeProviderError(config.provider, error, request.signal)
@@ -260,6 +331,30 @@ export class AgentGateway implements AgentModelGateway {
         durationMs: Date.now() - startedAt,
         error: normalized,
       });
+      await writeGatewayIoLog(
+        buildGatewayIoLogEntry({
+          gatewayRequestId,
+          kind: "stream",
+          status: "failed",
+          provider: config?.provider ?? selection?.provider ?? "unknown",
+          model: config?.model ?? selection?.model ?? "unknown",
+          callPath: config?.callPath ?? "unknown",
+          startedAt: startedAtDate,
+          durationMs: Date.now() - startedAt,
+          request:
+            requestLogPayload ??
+            (preparedRequest
+              ? buildGatewayIoLogRequest(preparedRequest)
+              : {
+                  messages: [],
+                  maxOutputTokens: config?.maxOutputTokens ?? 0,
+                  systemPromptLength: 0,
+                  messageCount: 0,
+                  toolNames: [],
+                }),
+          error: normalized,
+        }),
+      );
       throw normalized;
     }
   }

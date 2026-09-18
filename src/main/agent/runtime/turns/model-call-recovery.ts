@@ -222,6 +222,8 @@ export async function callModelWithRecovery(
   let compactHistoryFailures = 0;
   let continuationPartial: string | undefined;
   let consecutiveOverloaded = 0;
+  let reasoningOnlyRecoveryAttempted = false;
+  let reasoningOnlyRecoveryExhausted = false;
   let lastError: unknown;
   let preparedMessages = options.messages ? structuredClone(options.messages) : undefined;
 
@@ -274,7 +276,9 @@ export async function callModelWithRecovery(
       const response = await invokeGateway(
         options.gateway,
         {
-          systemPrompt: options.systemPrompt,
+          systemPrompt: reasoningOnlyRecoveryAttempted
+            ? `${options.systemPrompt}\n\nRecovery: The previous attempt exhausted its output budget without text or tool calls. Complete the next concrete action now. For page authoring, write only the next page, not the remaining deck. Reuse settled decisions and avoid further design exploration. If blocked, state the specific blocker.`
+            : options.systemPrompt,
           responseContract: options.responseContract,
           prompt,
           signal: options.signal,
@@ -289,6 +293,25 @@ export async function callModelWithRecovery(
       const toolUses = toolUseBlocksFromContent(response.content);
       const text = textFromContentBlocks(response.content);
       if (isOutputTruncated(response.stopReason)) {
+        if (
+          toolUses.length === 0 &&
+          !text.trim() &&
+          response.content.some((block) => block.type === "thinking" || block.type === "redacted_thinking")
+        ) {
+          if (reasoningOnlyRecoveryAttempted) {
+            reasoningOnlyRecoveryExhausted = true;
+            throw new AgentGatewayError(
+              "Model exhausted its output budget twice without text or tool calls. No executable progress was produced.",
+              "empty-response",
+            );
+          }
+          reasoningOnlyRecoveryAttempted = true;
+          notify(
+            "输出预算耗尽但只有思考；保持预算，缩小到下一项具体产物后重试一次。",
+            "本轮尚未产生可执行结果，正在缩小范围重试…",
+          );
+          continue;
+        }
         const currentTokens = maxOutputTokens ?? defaultOutputTokens;
         const nextTokens = nextOutputTokenUpgrade(currentTokens);
         if (nextTokens !== undefined) {
@@ -360,6 +383,7 @@ export async function callModelWithRecovery(
       };
     } catch (error) {
       lastError = error;
+      if (reasoningOnlyRecoveryExhausted) throw error;
       if (isAbortError(error, options.signal)) {
         throw error instanceof Error ? error : new Error("Run aborted by user.");
       }

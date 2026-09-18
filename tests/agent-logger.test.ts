@@ -80,17 +80,26 @@ describe("agentLogger", () => {
     expect(debug).not.toHaveBeenCalled();
   });
 
-  it("escapes Unicode so Windows console code pages cannot corrupt log text", () => {
+  it("prints readable Unicode while preserving valid JSON", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     agentLogger.info("conversation.outline.continued", { requestPreview: "啊？你是哪个？" });
 
     const line = String(info.mock.calls[0][0]);
-    expect(line).not.toContain("啊？你是哪个？");
-    expect(line).toContain("\\u554a");
+    expect(line).toContain("啊？你是哪个？");
+    expect(line).not.toContain("\\u554a");
     expect(JSON.parse(line.slice(line.indexOf("{")))).toMatchObject({
       requestPreview: "啊？你是哪个？",
     });
+  });
+
+  it("resolves the configured logs directory without changing the application data root", () => {
+    vi.stubEnv("AGENT_LOG_DIR", "logs");
+    try {
+      expect(getLogDirectory()).toBe(path.resolve("logs"));
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -337,7 +346,7 @@ describe("log management", () => {
       await initializeLogManager();
       await updateLogManagerSettings({ level: "info", fileEnabled: true });
       vi.spyOn(console, "info").mockImplementation(() => undefined);
-      agentLogger.info("daily.first");
+      agentLogger.info("daily.first", { message: "日志正常：我是 PPT 助手 😀" });
       await updateLogManagerSettings({ fileEnabled: false });
       await updateLogManagerSettings({ fileEnabled: true });
       agentLogger.info("daily.second");
@@ -349,6 +358,8 @@ describe("log management", () => {
       expect(files).toHaveLength(1);
       const content = await fs.promises.readFile(path.join(getLogDirectory(), files[0]), "utf8");
       expect(content).toContain('"event":"daily.first"');
+      expect(content).toContain("日志正常：我是 PPT 助手 😀");
+      expect(content).not.toContain("\\u65e5");
       expect(content).toContain('"event":"daily.second"');
     } finally {
       await updateLogManagerSettings({ fileEnabled: false });

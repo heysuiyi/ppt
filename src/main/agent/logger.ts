@@ -58,7 +58,8 @@ function clampRetentionDays(value: unknown): number | undefined {
 }
 
 export function getLogDirectory(): string {
-  return path.join(getApplicationDataRoot(), "logs");
+  const override = process.env.AGENT_LOG_DIR?.trim();
+  return override ? path.resolve(override) : path.join(getApplicationDataRoot(), "logs");
 }
 
 /**
@@ -147,6 +148,10 @@ function redactSensitiveValue(key: string, value: unknown): unknown {
 export function withLogContext<T>(context: LogContext, task: () => T): T {
   const current = logContextStorage.getStore();
   return logContextStorage.run({ ...current, ...context }, task);
+}
+
+export function getLogContext(): LogContext {
+  return { ...logContextStorage.getStore() };
 }
 
 export function diagnosticValuePreview(
@@ -312,16 +317,10 @@ function write(level: AppLogLevel, event: string, data: AgentLogData = {}): void
   };
   recentEntries.push(entry);
   if (recentEntries.length > MAX_RECENT_ENTRIES) recentEntries.shift();
-  // Keep console output ASCII-only so Windows terminals using a legacy code page
-  // cannot reinterpret UTF-8 log bytes as mojibake. JSON parsers restore the
-  // original Unicode text from these escape sequences.
-  const json = JSON.stringify(entry).replace(
-    /[\u007f-\uffff]/g,
-    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
-  );
+  const json = JSON.stringify(entry);
   const line = `[agent] ${json}`;
 
-  // Console output (with Unicode escaping for terminal compatibility)
+  // The development launcher configures Windows consoles for UTF-8.
   try {
     if (level === "error") {
       console.error(line);
@@ -338,8 +337,7 @@ function write(level: AppLogLevel, event: string, data: AgentLogData = {}): void
 
   // File output (with original Unicode, no escaping needed)
   try {
-    const fileJson = JSON.stringify(entry);
-    appendDailyLogLine(fileJson);
+    appendDailyLogLine(json);
   } catch (error) {
     try {
       console.error("[agent] Failed to append log entry:", error);
@@ -364,6 +362,53 @@ function isLogFile(name: string): boolean {
 
 function isManagedLogArtifact(name: string): boolean {
   return isLogFile(name) || LEGACY_HISTORY_FILE_PATTERN.test(name);
+}
+
+const GATEWAY_IO_DIRECTORY_NAME = "gateway";
+
+async function removeDirectoryTree(directory: string): Promise<number> {
+  const entries = await fs.promises.readdir(directory, { withFileTypes: true }).catch(() => []);
+  let removed = 0;
+  for (const entry of entries) {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      removed += await removeDirectoryTree(target);
+      await fs.promises.rmdir(target).catch(() => undefined);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    await fs.promises.unlink(target).catch(() => undefined);
+    removed += 1;
+  }
+  return removed;
+}
+
+async function measureDirectoryTree(directory: string): Promise<{
+  fileCount: number;
+  totalBytes: number;
+  lastWrittenMs: number;
+}> {
+  const entries = await fs.promises.readdir(directory, { withFileTypes: true }).catch(() => []);
+  let fileCount = 0;
+  let totalBytes = 0;
+  let lastWrittenMs = 0;
+  for (const entry of entries) {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await measureDirectoryTree(target);
+      fileCount += nested.fileCount;
+      totalBytes += nested.totalBytes;
+      lastWrittenMs = Math.max(lastWrittenMs, nested.lastWrittenMs);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const stat = await fs.promises.stat(target).catch(() => undefined);
+    if (!stat) continue;
+    fileCount += 1;
+    totalBytes += stat.size;
+    lastWrittenMs = Math.max(lastWrittenMs, stat.mtimeMs);
+  }
+  return { fileCount, totalBytes, lastWrittenMs };
 }
 
 function dateKeyFromDailyLogFile(name: string): string | undefined {
@@ -399,6 +444,17 @@ async function pruneExpiredLogFiles(now = new Date()): Promise<void> {
         if (stat.mtimeMs < cutoff.getTime()) await fs.promises.unlink(filename);
       }),
   );
+
+  const gatewayDirectory = path.join(directory, GATEWAY_IO_DIRECTORY_NAME);
+  const gatewayDays = await fs.promises
+    .readdir(gatewayDirectory, { withFileTypes: true })
+    .catch(() => []);
+  for (const dayEntry of gatewayDays) {
+    if (!dayEntry.isDirectory() || dayEntry.name >= cutoffKey) continue;
+    const dayDirectory = path.join(gatewayDirectory, dayEntry.name);
+    await removeDirectoryTree(dayDirectory);
+    await fs.promises.rmdir(dayDirectory).catch(() => undefined);
+  }
 }
 
 function parseLogLine(line: string): AppLogEntry | undefined {
@@ -550,13 +606,17 @@ export async function getLogManagerStatus(): Promise<LogManagerStatus> {
       .filter((entry) => entry.isFile() && isManagedLogArtifact(entry.name))
       .map((entry) => fs.promises.stat(path.join(directory, entry.name))),
   );
-  const lastWrittenMs = stats.reduce((latest, stat) => Math.max(latest, stat.mtimeMs), 0);
+  const gatewayUsage = await measureDirectoryTree(path.join(directory, GATEWAY_IO_DIRECTORY_NAME));
+  const lastWrittenMs = stats.reduce(
+    (latest, stat) => Math.max(latest, stat.mtimeMs),
+    gatewayUsage.lastWrittenMs,
+  );
   const settings = getLogManagerSettings();
   return {
     ...settings,
     directory,
-    fileCount: stats.length,
-    totalBytes: stats.reduce((total, stat) => total + stat.size, 0),
+    fileCount: stats.length + gatewayUsage.fileCount,
+    totalBytes: stats.reduce((total, stat) => total + stat.size, gatewayUsage.totalBytes),
     ...(lastWrittenMs > 0 ? { lastWrittenAt: new Date(lastWrittenMs).toISOString() } : {}),
   };
 }
@@ -580,8 +640,10 @@ export async function clearLogFiles(): Promise<number> {
   const files = await fs.promises.readdir(directory, { withFileTypes: true }).catch(() => []);
   const targets = files.filter((entry) => entry.isFile() && isManagedLogArtifact(entry.name));
   await Promise.all(targets.map((entry) => fs.promises.unlink(path.join(directory, entry.name))));
+  const gatewayRemoved = await removeDirectoryTree(path.join(directory, GATEWAY_IO_DIRECTORY_NAME));
+  await fs.promises.rmdir(path.join(directory, GATEWAY_IO_DIRECTORY_NAME)).catch(() => undefined);
   recentEntries.length = 0;
-  return targets.length;
+  return targets.length + gatewayRemoved;
 }
 
 export const agentLogger = {

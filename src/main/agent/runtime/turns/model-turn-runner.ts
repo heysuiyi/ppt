@@ -46,9 +46,12 @@ export class ModelTurnRunner {
     safeStreamEvent(deps.onStreamEvent, { type: "attempt_started", attemptId });
     let modelResult;
     try {
+      const systemPrompt = await run.resolveSystemPrompt(
+        workspace.updatedToolUseContext ?? state.toolUseContext,
+      );
       modelResult = await callModelWithRecovery({
         gateway: deps.gateway,
-        systemPrompt: params.systemPrompt,
+        systemPrompt,
         promptPayload,
         model: params.model,
         fallbackModel: params.fallbackModel,

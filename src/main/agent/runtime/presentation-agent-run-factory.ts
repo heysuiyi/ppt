@@ -22,6 +22,7 @@ import type { PostToolUseBlock, UserPromptSubmitBlock } from "./hooks/hook-block
 import { triggerHooks } from "./hooks/hook-registry";
 import { AgentRunScope } from "./lifecycle/agent-run-scope";
 import { rethrowIfRuntimeCancellation } from "./lifecycle/runtime-cancellation";
+import { createPptTaskSession, type PptTaskPlanSession } from "./ppt-task/ppt-task-session";
 import { PresentationCompletionPolicy } from "./presentation/presentation-completion-policy";
 import {
   buildSystemPromptContext,
@@ -41,6 +42,7 @@ export type AgentRunPreparation =
 export class PresentationAgentRunFactory {
   private readonly discoverySessions = new Map<string, ToolDiscoverySession>();
   private readonly skillSessions = new Map<string, SkillSession>();
+  private readonly pptTaskSessions = new Map<string, PptTaskPlanSession>();
   private readonly fileSessions = new Map<string, WorkspaceFileService>();
 
   constructor(
@@ -71,6 +73,18 @@ export class PresentationAgentRunFactory {
           loadedSkillNames: new Set<string>(recovered?.loadedSkillNames ?? []),
         };
         this.skillSessions.set(options.threadId, session);
+        return session;
+      },
+      resolvePptTaskSession: (recovered) => {
+        const prior = this.pptTaskSessions.get(options.threadId);
+        const recoveredPlan =
+          recovered && recovered.version === 2 ? recovered.pptTaskPlan : undefined;
+        // resume_query restores the plan; new_query starts empty (re-assess).
+        const session =
+          options.startMode.type === "resume_query"
+            ? createPptTaskSession({ plan: recoveredPlan ?? prior?.plan })
+            : createPptTaskSession();
+        this.pptTaskSessions.set(options.threadId, session);
         return session;
       },
     });
@@ -114,6 +128,7 @@ export class PresentationAgentRunFactory {
         queryId: scope.queryId,
         options,
       }),
+      pptTaskSession: scope.pptTaskSession,
     };
     const coreTools = this.registry.getCoreTools(contextBase);
     const promptContext = await buildSystemPromptContext({
@@ -128,6 +143,7 @@ export class PresentationAgentRunFactory {
       requiredOutcome: options.requiredOutcome,
       stepLimits,
       stageHint: options.stageHint,
+      pptTaskPlan: scope.pptTaskSession.plan,
     });
     const { text: systemPrompt } = getSystemPrompt(promptContext, options.threadId);
     const context: ToolContext = {
@@ -194,6 +210,26 @@ export class PresentationAgentRunFactory {
         toolExecutionEngine: new ToolExecutionEngine(),
         presentationCompletionPolicy: new PresentationCompletionPolicy(),
         runPostToolUseHook,
+        refreshSystemPrompt: async ({ toolUseContext, planRevision }) => {
+          // Rebuild dynamic prompt sections after SetPptTaskAssessment commits a new plan.
+          clearSystemPromptCache(options.threadId);
+          const refreshedContext = await buildSystemPromptContext({
+            request: options.request,
+            presentation: toolUseContext.presentation,
+            coreTools,
+            skillCatalog: this.skillRegistry.listCards(),
+            skillRegistry: this.skillRegistry,
+            workspaceRoot: options.workspaceRoot,
+            currentSlideId: options.currentSlideId,
+            messageHistory: options.messageHistory,
+            requiredOutcome: options.requiredOutcome,
+            stepLimits,
+            stageHint: options.stageHint,
+            pptTaskPlan: toolUseContext.pptTaskSession?.plan,
+          });
+          void planRevision;
+          return getSystemPrompt(refreshedContext, options.threadId).text;
+        },
       }),
     };
   }
@@ -201,6 +237,7 @@ export class PresentationAgentRunFactory {
   clearSession(threadId: string): void {
     this.discoverySessions.delete(threadId);
     this.skillSessions.delete(threadId);
+    this.pptTaskSessions.delete(threadId);
     this.fileSessions.get(threadId)?.clear();
     this.fileSessions.delete(threadId);
     clearSystemPromptCache(threadId);

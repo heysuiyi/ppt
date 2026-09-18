@@ -38,6 +38,7 @@ const TOOL_DISPLAY_COPY = {
   ReadPresentationSnapshot: { action: "读取演示文稿", category: "read" },
   respond_plan_approval: { action: "确认任务计划", category: "coordinate" },
   send_teammate_message: { action: "同步协作信息", category: "coordinate" },
+  SetPptTaskAssessment: { action: "评估演示任务路径", category: "coordinate" },
   shutdown_teammate: { action: "结束协作任务", category: "coordinate" },
   spawn_teammate: { action: "启动协作任务", category: "coordinate" },
   SubmitPptReview: { action: "提交演示文稿审查", category: "read" },
@@ -152,7 +153,8 @@ export function formatAgentToolActivity(toolName: string, state: AgentToolActivi
     case "denied":
       return `${action}已取消`;
     case "invalid-input":
-      return `${action}暂未执行：输入信息有误`;
+      // Not always schema errors — often a missing prerequisite (e.g. BeginPptCapability).
+      return `${action}暂未执行：参数或前置条件不满足`;
   }
 }
 
@@ -166,6 +168,10 @@ function formatBackgroundTaskLabel(label: string): string {
 export function formatAgentProgressMessage(message: string): string | null {
   const value = message.trim();
   if (!value) return null;
+
+  if (/Call BeginPptCapability before using Presentation/i.test(value)) {
+    return "需先声明演示文稿任务（BeginPptCapability），再解析模板或写入作者文件";
+  }
 
   if (/^L1\s+snip_compact\b/i.test(value)) return "已整理较早的对话内容";
   if (/^L2\s+micro_compact\b/i.test(value)) return "已精简较早的运行记录";

@@ -17,6 +17,7 @@ import { createTaskStore } from "../../task/task-store";
 import { TaskSubscriptionService } from "../../task/task-subscription-service";
 import type { ToolDiscoverySession } from "../../tools/tool-definition";
 import { BackgroundTaskManager } from "../background/background-task-manager";
+import type { PptTaskPlanSession } from "../ppt-task/ppt-task-session";
 import {
   type AgentIterationWorkspace,
   type AgentQueryState,
@@ -36,6 +37,7 @@ export interface AgentRunScopeOpenInput {
   conversationDatabase?: ConversationDatabase;
   resolveDiscoverySession(recovered?: DurableRunCheckpoint): ToolDiscoverySession;
   resolveSkillSession(recovered?: DurableRunCheckpoint): SkillSession;
+  resolvePptTaskSession(recovered?: DurableRunCheckpoint): PptTaskPlanSession;
 }
 
 /**
@@ -153,6 +155,7 @@ export class AgentRunScope {
         eventPorts,
         discoverySession: input.resolveDiscoverySession(recovered),
         skillSession: input.resolveSkillSession(recovered),
+        pptTaskSession: input.resolvePptTaskSession(recovered),
         historyStore,
         queryId: asQueryId(
           recovered
@@ -190,6 +193,7 @@ export class AgentRunScope {
   readonly eventPorts: AgentEventPorts;
   readonly discoverySession: ToolDiscoverySession;
   readonly skillSession: SkillSession;
+  readonly pptTaskSession: PptTaskPlanSession;
   readonly taskStore;
   readonly taskSubscription?: TaskSubscriptionService;
   readonly taskListOwner: string;
@@ -220,6 +224,7 @@ export class AgentRunScope {
     eventPorts: AgentEventPorts;
     discoverySession: ToolDiscoverySession;
     skillSession: SkillSession;
+    pptTaskSession: PptTaskPlanSession;
     historyStore?: DurableConversationHistoryStore;
     queryId: QueryId;
     initialMessages: AgentModelMessage[];
@@ -236,6 +241,7 @@ export class AgentRunScope {
     this.eventPorts = input.eventPorts;
     this.discoverySession = input.discoverySession;
     this.skillSession = input.skillSession;
+    this.pptTaskSession = input.pptTaskSession;
     this.historyStore = input.historyStore;
     this.queryId = input.queryId;
     this.initialMessages = structuredClone(input.initialMessages);
@@ -310,6 +316,7 @@ export class AgentRunScope {
       pendingUserContent: [...this.session.pendingUserContent],
       discoveredToolNames: [...this.discoverySession.discoveredToolNames].sort(),
       loadedSkillNames: [...this.skillSession.loadedSkillNames].sort(),
+      ...(this.pptTaskSession.plan ? { pptTaskPlan: structuredClone(this.pptTaskSession.plan) } : {}),
       backgroundTasks: this.backgroundTasks.snapshot(),
       processedInboxMessageIds: [...this.session.processedInboxMessageIds].sort(),
       committedState: structuredClone(committedState),

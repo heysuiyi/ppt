@@ -13,6 +13,7 @@ import { resolveProjectTemplateTool } from "./core/resolve-project-template";
 import { respondPlanApprovalTool } from "./core/respond-plan-approval";
 import { searchSlideImagesTool } from "./core/search-slide-images";
 import { sendTeammateMessageTool } from "./core/send-teammate-message";
+import { setPptTaskAssessmentTool } from "./core/set-ppt-task-assessment";
 import { shutdownTeammateTool } from "./core/shutdown-teammate";
 import { spawnTeammateTool } from "./core/spawn-teammate";
 import { submitPptReviewTool } from "./core/submit-ppt-review";
@@ -143,6 +144,7 @@ const DEFAULT_TOOL_DEFINITIONS: ToolDefinition<any, any>[] = [
   readPresentationSnapshotTool,
   respondPlanApprovalTool,
   sendTeammateMessageTool,
+  setPptTaskAssessmentTool,
   shutdownTeammateTool,
   spawnTeammateTool,
   submitPptReviewTool,

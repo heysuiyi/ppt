@@ -21,13 +21,14 @@ stages:
    - 页面顺序与 `slides/page-plan.json` 一致；
    - 没有占位页或重复 `svgSourcePath`。
 3. 若页面来源不完整、存在占位页或用户提到刚修改过作者文件，引导其先回到 SVG 预览/提交流程。
-4. 应用 `ppt-review` 完成最终视觉审查；存在严重错误、来源漂移或未提交修改时先停止导出。
+4. 审查证据：若存在有效且绑定当前 revision 的 QualityReport，核对严重问题是否已处理；若证据缺失/过期或用户要求核对，建议先走 `ppt-review`（只报告）。**review 不会在同一 Query 内改稿或提交 deck**；需要修复时另开 edit/restyle capability，完成后再导出。
 
 ## 工作流
 
 1. 告知用户在应用的演示工作台点击“导出”，由系统弹出目标路径选择。
 2. 不调用、搜索或发现 `ExportPptx`，也不通过 Agent 工具直接写导出文件。
 3. 导出完成后，以 UI 中独立的 Export completed 事实和 PptJob 投影为准；不要把 Query completed 或 Proposal ready 表述为已经导出。
+4. 任务路径若将导出标为交付终点，不要因 workspace 存在 page-svg 就推荐 edit；先确认当前已应用版本与未提交修改状态。
 
 ## 约束
 
@@ -36,7 +37,8 @@ stages:
 - SVG 中显式引用的 workspace 相对图片必须由提交流程内联；导出阶段不重新下载远程资源。
 - 不导出空 deck、占位页或 source/hash 不完整的 deck。
 - 本技能只负责 PPTX；其他格式需要独立、明确的导出能力。
+- 不要暗示「导出即完成审查」；审查与导出是不同交付终点。
 
 ## 衔接
 
-标准链路：brief → design spec → page plan → SVG pages → `SubmitSvgDeck` → ppt-review → 本技能。
+标准链路：brief → design spec → page plan → SVG pages → `SubmitSvgDeck` →（可选）`ppt-review` 报告 → 用户在 UI 导出。路径推荐只组合能力，不替代 Export completed 事实。

@@ -6,9 +6,9 @@
   "main": "./out/main/index.js",
   "scripts": {
     "postinstall": "install-electron",
-    "dev": "electron-vite dev",
+    "dev": "node scripts/start-electron.mjs dev",
     "build": "npm run typecheck && electron-vite build",
-    "preview": "electron-vite preview",
+    "preview": "node scripts/start-electron.mjs preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

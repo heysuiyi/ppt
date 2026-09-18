@@ -143,6 +143,7 @@ const defaultProviders: SystemPromptSectionProvider[] = [
         requiredOutcome: context.requiredOutcome,
         stepLimits: context.stepLimits,
         enabledTools: context.coreTools,
+        pptTaskPlan: context.pptTaskPlan,
       }),
   },
   {
@@ -153,6 +154,7 @@ const defaultProviders: SystemPromptSectionProvider[] = [
         enabledTools: context.coreTools,
         skillCatalog: context.skillCatalog,
         skillRegistry: context.skillRegistry,
+        pptTaskPlan: context.pptTaskPlan,
       }),
   },
   {

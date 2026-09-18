@@ -53,6 +53,39 @@ describe("agent activity stream projection", () => {
 
   afterEach(cleanup);
 
+  it("batches and bounds long reasoning while flushing before text and completion", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Harness />);
+      act(() => controller.beginRunActivity("run-1", "message-1", false));
+      act(() => {
+        for (let i = 0; i < 1000; i++) {
+          emit({ runId: "run-1", type: "thinking-chunk", chunk: "x".repeat(50), modelStep: 0 });
+        }
+      });
+      expect(controller.activityTrace).toEqual([]);
+      act(() => vi.advanceTimersByTime(100));
+      const reasoning = controller.activityTrace[0];
+      expect(reasoning.kind).toBe("reasoning");
+      if (reasoning.kind !== "reasoning") throw new Error("Missing reasoning");
+      expect(reasoning.content.length).toBeLessThan(8100);
+      expect(reasoning.content.startsWith("x".repeat(8000))).toBe(true);
+
+      act(() => emit({ runId: "run-1", type: "thinking-chunk", chunk: "next", modelStep: 1 }));
+      act(() => emit({ runId: "run-1", type: "text-chunk", chunk: "done", attemptId: "answer" }));
+      expect(controller.activityTrace.map((item) => item.kind)).toEqual(["reasoning", "reasoning", "response"]);
+      expect(messages[0].content).toBe("done");
+      act(() => emit({ runId: "run-1", type: "thinking-chunk", chunk: "last", modelStep: 2 }));
+      act(() => controller.finishRunActivity("run-1"));
+      act(() => vi.runAllTimers());
+      expect(controller.activityTrace).toEqual([]);
+      expect(messages[0].activityTrace?.at(-1)).toMatchObject({ kind: "reasoning", content: "last" });
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
   it("appends response, tool, and later response blocks in event order", async () => {
     render(<Harness />);
     act(() => controller.beginRunActivity("run-1", "message-1", false));

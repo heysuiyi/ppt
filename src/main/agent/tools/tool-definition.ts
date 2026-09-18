@@ -21,6 +21,7 @@ import type { AgentModelGateway, AgentModelImageBlock, AgentModelTextBlock } fro
 import type { PromptStage } from "../runtime/prompts/prompt-stage";
 import type { ToolApprovalHandler } from "../runtime/tools/permission-check";
 import type { ToolPermissionProfile, ToolRisk } from "../runtime/tools/tool-access-policy";
+import type { PptTaskPlanSession } from "../runtime/ppt-task/ppt-task-session";
 import type { SkillRegistry } from "../skills/loadSkillsDir";
 import type { SkillSession } from "../skills/skill-types";
 import type { TaskCommandPrincipal, TaskStore } from "../task/task-store";
@@ -213,6 +214,8 @@ export interface ToolContext {
   readonly skillSession?: SkillSession;
   /** Advisory context used to rank Skills and explain the current artifact shape. */
   readonly promptStage?: PromptStage;
+  /** Query-level PPT task assessment/route session (advisory; not business state). */
+  readonly pptTaskSession?: PptTaskPlanSession;
   /** Step limit config for teammate agents. */
   readonly agentStepLimits?: AgentStepLimits;
   /** File-backed inbox bus for long-lived teammates. */

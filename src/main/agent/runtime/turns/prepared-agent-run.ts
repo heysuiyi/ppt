@@ -60,6 +60,9 @@ export class PreparedAgentRun {
   readonly initialWorkspace?: AgentIterationWorkspace;
   readonly initialWorkspacePhase?: DurableQueryInflightSnapshot["phase"];
 
+  private cachedSystemPrompt: string;
+  private cachedPlanRevision: number | null;
+
   constructor(
     readonly input: {
       scope: AgentRunScope;
@@ -75,6 +78,11 @@ export class PreparedAgentRun {
       toolExecutionEngine: ToolExecutionEngine;
       presentationCompletionPolicy: PresentationCompletionPolicy;
       runPostToolUseHook(block: PostToolUseBlock): Promise<string[]>;
+      /** Rebuild dynamic system prompt after task-plan revision changes. */
+      refreshSystemPrompt?: (input: {
+        toolUseContext: ToolContext;
+        planRevision: number | null;
+      }) => Promise<string> | string;
     },
   ) {
     const { options } = input.scope;
@@ -91,6 +99,8 @@ export class PreparedAgentRun {
         }
       }
     }
+    this.cachedSystemPrompt = input.systemPrompt;
+    this.cachedPlanRevision = input.context.pptTaskSession?.plan?.revision ?? null;
     this.params = new AgentQueryAssembler().assemble({
       queryId: input.scope.queryId,
       options,
@@ -122,6 +132,22 @@ export class PreparedAgentRun {
     );
     this.initialWorkspace = input.scope.restoreIterationWorkspace(this.initialState, input.context);
     this.initialWorkspacePhase = input.scope.restoredInflightPhase();
+  }
+
+  /**
+   * Resolve the system prompt for the upcoming model turn.
+   * Rebuilds dynamic sections when the PPT task-plan revision changed after
+   * SetPptTaskAssessment. QueryParams are frozen by AgentQueryAssembler —
+   * never mutate params.systemPrompt; callers must use the returned string.
+   */
+  async resolveSystemPrompt(toolUseContext: ToolContext): Promise<string> {
+    const refresh = this.input.refreshSystemPrompt;
+    const planRevision = toolUseContext.pptTaskSession?.plan?.revision ?? null;
+    if (!refresh) return this.cachedSystemPrompt;
+    if (planRevision === this.cachedPlanRevision) return this.cachedSystemPrompt;
+    this.cachedSystemPrompt = await refresh({ toolUseContext, planRevision });
+    this.cachedPlanRevision = planRevision;
+    return this.cachedSystemPrompt;
   }
 
   get scope(): AgentRunScope {

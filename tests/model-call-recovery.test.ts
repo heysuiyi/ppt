@@ -466,7 +466,7 @@ describe("callModelWithRecovery", () => {
     expect(result.maxOutputTokensRecoveryCount).toBe(1);
   });
 
-  it("owns thinking-only max-token recovery instead of relying on a provider driver retry", async () => {
+  it("retries thinking-only exhaustion once with a concrete action and unchanged budget", async () => {
     const queryModel = vi
       .fn()
       .mockResolvedValueOnce({
@@ -497,9 +497,33 @@ describe("callModelWithRecovery", () => {
 
     expect(queryModel).toHaveBeenCalledTimes(2);
     expect(queryModel.mock.calls[0][0].maxOutputTokens).toBeUndefined();
-    expect(queryModel.mock.calls[1][0].maxOutputTokens).toBe(65_536);
+    expect(queryModel.mock.calls[1][0].maxOutputTokens).toBeUndefined();
+    expect(queryModel.mock.calls[1][0].systemPrompt).toContain("write only the next page");
     expect(result.content).toEqual(textContent("answer"));
-    expect(result.maxOutputTokensRecoveryCount).toBe(1);
+    expect(result.maxOutputTokensRecoveryCount).toBe(0);
+  });
+
+  it("stops repeated reasoning-only exhaustion without budget escalation or backoff", async () => {
+    const queryModel = vi.fn().mockResolvedValue({
+      provider: "anthropic",
+      model: "claude",
+      content: [{ type: "thinking", thinking: "still reasoning", signature: "sig" }],
+      stopReason: "max_tokens",
+    });
+    const gateway: AgentModelGateway = {
+      queryModel,
+      async *queryModelStream() {
+        yield { type: "complete" as const, content: [] };
+      },
+    };
+    await expect(callModelWithRecovery({
+      gateway,
+      systemPrompt: "system",
+      promptPayload: { transcript: [], request: "create" },
+      maxOutputTokensOverride: 16384,
+    })).rejects.toThrow("twice without text or tool calls");
+    expect(queryModel).toHaveBeenCalledTimes(2);
+    expect(queryModel.mock.calls.map(([request]) => request.maxOutputTokens)).toEqual([16384, 16384]);
   });
 
   it("merges every max-output continuation and keeps detecting repeated truncation", async () => {

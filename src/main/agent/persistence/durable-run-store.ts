@@ -9,6 +9,7 @@ import type {
   AgentModelToolUseBlock,
 } from "../gateway";
 import type { DurableBackgroundTask } from "../runtime/background/background-task-manager";
+import type { PptTaskPlan } from "../runtime/ppt-task/ppt-task-types";
 import type { QueryId, RunId, ThreadId } from "../runtime/query/query-types";
 import { asRunId, asThreadId } from "../runtime/query/query-types";
 import type { AgentRuntimeResult } from "../runtime/runtime-types";
@@ -84,6 +85,8 @@ export interface DurableRunCheckpointV2Payload {
   pendingUserContent: string[];
   discoveredToolNames: string[];
   loadedSkillNames: string[];
+  /** Advisory query-level task plan; not PptJob business state. */
+  pptTaskPlan?: PptTaskPlan;
   backgroundTasks?: DurableBackgroundTask[];
   processedInboxMessageIds?: string[];
   committedState: DurableQueryStateSnapshot;

@@ -3,6 +3,7 @@ import type { Presentation } from "@shared/presentation";
 import type { SkillRegistry } from "../../skills/loadSkillsDir";
 import type { SkillCard } from "../../skills/skill-types";
 import type { ToolDefinition } from "../../tools/tool-definition";
+import type { PptTaskPlan } from "../ppt-task/ppt-task-types";
 import { buildSystemPromptContext, buildSystemPromptContextSync } from "./prompt-context";
 import { type AssembledSystemPrompt, getSystemPrompt } from "./system-prompt-assembler";
 
@@ -34,6 +35,7 @@ export interface SystemPromptOptions {
   memories?: string;
   threadId?: string;
   stageHint?: string;
+  pptTaskPlan?: PptTaskPlan;
 }
 
 /**
@@ -47,13 +49,13 @@ export class SystemPromptBuilder {
       coreTools: options.coreTools,
       skillCatalog: options.skillCatalog,
       skillRegistry: options.skillRegistry,
-      workspaceRoot: options.workspaceRoot,
       currentSlideId: options.currentSlideId,
       messageHistory: options.messageHistory,
       requiredOutcome: options.requiredOutcome,
       stepLimits: options.stepLimits,
       memories: options.memories,
       stageHint: options.stageHint,
+      pptTaskPlan: options.pptTaskPlan,
     });
     return getSystemPrompt(context, options.threadId).text;
   }
@@ -70,8 +72,8 @@ export class SystemPromptBuilder {
       messageHistory: options.messageHistory,
       requiredOutcome: options.requiredOutcome,
       stepLimits: options.stepLimits,
-      memories: options.memories,
       stageHint: options.stageHint,
+      pptTaskPlan: options.pptTaskPlan,
     });
     return getSystemPrompt(context, options.threadId);
   }

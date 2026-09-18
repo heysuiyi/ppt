@@ -42,8 +42,17 @@ describe("agent activity display", () => {
     expect(formatAgentToolActivity("PreviewSvgPage", "running")).toBe("正在预览 SVG 页面…");
     expect(formatAgentToolActivity("PreviewSvgPage", "completed")).toBe("已预览 SVG 页面");
     expect(formatAgentToolActivity("SubmitSvgDeck", "failed")).toBe("提交 SVG 演示文稿未完成");
+    expect(formatAgentToolActivity("ResolveProjectTemplate", "invalid-input")).toBe(
+      "解析项目模板暂未执行：参数或前置条件不满足",
+    );
     expect(formatAgentToolActivity("InternalFoo_v2", "completed")).toBe("已处理当前任务");
     expect(formatAgentToolActivity("InternalFoo_v2", "completed")).not.toContain("InternalFoo_v2");
+
+    expect(
+      formatAgentProgressMessage(
+        "Call BeginPptCapability before using Presentation authoring, review, or proposal tools.",
+      ),
+    ).toContain("BeginPptCapability");
   });
 
   it("normalizes current runtime diagnostics", () => {

@@ -222,16 +222,18 @@ export function formatSvgDeckLockIssues(zodError: z.ZodError, limit = 12): strin
 export function formatSvgDeckLockContractBlock(): string {
   return [
     "### SVG Deck Lock Contract",
+    "锁文件契约与预览/提交校验仍然有效；任务路径只推荐能力组合，不绕过锁或凭据。",
     `写 ${SVG_DECK_DESIGN_SPEC_PATH} 前先 LoadSkill("ppt-design")；` +
-      `写 ${SVG_DECK_PAGE_PLAN_PATH} 前先 LoadSkill("ppt-design-layout")。`,
+      `写 ${SVG_DECK_PAGE_PLAN_PATH} 前先 LoadSkill("ppt-design-layout")。已有有效锁文件时复用，不整套重做。`,
     "可同批加载多个 Skill（例如同时 LoadSkill ppt-design 与 ppt-design-layout），" +
       "不必一技能一轮。依赖上一步正文结果的写入仍须等 tool_result。",
-    "推荐顺序（尽量合并独立调用，减少模型往返）：" +
-      "BeginPptCapability → ResolveProjectTemplate → (optional GetDesignReference) → " +
+    "新建作者链的依赖建议（尽量合并独立调用，减少模型往返）：" +
+      "BeginPptCapability →（可选 SetPptTaskAssessment）→ ResolveProjectTemplate → (optional GetDesignReference) → " +
       "LoadSkill(s) → WriteFile design-spec → WriteFile page-plan → " +
-      "WriteFile P01 + PreviewSvgPage →（看图校准后）同批写剩余 SVG → " +
+      "WriteFile P01 + PreviewSvgPage →（看图校准后）按可完整输出的规模分批写剩余 SVG → " +
       "同批 PreviewSvgPage → SubmitSvgDeck（独批）。" +
-      "若 design/template-pack.json 已 verified，Resolve 后必须沿用 pack，不得另选 visualStyle。",
+      "若 design/template-pack.json 已 verified，Resolve 后必须沿用 pack，不得另选 visualStyle。" +
+      "局部编辑/美化/只审查/只导出不走完整 create 锁 bootstrap。",
     `非法锁文件不会通过 WriteFile、PreviewSvgPage 或 SubmitSvgDeck。`,
     "",
     `${SVG_DECK_DESIGN_SPEC_PATH} 最低结构：`,
@@ -248,12 +250,13 @@ export function formatSvgDeckLockContractBlock(): string {
 
 export function formatSvgDeckLockBootstrapGuidance(): string {
   return [
-    "SVG-native create bootstrap:",
+    "SVG-native create bootstrap (authoring chain; reuse valid locks instead of rewriting them):",
     '1. Batch LoadSkill("ppt-design") (and LoadSkill("ppt-design-layout") when you already know you need both); ' +
       "after skill bodies return, WriteFile design/design-spec.json.",
     "2. WriteFile slides/page-plan.json in the earliest turn whose parameters do not depend on unread skill text.",
     "3. Same turn when possible: WriteFile slides/svg/P01.svg then PreviewSvgPage; do not start P02 until P01 passes.",
-    "4. After P01 passes: batch-write remaining SVGs, then batch PreviewSvgPage for every page; call SubmitSvgDeck once alone.",
+    "4. After P01 passes: write manageable batches of remaining SVGs and preview each batch. Complete the next page rather than planning the whole deck in one response; call SubmitSvgDeck alone when all pages pass.",
+    "5. Preview/Submit/lock checks remain mandatory. A task-plan route does not waive credentials or allow review capability to SubmitSvgDeck.",
     "",
     formatSvgDeckLockContractBlock(),
   ].join("\n");

@@ -7,6 +7,8 @@ import type { SkillCard } from "../../skills/skill-types";
 import { toToolCard } from "../../tools/tool-card";
 import type { ToolDefinition } from "../../tools/tool-definition";
 import { toToolInputSchema } from "../../tools/tool-schema";
+import { resolveSkillTiers } from "../ppt-task/ppt-task-composer";
+import type { PptTaskPlan } from "../ppt-task/ppt-task-types";
 import {
   probeWorkspaceArtifactDetails,
   type WorkspaceArtifactProbeDetails,
@@ -32,6 +34,7 @@ export interface SystemPromptContextInput {
   artifacts?: WorkspaceArtifacts;
   artifactDetails?: WorkspaceArtifactProbeDetails;
   stageHint?: string;
+  pptTaskPlan?: PptTaskPlan;
 }
 
 export interface SystemPromptContext {
@@ -47,6 +50,7 @@ export interface SystemPromptContext {
   requiredOutcome?: "any" | "command_proposal";
   stepLimits?: AgentStepLimits;
   coreTools: ToolDefinition<any, any>[];
+  pptTaskPlan?: PptTaskPlan;
 }
 
 async function readMemoryIndex(workspaceRoot?: string): Promise<string> {
@@ -118,6 +122,7 @@ export async function buildSystemPromptContext(
     requiredOutcome: input.requiredOutcome,
     stepLimits: input.stepLimits,
     coreTools: input.coreTools,
+    pptTaskPlan: input.pptTaskPlan,
   };
 }
 
@@ -158,6 +163,7 @@ export function buildSystemPromptContextSync(input: SystemPromptContextInput): S
     requiredOutcome: input.requiredOutcome,
     stepLimits: input.stepLimits,
     coreTools: input.coreTools,
+    pptTaskPlan: input.pptTaskPlan,
   };
 }
 
@@ -203,6 +209,16 @@ export function serializeSystemPromptContextKey(context: SystemPromptContext): s
     stepLimits: context.stepLimits ?? null,
     artifacts: context.artifacts,
     artifactDetails: context.artifactDetails ?? null,
+    pptTaskPlan: context.pptTaskPlan
+      ? {
+          revision: context.pptTaskPlan.revision,
+          recommendedId: context.pptTaskPlan.recommendedId,
+          selectedId: context.pptTaskPlan.selectedId,
+          difficulty: context.pptTaskPlan.difficulty,
+          skillTiers: resolveSkillTiers(context.pptTaskPlan),
+          reason: context.pptTaskPlan.reason,
+        }
+      : null,
   });
 }
 
