@@ -1,5 +1,6 @@
 import type { AgentActivityItem } from "@shared/agent-activity";
 import type { AgentRunPhase } from "@shared/agent-run-presentation";
+import { getWorkspaceLabel } from "@shared/workspace";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { EnvironmentCardHost } from "../cards/hosts/EnvironmentCardHost";
@@ -23,7 +24,9 @@ interface UnifiedAgentInputProps {
   canCancelRun?: boolean;
   onCancelRun?: () => void;
   isCancellingRun?: boolean;
-  sandboxReady?: boolean;
+  workspacePath?: string;
+  workspaceBound?: boolean;
+  disabled?: boolean;
   onPrepareWorkspace?: () => void;
   agentRunPhase?: AgentRunPhase;
   activityTrace?: AgentActivityItem[];
@@ -51,7 +54,9 @@ export const UnifiedAgentInput: React.FC<UnifiedAgentInputProps> = ({
   canCancelRun = false,
   onCancelRun,
   isCancellingRun = false,
-  sandboxReady = true,
+  workspacePath = "",
+  workspaceBound = false,
+  disabled = false,
   onPrepareWorkspace,
   agentRunPhase = "idle",
   activityTrace = [],
@@ -64,13 +69,13 @@ export const UnifiedAgentInput: React.FC<UnifiedAgentInputProps> = ({
   const isPermissionGateOpen = Boolean(pendingToolApproval && onResolveToolApproval);
 
   const handleSend = () => {
-    if (busy || !request.trim() || models.length === 0) return;
+    if (busy || disabled || !request.trim() || models.length === 0) return;
     onSubmitRequest();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       handleSend();
     }
@@ -117,7 +122,31 @@ export const UnifiedAgentInput: React.FC<UnifiedAgentInputProps> = ({
       ) : null}
 
       <div className="unified-agent-input-stack">
-        <EnvironmentCardHost ready={sandboxReady} onPrepare={onPrepareWorkspace} />
+        <EnvironmentCardHost
+          ready={layoutMode !== "center" || Boolean(workspacePath) || workspaceBound}
+          onPrepare={onPrepareWorkspace}
+          disabled={busy || disabled}
+        />
+        {layoutMode === "center" && (workspacePath || workspaceBound) && (
+          <div className="composer-workspace" aria-label="项目目录">
+            <span className="composer-workspace-label">
+              {workspaceBound ? "已绑定目录" : "保存目录"}
+            </span>
+            <span className="composer-workspace-path" title={workspacePath}>
+              {workspacePath ? getWorkspaceLabel(workspacePath) : "托管空间"}
+            </span>
+            {!workspaceBound && onPrepareWorkspace && (
+              <button
+                type="button"
+                className="sandbox-preflight-btn"
+                disabled={busy || disabled}
+                onClick={onPrepareWorkspace}
+              >
+                更换
+              </button>
+            )}
+          </div>
+        )}
         <div
           className="double-deck-panel-card unified-agent-input-shell"
           data-action-state={isPermissionGateOpen ? "permission" : busy ? "running" : "composing"}
@@ -145,7 +174,7 @@ export const UnifiedAgentInput: React.FC<UnifiedAgentInputProps> = ({
                   ? "例如：做一份面向管理层的季度汇报，8 页左右…"
                   : "继续描述修改目标，或提出新的演示需求…"
               }
-              readOnly={busy}
+              readOnly={busy || disabled}
               autoFocus
               rows={layoutMode === "center" ? 3 : 2}
               className={`input-textarea${busy ? " input-textarea--busy" : ""}`}
@@ -167,12 +196,12 @@ export const UnifiedAgentInput: React.FC<UnifiedAgentInputProps> = ({
             <div className="functional-right">
               <div
                 ref={modelMenuRef}
-                className={`model-tier-select-wrapper${modelMenuOpen ? " is-open" : ""}${busy || models.length === 0 ? " is-disabled" : ""}`}
+                className={`model-tier-select-wrapper${modelMenuOpen ? " is-open" : ""}${busy || disabled || models.length === 0 ? " is-disabled" : ""}`}
               >
                 <button
                   type="button"
                   className="mini-model-select"
-                  disabled={busy || models.length === 0}
+                  disabled={busy || disabled || models.length === 0}
                   aria-haspopup="listbox"
                   aria-expanded={modelMenuOpen}
                   onClick={() => setModelMenuOpen((open) => !open)}
@@ -181,7 +210,7 @@ export const UnifiedAgentInput: React.FC<UnifiedAgentInputProps> = ({
                   <ChevronDownIcon size={12} className="model-tier-select-icon" />
                 </button>
 
-                {modelMenuOpen && !busy && models.length > 0 ? (
+                {modelMenuOpen && !busy && !disabled && models.length > 0 ? (
                   <div className="model-tier-menu" role="listbox" aria-label="选择智能体模型">
                     {models.map((model) => {
                       const selected = model.id === selectedModelId;
@@ -212,13 +241,15 @@ export const UnifiedAgentInput: React.FC<UnifiedAgentInputProps> = ({
                 type="button"
                 onClick={canCancelRun && onCancelRun ? onCancelRun : handleSend}
                 disabled={
-                  canCancelRun ? isCancellingRun : busy || !request.trim() || models.length === 0
+                  canCancelRun
+                    ? isCancellingRun
+                    : busy || disabled || !request.trim() || models.length === 0
                 }
                 className={
                   canCancelRun
                     ? "stop-cta-btn"
                     : `send-cta-btn${
-                        !busy && request.trim() && models.length > 0 ? " is-ready" : ""
+                        !busy && !disabled && request.trim() && models.length > 0 ? " is-ready" : ""
                       }`
                 }
                 aria-label={canCancelRun ? "中止当前 Agent 会话" : "发送指令"}

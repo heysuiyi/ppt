@@ -10,8 +10,6 @@ interface WorkspaceViewProps {
   chatWorkspaceProps: ComponentProps<typeof ChatWorkspace>;
   mirrorProps?: ComponentProps<typeof PPTMirror>;
   deckPreviewProps: ComponentProps<typeof DeckPreviewModal>;
-  isDraftChat: boolean;
-  activeSessionId?: string;
   isSessionSwitching?: boolean;
   isMirrorVisible: boolean;
   isMirrorExpanded: boolean;
@@ -25,8 +23,6 @@ export function WorkspaceView({
   chatWorkspaceProps,
   mirrorProps,
   deckPreviewProps,
-  isDraftChat,
-  activeSessionId = "",
   isSessionSwitching = false,
   isMirrorVisible,
   isMirrorExpanded,
@@ -67,7 +63,6 @@ export function WorkspaceView({
         <div
           className={[
             "workspace-canvas-content",
-            isDraftChat ? "new-session-layout" : "",
             isMirrorVisible
               ? "ppt-mirror-open"
               : "ppt-mirror-closed workspace-canvas-content-chat-only",
@@ -78,7 +73,7 @@ export function WorkspaceView({
             .join(" ")}
           aria-busy={isSessionSwitching || undefined}
         >
-          <ChatWorkspace key={activeSessionId || "draft"} {...chatWorkspaceProps} />
+          <ChatWorkspace {...chatWorkspaceProps} />
 
           {isMirrorVisible && mirrorProps ? (
             <>

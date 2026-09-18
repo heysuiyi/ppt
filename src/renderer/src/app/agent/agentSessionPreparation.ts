@@ -10,7 +10,6 @@ interface EnsureAgentSessionOptions {
   prompt: string;
   localStoragePath: string;
   applySessionState: (state: SessionBootstrap) => void;
-  setIsDraftChat: (isDraft: boolean) => void;
   notify: (message: string) => void;
 }
 
@@ -23,7 +22,6 @@ export async function ensureAgentSession({
   prompt,
   localStoragePath,
   applySessionState,
-  setIsDraftChat,
   notify,
 }: EnsureAgentSessionOptions): Promise<string | undefined> {
   if (activeSessionId) return activeSessionId;
@@ -41,10 +39,8 @@ export async function ensureAgentSession({
         : { title, defaultTemplateId },
     );
     applySessionState(state);
-    setIsDraftChat(false);
     return state.activeSession!.session.id;
   } catch (error) {
-    setIsDraftChat(true);
     notify(formatPublicErrorMessage(error, "创建会话失败，请重试。"));
     return undefined;
   }
@@ -62,7 +58,6 @@ export interface PreparedAgentContext {
 export async function prepareAgentContext(
   options: EnsureAgentSessionOptions,
 ): Promise<PreparedAgentContext | undefined> {
-  options.setIsDraftChat(false);
   const sessionId = await ensureAgentSession(options);
   if (!sessionId) return undefined;
 

@@ -9,10 +9,10 @@ import {
   pruneDisplayCardsForMessages,
   setDisplayCardStatus,
 } from "@shared/cards/display-card-managers";
-import type { SessionBootstrap } from "@shared/session";
 import { type Dispatch, type SetStateAction, useCallback, useRef, useState } from "react";
 import { type ChatMessage, toSessionChatMessages } from "../chatMessageRuntime";
 import type { PresentationController } from "../presentation/usePresentationController";
+import type { SessionController } from "../session/useSessionController";
 import { useInboxPoller } from "../useInboxPoller";
 import type { SettingsController } from "../useSettingsController";
 import { executeAgentRun } from "./agentRunExecution";
@@ -38,8 +38,7 @@ interface UseAgentRunControllerOptions {
   selectedSlideId?: string;
   chatMessages: ChatMessage[];
   setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>;
-  setIsDraftChat: Dispatch<SetStateAction<boolean>>;
-  applySessionState: (state: SessionBootstrap) => void;
+  applySessionState: SessionController["applySessionState"];
   syncPresentation: PresentationController["syncPresentation"];
   settings: Pick<
     SettingsController,
@@ -80,7 +79,6 @@ export function useAgentRunController({
   selectedSlideId,
   chatMessages,
   setChatMessages,
-  setIsDraftChat,
   applySessionState,
   syncPresentation,
   settings,
@@ -176,13 +174,12 @@ export function useAgentRunController({
             prompt: activeRequest,
             localStoragePath,
             applySessionState: (state) => {
-              applySessionState(state);
+              applySessionState(state, { preserveDraft: true });
               // Session hydration and the provisional run anchor belong to one
               // render transaction, so creating a draft session cannot remount
               // the loader between standalone and message-local trees.
               setChatMessages(preparedMessages.runMessages);
             },
-            setIsDraftChat,
             notify,
           });
           if (!preparedContext) {
@@ -210,13 +207,15 @@ export function useAgentRunController({
             pruneDisplayCardsForMessages(preparedMessages.retainedMessageIds);
           }
           setChatMessages(preparedMessages.runMessages);
-          if (!customRequest) setRequest("");
 
           if (!context.sidechain) {
             await window.desktopApi.saveSessionMessages(
               context.sessionId,
               toSessionChatMessages(preparedMessages.runMessages),
             );
+          }
+          if (!customRequest) {
+            setRequest((current) => (current === activeRequest ? "" : current));
           }
           return executeAgentRun({
             request: agentRequest,
@@ -273,7 +272,6 @@ export function useAgentRunController({
       selectedSlideId,
       setBusy,
       setChatMessages,
-      setIsDraftChat,
       setRequest,
       streamMessageIdsRef,
       waitForRunStreamCompletion,
@@ -340,10 +338,10 @@ export function useAgentRunController({
 
   const suggestPrompt = useCallback(
     (prompt: string) => {
+      if (busy) return;
       setRequest(prompt);
-      void startAgent(prompt);
     },
-    [setRequest, startAgent],
+    [busy, setRequest],
   );
 
   const resolveToolApproval = useCallback(

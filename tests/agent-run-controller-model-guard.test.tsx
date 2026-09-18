@@ -31,7 +31,6 @@ describe("useAgentRunController model guard", () => {
     const setRequest = vi.fn();
     const setBusy = vi.fn();
     const setChatMessages = vi.fn();
-    const setIsDraftChat = vi.fn();
     const applySessionState = vi.fn();
     const syncPresentation = vi.fn().mockResolvedValue(undefined);
     const notify = vi.fn();
@@ -59,7 +58,6 @@ describe("useAgentRunController model guard", () => {
         localStoragePath: "",
         chatMessages: [],
         setChatMessages,
-        setIsDraftChat,
         applySessionState,
         syncPresentation,
         settings: {
@@ -81,7 +79,6 @@ describe("useAgentRunController model guard", () => {
     expect(notify).toHaveBeenCalledWith("没有可用的已配置模型；请先在设置中保存 API Key");
     expect(setBusy).not.toHaveBeenCalled();
     expect(setChatMessages).not.toHaveBeenCalled();
-    expect(setIsDraftChat).not.toHaveBeenCalled();
     expect(applySessionState).not.toHaveBeenCalled();
     expect(activity.beginRunActivity).not.toHaveBeenCalled();
     expect(createSession).not.toHaveBeenCalled();

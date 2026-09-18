@@ -32,14 +32,16 @@ interface UseSessionControllerOptions {
   syncPresentation: (options?: PresentationSyncOptions) => Promise<Presentation | undefined>;
   notify: (message: string) => void;
   markSettingsSaving: () => void;
-  resetRequest: () => void;
 }
 
 export interface ApplySessionStateOptions {
   syncPresentation?: boolean;
+  preserveDraft?: boolean;
 }
 
 export interface SessionController {
+  request: string;
+  setRequest: Dispatch<SetStateAction<string>>;
   startupError: string | undefined;
   sessions: SessionSummary[];
   activeSessionId: string;
@@ -47,8 +49,6 @@ export interface SessionController {
   sessionLoaded: boolean;
   isSessionSwitching: boolean;
   pendingSessionId: string | null;
-  isDraftChat: boolean;
-  setIsDraftChat: Dispatch<SetStateAction<boolean>>;
   workspacePath: string;
   localStoragePath: string;
   chatMessages: ChatMessage[];
@@ -70,7 +70,6 @@ export function useSessionController({
   syncPresentation,
   notify,
   markSettingsSaving,
-  resetRequest,
 }: UseSessionControllerOptions): SessionController {
   const initializeProject = useProjectStore((state) => state.initializeProject);
   const hydrateProjectArtifacts = useProjectStore((state) => state.hydrateProjectArtifacts);
@@ -79,10 +78,18 @@ export function useSessionController({
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState("");
   const activeSessionIdRef = useRef("");
+  // The empty key belongs to the uncreated session; drafts live only for this app lifetime.
+  const draftsRef = useRef(new Map<string, string>());
+  const [request, setRequestState] = useState("");
+  const setRequest = useCallback<Dispatch<SetStateAction<string>>>((value) => {
+    const key = activeSessionIdRef.current;
+    const next = typeof value === "function" ? value(draftsRef.current.get(key) ?? "") : value;
+    draftsRef.current.set(key, next);
+    setRequestState(next);
+  }, []);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [isSessionSwitching, setIsSessionSwitching] = useState(false);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
-  const [isDraftChat, setIsDraftChat] = useState(true);
   const [workspacePath, setWorkspacePath] = useState("");
   const [localStoragePath, setLocalStoragePath] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -91,16 +98,15 @@ export function useSessionController({
     (workspaceDir?: string) => {
       activeSessionIdRef.current = "";
       clearAllDisplayCardManagers();
-      setIsDraftChat(true);
       setActiveSessionId("");
       setChatMessages([]);
       resetPresentation();
-      resetRequest();
+      setRequest("");
       setWorkspacePath("");
       setLocalStoragePath(workspaceDir ? normalizeWorkspacePath(workspaceDir) : "");
       useProjectStore.getState().resetProject();
     },
-    [resetPresentation, resetRequest],
+    [resetPresentation, setRequest],
   );
 
   const applySessionState = useCallback(
@@ -114,13 +120,17 @@ export function useSessionController({
       }
 
       const snapshot = state.activeSession;
+      if (options.preserveDraft) {
+        const previousKey = activeSessionIdRef.current;
+        draftsRef.current.set(snapshot.session.id, draftsRef.current.get(previousKey) ?? "");
+        if (previousKey !== snapshot.session.id) draftsRef.current.delete(previousKey);
+      }
       activeSessionIdRef.current = snapshot.session.id;
+      setRequestState(draftsRef.current.get(snapshot.session.id) ?? "");
       hydrateDisplayCardManagers(snapshot.displayCards);
-      setIsDraftChat(snapshot.messages.length === 0);
       setActiveSessionId(snapshot.session.id);
       loadPresentation(snapshot.presentation);
       setChatMessages(snapshot.messages);
-      resetRequest();
       setSessionLoaded(true);
 
       const resolvedWorkspace = snapshot.project?.rootPath
@@ -159,7 +169,6 @@ export function useSessionController({
       initializeProject,
       loadPresentation,
       notify,
-      resetRequest,
       syncPresentation,
     ],
   );
@@ -231,6 +240,7 @@ export function useSessionController({
   }, [activeSessionId, sessionLoaded]);
 
   const selectWorkspaceFolder = useCallback(async () => {
+    if (activeSessionIdRef.current) return;
     if (busy) {
       notify("当前任务执行中，请稍后再选择目录");
       return;
@@ -239,7 +249,7 @@ export function useSessionController({
       const selectedPath = await window.desktopApi.selectDirectory(
         localStoragePath || workspacePath || undefined,
       );
-      if (!selectedPath) return;
+      if (!selectedPath || activeSessionIdRef.current) return;
       const normalized = normalizeWorkspacePath(selectedPath);
       setLocalStoragePath(normalized);
       notify(`已选择目录：${getWorkspaceLabel(normalized)}`);
@@ -329,6 +339,7 @@ export function useSessionController({
       try {
         const state = await window.desktopApi.deleteSession(sessionId);
         const isDeleted = !state.sessions.some((session) => session.id === sessionId);
+        if (isDeleted) draftsRef.current.delete(sessionId);
         applySessionState(state);
         if (isDeleted) notify("会话已删除");
       } catch (error) {
@@ -339,6 +350,8 @@ export function useSessionController({
   );
 
   return {
+    request,
+    setRequest,
     startupError,
     sessions,
     activeSessionId,
@@ -346,8 +359,6 @@ export function useSessionController({
     sessionLoaded,
     isSessionSwitching,
     pendingSessionId,
-    isDraftChat,
-    setIsDraftChat,
     workspacePath,
     localStoragePath,
     chatMessages,

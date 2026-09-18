@@ -13,9 +13,18 @@ export type PatchEvent = Extract<DisplayEvent, { kind: "review.patch-ready" }>;
 export type ArtifactEvent = Extract<DisplayEvent, { kind: "artifact.ready" }>;
 
 export interface ChatWorkspaceSession {
-  isNewChat?: boolean;
+  id: string;
+  isLoading?: boolean;
+  isSwitching?: boolean;
   conversationTitle?: string;
   messages: ChatMessage[];
+}
+
+export interface ChatWorkspaceViewState {
+  phase: "welcome" | "entering" | "conversation";
+  isSwitching: boolean;
+  inputDisabled: boolean;
+  workspaceBound: boolean;
 }
 
 export interface ChatWorkspaceRun {
@@ -36,7 +45,7 @@ export interface ChatWorkspaceComposer {
   models: ManagedModel[];
   selectedModelId: string;
   onSelectModel: (value: string) => void;
-  workspaceReady: boolean;
+  workspacePath: string;
   onPrepareWorkspace: () => void;
   onProposePrompt: (prompt: string) => void;
 }

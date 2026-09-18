@@ -2,10 +2,6 @@
    UnifiedAgentInput
    ========================================================================== */
 
-.workspace-canvas-content.new-session-layout {
-  grid-template-columns: 1fr !important;
-}
-
 .unified-agent-input-container {
   width: 100%;
   transition: var(--transition-panel);
@@ -92,6 +88,38 @@
   color: var(--text-secondary);
   font-size: var(--text-base);
   line-height: var(--text-base-lh);
+}
+
+.composer-workspace {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--control-radius-lg);
+  background: var(--surface-overlay);
+  font-size: 12px;
+}
+
+.composer-workspace-label {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.composer-workspace-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.sandbox-preflight-btn:disabled,
+.suggestion-chip:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .sandbox-preflight-card {
@@ -431,6 +459,19 @@
   justify-content: center;
   align-items: center;
   padding: 40px 20px;
+}
+
+.center-focal-composer {
+  width: 100%;
+  max-width: 760px;
+}
+
+.center-focal-composer .center-suggestions {
+  margin-inline: auto;
+}
+
+.chat-workspace-column.is-session-switching {
+  pointer-events: none;
 }
 
 .center-suggestions {

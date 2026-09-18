@@ -4,27 +4,24 @@ import type {
   ChatWorkspaceComposer,
   ChatWorkspaceInputRuntime,
   ChatWorkspaceRun,
+  ChatWorkspaceViewState,
 } from "./chat-workspace-types";
 import { UnifiedAgentInput } from "./UnifiedAgentInput";
 
 interface ChatWorkspaceInputProps {
+  view: ChatWorkspaceViewState;
   composer: ChatWorkspaceComposer;
   run: ChatWorkspaceRun;
   actions: ChatWorkspaceActions;
   runtime: ChatWorkspaceInputRuntime;
-  layoutMode: "center" | "bottom";
-  sandboxReady: boolean;
-  onPrepareWorkspace?: () => void;
 }
 
 export const ChatWorkspaceInput: React.FC<ChatWorkspaceInputProps> = ({
+  view,
   composer,
   run,
   actions,
   runtime,
-  layoutMode,
-  sandboxReady,
-  onPrepareWorkspace,
 }) => (
   <UnifiedAgentInput
     request={composer.request}
@@ -34,14 +31,16 @@ export const ChatWorkspaceInput: React.FC<ChatWorkspaceInputProps> = ({
     models={composer.models}
     selectedModelId={composer.selectedModelId}
     setSelectedModelId={composer.onSelectModel}
-    layoutMode={layoutMode}
+    layoutMode={view.phase === "welcome" ? "center" : "bottom"}
     pendingToolApproval={runtime.pendingToolApproval}
     onResolveToolApproval={actions.onResolveToolApproval}
     canCancelRun={runtime.canCancelRun}
     onCancelRun={run.onCancel}
     isCancellingRun={run.isCancelling ?? false}
-    sandboxReady={sandboxReady}
-    onPrepareWorkspace={onPrepareWorkspace}
+    workspacePath={composer.workspacePath}
+    workspaceBound={view.workspaceBound}
+    disabled={view.inputDisabled}
+    onPrepareWorkspace={composer.onPrepareWorkspace}
     agentRunPhase={run.phase}
     activityTrace={run.activityTrace}
     runStartedAt={runtime.runStartedAt}

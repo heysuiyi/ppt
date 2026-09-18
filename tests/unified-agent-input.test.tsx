@@ -24,7 +24,7 @@ describe("UnifiedAgentInput draft workspace", () => {
         selectedModelId={CONFIGURED_MODEL.id}
         setSelectedModelId={vi.fn()}
         layoutMode="center"
-        sandboxReady={false}
+        workspacePath=""
         onPrepareWorkspace={vi.fn()}
       />,
     );

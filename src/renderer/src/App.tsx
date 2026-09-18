@@ -4,7 +4,7 @@ import {
   useNotificationCardManager,
 } from "@shared/cards/display-card-managers";
 import { getWorkspaceLabel } from "@shared/workspace";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppShell } from "./app/AppShell";
 import { useAgentActivityStream } from "./app/agent/useAgentActivityStream";
 import { useAgentRunController } from "./app/agent/useAgentRunController";
@@ -69,9 +69,7 @@ export function App() {
     setDefaultTemplateId,
   } = settings;
 
-  const [request, setRequest] = useState("");
   const [busy, setBusy] = useState(false);
-  const resetRequest = useCallback(() => setRequest(""), []);
   const sessionController = useSessionController({
     busy,
     presentation,
@@ -80,9 +78,10 @@ export function App() {
     syncPresentation,
     notify,
     markSettingsSaving: settings.markSaving,
-    resetRequest,
   });
   const {
+    request,
+    setRequest,
     startupError,
     sessions,
     activeSessionId,
@@ -90,8 +89,6 @@ export function App() {
     sessionLoaded,
     isSessionSwitching,
     pendingSessionId,
-    isDraftChat,
-    setIsDraftChat,
     localStoragePath,
     chatMessages,
     setChatMessages,
@@ -126,7 +123,6 @@ export function App() {
     selectedSlideId,
     chatMessages,
     setChatMessages,
-    setIsDraftChat,
     applySessionState,
     syncPresentation,
     settings,
@@ -202,7 +198,7 @@ export function App() {
   const activeSessionTitle =
     sessions.find((session) => session.id === activeSessionId)?.title.trim() ||
     presentation?.title?.trim() ||
-    (isDraftChat ? "AI 新建会话" : "当前对话");
+    (activeSessionId ? "当前对话" : "AI 新建会话");
   const confirmLeaveProjectFiles = () =>
     activeMode !== "files" ||
     confirmProjectFileNavigation(projectFilesDirty, () =>
@@ -267,7 +263,9 @@ export function App() {
           isSessionSwitching={isSessionSwitching}
           chatWorkspaceProps={{
             session: {
-              isNewChat: isDraftChat,
+              id: activeSessionId,
+              isLoading: !sessionLoaded,
+              isSwitching: isSessionSwitching,
               conversationTitle: activeSessionTitle,
               messages: chatMessages,
             },
@@ -288,7 +286,7 @@ export function App() {
               models: enabledModels,
               selectedModelId,
               onSelectModel: setSelectedModelId,
-              workspaceReady: Boolean(localStoragePath),
+              workspacePath: localStoragePath,
               onPrepareWorkspace: () => void selectWorkspaceFolder(),
               onProposePrompt: suggestPrompt,
             },
@@ -343,8 +341,6 @@ export function App() {
             onSelectSlide: setSelectedSlideId,
             onClose: closeDeckPreview,
           }}
-          isDraftChat={isDraftChat}
-          activeSessionId={activeSessionId}
           isMirrorVisible={isMirrorVisible}
           isMirrorExpanded={isMirrorExpanded}
           isPrimarySidebarCollapsed={workbenchLayout.isPrimarySidebarCollapsed}

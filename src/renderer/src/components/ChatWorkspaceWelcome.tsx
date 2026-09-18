@@ -1,61 +1,28 @@
-import type React from "react";
-import { ChatWorkspaceInput } from "./ChatWorkspaceInput";
 import { CHAT_WORKSPACE_COPY_ZH_CN as copy } from "./chat-workspace-copy";
-import type {
-  ChatWorkspaceActions,
-  ChatWorkspaceComposer,
-  ChatWorkspaceInputRuntime,
-  ChatWorkspaceRun,
-} from "./chat-workspace-types";
+import type { ChatWorkspaceComposer, ChatWorkspaceViewState } from "./chat-workspace-types";
 
 interface ChatWorkspaceWelcomeProps {
-  title: string;
+  view: ChatWorkspaceViewState;
   composer: ChatWorkspaceComposer;
-  run: ChatWorkspaceRun;
-  actions: ChatWorkspaceActions;
-  inputRuntime: ChatWorkspaceInputRuntime;
+  busy: boolean;
 }
 
-export const ChatWorkspaceWelcome: React.FC<ChatWorkspaceWelcomeProps> = ({
-  title,
-  composer,
-  run,
-  actions,
-  inputRuntime,
-}) => (
-  <section className="canvas-column chat-workspace-column center-focal-wrapper view-enter">
-    <div className="panel-header canvas-header center-focal-header">
-      <div className="canvas-header-left">
-        <div className="chat-session-title" title={title}>
-          <span>{title}</span>
-        </div>
-      </div>
-      <div className="canvas-header-right" />
+export function ChatWorkspaceWelcome({ view, composer, busy }: ChatWorkspaceWelcomeProps) {
+  if (view.phase !== "welcome") return null;
+  return (
+    <div className="center-suggestions">
+      {copy.suggestions.map((suggestion) => (
+        <button
+          key={suggestion}
+          type="button"
+          className="suggestion-chip"
+          disabled={busy || view.inputDisabled}
+          title="填入输入框，确认后发送"
+          onClick={() => composer.onProposePrompt(suggestion)}
+        >
+          {suggestion}
+        </button>
+      ))}
     </div>
-
-    <div className="center-focal-content-area">
-      <ChatWorkspaceInput
-        composer={composer}
-        run={run}
-        actions={actions}
-        runtime={inputRuntime}
-        layoutMode="center"
-        sandboxReady={composer.workspaceReady}
-        onPrepareWorkspace={composer.onPrepareWorkspace}
-      />
-
-      <div className="center-suggestions">
-        {copy.suggestions.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            className="suggestion-chip"
-            onClick={() => composer.onProposePrompt(suggestion)}
-          >
-            {suggestion}
-          </button>
-        ))}
-      </div>
-    </div>
-  </section>
-);
+  );
+}

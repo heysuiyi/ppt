@@ -11,12 +11,17 @@ import { FolderIcon } from "../../components/Icons";
 interface EnvironmentCardHostProps {
   ready: boolean;
   onPrepare?: () => void;
+  disabled?: boolean;
 }
 
 type EnvironmentEvent = Extract<DisplayEvent, { kind: "environment.action-required" }>;
 
 /** Frontend/system-owned environment guidance; never depends on an Agent tool call. */
-export const EnvironmentCardHost: React.FC<EnvironmentCardHostProps> = ({ ready, onPrepare }) => {
+export const EnvironmentCardHost: React.FC<EnvironmentCardHostProps> = ({
+  ready,
+  onPrepare,
+  disabled,
+}) => {
   const derivedEvent = useMemo<EnvironmentEvent>(
     () => ({
       protocolVersion: 1,
@@ -68,7 +73,12 @@ export const EnvironmentCardHost: React.FC<EnvironmentCardHostProps> = ({ ready,
         <strong id="sandbox-preflight-title">{visibleEvent.payload.title}</strong>
         <span>{visibleEvent.payload.message}</span>
       </div>
-      <button type="button" className="sandbox-preflight-btn" onClick={onPrepare}>
+      <button
+        type="button"
+        className="sandbox-preflight-btn"
+        onClick={onPrepare}
+        disabled={disabled}
+      >
         {visibleEvent.payload.actionLabel ?? "继续"}
       </button>
     </section>
