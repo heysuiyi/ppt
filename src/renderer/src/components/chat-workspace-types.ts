@@ -20,11 +20,11 @@ export interface ChatWorkspaceSession {
   messages: ChatMessage[];
 }
 
-export interface ChatWorkspaceViewState {
+export interface ChatRegionState {
   phase: "welcome" | "entering" | "conversation";
-  isSwitching: boolean;
-  inputDisabled: boolean;
-  workspaceBound: boolean;
+  availability: "ready" | "loading" | "switching";
+  workspace: { kind: "draft"; path: string } | { kind: "bound"; path: string };
+  focus: { kind: "main" } | { kind: "team-session"; sessionId: string };
 }
 
 export interface ChatWorkspaceRun {

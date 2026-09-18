@@ -1,17 +1,16 @@
 import { CHAT_WORKSPACE_COPY_ZH_CN as copy } from "./chat-workspace-copy";
 import type {
+  ChatRegionState,
   ChatWorkspaceDeck,
   ChatWorkspaceInputRuntime,
-  ChatWorkspaceViewState,
 } from "./chat-workspace-types";
 import { ChevronRightIcon, OpenPreviewIcon } from "./Icons";
 
 interface ChatWorkspaceHeaderProps {
-  view: ChatWorkspaceViewState;
+  state: ChatRegionState;
   title: string;
   deck: ChatWorkspaceDeck;
   inputRuntime: ChatWorkspaceInputRuntime;
-  showMainConversation: boolean;
   selectedTeamTitle?: string;
   mainHasAttention: boolean;
   onShowMain: () => void;
@@ -19,22 +18,22 @@ interface ChatWorkspaceHeaderProps {
 }
 
 export function ChatWorkspaceHeader({
-  view,
+  state,
   title,
   deck,
   inputRuntime,
-  showMainConversation,
   selectedTeamTitle,
   mainHasAttention,
   onShowMain,
   onOpenPendingDecision,
 }: ChatWorkspaceHeaderProps) {
+  const showMainConversation = state.focus.kind === "main";
   return (
     <div
-      className={`panel-header canvas-header${view.phase === "welcome" ? " center-focal-header" : ""}`}
+      className={`panel-header canvas-header${state.phase === "welcome" ? " center-focal-header" : ""}`}
     >
       <div className="canvas-header-left">
-        {view.phase === "welcome" ? (
+        {state.phase === "welcome" ? (
           <div className="chat-session-title" title={title}>
             <span>{title}</span>
           </div>
@@ -69,7 +68,7 @@ export function ChatWorkspaceHeader({
       </div>
 
       <div className="canvas-header-right">
-        {view.phase !== "welcome" && inputRuntime.pendingToolApproval && (
+        {state.phase !== "welcome" && inputRuntime.pendingToolApproval && (
           <button
             type="button"
             className="team-decision-alert"
@@ -84,7 +83,7 @@ export function ChatWorkspaceHeader({
             <b>1</b>
           </button>
         )}
-        {view.phase !== "welcome" && !deck.isMirrorOpen && (
+        {state.phase !== "welcome" && !deck.isMirrorOpen && (
           <button
             className="action-icon-btn focus-toggle-btn"
             onClick={deck.onToggleMirror}

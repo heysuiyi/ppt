@@ -13,20 +13,20 @@ import {
   useRef,
   useState,
 } from "react";
+import { ChatMessageStream } from "./ChatMessageStream";
 import { ChatWorkspaceComposer } from "./ChatWorkspaceComposer";
-import { ChatWorkspaceConversation } from "./ChatWorkspaceConversation";
 import { ChatWorkspaceHeader } from "./ChatWorkspaceHeader";
 import { CHAT_WORKSPACE_COPY_ZH_CN as copy } from "./chat-workspace-copy";
 import type {
+  ChatRegionState,
   ChatWorkspaceInputRuntime,
   ChatWorkspaceProps,
-  ChatWorkspaceViewState,
 } from "./chat-workspace-types";
 import { ChatScrollProvider, useChatScroll } from "./useChatScroll";
 
 export type { ChatWorkspaceProps } from "./chat-workspace-types";
 
-type ConversationFocus = { kind: "main" } | { kind: "team-session"; sessionId: string };
+type ConversationFocus = ChatRegionState["focus"];
 
 function focusKey(focus: ConversationFocus): string {
   return focus.kind === "team-session" ? `team:${focus.sessionId}` : focus.kind;
@@ -72,24 +72,24 @@ function ChatWorkspaceContent({
     canCancelRun: Boolean(run.busy && run.activeRunId && run.onCancel),
     runStartedAt: activeRunStartedAtRef.current ?? undefined,
   };
+  const [conversationFocus, setConversationFocus] = useState<ConversationFocus>({ kind: "main" });
   // Derive the region phase from session/run facts; lifecycle controllers never set UI phases.
-  const view: ChatWorkspaceViewState = {
+  const state: ChatRegionState = {
     phase:
       run.busy && !session.id
         ? "entering"
         : session.id && (session.messages.length > 0 || run.busy)
           ? "conversation"
           : "welcome",
-    isSwitching: session.isSwitching ?? false,
-    inputDisabled: Boolean(session.isLoading || session.isSwitching),
-    workspaceBound: Boolean(session.id),
+    availability: session.isSwitching ? "switching" : session.isLoading ? "loading" : "ready",
+    workspace: { kind: session.id ? "bound" : "draft", path: composer.workspacePath },
+    focus: conversationFocus,
   };
   const title =
     session.conversationTitle?.trim() ||
-    (view.phase === "welcome" ? copy.newChatTitle : copy.currentChatTitle);
+    (state.phase === "welcome" ? copy.newChatTitle : copy.currentChatTitle);
 
   const chatScroll = useChatScroll();
-  const [conversationFocus, setConversationFocus] = useState<ConversationFocus>({ kind: "main" });
   const [mainHasAttention, setMainHasAttention] = useState(false);
   const scrollPositionsRef = useRef(new Map<string, number>());
   const pendingScrollRestoreRef = useRef<string | null>(null);
@@ -232,7 +232,7 @@ function ChatWorkspaceContent({
     pendingScrollRestoreRef.current = null;
   }, [chatScroll, currentFocusKey]);
 
-  const showConversation = view.phase !== "welcome";
+  const showConversation = state.phase !== "welcome";
   useLayoutEffect(() => {
     if (!showConversation) return;
     const unbind = chatScroll.bind();
@@ -242,44 +242,51 @@ function ChatWorkspaceContent({
 
   return (
     <section
-      className={`canvas-column chat-workspace-column view-enter${view.phase === "welcome" ? " center-focal-wrapper" : ""}${view.isSwitching ? " is-session-switching" : ""}`}
-      data-chat-phase={view.phase}
-      aria-busy={view.isSwitching || view.phase === "entering" || undefined}
+      className={`canvas-column chat-workspace-column view-enter${state.phase === "welcome" ? " center-focal-wrapper" : ""}${state.availability === "switching" ? " is-session-switching" : ""}`}
+      data-chat-phase={state.phase}
+      aria-busy={state.availability === "switching" || state.phase === "entering" || undefined}
     >
       <ChatWorkspaceHeader
-        view={view}
+        state={state}
         title={title}
         deck={deck}
         inputRuntime={inputRuntime}
-        showMainConversation={conversationFocus.kind === "main"}
         selectedTeamTitle={selectedTeamSession?.title}
         mainHasAttention={mainHasAttention}
         onShowMain={() => switchConversationFocus({ kind: "main" })}
         onOpenPendingDecision={openPendingDecision}
       />
-      <ChatWorkspaceConversation
-        view={view}
-        session={session}
-        run={run}
-        deck={deck}
-        actions={actions}
-        activeTasks={activeTasks}
-        planGoal={planGoal}
-        planState={latestPlan?.state}
-        planArchive={latestPlan?.archive}
-        teamSessions={teamSessions}
-        selectedTeamSession={selectedTeamSession}
-        showMainConversation={conversationFocus.kind === "main"}
-        onOpenTask={focusTeamSession}
-      />
+      {state.phase !== "welcome" && (
+        <div className="chat-scroll-viewport" ref={chatScroll.viewportRef}>
+          <div className="chat-conversation-shell">
+            <div className="chat-stream" ref={chatScroll.streamRef}>
+              <ChatMessageStream
+                key={session.id}
+                session={session}
+                run={run}
+                deck={deck}
+                actions={actions}
+                activeTasks={activeTasks}
+                planGoal={planGoal}
+                planState={latestPlan?.state}
+                planArchive={latestPlan?.archive}
+                teamSessions={teamSessions}
+                selectedTeamSession={selectedTeamSession}
+                showMainConversation={state.focus.kind === "main"}
+                onOpenTask={focusTeamSession}
+              />
+              <div />
+            </div>
+          </div>
+        </div>
+      )}
       <ChatWorkspaceComposer
-        view={view}
+        state={state}
         composer={composer}
         run={run}
         deck={deck}
         actions={actions}
-        inputRuntime={inputRuntime}
-        viewingTeamSession={conversationFocus.kind !== "main"}
+        runtime={inputRuntime}
       />
     </section>
   );
