@@ -183,11 +183,7 @@ export function buildToolsSection(input: ToolsSectionInput): string {
           .map((skill) => {
             const entry = input.skillRegistry?.get(skill.name);
             const pathTier = skillTierFromPlan(input.pptTaskPlan, skill.name);
-            const stageRecommended = isSkillRecommendedForStage(
-              skill.name,
-              input.stage,
-              entry,
-            );
+            const stageRecommended = isSkillRecommendedForStage(skill.name, input.stage, entry);
             const badge =
               pathTier === "now"
                 ? " [现在需要]"

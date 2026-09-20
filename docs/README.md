@@ -84,7 +84,7 @@
 | 文档 | 状态 |
 |---|---|
 | [Presentation 模板管理与自动选择](./roadmap/template-management.md) | Proposed；SVG-native 对齐；自动选择 / 参考上传 / 母版分期 |
-| [PPT 任务模型与流程选择](./roadmap/ppt-task-planning.md) | Proposed；意图、事实与难度评估；Skill 路径组合与多 Agent 选择 |
+| [PPT 任务模型与流程选择](./roadmap/ppt-task-planning.md) | Proposed（推荐已有初版）；意图与难度、步骤数据处理、质量反馈与多 Agent 验收 |
 
 ## 核心设计约束
 

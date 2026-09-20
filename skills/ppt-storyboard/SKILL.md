@@ -64,10 +64,12 @@ stages:
 
 - 每条 `keyPoint` 表达完整意思，不强行压成短标签。
 - 单页要点数量按内容需要，不必压到 3–5 条。
-- 信息量超过一页可读容量时拆页，但不要按固定卡片数量模板决定页数。
+- 信息量过大时先按内容权限精简或重组；需要超出用户指定页数时取得方向，不按固定卡片数量决定页数。
 - 不在本阶段锁定 visual style、reading mode、image language、rhythm 或 `layoutIntent`；它们由 design spec 与 page plan 阶段完成。
 - 本阶段只写内容规划，不写坐标、视觉实现细节或提交调用。
 
 ## 衔接
+
+写入成功、用户要点与来源覆盖、页序和页数符合要求后停止。分镜用于内容规划，实际视觉效果仍需后续 PNG；不要在此阶段额外推演完整 SVG。
 
 `ppt-design` 将 deck-wide 设计事实写入 `design/design-spec.json`；随后 `ppt-design-layout` 可合并 design spec 与本 storyboard（若存在），冻结 `slides/page-plan.json`。最后才由 `ppt-build` 写逐页 SVG。生命周期与提交只认 design-spec、page-plan 与 SVG，不认 storyboard。

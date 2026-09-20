@@ -500,16 +500,23 @@ app.whenReady().then(async () => {
   };
 
   const attachWindowLifecycle = (window: BrowserWindow) => {
-    trustedRendererWebContentsIds.add(window.webContents.id);
+    const webContentsId = window.webContents.id;
+    trustedRendererWebContentsIds.add(webContentsId);
+    window.on("unresponsive", () => {
+      logger.error("renderer.unresponsive", { webContentsId });
+    });
+    window.on("responsive", () => {
+      logger.info("renderer.responsive", { webContentsId });
+    });
     window.webContents.on("render-process-gone", (_event, details) => {
       logger.error("renderer.process.gone", {
-        webContentsId: window.webContents.id,
+        webContentsId,
         ...details,
       });
       abortAllActiveRuns(`render-process-gone:${details.reason}`);
     });
     window.on("closed", () => {
-      trustedRendererWebContentsIds.delete(window.webContents.id);
+      trustedRendererWebContentsIds.delete(webContentsId);
       abortAllActiveRuns("window-closed");
     });
   };

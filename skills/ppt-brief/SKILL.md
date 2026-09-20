@@ -85,4 +85,6 @@ stages:
 
 ## 衔接
 
+`brief.md` 成功写入、已知需求无冲突且内容边界明确，即可结束本阶段。非关键的未知项可明确标为假设或待定，不为填满字段反复提问；brief 不是事实证明，也不代表页面已生成。
+
 后续链路：outline（可选）→ storyboard（复杂 deck 可选）→ `ppt-design` 写 `design/design-spec.json` → `ppt-design-layout` 写 `slides/page-plan.json` → `ppt-build` 写逐页 SVG。

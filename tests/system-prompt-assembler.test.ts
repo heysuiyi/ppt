@@ -260,8 +260,11 @@ describe("system prompt assembly", () => {
     );
 
     expect(second).not.toBe(first);
-    expect(second.dynamicSuffix).toContain("Updated interaction contract");
-    expect(second.dynamicSuffix).toContain("decision");
+    // Native tool schemas own descriptions and parameters; the system index
+    // retains execution/approval metadata without duplicating those contracts.
+    expect(second.dynamicSuffix).not.toContain("Updated interaction contract");
+    expect(second.dynamicSuffix).not.toContain("parameterSummary");
+    expect(second.dynamicSuffix).toContain('"approvalRequired":true');
     expect(second.dynamicSuffix).toContain('"risk":"medium"');
   });
 

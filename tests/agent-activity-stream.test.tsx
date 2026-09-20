@@ -53,6 +53,102 @@ describe("agent activity stream projection", () => {
 
   afterEach(cleanup);
 
+  it("coalesces interleaved lead and teammate reasoning and preserves tool ordering", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Harness />);
+      act(() => controller.beginRunActivity("run-1", "message-1", false));
+      const teammate = { runId: "run-1", teammateName: "researcher", activityId: "assignment-1" };
+      act(() =>
+        emit({ ...teammate, type: "teammate-assignment-started", description: "核验资料" }),
+      );
+      const beforeChunks = controller.activityTrace;
+      act(() => {
+        for (let i = 0; i < 1000; i++) {
+          emit({ runId: "run-1", type: "thinking-chunk", modelStep: 0, chunk: "L".repeat(50) });
+          emit({ ...teammate, type: "teammate-thinking-chunk", chunk: "T".repeat(50) });
+        }
+      });
+      expect(controller.activityTrace).toBe(beforeChunks);
+      act(() => vi.advanceTimersByTime(100));
+      const lead = controller.activityTrace.find((item) => item.kind === "reasoning");
+      const task = controller.activityTrace.find((item) => item.kind === "task");
+      expect(lead?.kind === "reasoning" && lead.content.length).toBeLessThan(8100);
+      if (task?.kind !== "task") throw new Error("Missing assignment");
+      expect(task.steps).toHaveLength(1);
+      expect(task.steps[0].text).toContain("T".repeat(8000));
+      expect(task.steps[0].text.length).toBeLessThan(8100);
+      const cappedTrace = controller.activityTrace;
+      act(() => emit({ ...teammate, type: "teammate-thinking-chunk", chunk: "overflow" }));
+      act(() => vi.advanceTimersByTime(100));
+      expect(controller.activityTrace).toBe(cappedTrace);
+
+      const second = { ...teammate, activityId: "assignment-2" };
+      act(() => {
+        emit({ ...second, type: "teammate-assignment-started", description: "另一项核验" });
+        emit({ ...second, type: "teammate-thinking-chunk", chunk: "先查来源" });
+        emit({ ...second, type: "teammate-tool-started", toolName: "ReadFile", message: "读取" });
+        emit({ ...second, type: "teammate-assignment-finished", status: "completed" });
+      });
+      const secondTask = controller.activityTrace.find(
+        (item) => item.kind === "task" && item.taskId === "assignment-2",
+      );
+      if (secondTask?.kind !== "task") throw new Error("Missing second assignment");
+      expect(secondTask.steps.map((step) => step.type)).toEqual(["reasoning", "tool"]);
+      expect(secondTask.steps[0]).toMatchObject({ text: "先查来源", streaming: false });
+      expect(secondTask.status).toBe("completed");
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
+  it("bounds teammate updates after the lead ends and discards another session's events", () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(<Harness />);
+      act(() => controller.beginRunActivity("run-1", "message-1", false));
+      const teammate = { runId: "run-1", teammateName: "researcher", activityId: "assignment-1" };
+      act(() => {
+        emit({ ...teammate, type: "teammate-assignment-started", description: "核验资料" });
+        emit({ ...teammate, type: "teammate-thinking-chunk", chunk: "start" });
+        controller.finishRunActivity("run-1");
+      });
+      act(() => {
+        emit({
+          ...teammate,
+          sessionId: "other",
+          type: "teammate-thinking-chunk",
+          chunk: "wrong".repeat(2000),
+        });
+        for (let i = 0; i < 1000; i++) {
+          emit({ ...teammate, type: "teammate-thinking-chunk", chunk: "x".repeat(50) });
+        }
+      });
+      act(() => vi.advanceTimersByTime(100));
+      expect(controller.activityTrace).toEqual([]);
+      const task = messages[0].activityTrace?.find((item) => item.kind === "task");
+      if (task?.kind !== "task") throw new Error("Missing persisted assignment");
+      expect(task.steps[0].text).toContain(`start${"x".repeat(7995)}`);
+      expect(task.steps[0].text.length).toBeLessThan(8100);
+      expect(task.steps[0].text).not.toContain("wrong");
+      act(() => emit({ ...teammate, type: "teammate-assignment-finished", status: "completed" }));
+      expect(messages[0].activityTrace?.find((item) => item.kind === "task")).toMatchObject({
+        status: "completed",
+      });
+      const second = { ...teammate, activityId: "assignment-2" };
+      act(() => {
+        emit({ ...second, type: "teammate-assignment-started", description: "下一项" });
+        emit({ ...second, type: "teammate-thinking-chunk", chunk: "pending" });
+      });
+      view.unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
   it("batches and bounds long reasoning while flushing before text and completion", () => {
     vi.useFakeTimers();
     try {
@@ -73,13 +169,20 @@ describe("agent activity stream projection", () => {
 
       act(() => emit({ runId: "run-1", type: "thinking-chunk", chunk: "next", modelStep: 1 }));
       act(() => emit({ runId: "run-1", type: "text-chunk", chunk: "done", attemptId: "answer" }));
-      expect(controller.activityTrace.map((item) => item.kind)).toEqual(["reasoning", "reasoning", "response"]);
+      expect(controller.activityTrace.map((item) => item.kind)).toEqual([
+        "reasoning",
+        "reasoning",
+        "response",
+      ]);
       expect(messages[0].content).toBe("done");
       act(() => emit({ runId: "run-1", type: "thinking-chunk", chunk: "last", modelStep: 2 }));
       act(() => controller.finishRunActivity("run-1"));
       act(() => vi.runAllTimers());
       expect(controller.activityTrace).toEqual([]);
-      expect(messages[0].activityTrace?.at(-1)).toMatchObject({ kind: "reasoning", content: "last" });
+      expect(messages[0].activityTrace?.at(-1)).toMatchObject({
+        kind: "reasoning",
+        content: "last",
+      });
     } finally {
       cleanup();
       vi.useRealTimers();

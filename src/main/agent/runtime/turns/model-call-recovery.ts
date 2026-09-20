@@ -296,7 +296,9 @@ export async function callModelWithRecovery(
         if (
           toolUses.length === 0 &&
           !text.trim() &&
-          response.content.some((block) => block.type === "thinking" || block.type === "redacted_thinking")
+          response.content.some(
+            (block) => block.type === "thinking" || block.type === "redacted_thinking",
+          )
         ) {
           if (reasoningOnlyRecoveryAttempted) {
             reasoningOnlyRecoveryExhausted = true;

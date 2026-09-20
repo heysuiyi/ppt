@@ -21,7 +21,7 @@ stages:
    - 页面顺序与 `slides/page-plan.json` 一致；
    - 没有占位页或重复 `svgSourcePath`。
 3. 若页面来源不完整、存在占位页或用户提到刚修改过作者文件，引导其先回到 SVG 预览/提交流程。
-4. 审查证据：若存在有效且绑定当前 revision 的 QualityReport，核对严重问题是否已处理；若证据缺失/过期或用户要求核对，建议先走 `ppt-review`（只报告）。**review 不会在同一 Query 内改稿或提交 deck**；需要修复时另开 edit/restyle capability，完成后再导出。
+4. 若存在绑定当前 revision 的 QualityReport，核对阻断问题；用户要求正式核验或已有具体质量疑点时再使用 `ppt-review`。缺少独立报告不自动触发整套审查。review 只报告，需要修复时另开 edit/restyle capability。
 
 ## 工作流
 
@@ -40,5 +40,7 @@ stages:
 - 不要暗示「导出即完成审查」；审查与导出是不同交付终点。
 
 ## 衔接
+
+通过证据是 UI 的 Export completed 与实际导出产物。仅完成预检时明确“可导出”；用户取消选择或导出失败时不声称文件已生成。没有导出结果可观察时说明尚未验证导出完成，不反复改稿试图补足证据。
 
 标准链路：brief → design spec → page plan → SVG pages → `SubmitSvgDeck` →（可选）`ppt-review` 报告 → 用户在 UI 导出。路径推荐只组合能力，不替代 Export completed 事实。

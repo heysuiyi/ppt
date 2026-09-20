@@ -516,14 +516,18 @@ describe("callModelWithRecovery", () => {
         yield { type: "complete" as const, content: [] };
       },
     };
-    await expect(callModelWithRecovery({
-      gateway,
-      systemPrompt: "system",
-      promptPayload: { transcript: [], request: "create" },
-      maxOutputTokensOverride: 16384,
-    })).rejects.toThrow("twice without text or tool calls");
+    await expect(
+      callModelWithRecovery({
+        gateway,
+        systemPrompt: "system",
+        promptPayload: { transcript: [], request: "create" },
+        maxOutputTokensOverride: 16384,
+      }),
+    ).rejects.toThrow("twice without text or tool calls");
     expect(queryModel).toHaveBeenCalledTimes(2);
-    expect(queryModel.mock.calls.map(([request]) => request.maxOutputTokens)).toEqual([16384, 16384]);
+    expect(queryModel.mock.calls.map(([request]) => request.maxOutputTokens)).toEqual([
+      16384, 16384,
+    ]);
   });
 
   it("merges every max-output continuation and keeps detecting repeated truncation", async () => {

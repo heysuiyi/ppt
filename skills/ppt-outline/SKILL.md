@@ -15,17 +15,9 @@ stages:
 
 由主 Agent 直接创建精简 `outline.md`，为后续 storyboard 或 page-plan 提供带叙事弧的章节骨架。本技能不写 SVG，也不提交 deck。
 
-## 叙事弧
+## 叙事范围
 
-```
-钩子 Hook     → 1 页
-定调 Context  → 1–2 页
-主体 Core     → 按 brief 页数分配
-转折 Shift    → 1 页（可选）
-收束 Takeaway → 1–2 页
-```
-
-详细叙事结构见 brief 中的页数分配；版式节奏在 `ppt-design-layout` / `ppt-build` 阶段再定。
+按用户页数与目的组织开场、主体和收束，同一页可以兼任职责，不为 Hook、Context 或 Takeaway 单独扩页。简单演示可直接进入 page-plan，不必额外起草 outline。版式留到页面阶段处理。
 
 ## outline.md 结构
 
@@ -51,16 +43,18 @@ stages:
 ## 工作流
 
 1. 用 `ReadFile` 读取 `brief.md`（需求已清晰且无 brief 时，可内联推断）。
-2. 按 brief 时长→页数拆章节；顺序：Hook → Context → Core → Shift → Takeaway。
-3. 每章标注是否需 `section` 分隔页。
+2. 优先按用户指定页数、顺序和内容拆章节；未指定时以完整表达所需的范围规划。
+3. 只有内容确需分隔时才安排章节页。
 4. 用 `WriteFile` 写回 `outline.md`。
 5. 向用户摘要章节数、总页数，以及最多 1 处待确认项（若有）。
 
 ## 质量
 
 - 每章至少 1 个要点；禁止空章节。
-- Core 段章节类型应多样（不全同一形态）。
+- 内容结构服务理解，不以章节形态多样性作为硬指标。
 - 要点可完整表达，不必压字数。
+
+写入成功，页数与内容覆盖符合请求且无空章节即可结束本阶段。缺关键事实时标出缺口，不编造材料填满大纲；只交大纲时不继续生成 SVG。
 
 ## 衔接
 

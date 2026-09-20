@@ -64,6 +64,11 @@ export function useAgentActivityStream({
   const streamCompletionWaitersRef = useRef(new Map<string, () => void>());
   const pendingReasoningRef = useRef<{ modelStep: number; text: string } | null>(null);
   const reasoningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingTeammateReasoningRef = useRef(
+    new Map<string, Extract<AgentStreamEvent, { type: "teammate-thinking-chunk" }>>(),
+  );
+  const teammateReasoningLengthsRef = useRef(new Map<string, number>());
+  const teammateReasoningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const syncActivityTrace = useCallback(
     (next: AgentActivityItem[]) => {
@@ -127,10 +132,48 @@ export function useAgentActivityStream({
     }
   }, [syncActivityTrace]);
 
+  const flushTeammateReasoning = useCallback(() => {
+    if (teammateReasoningTimerRef.current !== null) {
+      clearTimeout(teammateReasoningTimerRef.current);
+    }
+    teammateReasoningTimerRef.current = null;
+    const pending = [...pendingTeammateReasoningRef.current.values()];
+    pendingTeammateReasoningRef.current.clear();
+    if (pending.length === 0) return;
+    const currentEvents = pending.filter((event) => event.runId === activeRunIdRef.current);
+    if (currentEvents.length > 0) {
+      syncActivityTrace(
+        currentEvents.reduce(applyTeammateProgressEvent, activeRunTraceRef.current),
+      );
+    }
+    // Assignments can outlive their lead run. Update that run's message, not the new run.
+    const otherEvents = pending.filter((event) => event.runId !== activeRunIdRef.current);
+    if (otherEvents.length > 0) {
+      setChatMessages((current) =>
+        current.map((message) => {
+          const events = otherEvents.filter(
+            (event) => message.role === "assistant" && event.runId === message.runId,
+          );
+          return events.length > 0
+            ? {
+                ...message,
+                activityTrace: events.reduce(
+                  applyTeammateProgressEvent,
+                  message.activityTrace ?? [],
+                ),
+              }
+            : message;
+        }),
+      );
+    }
+  }, [setChatMessages, syncActivityTrace]);
+
   useEffect(() => {
     const unsubscribe = window.desktopApi.onAgentStream((event: AgentStreamEvent) => {
-      if (event.runId === activeRunIdRef.current && event.type !== "thinking-chunk") {
-        flushReasoning();
+      if (event.sessionId && event.sessionId !== activeSessionIdRef.current) return;
+      if (event.type !== "thinking-chunk" && event.type !== "teammate-thinking-chunk") {
+        if (event.runId === activeRunIdRef.current) flushReasoning();
+        flushTeammateReasoning();
       }
       if (event.type === "stream-completed") {
         const resolve = streamCompletionWaitersRef.current.get(event.runId);
@@ -159,8 +202,36 @@ export function useAgentActivityStream({
 
       if (isTeammateProgressEvent(event)) {
         if (event.sessionId && event.sessionId !== activeSessionIdRef.current) return;
+        if (event.type === "teammate-thinking-chunk") {
+          const key = JSON.stringify([event.runId, event.activityId]);
+          const used = teammateReasoningLengthsRef.current.get(key) ?? 0;
+          const remaining = 8_000 - used;
+          if (remaining <= 0 || !event.chunk) return;
+          const chunk = event.chunk.slice(0, remaining);
+          teammateReasoningLengthsRef.current.set(key, used + chunk.length);
+          const pending = pendingTeammateReasoningRef.current.get(key);
+          pendingTeammateReasoningRef.current.set(key, {
+            ...event,
+            chunk:
+              (pending?.chunk ?? "") +
+              chunk +
+              (chunk.length === remaining
+                ? "\n[实时思考展示已达上限；完整响应以模型诊断档案为准。]"
+                : ""),
+          });
+          if (teammateReasoningTimerRef.current === null) {
+            if (isCurrentRun) setAgentRunPhase("thinking");
+            teammateReasoningTimerRef.current = setTimeout(flushTeammateReasoning, 100);
+          }
+          return;
+        }
+        if (event.type === "teammate-assignment-finished") {
+          teammateReasoningLengthsRef.current.delete(
+            JSON.stringify([event.runId, event.activityId]),
+          );
+        }
         if (isCurrentRun) {
-          setAgentRunPhase(event.type === "teammate-thinking-chunk" ? "thinking" : "working");
+          setAgentRunPhase("working");
           syncActivityTrace(applyTeammateProgressEvent(activeRunTraceRef.current, event));
         } else {
           setChatMessages((current) =>
@@ -297,13 +368,15 @@ export function useAgentActivityStream({
         );
         const pending = pendingReasoningRef.current;
         // Bound the live projection, not the canonical model response or its archive.
-        const remaining = 8_000 -
+        const remaining =
+          8_000 -
           (existing?.kind === "reasoning" ? existing.content.length : 0) -
           (pending?.text.length ?? 0);
         if (remaining <= 0 || !event.chunk) return;
-        const text = event.chunk.length > remaining
-          ? `${event.chunk.slice(0, remaining)}\n[实时思考展示已达上限；完整响应以模型诊断档案为准。]`
-          : event.chunk;
+        const text =
+          event.chunk.length > remaining
+            ? `${event.chunk.slice(0, remaining)}\n[实时思考展示已达上限；完整响应以模型诊断档案为准。]`
+            : event.chunk;
         pendingReasoningRef.current = {
           modelStep: nextModelStep,
           text: (pending?.text ?? "") + text,
@@ -350,15 +423,29 @@ export function useAgentActivityStream({
       if (reasoningTimerRef.current !== null) clearTimeout(reasoningTimerRef.current);
       reasoningTimerRef.current = null;
       pendingReasoningRef.current = null;
+      if (teammateReasoningTimerRef.current !== null) {
+        clearTimeout(teammateReasoningTimerRef.current);
+      }
+      teammateReasoningTimerRef.current = null;
+      pendingTeammateReasoningRef.current.clear();
+      teammateReasoningLengthsRef.current.clear();
       for (const resolve of streamCompletionWaitersRef.current.values()) resolve();
       streamCompletionWaitersRef.current.clear();
       completedStreamRunIdsRef.current.clear();
     };
-  }, [activeSessionIdRef, setChatMessages, syncActivityTrace, syncRunTranscript, flushReasoning]);
+  }, [
+    activeSessionIdRef,
+    setChatMessages,
+    syncActivityTrace,
+    syncRunTranscript,
+    flushReasoning,
+    flushTeammateReasoning,
+  ]);
 
   const beginRunActivity = useCallback(
     (runId: string, messageId: string, sidechain: boolean) => {
       flushReasoning();
+      flushTeammateReasoning();
       syncActivityTrace([]);
       setAgentRunPhase("requesting");
       activeRunIdRef.current = runId;
@@ -368,12 +455,13 @@ export function useAgentActivityStream({
       streamMessageIdsRef.current.set(runId, messageId);
       sidechainRunRef.current = sidechain ? runId : null;
     },
-    [syncActivityTrace, flushReasoning],
+    [syncActivityTrace, flushReasoning, flushTeammateReasoning],
   );
 
   const finishRunActivity = useCallback(
     (runId: string) => {
       if (activeRunIdRef.current === runId) flushReasoning();
+      flushTeammateReasoning();
       streamMessageIdsRef.current.delete(runId);
       completedStreamRunIdsRef.current.delete(runId);
       streamCompletionWaitersRef.current.delete(runId);
@@ -386,7 +474,7 @@ export function useAgentActivityStream({
       activeRunTraceRef.current = [];
       activeRunContentRef.current = "";
     },
-    [syncActivityTrace, flushReasoning],
+    [syncActivityTrace, flushReasoning, flushTeammateReasoning],
   );
 
   const waitForRunStreamCompletion = useCallback((runId: string) => {

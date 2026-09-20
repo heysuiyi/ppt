@@ -8,63 +8,45 @@ stages:
   - design
 ---
 
-# SVG-native 端到端工作流
+# 新建 PPT
 
-## 与任务路径的关系
+交付用户要求的可用演示。依据实际页面与提交结果判断完成，不以执行了多少设计步骤判断质量。
 
-本技能描述**新建 deck** 时作者链的依赖关系，不是所有请求的固定机器。先看用户交付终点与（可选）`SetPptTaskAssessment` 路径推荐：只要大纲/内容、只审查、只导出不必穿过整条 SVG 作者链。已有有效的 design-spec / page-plan / 页面源按事实复用，只补缺口；不因加载了 workflow 就重做已完成工作。
+## 入口与范围
 
-## 权威来源
+- 从零生成完整演示时使用本技能；已有有效文件按当前版本复用，只补缺口。
+- 只要大纲、审查或导出时，分别使用 `ppt-outline`、`ppt-review`、`ppt-export`；已有页面的小改使用 `ppt-edit`，换肤使用 `ppt-beautify`。
+- 用户给定的页数、事实、顺序和交付终点优先。brief、research、storyboard 是按需的内容辅助，不是新建必经阶段。
+- 本 Query 尚未声明能力时调用 `BeginPptCapability`，使用 create；同一 Query 沿用已有声明，不切换 capability。
 
-新建流程只认 `slides/svg/P<NN>.svg` 为页面视觉作者源。设计规格和逐页计划描述意图，不能在预览或提交时补出任何可见对象。图片可以作为 workspace 资源被 SVG 显式引用；除此之外，页面的背景、标题、正文、页码、图表、图示和装饰都必须已经存在于 SVG 中。
+## 执行路径
 
-预览与提交必须消费同一份 SVG。页面视觉只来自作者 SVG；标题、页码、背景与品牌条等可见对象须画在 SVG 内。产品作者路径仅为 `PreviewSvgPage` → `SubmitSvgDeck`。
+1. 应用 `ppt-design`，将沟通目标与解析出的设计语言写入 `design/design-spec.json`。已有有效设计锁则复用。
+2. 应用 `ppt-design-layout`，将用户范围内的最终文案、顺序和简短构图意图写入 `slides/page-plan.json`。
+3. 应用 `ppt-build`，先写 P01 并查看真实 PNG；校准通过后，分批写入并预览剩余页面。
+4. 全部新建或修改页面通过当前版本预览后，独批调用 `SubmitSvgDeck`，提交完整有序页面。
 
-## 固定顺序（新建作者链）
+这些是文件依赖，不是每步各开一轮。只加载当前路径需要的 skill；参数已知且互不依赖的调用可同批，依赖工具返回值的操作等待结果。阶段切换简述实际进展即可。
 
-顺序描述依赖关系，不是“一步一轮”。参数已知且互不依赖的调用应同批发出。
+已有信息足以执行下一步时就调用工具。需要写的完整文件放在实际 `WriteFile` 参数中，不先在分析或正文中重写一遍全套文件或模拟工具响应。批次大小以能够完整输出为准，不以最少轮次为目标。
 
-1. 若本 Query 尚未声明 PPT 工作，先调用一次 `BeginPptCapability({"capability":"create", ...})`。恢复同一 waiting-user Query 时沿用该 request；新的跨请求继续操作会获得新的 QueryId，但推进同一 PptJob。
-2. 建立沟通契约：`audience`、`objective`、`desiredOutcome`、deck-wide `coreMessage`、`deliveryContext`、`afterUse`。只有缺少会改变内容事实或交付目标的信息时才询问。
-3. 需要技能正文时，可同批 `LoadSkill("ppt-design")`（以及已知随后需要时的 `LoadSkill("ppt-design-layout")` / `LoadSkill("ppt-build")`），不要一技能一轮。应用 `ppt-design`：若 workspace 已有 `design/template-pack.json` 或 `template-policy` 为 `custom`，先 `ResolveProjectTemplate`（必要时同批 `GetDesignReference`），沿用 pack 的 designSystem/typography/chrome/assets，**不得另选 builtin 风格**；否则再按沟通信号解析模板。将结果写入 `design/design-spec.json`（`selection` → `resolvedTemplate`）。
-4. 应用 `ppt-design-layout`，为每页冻结 `finalCopy`、`coreMessage`、`audienceMove`、`rhythm`、`layoutIntent` 和素材引用，按顺序写入 `slides/page-plan.json`。若 design-spec 已写完且 layout 技能正文已在上下文中，本步写入可与同批工具一起发出；阶段切换时用 1–2 句说明意图即可，不要为空话单独开一轮。
-5. 应用 `ppt-build`。先用 `WriteFile` 只写 `slides/svg/P01.svg`；同一 assistant 响应中可紧随 `PreviewSvgPage({"path":"slides/svg/P01.svg"})`（写在前、预览在后）。当前锁契约仍要求 P01 先行；路径评估可将复杂页选为代表页，但不能在未修改预览凭据要求的前提下假定「跳过 P01 已生效」。
-6. 查看 P01 PNG：若有越界、缺字、素材失败、视觉层级或 SVG 兼容问题，修改同一个文件并重新预览；P01 未通过前禁止生成 P02。看图校准是必要轮界；可简短说明校准结论，不要用“继续推进”类空洞套话填充。
-7. P01 通过后，按可完整输出的规模分批写剩余 SVG（不同路径可并行）；页面多时先完成下一页或少量页面，不在一次响应中强求全套。不要每页重复读取已完整取得的 page-plan。
-8. 每批页面写完后按页调用 `PreviewSvgPage`，确保每个新建或改动 SVG 的当前内容与素材都成功产出 PNG。任何修订都会使旧凭据失效，必须重新预览该页；未修改的成功页面无需重复预览。
-9. 最后只调用一次 `SubmitSvgDeck`（`execution.batch=exclusive`，必须独批），显式传入 `"designSpecPath":"design/design-spec.json"`、`"pagePlanPath":"slides/page-plan.json"` 及有序 SVG 页面。`communication`、`designSystem`、每页 `id/path/narrative` 必须原样来自这两个锁文件；提交工具会重新读取并核对，再校验与内联 workspace 相对图片。任何锁漂移或页面失败都不视为完成。
+## 证据与完成
 
-## 轮次纪律
+| 要确认的事 | 证据 |
+|---|---|
+| 内容和页数符合请求 | 页面计划与用户输入逐项对应 |
+| 页面可用 | 当前 SVG 和素材的真实 PNG：内容完整、文字可读、无明显裁切重叠、素材正常 |
+| 生成已提交 | `SubmitSvgDeck` 成功返回 |
+| 已应用或已导出 | 分别以 Presentation applied、Export completed 事实为准 |
 
-- 开场目标、用户决策与收尾交付须写正文；阶段切换或本轮将发出 tool_use 时，须先输出 1–2 句可见 Markdown 意图，再发本批工具——不要把意图只写在思考通道里。
-- 禁止“继续推进 / 接着锁定 / 下一步我将…”类空洞套话，也不要逐条复述即将调用的工具名；不要为旁白把可同批的独立工具拆成多轮。
-- 必要轮界主要是：capability 声明、依赖 skill 正文后的首次写入、P01 看图校准、预览失败后的修订、以及独批的 `SubmitSvgDeck`。
+SVG 是唯一视觉作者源；计划和设计锁不能在提交时补出标题、背景或其他对象。Proposal ready 不等于已应用，提交成功不等于已导出。
 
-## 作者文件
+没有具体缺陷时结束；不为增加版式变化、研究深度或装饰而扩页。缺少关键输入才问；允许示例时在可见文案标注假设，不编造数据来源。工具失败时根据实际错误修复；同一失败在没有新信息或修正时停止重试并报告阻塞。
 
-- `design/design-spec.json`：沟通契约和 deck-wide 设计锁。
-- `design/template-policy.json` / `design/template-pack.json`：项目模板策略与可执行参考模板 pack（若已应用）。
-- `slides/page-plan.json`：有序逐页内容与构图意图。
-- `slides/svg/P01.svg`、`P02.svg`……：唯一视觉作者源。
-- `assets/**`：SVG 显式引用的本地图片或其他资源（含 `assets/template/**` 提取的 logo 等）。
+## 例：用户要求三页介绍
 
-设计规格和页面计划可以重建；一旦开始写 SVG，任何可见修改都必须直接修改对应 SVG，不能只改计划后期待提交工具代为更新。
+设计锁与三页计划就绪 → 写 P01、预览并看图 → 写 P02/P03、逐页预览 → 若 P02 正文裁切，只修 P02 并重看 → 提交三页。三页满足请求即结束，不追加研究报告或为节奏另加过渡页。
 
-## 协作边界
+## 协作
 
-Lead 持有 design-spec / page-plan / 页面 SVG 的最终写入与 `SubmitSvgDeck`。多 Agent 仅用于用户明确要求时的独立辅助（资料整理、事实核对等）；见 `ppt-research` / `ppt-build` 的条件性协作说明。不要把同一页或同一锁文件交给多个作者。真实工具/权限限制不可被用户意图评估字段覆盖。
-
-## 页面硬约束
-
-- 画布固定为 `1280 × 720`，根节点使用 `viewBox="0 0 1280 720"`。
-- SVG 必须是完整 `1280 × 720` 页面构图，不是局部片段。
-- 禁止自动 chrome；若要标题、页码、章节标、品牌条或背景，必须在每页 SVG 中明确绘制。
-- 禁止把全套内容默认做成等宽圆角卡片网格；卡片仅在语义确实需要分组时使用。
-- 图片 `href` 使用 workspace 相对路径，例如 `assets/images/hero.jpg`；禁止远程 URL。提交时由 `SubmitSvgDeck` 内联同一字节。
-- 除显式引用的本地图片外，SVG 自包含：不依赖外部 CSS、脚本或运行时布局。
-
-## 完成条件
-
-默认验收可用结果：用户要求已覆盖、事实与示例假设清楚区分、内容可读且无明显裁切重叠。以实际页面和工具结果为证据，不以遵循了多少流程评分。没有具体缺陷时停止润色；不要自行扩大页数、研究范围或设计复杂度。
-
-只有在 P01 闸门通过、全部新建或改动 SVG 的当前版本均通过真实 PNG 门禁、页面与 `slides/page-plan.json` 一一对应、最终 `SubmitSvgDeck` 成功后，才能宣告新建 deck 完成。用户只要内容草稿时可以停在 `slides/page-plan.json`，但不得生成或提交占位页面。Proposal ready 与 Presentation applied、QualityReport 与 export completed 必须分别报告，不能互相替代。
+默认主 Agent 完成。仅用户明确要求多 Agent 时安排独立辅助工作，主 Agent 验收实际结果并持有锁文件、SVG、预览与最终提交；同一文件不并发多作者写入。工具不可用时如实说明。

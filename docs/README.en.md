@@ -83,7 +83,7 @@ Superseded implementation plans are not archived in the main tree.
 | Doc | Status |
 |---|---|
 | [Presentation template management](./roadmap/template-management.md) | Proposed; SVG-native aligned; auto-select / reference upload / master staging |
-| [PPT task model and workflow selection](./roadmap/ppt-task-planning.md) | Proposed; intent, facts and difficulty assessment; skill composition and multi-agent selection (Chinese) |
+| [PPT task model and workflow selection](./roadmap/ppt-task-planning.md) | Proposed (initial recommendations exist); intent and difficulty, step data handling, quality feedback, multi-agent acceptance (Chinese) |
 
 ## Core design constraints
 
