@@ -1,11 +1,11 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it } from "vitest";
-import { previewSvgPageTool } from "../src/main/agent/tools/core/preview-svg-page";
 import { WorkspaceFileService } from "../src/main/agent/tools/files/workspace-file-service";
 import type { ToolContext } from "../src/main/agent/tools/tool-definition";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
+import { previewSvgPageTool } from "../src/main/plugins/ppt/tools/preview-svg-page";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 const temporaryRoots: string[] = [];
@@ -57,7 +57,7 @@ describe("PreviewSvgPage", () => {
 });
 
 function createContext(workspaceRoot: string, fileService: WorkspaceFileService): ToolContext {
-  const registry = createDefaultToolRegistry();
+  const registry = createPptToolRegistry();
   return {
     presentation: createStarterPresentation(),
     selectedElementIds: [],

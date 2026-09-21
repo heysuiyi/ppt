@@ -1,4 +1,5 @@
 import type { AgentModelToolResultBlock, AgentModelToolUseBlock } from "../../gateway";
+import type { ToolDefinition } from "../../tools/tool-definition";
 import { describeBackgroundTask } from "../background/background-task-manager";
 import {
   isRuntimeCancellation,
@@ -479,8 +480,9 @@ export class ToolTurnRunner {
       toolName: tool.name,
       status: "completed",
     });
+    emitToolProgress(run, tool, toolCall, outcome);
     try {
-      const decision = await run.input.presentationCompletionPolicy.interpret({
+      const decision = await run.input.completionPolicy.interpret({
         tool,
         toolUseId: toolCall.id,
         outcome,
@@ -749,7 +751,7 @@ export class ToolTurnRunner {
     });
     try {
       if (
-        run.input.presentationCompletionPolicy.canTerminate(tool) &&
+        run.input.completionPolicy.canTerminate(tool) &&
         (backgroundTasks.hasRunning() || backgroundTasks.hasPendingNotifications())
       ) {
         const guidance =
@@ -920,46 +922,9 @@ export class ToolTurnRunner {
         toolName: tool.name,
         status: "completed",
       });
-      if (tool.name === "PreviewSlide" || tool.name === "PreviewSvgPage") {
-        const result = outcome.validatedResult as {
-          preview?: {
-            slideId?: string;
-            sourcePath?: string;
-            sha256?: string;
-            title?: string;
-            description?: string;
-          };
-          thumbnail?: {
-            pngBase64: string;
-            width: number;
-            height: number;
-            mimeType: "image/png";
-          } | null;
-          thumbnailError?: string;
-        };
-        const previewId =
-          result.preview?.slideId ??
-          (result.preview?.sha256
-            ? `svg-preview-${result.preview.sha256.slice(0, 16)}`
-            : undefined);
-        if (previewId) {
-          run.emitProgress({
-            type: "slide-preview-ready",
-            toolCallId: toolCall.id,
-            toolName: tool.name,
-            slideId: previewId,
-            title: result.preview?.title ?? result.preview?.sourcePath ?? previewId,
-            description: result.preview?.description ?? "",
-            thumbnail: result.thumbnail ?? null,
-            ...(result.thumbnailError ? { thumbnailError: result.thumbnailError } : {}),
-            message: result.thumbnail
-              ? `已生成 ${result.preview?.title ?? result.preview?.sourcePath ?? previewId} 的页面预览`
-              : `已读取 ${result.preview?.title ?? result.preview?.sourcePath ?? previewId} 的页面结构`,
-          });
-        }
-      }
+      emitToolProgress(run, tool, toolCall, outcome);
       try {
-        const decision = await run.input.presentationCompletionPolicy.interpret({
+        const decision = await run.input.completionPolicy.interpret({
           tool,
           toolUseId: toolCall.id,
           outcome,
@@ -1058,4 +1023,27 @@ function unexpectedExecutionFailure(
     error: message,
     warnings: [],
   };
+}
+
+function emitToolProgress(
+  run: PreparedAgentRun,
+  tool: ToolDefinition,
+  call: AgentModelToolUseBlock,
+  outcome: ToolExecutionOutcome,
+): void {
+  try {
+    for (const event of tool.mapResultToProgress?.(outcome.validatedResult) ?? []) {
+      run.emitProgress({ ...event, toolCallId: call.id, toolName: tool.name });
+    }
+  } catch (error) {
+    run.appendRuntimeEvent(
+      "workflow_progress",
+      {
+        type: "tool-projection-error",
+        toolName: tool.name,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "internal",
+    );
+  }
 }

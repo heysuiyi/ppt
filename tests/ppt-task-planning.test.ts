@@ -1,4 +1,12 @@
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
+import type { SkillCard } from "../src/main/agent/skills/skill-types";
+import type { ToolContext } from "../src/main/agent/tools/tool-definition";
+import {
+  buildRuntimeContextSection,
+  buildToolsSection,
+} from "../src/main/plugins/ppt/prompts/prompt-sections";
+import { rankSkillCatalogForStage } from "../src/main/plugins/ppt/prompts/skill-stage-policy";
 import {
   capabilityGuidanceFromPlan,
   composePptTaskPlan,
@@ -7,29 +15,21 @@ import {
   resolveSkillTiers,
   skillRecommendationForPlan,
   summarizeDifficulty,
-} from "../src/main/agent/runtime/ppt-task/ppt-task-composer";
-import { deriveTaskFacts } from "../src/main/agent/runtime/ppt-task/ppt-task-facts";
+} from "../src/main/plugins/ppt/task/ppt-task-composer";
+import { deriveTaskFacts } from "../src/main/plugins/ppt/task/ppt-task-facts";
 import {
   applyPptTaskAssessment,
   createPptTaskSession,
-} from "../src/main/agent/runtime/ppt-task/ppt-task-session";
+} from "../src/main/plugins/ppt/task/ppt-task-session";
 import type {
   DifficultyDims,
   Level,
   PptTaskPlan,
   TaskAssessment,
   TaskFacts,
-} from "../src/main/agent/runtime/ppt-task/ppt-task-types";
-import { emptyDims } from "../src/main/agent/runtime/ppt-task/ppt-task-types";
-import {
-  buildRuntimeContextSection,
-  buildToolsSection,
-} from "../src/main/agent/runtime/prompts/prompt-sections";
-import { rankSkillCatalogForStage } from "../src/main/agent/runtime/prompts/skill-stage-policy";
-import type { SkillCard } from "../src/main/agent/skills/skill-types";
-import { setPptTaskAssessmentTool } from "../src/main/agent/tools/core/set-ppt-task-assessment";
-import type { ToolContext } from "../src/main/agent/tools/tool-definition";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
+} from "../src/main/plugins/ppt/task/ppt-task-types";
+import { emptyDims } from "../src/main/plugins/ppt/task/ppt-task-types";
+import { setPptTaskAssessmentTool } from "../src/main/plugins/ppt/tools/set-ppt-task-assessment";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 function dims(overrides: Partial<DifficultyDims> = {}): DifficultyDims {
@@ -238,7 +238,7 @@ describe("prompt projection", () => {
 
 describe("SetPptTaskAssessment tool", () => {
   it("composes routes, returns skill tiers and compact routes", async () => {
-    const registry = createDefaultToolRegistry();
+    const registry = createPptToolRegistry();
     const session = createPptTaskSession();
     const context = {
       presentation: createStarterPresentation(),

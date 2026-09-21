@@ -7,6 +7,9 @@
 
 Agent PPT 是一个由模型驱动、由代码约束安全边界的本地 Agent Runtime。
 
+PPT 能力通过可信内置插件装配；通用 Runtime 可不装配 PPT，校验和导出核心可在 Node
+独立调用。边界与接入方式见 [PPT 核心与内置插件](./ppt-plugin.md)。
+
 模型负责理解目标、选择能力、观察结果并调整下一步；Runtime 负责保证消息协议、状态提交、工具权限、持久化和 Presentation 写入正确。系统不应依赖一套硬编码阶段机替模型决定“下一步只能做什么”。
 
 ```text
@@ -14,7 +17,7 @@ Renderer / IPC
     ↓
 AgentService
     ↓
-PresentationAgentRunFactory ── 组装一次 query 所需依赖
+AgentRunFactory ── 组装一次 query 所需依赖
     ↓
 AgentRuntime ── open / prepare / consume query events / finalize / close
     ↓
@@ -45,7 +48,7 @@ Presentation Command Proposal → CommitGate → CommandBus
 | 层 | 主要对象 | 责任 | 不负责 |
 |---|---|---|---|
 | 应用层 | Renderer、IPC、`AgentService` | 收集用户输入、展示事件、装配应用用例 | 推进模型/工具循环 |
-| 调用生命周期层 | `PresentationAgentRunFactory`、`AgentRunScope`、Finalizer | lease、资源、恢复、终态提交 | 决定每一圈如何继续 |
+| 调用生命周期层 | `AgentRunFactory`、`AgentRunScope`、Finalizer | lease、资源、恢复、终态提交 | 决定每一圈如何继续 |
 | Query 层 | `query()`、`QueryParams`、`State`、`Workspace` | model → tools → next state | UI 文案、业务文件实现 |
 | 能力层 | Tool Registry、Skills、Hooks、Permission、CommitGate | 暴露和执行受控能力 | 代替模型编排任务 |
 | 基础设施/领域层 | Gateway、History、Checkpoint、Project、Presentation | Provider 适配、持久化、文档模型与导出 | 保存未提交的临时别名状态 |
@@ -132,17 +135,17 @@ Skill stage、Prompt stage 和工作流建议只能提高相关性，不能成�
 
 ## 7. 关键代码索引
 
-- `src/main/agent/service.ts`：应用用例入口。
+- `src/main/plugins/ppt/service.ts`：应用用例入口。
 - `src/main/agent/runtime/agent-runtime.ts`：一次 Run 的生命周期 facade。
 - `src/main/agent/runtime/query/query.ts`：独立 Query `AsyncGenerator`。
 - `src/main/agent/runtime/query/query-types.ts`：Params、State、Workspace、事件与 reducer。
-- `src/main/agent/runtime/presentation-agent-run-factory.ts`：Presentation 场景装配。
+- `src/main/agent/runtime/agent-run-factory.ts`：宿主与可选插件装配。
 - `src/main/agent/runtime/lifecycle/agent-run-scope.ts`：lease、checkpoint、History 与资源所有权。
 - `src/main/agent/tools/`：工具定义、注册、解析和领域工具。
 - `src/main/agent/runtime/tools/`：preflight、权限、执行和结果归一化。
-- `src/main/agent/runtime/prompts/`：Prompt context 与 section 组装。
+- `src/main/plugins/ppt/prompts/`：Prompt context 与 section 组装。
 - `src/main/agent/persistence/`：History、Run 和 Service 持久化。
-- `src/main/agent/gate/`：Presentation 提案校验、风险和提交边界。
+- `src/main/plugins/ppt/gate/`：Presentation 提案校验、风险和提交边界。
 
 ## 8. 架构验收
 

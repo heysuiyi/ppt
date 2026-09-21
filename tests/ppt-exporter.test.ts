@@ -1,10 +1,10 @@
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ExportPresentationOptions } from "@shared/ppt-export";
 import { afterEach, describe, expect, it } from "vitest";
-import { exportToPptx } from "../src/main/ppt-exporter";
+import { exportToPptx } from "../src/ppt/core/ppt-exporter";
 import { CommandBus } from "../src/shared/commands";
-import type { ExportPresentationOptions } from "../src/shared/ipc";
 import type { Presentation, SlideNarrative } from "../src/shared/presentation";
 import { createStarterPresentation, createSvgTestSlide } from "../src/shared/presentation-fixtures";
 import { testDesignSystem } from "./design-engine-test-utils";

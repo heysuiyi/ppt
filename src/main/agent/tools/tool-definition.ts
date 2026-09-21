@@ -15,18 +15,19 @@ import type {
 } from "@shared/presentation-lifecycle";
 import type { TeammateProgressListener } from "@shared/teammate-progress";
 import type { z } from "zod";
+import type { PromptStage } from "../../plugins/ppt/prompts/prompt-stage";
+import type { PptTaskPlanSession } from "../../plugins/ppt/task/ppt-task-session";
 import type { ArtifactChangeObservationSource } from "../../presentation-lifecycle/artifact-change-observer-types";
 import type { PptReviewReport } from "../../presentation-lifecycle/presentation-lifecycle-orchestrator";
 import type { AgentModelGateway, AgentModelImageBlock, AgentModelTextBlock } from "../gateway";
-import type { PromptStage } from "../runtime/prompts/prompt-stage";
 import type { ToolApprovalHandler } from "../runtime/tools/permission-check";
 import type { ToolPermissionProfile, ToolRisk } from "../runtime/tools/tool-access-policy";
-import type { PptTaskPlanSession } from "../runtime/ppt-task/ppt-task-session";
 import type { SkillRegistry } from "../skills/loadSkillsDir";
-import type { SkillSession } from "../skills/skill-types";
+import type { SkillEntry, SkillSession } from "../skills/skill-types";
 import type { TaskCommandPrincipal, TaskStore } from "../task/task-store";
 import type { MessageBus } from "../teammate/message-bus";
 import type { TeammateManager } from "../teammate/spawn-teammate";
+import type { WorkspaceFilePolicy } from "./files/workspace-file-policy";
 import type { WorkspaceFileService } from "./files/workspace-file-service";
 import type { ToolRegistry } from "./tool-registry";
 
@@ -124,17 +125,6 @@ export interface ToolDelegationBehavior<TArgs = unknown> {
   allowedLoadPolicies: ReadonlyArray<ToolLoadPolicy>;
 }
 
-export interface ToolPresentationBehavior<TArgs = unknown> {
-  /**
-   * Product runtimes with a lifecycle bridge require one of these active
-   * capabilities before the tool can execute. Isolated/offline tool runtimes
-   * without a bridge remain usable.
-   */
-  allowedCapabilities: ReadonlyArray<PptCapability>;
-  /** Limit the guard to inputs that address Presentation-owned artifacts. */
-  isRequired?: (args: TArgs) => boolean;
-}
-
 export interface ToolConcurrencyBehavior<TArgs = unknown> {
   /** Only explicitly opted-in tools may execute alongside sibling calls. */
   mode: "parallel";
@@ -153,7 +143,6 @@ export interface ToolRuntimeBehavior<TArgs = unknown> {
   completion?: ToolCompletionBehavior;
   background?: ToolBackgroundBehavior<TArgs>;
   delegation?: ToolDelegationBehavior<TArgs>;
-  presentation?: ToolPresentationBehavior<TArgs>;
   concurrency?: ToolConcurrencyBehavior<TArgs>;
 }
 
@@ -162,7 +151,7 @@ export interface ToolRuntimeBehavior<TArgs = unknown> {
  */
 export interface ToolContext {
   /** 当前 PPT 快照（克隆快照，防模型或工具直接篡改真实状态） */
-  readonly presentation: Presentation;
+  readonly presentation?: Presentation;
   /** 当前用户请求，用于校验提案是否满足本轮明确边界。 */
   readonly request?: string;
   /** 当前编辑页 ID */
@@ -179,6 +168,7 @@ export interface ToolContext {
   readonly workspaceRoot?: string;
   /** Per-thread workspace read receipts and optimistic file versions. */
   readonly fileService?: WorkspaceFileService;
+  readonly filePolicy?: WorkspaceFilePolicy;
   /** Model gateway for teammate delegation. */
   readonly gateway?: AgentModelGateway;
   /** Search credentials for web/image tools; not read from model gateway config. */
@@ -212,6 +202,8 @@ export interface ToolContext {
   readonly skillRegistry?: SkillRegistry;
   /** Per-run loaded skill tracking (Layer 2). */
   readonly skillSession?: SkillSession;
+  readonly skillGuidance?: (entry: SkillEntry) => string;
+  readonly teammateDomain?: import("../teammate/teammate-types").TeammateDomainContext;
   /** Advisory context used to rank Skills and explain the current artifact shape. */
   readonly promptStage?: PromptStage;
   /** Query-level PPT task assessment/route session (advisory; not business state). */
@@ -251,8 +243,14 @@ export interface ToolDefinition<
   ) =>
     | Array<AgentModelTextBlock | AgentModelImageBlock>
     | Promise<Array<AgentModelTextBlock | AgentModelImageBlock>>;
+  /** Observational UI projection of a successfully validated result. */
+  mapResultToProgress?: (
+    result: TResult,
+  ) => Array<{ type: string; message: string; [key: string]: unknown }>;
   /** Runtime capability check; unavailable tools are not exposed or executable. */
   isEnabled?: (context: ToolContext) => boolean;
+  /** Domain guard applied to the resolved tool before permission and execution. */
+  validateContext?: (args: z.infer<TParams>, context: ToolContext) => void | Promise<void>;
   /** Runtime orchestration semantics; execution code must not infer these from names. */
   behavior?: ToolRuntimeBehavior<z.infer<TParams>>;
   risk: ToolRisk;

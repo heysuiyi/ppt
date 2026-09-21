@@ -1,7 +1,7 @@
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { AgentModelGateway } from "../src/main/agent/gateway/types";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import {
   isRuntimeCancellation,
   rethrowIfRuntimeCancellation,
@@ -85,7 +85,7 @@ describe("runtime cancellation classification", () => {
     };
 
     await expect(
-      new AgentRuntime(registry, gateway).run({
+      createPptRuntime(registry, gateway).run({
         threadId: "cancel-multi-tool-batch",
         request: "run both tools",
         presentationSnapshot: createStarterPresentation(),
@@ -151,7 +151,7 @@ describe("runtime cancellation classification", () => {
     const runId = "cancel-approval-run";
 
     await expect(
-      new AgentRuntime(registry, gateway).run({
+      createPptRuntime(registry, gateway).run({
         threadId: "cancel-approval-thread",
         runId,
         request: "run the protected tool",

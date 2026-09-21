@@ -1,14 +1,11 @@
 import { readFile } from "node:fs/promises";
-import type { ExportPresentationOptions } from "@shared/ipc";
+import { hashArtifactValue, hashBytes } from "@ppt/core/artifact-hash";
+import type { ExportPresentationOptions } from "@shared/ppt-export";
 import { type Presentation, presentationSchema } from "@shared/presentation";
 import type { PptJobId, PresentationRevisionId } from "@shared/presentation-lifecycle";
-import {
-  hashArtifactValue,
-  hashBytes,
-} from "../presentation-lifecycle/content-addressed-blob-store";
+import { createPptxExportIdentity } from "../../ppt/core/export-identity";
+import { inspectPptxExport } from "../../ppt/core/pptx-postflight";
 import type { PresentationLifecycleOrchestrator } from "../presentation-lifecycle/presentation-lifecycle-orchestrator";
-import { createPptxExportIdentity } from "./export-identity";
-import { inspectPptxExport } from "./pptx-postflight";
 
 export interface ExportRecoveryProof {
   passed: true;

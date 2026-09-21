@@ -1,17 +1,17 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
+import { hashArtifactValue, hashBytes } from "@ppt/core/artifact-hash";
 import type {
   ArtifactPointer,
   ArtifactRevision,
   ContentHash,
 } from "@shared/presentation-lifecycle";
 import { WorkspaceFileService } from "../agent/tools/files/workspace-file-service";
-import { loadWorkspaceSvgPage } from "../deck/svg-page-loader";
+import { loadWorkspaceSvgPage } from "../plugins/ppt/svg-page-loader";
 import type {
   ArtifactChangeObserverPort,
   ObserveArtifactChangesInput,
 } from "./artifact-change-observer-types";
-import { hashArtifactValue, hashBytes } from "./content-addressed-blob-store";
 import type { PresentationLifecycleOrchestrator } from "./presentation-lifecycle-orchestrator";
 
 const DESIGN_SPEC_PATH = "design/design-spec.json";

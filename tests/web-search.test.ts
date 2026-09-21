@@ -1,12 +1,12 @@
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SUB_AGENT_TOOL_PERMISSION_PROFILES } from "../src/main/agent/runtime/tools/tool-access-policy";
 import { createSearchService } from "../src/main/agent/search/search-service";
 import { TavilySearchAdapter } from "../src/main/agent/search/tavily-adapter";
 import { webSearchSchema } from "../src/main/agent/search/web-search";
 import { SUB_AGENT_TOOLS, webSearchSubAgentTool } from "../src/main/agent/subagent/workspace-tools";
-import { searchSlideImagesTool } from "../src/main/agent/tools/core/search-slide-images";
 import { webSearchTool } from "../src/main/agent/tools/core/web-search";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
+import { searchSlideImagesTool } from "../src/main/plugins/ppt/tools/search-slide-images";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 afterEach(() => {
@@ -217,9 +217,9 @@ describe("web search", () => {
   });
 
   it("registers WebSearch for the main agent and web_search for teammate workspace agents", () => {
-    expect(createDefaultToolRegistry().get("WebSearch")).toBe(webSearchTool);
-    expect(createDefaultToolRegistry().get("SearchSlideImages")).toBe(searchSlideImagesTool);
-    expect(createDefaultToolRegistry().get("InsertSlideImage")).toBeUndefined();
+    expect(createPptToolRegistry().get("WebSearch")).toBe(webSearchTool);
+    expect(createPptToolRegistry().get("SearchSlideImages")).toBe(searchSlideImagesTool);
+    expect(createPptToolRegistry().get("InsertSlideImage")).toBeUndefined();
     expect(SUB_AGENT_TOOLS).toContain(webSearchSubAgentTool);
     expect(webSearchSubAgentTool.permission).toBe(SUB_AGENT_TOOL_PERMISSION_PROFILES.web_search);
   });
@@ -254,7 +254,7 @@ describe("web search", () => {
       presentation,
       selectedElementIds: [],
       discoverySession: { discoveredToolNames: new Set<string>() },
-      registry: createDefaultToolRegistry(),
+      registry: createPptToolRegistry(),
       messageHistory: [],
       searchConfig: {
         webSearchApiKey: "tvly-runtime-key",
@@ -329,7 +329,7 @@ describe("web search", () => {
       presentation: createStarterPresentation(),
       selectedElementIds: [],
       discoverySession: { discoveredToolNames: new Set<string>() },
-      registry: createDefaultToolRegistry(),
+      registry: createPptToolRegistry(),
       messageHistory: [],
       searchConfig: {
         webSearchApiKey: "tvly-runtime-key",

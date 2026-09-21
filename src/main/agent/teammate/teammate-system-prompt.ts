@@ -1,8 +1,7 @@
-import { DESIGN_CAPABILITY_VERSION, LAYOUT_PLANNER_CONTRACT } from "@shared/design-capability";
-import { rankSkillCatalogForStage } from "../runtime/prompts/skill-stage-policy";
 import type { SkillRegistry } from "../skills/loadSkillsDir";
 import type { SkillCard } from "../skills/skill-types";
 import type { SubAgentToolDefinition } from "../subagent/workspace-tools";
+import type { TeammateDomainContext } from "./teammate-types";
 
 function formatToolCard(tool: SubAgentToolDefinition): string {
   const fields = Object.entries(tool.inputSchema.shape).map(([key, field]) => {
@@ -13,11 +12,11 @@ function formatToolCard(tool: SubAgentToolDefinition): string {
   return [`- ${tool.name}: ${tool.description}`, ...fields].join("\n");
 }
 
-function formatSkillCatalog(catalog: SkillCard[], skillRegistry?: SkillRegistry): string {
+function formatSkillCatalog(catalog: SkillCard[], domain?: TeammateDomainContext): string {
   if (catalog.length === 0) {
     return "No skills are registered in this session.";
   }
-  const ranked = rankSkillCatalogForStage(catalog, "discover", skillRegistry);
+  const ranked = domain?.rankSkills?.(catalog) ?? catalog;
   return ranked
     .map((skill) => {
       const when = skill.whenToUse ? ` — when: ${skill.whenToUse}` : "";
@@ -32,11 +31,12 @@ export function buildTeammateSystemPrompt(input: {
   tools: SubAgentToolDefinition[];
   skillCatalog?: SkillCard[];
   skillRegistry?: SkillRegistry;
+  domain?: TeammateDomainContext;
 }): string {
   const catalog = input.skillCatalog ?? input.skillRegistry?.listCards() ?? [];
-  const skillsSection = formatSkillCatalog(catalog, input.skillRegistry);
+  const skillsSection = formatSkillCatalog(catalog, input.domain);
 
-  return `You are "${input.name}", a teammate agent in a PPT project workspace. Your role: ${input.role}.
+  return `You are "${input.name}", a teammate agent in a project workspace. Your role: ${input.role}.
 
 You are not a one-shot sub-agent. You can keep working, send messages, go idle, and resume when new inbox messages arrive.
 
@@ -57,13 +57,7 @@ You are not a one-shot sub-agent. You can keep working, send messages, go idle, 
 - WriteFile creates parent directories automatically.
 - bash is read-only diagnostics only. Never use bash for mkdir/cat/echo redirection/copy/move style file operations.
 
-## SVG-native design assignments (${DESIGN_CAPABILITY_VERSION})
-${LAYOUT_PLANNER_CONTRACT}
-- Read design/design-spec.json and slides/page-plan.json when present; they are the locked authoring facts.
-- For concrete real-world decks with 5+ slides, search at most 3 key slides in the first pass with basic depth and 3–5 candidates each; normally plan 2–4 unique, slide-specific images across the strongest visual moments.
-- Prefer free-source discovery (Pexels, Pixabay, Unsplash, Wikimedia Commons), retain source pages, never reuse the same image URL, and never claim licensing that was not verified.
-- Embed images in page SVG (or reference localized workspace assets). Do not call removed Grammar/command authoring tools.
-- Do not spawn teammates solely to write, preview, or submit SVG — that is the lead authoring loop.
+${input.domain?.instructions ?? ""}
 
 ## Available Skills
 Call LoadSkill with a registered skill name when specialized workflow knowledge is needed. Skills are knowledge only; they do not grant extra tool permissions.

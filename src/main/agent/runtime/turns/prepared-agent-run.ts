@@ -9,7 +9,6 @@ import type { LeadInboxInputSource } from "../background/lead-inbox-input-source
 import type { PostToolUseBlock, StopBlock } from "../hooks/hook-blocks";
 import type { AgentRendererEvent } from "../lifecycle/agent-event-ports";
 import type { AgentRunScope } from "../lifecycle/agent-run-scope";
-import type { PresentationCompletionPolicy } from "../presentation/presentation-completion-policy";
 import { AgentQueryAssembler } from "../query/agent-query-assembler";
 import {
   type AgentIterationWorkspace,
@@ -22,6 +21,7 @@ import {
 } from "../query/query-types";
 import type { AgentRuntimeResult, AgentRuntimeStreamEvent } from "../runtime-types";
 import type { ToolApprovalHandler } from "../tools/permission-check";
+import type { ToolCompletionPolicy } from "../tools/tool-completion-policy";
 import type { ToolExecutionEngine } from "../tools/tool-execution-engine";
 import type { ToolPreflight } from "../tools/tool-preflight";
 
@@ -61,7 +61,7 @@ export class PreparedAgentRun {
   readonly initialWorkspacePhase?: DurableQueryInflightSnapshot["phase"];
 
   private cachedSystemPrompt: string;
-  private cachedPlanRevision: number | null;
+  private cachedPromptRevision: string | number | null;
 
   constructor(
     readonly input: {
@@ -76,12 +76,13 @@ export class PreparedAgentRun {
       leadInbox: LeadInboxInputSource;
       toolPreflight: ToolPreflight;
       toolExecutionEngine: ToolExecutionEngine;
-      presentationCompletionPolicy: PresentationCompletionPolicy;
+      completionPolicy: ToolCompletionPolicy;
       runPostToolUseHook(block: PostToolUseBlock): Promise<string[]>;
-      /** Rebuild dynamic system prompt after task-plan revision changes. */
+      promptRevision?: (context: ToolContext) => string | number | null;
+      /** Rebuild dynamic system prompt after domain context changes. */
       refreshSystemPrompt?: (input: {
         toolUseContext: ToolContext;
-        planRevision: number | null;
+        revision: string | number | null;
       }) => Promise<string> | string;
     },
   ) {
@@ -100,7 +101,7 @@ export class PreparedAgentRun {
       }
     }
     this.cachedSystemPrompt = input.systemPrompt;
-    this.cachedPlanRevision = input.context.pptTaskSession?.plan?.revision ?? null;
+    this.cachedPromptRevision = input.promptRevision?.(input.context) ?? null;
     this.params = new AgentQueryAssembler().assemble({
       queryId: input.scope.queryId,
       options,
@@ -136,17 +137,17 @@ export class PreparedAgentRun {
 
   /**
    * Resolve the system prompt for the upcoming model turn.
-   * Rebuilds dynamic sections when the PPT task-plan revision changed after
-   * SetPptTaskAssessment. QueryParams are frozen by AgentQueryAssembler —
+   * Rebuilds dynamic sections when the plugin reports a new context revision.
+   * QueryParams are frozen by AgentQueryAssembler —
    * never mutate params.systemPrompt; callers must use the returned string.
    */
   async resolveSystemPrompt(toolUseContext: ToolContext): Promise<string> {
     const refresh = this.input.refreshSystemPrompt;
-    const planRevision = toolUseContext.pptTaskSession?.plan?.revision ?? null;
+    const revision = this.input.promptRevision?.(toolUseContext) ?? null;
     if (!refresh) return this.cachedSystemPrompt;
-    if (planRevision === this.cachedPlanRevision) return this.cachedSystemPrompt;
-    this.cachedSystemPrompt = await refresh({ toolUseContext, planRevision });
-    this.cachedPlanRevision = planRevision;
+    if (revision === this.cachedPromptRevision) return this.cachedSystemPrompt;
+    this.cachedSystemPrompt = await refresh({ toolUseContext, revision });
+    this.cachedPromptRevision = revision;
     return this.cachedSystemPrompt;
   }
 

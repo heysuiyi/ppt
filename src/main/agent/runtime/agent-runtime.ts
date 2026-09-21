@@ -1,15 +1,9 @@
-import type { ConversationDatabase } from "../../conversation-database";
-import type { AgentModelGateway } from "../gateway";
 import { createModuleLogger, withLogContext } from "../logger";
-import { createEmptySkillRegistry, type SkillRegistry } from "../skills/loadSkillsDir";
-import type { PptLifecycleToolBridge } from "../tools/tool-definition";
-import type { ToolRegistry } from "../tools/tool-registry";
+import type { AgentRunFactory } from "./agent-run-factory";
 import { AgentRunFinalizer } from "./agent-run-finalizer";
 import { isRuntimeCancellation } from "./lifecycle/runtime-cancellation";
-import { PresentationAgentRunFactory } from "./presentation-agent-run-factory";
 import { query } from "./query/query";
 import type { AgentQueryLoopEvent } from "./query/query-types";
-import type { AgentRuntimeOptions } from "./runtime-types";
 import {
   type AgentRuntimeInput,
   type AgentRuntimeResult,
@@ -21,27 +15,11 @@ const logger = createModuleLogger("agent-runtime");
 
 /** Owns one run lifecycle and consumes the independent query state machine. */
 export class AgentRuntime {
-  private readonly runFactory: PresentationAgentRunFactory;
   private readonly finalizer = new AgentRunFinalizer();
 
   constructor(
-    registry: ToolRegistry,
-    gateway: AgentModelGateway,
-    skillRegistry: SkillRegistry = createEmptySkillRegistry(),
-    conversationDatabase?: ConversationDatabase,
-    resolvePresentationLifecycle?: (input: {
-      queryId: import("@shared/presentation-lifecycle").QueryId;
-      options: AgentRuntimeOptions;
-    }) => PptLifecycleToolBridge | undefined,
-  ) {
-    this.runFactory = new PresentationAgentRunFactory(
-      registry,
-      gateway,
-      skillRegistry,
-      conversationDatabase,
-      resolvePresentationLifecycle,
-    );
-  }
+    private readonly runFactory: Pick<AgentRunFactory, "open" | "prepare" | "clearSession">,
+  ) {}
 
   async run(input: AgentRuntimeInput): Promise<AgentRuntimeResult> {
     const options = normalizeAgentRuntimeOptions(input);

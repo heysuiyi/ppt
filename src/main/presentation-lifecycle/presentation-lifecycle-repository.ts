@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { hashArtifactValue } from "@ppt/core/artifact-hash";
 import {
   type ArtifactDependency,
   type ArtifactId,
@@ -29,7 +30,6 @@ import {
   toPptJobProjection,
 } from "@shared/presentation-lifecycle";
 import { withSqliteTransaction } from "../sqlite-transaction";
-import { hashArtifactValue } from "./content-addressed-blob-store";
 
 interface JsonRow {
   json: string;

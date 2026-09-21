@@ -2,17 +2,14 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorkspaceFileService } from "@main/agent/tools/files/workspace-file-service";
-import {
-  readFileContract,
-  writeFileContract,
-} from "@main/agent/tools/files/workspace-file-tool-contract";
+import { readFileContract, writeFileContract } from "@main/plugins/ppt/workspace-files";
 import { PresentationArtifactChangeObserver } from "@main/presentation-lifecycle/artifact-change-observer";
 import type { ArtifactChangeObserverPort } from "@main/presentation-lifecycle/artifact-change-observer-types";
-import { hashBytes } from "@main/presentation-lifecycle/content-addressed-blob-store";
 import { PresentationLifecycleOrchestrator } from "@main/presentation-lifecycle/presentation-lifecycle-orchestrator";
 import { PresentationLifecycleRepository } from "@main/presentation-lifecycle/presentation-lifecycle-repository";
 import { PresentationLifecycleToolBridge } from "@main/presentation-lifecycle/presentation-lifecycle-tool-bridge";
 import { FileSessionStore } from "@main/session-store";
+import { hashBytes } from "@ppt/core/artifact-hash";
 import {
   type ArtifactDependency,
   type ArtifactPointer,

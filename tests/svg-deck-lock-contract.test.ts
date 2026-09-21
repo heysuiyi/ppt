@@ -1,30 +1,30 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
+import {
+  editFileContract,
+  readFileContract,
+  writeFileContract,
+} from "@main/plugins/ppt/workspace-files";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { buildWorkspaceSection } from "../src/main/agent/runtime/prompts/prompt-sections";
 import { classifyToolExecutionError } from "../src/main/agent/runtime/tools/tool-execution-error";
-import { previewSvgPageTool } from "../src/main/agent/tools/core/preview-svg-page";
+import {
+  WorkspaceFileError,
+  WorkspaceFileService,
+} from "../src/main/agent/tools/files/workspace-file-service";
+import type { ToolContext } from "../src/main/agent/tools/tool-definition";
+import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";
+import { buildWorkspaceSection } from "../src/main/plugins/ppt/prompts/prompt-sections";
+import { loadWorkspaceSvgPage } from "../src/main/plugins/ppt/svg-page-loader";
+import { previewSvgPageTool } from "../src/main/plugins/ppt/tools/preview-svg-page";
 import {
   readSvgDeckLocks,
   SVG_DECK_DESIGN_SPEC_MINI_SCHEMA,
   SVG_DECK_PAGE_PLAN_MINI_SCHEMA,
   validateSvgDeckLockContent,
-} from "../src/main/agent/tools/core/svg-deck-locks";
-import {
-  WorkspaceFileError,
-  WorkspaceFileService,
-} from "../src/main/agent/tools/files/workspace-file-service";
-import {
-  editFileContract,
-  readFileContract,
-  writeFileContract,
-} from "../src/main/agent/tools/files/workspace-file-tool-contract";
-import type { ToolContext } from "../src/main/agent/tools/tool-definition";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { slideThumbnailService } from "../src/main/deck/slide-thumbnail-service";
-import { loadWorkspaceSvgPage } from "../src/main/deck/svg-page-loader";
+} from "../src/main/plugins/ppt/tools/svg-deck-locks";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 const temporaryRoots: string[] = [];
@@ -316,7 +316,7 @@ function createPreviewContext(
     presentation: createStarterPresentation(),
     selectedElementIds: [],
     discoverySession: { discoveredToolNames: new Set() },
-    registry: createDefaultToolRegistry(),
+    registry: createPptToolRegistry(),
     messageHistory: [],
     workspaceRoot,
     fileService,

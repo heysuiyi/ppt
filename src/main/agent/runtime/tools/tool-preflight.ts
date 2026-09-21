@@ -248,25 +248,16 @@ export class ToolPreflight {
       repairs = [...repairs, ...targetArgs.repairs];
     }
 
-    const presentationRequirement = tool.behavior?.presentation;
-    if (
-      input.context.presentationLifecycle &&
-      presentationRequirement &&
-      (!presentationRequirement.isRequired || presentationRequirement.isRequired(args))
-    ) {
-      try {
-        input.context.presentationLifecycle.requireActiveCapability(
-          presentationRequirement.allowedCapabilities,
-        );
-      } catch (error) {
-        return immediate(
-          toolCall,
-          "unavailable",
-          error instanceof Error ? error.message : String(error),
-          tool,
-          repairs,
-        );
-      }
+    try {
+      await tool.validateContext?.(args, input.context);
+    } catch (error) {
+      return immediate(
+        toolCall,
+        "unavailable",
+        error instanceof Error ? error.message : String(error),
+        tool,
+        repairs,
+      );
     }
 
     const policyGuidance = await input.policyGuidance(tool.name);

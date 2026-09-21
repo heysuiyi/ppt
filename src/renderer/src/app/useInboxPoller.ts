@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 interface UseInboxPollerOptions {
+  enabled: boolean;
   activeSessionId: string;
   sessionLoaded: boolean;
   busy: boolean;
@@ -9,6 +10,7 @@ interface UseInboxPollerOptions {
 }
 
 export function useInboxPoller({
+  enabled,
   activeSessionId,
   sessionLoaded,
   busy,
@@ -16,24 +18,26 @@ export function useInboxPoller({
   onError,
 }: UseInboxPollerOptions): void {
   const inFlightRef = useRef(false);
+  const busyRef = useRef(busy);
   const onInboxTurnRef = useRef(onInboxTurn);
   const onErrorRef = useRef(onError);
 
   useEffect(() => {
+    busyRef.current = busy;
     onInboxTurnRef.current = onInboxTurn;
     onErrorRef.current = onError;
-  }, [onError, onInboxTurn]);
+  }, [busy, onError, onInboxTurn]);
 
   useEffect(() => {
-    if (!sessionLoaded || !activeSessionId) return;
+    if (!enabled || !sessionLoaded || !activeSessionId) return;
 
     let disposed = false;
     const tick = async () => {
-      if (disposed || busy || inFlightRef.current) return;
+      if (disposed || busyRef.current || inFlightRef.current) return;
       inFlightRef.current = true;
       try {
         const inbox = await window.desktopApi.pollLeadInbox(activeSessionId);
-        if (!disposed && inbox.hasMessages && !busy) {
+        if (!disposed && inbox.hasMessages && !busyRef.current) {
           await onInboxTurnRef.current(
             `[Inbox poller]\n请读取并处理 lead inbox 中的 ${inbox.count} 条消息。`,
           );
@@ -54,5 +58,5 @@ export function useInboxPoller({
       disposed = true;
       window.clearInterval(interval);
     };
-  }, [activeSessionId, busy, sessionLoaded]);
+  }, [activeSessionId, enabled, sessionLoaded]);
 }

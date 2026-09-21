@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it } from "vitest";
-import { DeckExportService } from "../src/main/deck/deck-export-service";
-import { inspectPptxExport } from "../src/main/deck/pptx-postflight";
+import { DeckExportService } from "../src/ppt/core/deck-export-service";
+import { inspectPptxExport } from "../src/ppt/core/pptx-postflight";
 import {
   expectedExportSvgHashSource,
   type LiftedText,
   liftSvgText,
-} from "../src/main/deck/svg-text-lift";
+} from "../src/ppt/core/svg-text-lift";
 import type { Presentation } from "../src/shared/presentation";
 import { createExportGoldenPresentation } from "./fixtures/export-golden-deck";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectedExportSvgHashSource, liftSvgText } from "../src/main/deck/svg-text-lift";
+import { expectedExportSvgHashSource, liftSvgText } from "../src/ppt/core/svg-text-lift";
 
 describe("liftSvgText", () => {
   it("lifts a simple left-aligned text node and strips it from the background", () => {

@@ -1,6 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
@@ -9,7 +10,6 @@ import type {
   AgentModelRequest,
 } from "../src/main/agent/gateway/types";
 import { DurableRunStore } from "../src/main/agent/persistence/durable-run-store";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import type { AgentQueryLoopEvent } from "../src/main/agent/runtime/query/query-types";
 import {
   type AgentCommandProposalResult,
@@ -64,7 +64,7 @@ describe("agent query loop batches", () => {
     const events: AgentQueryLoopEvent[] = [];
     const gateway = gatewayFor([[{ type: "text", text: "done" }]]);
 
-    const result = await new AgentRuntime(new ToolRegistry(), gateway).run({
+    const result = await createPptRuntime(new ToolRegistry(), gateway).run({
       threadId: "query-events",
       request: "inspect",
       presentationSnapshot: createStarterPresentation(),
@@ -102,7 +102,7 @@ describe("agent query loop batches", () => {
     };
 
     await expect(
-      new AgentRuntime(new ToolRegistry(), gateway).run({
+      createPptRuntime(new ToolRegistry(), gateway).run({
         threadId: "query-failed-events",
         request: "inspect",
         presentationSnapshot: createStarterPresentation(),
@@ -121,7 +121,7 @@ describe("agent query loop batches", () => {
   it("passes stable query context and output-token policy to the gateway", async () => {
     const gateway = gatewayFor([[{ type: "text", text: "done" }]]);
 
-    await new AgentRuntime(new ToolRegistry(), gateway).run({
+    await createPptRuntime(new ToolRegistry(), gateway).run({
       threadId: "query-policy",
       runId: "query-policy-run",
       request: "inspect",
@@ -174,7 +174,7 @@ describe("agent query loop batches", () => {
       [{ type: "text", text: "retried with a valid batch" }],
     ]);
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "mixed-terminal-batch",
       request: "run",
       presentationSnapshot: createStarterPresentation(),
@@ -225,7 +225,7 @@ describe("agent query loop batches", () => {
       [{ type: "text", text: "retried separately" }],
     ]);
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "mixed-layout-terminal-batch",
       request: "execute the layout plan",
       presentationSnapshot: createStarterPresentation(),
@@ -308,7 +308,7 @@ describe("agent query loop batches", () => {
       [{ type: "text", text: "retried with isolated delegation" }],
     ]);
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "dynamic-delegation-terminal-batch",
       request: "discover and execute the optional terminal capability",
       presentationSnapshot: createStarterPresentation(),
@@ -372,7 +372,7 @@ describe("agent query loop batches", () => {
       ],
     ]);
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "metadata-terminal-tool",
       request: "ask for the audience",
       presentationSnapshot: createStarterPresentation(),
@@ -432,7 +432,7 @@ describe("agent query loop batches", () => {
       ],
     ]);
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "metadata-required-capability",
       request: "update title",
       presentationSnapshot: createStarterPresentation(),
@@ -466,7 +466,7 @@ describe("agent query loop batches", () => {
       ],
     ]);
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "batch-turn-limit",
       request: "run twice",
       presentationSnapshot: createStarterPresentation(),
@@ -504,7 +504,7 @@ describe("agent query loop batches", () => {
         [{ type: "text", text: "done" }],
       ]);
 
-      await new AgentRuntime(registry, gateway).run({
+      await createPptRuntime(registry, gateway).run({
         threadId: "durable-tool-result",
         request: "run once",
         presentationSnapshot: createStarterPresentation(),
@@ -551,7 +551,7 @@ describe("agent query loop batches", () => {
       [{ type: "text", text: "used the available tool boundary" }],
     ]);
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "query-tool-boundary",
       request: "call a deferred tool directly",
       presentationSnapshot: createStarterPresentation(),

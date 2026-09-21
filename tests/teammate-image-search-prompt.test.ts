@@ -6,6 +6,7 @@ import {
 import { createSkillSession } from "../src/main/agent/skills/skill-types";
 import { loadSkillSubAgentTool, SUB_AGENT_TOOLS } from "../src/main/agent/subagent/workspace-tools";
 import { buildTeammateSystemPrompt } from "../src/main/agent/teammate/teammate-system-prompt";
+import { createPptTeammateDomain } from "../src/main/plugins/ppt/teammate-domain";
 
 const SAMPLE_SKILL = `---
 name: ppt-brief
@@ -26,6 +27,7 @@ describe("teammate image-search prompt", () => {
       name: "designer",
       role: "layout designer",
       tools: SUB_AGENT_TOOLS,
+      domain: createPptTeammateDomain(),
     });
 
     expect(prompt).toContain("include_images");

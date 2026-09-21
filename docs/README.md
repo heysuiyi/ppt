@@ -44,6 +44,7 @@
 | 文档 | 内容 |
 |---|---|
 | [架构总览](./architecture/overview.md) | 五层架构、数据流、状态边界与自主性原则 |
+| [PPT 核心与内置插件](./architecture/ppt-plugin.md) | 核心/宿主/插件边界、调用入口、持久化约束与验收 |
 | [工程能力地图](./architecture/engineering-capabilities.md) | 能力落点、成熟度、缺口与验证入口 |
 | [系统能力评价](./architecture/capability-scorecard.md) | 0–10 分域评分（含工作台 CSS/UI 主题）；评价快照，非行为契约 |
 | [端到端质量证据](./architecture/e2e-quality.md) | 分层验收：Layer 1 网关闭环 + Layer 2 导出 golden（Implemented）；视觉/Office（Proposed） |

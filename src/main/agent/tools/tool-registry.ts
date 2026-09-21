@@ -1,26 +1,3 @@
-import { askUserTool } from "./core/ask-user";
-import { beginPptCapabilityTool } from "./core/begin-ppt-capability";
-import { getDesignReferenceTool } from "./core/get-design-reference";
-import { getSelectionTool } from "./core/get-selection";
-import { listSlidesTool } from "./core/list-slides";
-import { listTeammatesTool } from "./core/list-teammates";
-import { loadSkillTool } from "./core/load-skill";
-import { previewSlideTool } from "./core/preview-slide";
-import { previewSvgPageTool } from "./core/preview-svg-page";
-import { readCurrentSlideTool } from "./core/read-current-slide";
-import { readPresentationSnapshotTool } from "./core/read-presentation-snapshot";
-import { resolveProjectTemplateTool } from "./core/resolve-project-template";
-import { respondPlanApprovalTool } from "./core/respond-plan-approval";
-import { searchSlideImagesTool } from "./core/search-slide-images";
-import { sendTeammateMessageTool } from "./core/send-teammate-message";
-import { setPptTaskAssessmentTool } from "./core/set-ppt-task-assessment";
-import { shutdownTeammateTool } from "./core/shutdown-teammate";
-import { spawnTeammateTool } from "./core/spawn-teammate";
-import { submitPptReviewTool } from "./core/submit-ppt-review";
-import { submitSvgDeckTool } from "./core/submit-svg-deck";
-import { taskTools } from "./core/task-tools";
-import { webSearchTool } from "./core/web-search";
-import { workspaceFileTools } from "./core/workspace-files";
 import type { ToolContext, ToolDefinition } from "./tool-definition";
 import { ToolLoader } from "./tool-loader";
 
@@ -128,50 +105,4 @@ export class ToolRegistry {
 
 function stableToolOrder(left: ToolDefinition<any, any>, right: ToolDefinition<any, any>): number {
   return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
-}
-
-const DEFAULT_TOOL_DEFINITIONS: ToolDefinition<any, any>[] = [
-  askUserTool,
-  beginPptCapabilityTool,
-  getDesignReferenceTool,
-  resolveProjectTemplateTool,
-  getSelectionTool,
-  listTeammatesTool,
-  listSlidesTool,
-  previewSlideTool,
-  previewSvgPageTool,
-  readCurrentSlideTool,
-  readPresentationSnapshotTool,
-  respondPlanApprovalTool,
-  sendTeammateMessageTool,
-  setPptTaskAssessmentTool,
-  shutdownTeammateTool,
-  spawnTeammateTool,
-  submitPptReviewTool,
-  submitSvgDeckTool,
-  ...taskTools,
-  loadSkillTool,
-  webSearchTool,
-  searchSlideImagesTool,
-  ...workspaceFileTools,
-];
-
-/**
- * 构建每个 SessionRuntime 使用的标准工具集合。
- * 产品默认 Deferred 发现面为空，因此不注册 SearchExtraTools / ExecuteExtraTool。
- * 空 Deferred 平台（搜索/委托/Preflight）有意保留供管线测试与未来复用；
- * 管线测试仍可手动注册这两枚壳工具与 deferred target。
- */
-export function createDefaultToolRegistry(): ToolRegistry {
-  return createToolRegistryFromDefinitions(DEFAULT_TOOL_DEFINITIONS);
-}
-
-function createToolRegistryFromDefinitions(
-  tools: readonly ToolDefinition<any, any>[],
-): ToolRegistry {
-  const registry = new ToolRegistry();
-  for (const tool of tools) {
-    registry.register(tool);
-  }
-  return registry;
 }

@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type {
@@ -9,7 +10,6 @@ import type {
   AgentModelRequest,
 } from "../src/main/agent/gateway/types";
 import { DurableRunStore } from "../src/main/agent/persistence/durable-run-store";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import { clearHooks, registerHook } from "../src/main/agent/runtime/hooks/hook-registry";
 import { readFileTool, writeFileTool } from "../src/main/agent/tools/core/workspace-files";
 import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
@@ -108,7 +108,7 @@ describe("parallel tool waves", () => {
     );
     const gateway = gatewayFor([calls(6), [{ type: "text", text: "done" }]]);
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "parallel-limit",
       request: "run probes",
       presentationSnapshot: createStarterPresentation(),
@@ -165,7 +165,7 @@ describe("parallel tool waves", () => {
       [{ type: "text", text: "done" }],
     ]);
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "parallel-resource",
       request: "run probes",
       presentationSnapshot: createStarterPresentation(),
@@ -194,7 +194,7 @@ describe("parallel tool waves", () => {
       [{ type: "text", text: "done" }],
     ]);
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "parallel-hook-order",
       request: "run probes",
       presentationSnapshot: createStarterPresentation(),
@@ -227,7 +227,7 @@ describe("parallel tool waves", () => {
       },
     });
     const gateway = gatewayFor([calls(2), [{ type: "text", text: "done" }]]);
-    const running = new AgentRuntime(registry, gateway).run({
+    const running = createPptRuntime(registry, gateway).run({
       threadId: "parallel-checkpoint",
       runId: "parallel-checkpoint-run",
       request: "run probes",
@@ -266,7 +266,7 @@ describe("parallel tool waves", () => {
     const gateway = gatewayFor([calls(6)]);
 
     await expect(
-      new AgentRuntime(registry, gateway).run({
+      createPptRuntime(registry, gateway).run({
         threadId: "parallel-cancellation",
         request: "run probes",
         presentationSnapshot: createStarterPresentation(),
@@ -312,7 +312,7 @@ describe("parallel tool waves", () => {
       [{ type: "text", text: "done" }],
     ]);
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "parallel-file-write",
       request: "write files",
       presentationSnapshot: createStarterPresentation(),
@@ -345,7 +345,7 @@ describe("parallel tool waves", () => {
       [{ type: "text", text: "done" }],
     ]);
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "parallel-file-read",
       request: "read files",
       presentationSnapshot: createStarterPresentation(),

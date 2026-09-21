@@ -1,11 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { DesignPolicy } from "../src/main/agent/design/design-policy";
-import { CommitGate } from "../src/main/agent/gate/commit-gate";
-import { RiskPolicy } from "../src/main/agent/gate/risk-policy";
 import {
   AgentGatewayError,
   type AgentModelGateway,
@@ -13,23 +12,25 @@ import {
 } from "../src/main/agent/gateway";
 import type { AgentModelContentBlock } from "../src/main/agent/gateway/types";
 import { DurableServiceStore } from "../src/main/agent/persistence/durable-service-store";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
-import { SystemPromptBuilder } from "../src/main/agent/runtime/prompts/system-prompt";
-import { AgentService } from "../src/main/agent/service";
 import { assumptionsSchema } from "../src/main/agent/tools/assumptions-schema";
 import { askUserTool } from "../src/main/agent/tools/core/ask-user";
-import { beginPptCapabilityTool } from "../src/main/agent/tools/core/begin-ppt-capability";
 import { executeExtraToolTool } from "../src/main/agent/tools/core/execute-extra-tool";
-import { getSelectionTool } from "../src/main/agent/tools/core/get-selection";
-import { listSlidesTool } from "../src/main/agent/tools/core/list-slides";
-import { previewSlideTool } from "../src/main/agent/tools/core/preview-slide";
-import { readCurrentSlideTool } from "../src/main/agent/tools/core/read-current-slide";
-import { readPresentationSnapshotTool } from "../src/main/agent/tools/core/read-presentation-snapshot";
 import { searchExtraToolsTool } from "../src/main/agent/tools/core/search-extra-tools";
 import { toToolCard } from "../src/main/agent/tools/tool-card";
 import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
 import { ToolLoader } from "../src/main/agent/tools/tool-loader";
-import { createDefaultToolRegistry, ToolRegistry } from "../src/main/agent/tools/tool-registry";
+import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+import { DesignPolicy } from "../src/main/plugins/ppt/design/design-policy";
+import { CommitGate } from "../src/main/plugins/ppt/gate/commit-gate";
+import { RiskPolicy } from "../src/main/plugins/ppt/gate/risk-policy";
+import { SystemPromptBuilder } from "../src/main/plugins/ppt/prompts/system-prompt";
+import { AgentService } from "../src/main/plugins/ppt/service";
+import { beginPptCapabilityTool } from "../src/main/plugins/ppt/tools/begin-ppt-capability";
+import { getSelectionTool } from "../src/main/plugins/ppt/tools/get-selection";
+import { listSlidesTool } from "../src/main/plugins/ppt/tools/list-slides";
+import { previewSlideTool } from "../src/main/plugins/ppt/tools/preview-slide";
+import { readCurrentSlideTool } from "../src/main/plugins/ppt/tools/read-current-slide";
+import { readPresentationSnapshotTool } from "../src/main/plugins/ppt/tools/read-presentation-snapshot";
 import { ContentAddressedBlobStore } from "../src/main/presentation-lifecycle/content-addressed-blob-store";
 import { PresentationLifecycleOrchestrator } from "../src/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
 import { PresentationLifecycleRepository } from "../src/main/presentation-lifecycle/presentation-lifecycle-repository";
@@ -102,7 +103,7 @@ const fakeSubmit = createFakeCommandProposalTool();
 
 describe("Agent Architecture Skeletons & Types", () => {
   it("creates the production registry with Core tools and no Deferred surface", () => {
-    const registry = createDefaultToolRegistry();
+    const registry = createPptToolRegistry();
     expect(registry.get("ReadPresentationSnapshot")?.loadPolicy).toBe("core");
     expect(registry.get("Task")).toBeUndefined();
     expect(registry.get("TaskCreate")?.loadPolicy).toBe("core");
@@ -191,7 +192,7 @@ describe("Agent Architecture Skeletons & Types", () => {
     const registry = new ToolRegistry();
     registry.register(readPresentationSnapshotTool);
     registry.register(fakeSubmit);
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       createSequenceGateway([
         modelToolCall("ReadPresentationSnapshot"),
@@ -224,7 +225,7 @@ describe("Agent Architecture Skeletons & Types", () => {
     const registry = new ToolRegistry();
     registry.register(searchExtraToolsTool);
     registry.register(fakeSubmit);
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       createSequenceGateway([
         modelToolCall("SearchExtraTools", { query: "theme layout" }),
@@ -259,7 +260,7 @@ describe("Agent Architecture Skeletons & Types", () => {
     registry.register(askUserTool);
     registry.register(searchExtraToolsTool);
     registry.register(fakeSubmit);
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       createSequenceGateway([
         modelToolCall("AskUser", {
@@ -322,7 +323,7 @@ describe("Agent Architecture Skeletons & Types", () => {
     };
     const service = new AgentService(
       new CommandBus(createStarterPresentation()),
-      new AgentRuntime(createDefaultToolRegistry(), gateway),
+      createPptRuntime(createPptToolRegistry(), gateway),
       new CommitGate(new RiskPolicy()),
     );
     const threadId = "restored-model-selection";
@@ -377,7 +378,7 @@ describe("Agent Architecture Skeletons & Types", () => {
     };
     const service = new AgentService(
       new CommandBus(createStarterPresentation()),
-      new AgentRuntime(createDefaultToolRegistry(), gateway),
+      createPptRuntime(createPptToolRegistry(), gateway),
       new CommitGate(new RiskPolicy()),
     );
 
@@ -416,7 +417,7 @@ describe("Agent Architecture Skeletons & Types", () => {
     let modelRequest: AgentModelRequest | undefined;
     const service = new AgentService(
       new CommandBus(createStarterPresentation()),
-      new AgentRuntime(createDefaultToolRegistry(), {
+      createPptRuntime(createPptToolRegistry(), {
         async queryModel(request) {
           modelRequest = request;
           return {
@@ -557,7 +558,7 @@ describe("Agent Architecture Skeletons & Types", () => {
     registry.register(askUserTool);
     registry.register(fakeSubmit);
 
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       createSequenceGateway([
         modelToolCall("FakeSubmitCommands", {
@@ -584,7 +585,7 @@ describe("Agent Architecture Skeletons & Types", () => {
   it("does not auto-apply a proposal without durable lifecycle services", async () => {
     const registry = new ToolRegistry();
     registry.register(fakeSubmit);
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       createSequenceGateway([
         modelToolCall("FakeSubmitCommands", {
@@ -606,7 +607,7 @@ describe("Agent Architecture Skeletons & Types", () => {
   it("keeps a continued AUTO request fail-closed without lifecycle services", async () => {
     const registry = new ToolRegistry();
     registry.register(fakeSubmit);
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       createSequenceGateway([
         modelToolCall("FakeSubmitCommands", {
@@ -657,7 +658,7 @@ describe("Agent Architecture Skeletons & Types", () => {
     const registry = new ToolRegistry();
     registry.register(beginPptCapabilityTool);
     registry.register(fakeSubmit);
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       createSequenceGateway([
         modelToolCall("BeginPptCapability", {

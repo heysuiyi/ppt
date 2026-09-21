@@ -8,6 +8,7 @@ export default defineConfig({
     resolve: {
       alias: {
         "@shared": resolve("src/shared"),
+        "@ppt": resolve("src/ppt"),
         "@design-system": resolve("src/design-system"),
         "@main": resolve("src/main"),
       },
@@ -26,6 +27,7 @@ export default defineConfig({
     resolve: {
       alias: {
         "@shared": resolve("src/shared"),
+        "@ppt": resolve("src/ppt"),
         "@design-system": resolve("src/design-system"),
       },
     },
@@ -34,6 +36,7 @@ export default defineConfig({
     resolve: {
       alias: {
         "@shared": resolve("src/shared"),
+        "@ppt": resolve("src/ppt"),
         "@design-system": resolve("src/design-system"),
       },
     },

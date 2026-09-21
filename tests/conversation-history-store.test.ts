@@ -1,6 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { describe, expect, it, vi } from "vitest";
 import type {
   AgentModelContentBlock,
@@ -9,10 +10,9 @@ import type {
 } from "../src/main/agent/gateway/types";
 import { DurableConversationHistoryStore } from "../src/main/agent/persistence/conversation-history-store";
 import { DurableRunStore } from "../src/main/agent/persistence/durable-run-store";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
-import { readPresentationSnapshotTool } from "../src/main/agent/tools/core/read-presentation-snapshot";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { ConversationDatabase } from "../src/main/conversation-database";
+import { readPresentationSnapshotTool } from "../src/main/plugins/ppt/tools/read-presentation-snapshot";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 const history = [
@@ -75,7 +75,7 @@ describe("canonical conversation history store", () => {
     };
     const registry = new ToolRegistry();
     registry.register(readPresentationSnapshotTool);
-    const runtime = new AgentRuntime(registry, gateway);
+    const runtime = createPptRuntime(registry, gateway);
     const presentationSnapshot = createStarterPresentation();
 
     await runtime.run({
@@ -140,7 +140,7 @@ describe("canonical conversation history store", () => {
       .spyOn(DurableConversationHistoryStore.prototype, "save")
       .mockRejectedValueOnce(new Error("simulated crash before History commit"));
     try {
-      await new AgentRuntime(new ToolRegistry(), gateway).run({
+      await createPptRuntime(new ToolRegistry(), gateway).run({
         threadId: "terminal-history-thread",
         runId: "terminal-history-first",
         request: "first question",
@@ -164,7 +164,7 @@ describe("canonical conversation history store", () => {
       ]),
     );
 
-    await new AgentRuntime(new ToolRegistry(), gateway).run({
+    await createPptRuntime(new ToolRegistry(), gateway).run({
       threadId: "terminal-history-thread",
       runId: "terminal-history-second",
       request: "second question",
@@ -200,7 +200,7 @@ describe("canonical conversation history store", () => {
         yield { type: "complete" as const, content: response.content };
       },
     };
-    const runtime = new AgentRuntime(new ToolRegistry(), gateway);
+    const runtime = createPptRuntime(new ToolRegistry(), gateway);
     const baseInput = {
       threadId: "stale-history-thread",
       presentationSnapshot: createStarterPresentation(),
@@ -295,7 +295,7 @@ describe("canonical conversation history store", () => {
       },
     };
     try {
-      await new AgentRuntime(new ToolRegistry(), gateway).run({
+      await createPptRuntime(new ToolRegistry(), gateway).run({
         threadId: "lease-handoff-thread",
         runId: "new-owner-run",
         request: "new owner question",

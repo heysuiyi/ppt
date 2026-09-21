@@ -1,5 +1,3 @@
-import type { PromptStage } from "../runtime/prompts/prompt-stage";
-
 /**
  * Skill catalog and session types for the two-layer LoadSkill design.
  *
@@ -15,7 +13,7 @@ export interface SkillFrontmatter {
   description: string;
   when_to_use?: string;
   /** Advisory prompt stages used only to rank and recommend this skill. */
-  stages?: PromptStage[];
+  stages?: string[];
 }
 
 /** Lightweight catalog entry for system prompt injection */

@@ -33,7 +33,7 @@ Presentation，供 Editor / HTML / PPTX 使用。
 | Evaluation | SVG 预览校验；deck 结构与 designSystem 一致性评分 |
 
 当前实现位于 `src/design-system/`、`src/shared/visual-*`、
-`src/main/agent/tools/core/preview-svg-page.ts`、`src/main/agent/tools/core/submit-svg-deck.ts`。
+`src/main/plugins/ppt/tools/preview-svg-page.ts`、`src/main/plugins/ppt/tools/submit-svg-deck.ts`。
 
 ## 3. 核心契约
 
@@ -151,14 +151,14 @@ golden 已落地，不阻塞模板 Phase 1。
 
 - `src/design-system/`（含内部启发式 `evaluation.ts`；产品质检走 CommitGate / DeckValidationService）
 - `src/shared/presentation.ts`（`designSystemV2Schema`、`visualSource`）
-- `src/main/agent/tools/core/preview-svg-page.ts`
-- `src/main/agent/tools/core/submit-svg-deck.ts`
+- `src/main/plugins/ppt/tools/preview-svg-page.ts`
+- `src/main/plugins/ppt/tools/submit-svg-deck.ts`
 - `src/main/agent/tools/tool-registry.ts`（默认注册表不含 Grammar 作者工具）
 - `src/shared/visual-tokens.ts`
 - `src/shared/visual-asset-audit.ts`
 - `src/shared/shape-render-utils.ts`
 - `src/shared/gradient-export.ts`
-- `src/main/ppt-exporter.ts`
+- `src/ppt/core/ppt-exporter.ts`
 
 ## 11. 验收
 

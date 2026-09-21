@@ -61,6 +61,8 @@ export const spawnTeammateTool: ToolDefinition<
       onProgress: context.onTeammateProgress,
       taskStore: context.taskStore,
       skillRegistry: context.skillRegistry,
+      filePolicy: context.filePolicy,
+      domain: context.teammateDomain,
     });
 
     return {

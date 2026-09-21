@@ -437,6 +437,7 @@ export class TeammateManager {
       name: state.name,
       role: state.role,
       tools,
+      domain: options.domain,
       skillCatalog,
       skillRegistry: options.skillRegistry,
     });
@@ -448,6 +449,8 @@ export class TeammateManager {
     const toolContext: SubAgentToolContext = {
       workspaceRoot: options.workspaceRoot,
       fileService: new WorkspaceFileService(options.workspaceRoot),
+      filePolicy: options.filePolicy,
+      skillGuidance: options.domain?.skillGuidance,
       searchConfig: options.gateway.getSearchConfig?.(),
       signal: state.controller.signal,
       skillRegistry: options.skillRegistry,

@@ -14,6 +14,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -38,10 +39,7 @@ import {
   WorkspaceFileService,
 } from "../src/main/agent/tools/files/workspace-file-service";
 import type { ToolContext } from "../src/main/agent/tools/tool-definition";
-import {
-  createDefaultToolRegistry,
-  type ToolRegistry,
-} from "../src/main/agent/tools/tool-registry";
+import type { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 async function createWorkspace(): Promise<string> {
@@ -844,7 +842,7 @@ describe("sub-agent diagnostic command policy", () => {
 describe("main-agent workspace file tools", () => {
   it("registers Glob/ReadFile/WriteFile/EditFile and exposes them only with a workspace service", async () => {
     const root = await createWorkspace();
-    const registry = createDefaultToolRegistry();
+    const registry = createPptToolRegistry();
     const withoutWorkspace = createToolContext(registry);
     const withWorkspace = createToolContext(registry, root, new WorkspaceFileService(root));
 
@@ -859,7 +857,7 @@ describe("main-agent workspace file tools", () => {
   });
 
   it("rejects direct execution when the current context lacks a workspace", async () => {
-    const registry = createDefaultToolRegistry();
+    const registry = createPptToolRegistry();
     const result = await new ToolPreflight(registry).prepare({
       toolCall: {
         type: "tool_use",
@@ -880,7 +878,7 @@ describe("main-agent workspace file tools", () => {
 
   it("applies availability to deferred search and ExecuteExtraTool", async () => {
     const root = await createWorkspace();
-    const registry = createDefaultToolRegistry();
+    const registry = createPptToolRegistry();
     registry.register({
       name: "WorkspaceDeferred",
       description: "workspace-only test capability",

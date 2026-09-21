@@ -12,6 +12,7 @@
     "types": ["vite/client", "node"],
     "baseUrl": ".",
     "paths": {
+      "@ppt/*": ["src/ppt/*"],
       "@shared/*": ["src/shared/*"],
       "@design-system": ["src/design-system/index.ts"],
       "@design-system/*": ["src/design-system/*"]

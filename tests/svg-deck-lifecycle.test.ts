@@ -1,14 +1,14 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { previewSvgPageTool } from "../src/main/agent/tools/core/preview-svg-page";
-import { submitSvgDeckTool } from "../src/main/agent/tools/core/submit-svg-deck";
 import { WorkspaceFileService } from "../src/main/agent/tools/files/workspace-file-service";
 import type { PptLifecycleToolBridge, ToolContext } from "../src/main/agent/tools/tool-definition";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { slideThumbnailService } from "../src/main/deck/slide-thumbnail-service";
+import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";
+import { previewSvgPageTool } from "../src/main/plugins/ppt/tools/preview-svg-page";
+import { submitSvgDeckTool } from "../src/main/plugins/ppt/tools/submit-svg-deck";
 import { ContentAddressedBlobStore } from "../src/main/presentation-lifecycle/content-addressed-blob-store";
 import { PresentationLifecycleOrchestrator } from "../src/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
 import { PresentationLifecycleRepository } from "../src/main/presentation-lifecycle/presentation-lifecycle-repository";
@@ -371,7 +371,7 @@ function createContext(
     presentation: createStarterPresentation(),
     selectedElementIds: [],
     discoverySession: { discoveredToolNames: new Set() },
-    registry: createDefaultToolRegistry(),
+    registry: createPptToolRegistry(),
     messageHistory: [],
     workspaceRoot,
     fileService,

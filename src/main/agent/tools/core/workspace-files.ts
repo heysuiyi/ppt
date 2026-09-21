@@ -19,7 +19,7 @@ export {
   writeFileSchema,
 } from "../files/workspace-file-tool-contract";
 
-function toMainAgentTool<TParams extends WorkspaceFileToolContract["inputSchema"], TResult>(
+export function toMainAgentTool<TParams extends WorkspaceFileToolContract["inputSchema"], TResult>(
   contract: WorkspaceFileToolContract<TParams, TResult>,
 ): ToolDefinition<TParams, TResult> {
   return {

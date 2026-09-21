@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { previewSlideTool } from "../src/main/agent/tools/core/preview-slide";
 import type { ToolContext } from "../src/main/agent/tools/tool-definition";
-import { LayoutValidator } from "../src/main/deck/validators/layout-validator";
+import { previewSlideTool } from "../src/main/plugins/ppt/tools/preview-slide";
+import { LayoutValidator } from "../src/ppt/core/validators/layout-validator";
 import type { Presentation, Slide, SlideNarrative } from "../src/shared/presentation";
 import { TEST_DESIGN_SYSTEM } from "./design-engine-test-utils";
 

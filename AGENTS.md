@@ -11,12 +11,16 @@ decisions here. Read this file before making any changes.
   process hosts the Agent Runtime, model Gateway, and CommitGate.
 - Key directories:
   - `src/renderer/`: React workspace, chat stream, PPT mirror, settings panel
-  - `src/main/agent/`: Agent runtime, tool registry, model gateways, commit
-    gate, sub-agents
+  - `src/main/agent/`: Generic Agent runtime, tool registry, model gateways,
+    permissions, persistence, and sub-agents
+  - `src/main/plugins/ppt/`: Built-in PPT plugin, domain tools, prompts, task
+    planning, CommitGate, application service, and Electron preview adapter
+  - `src/ppt/core/`: Headless PPT validation, SVG text processing, PPTX export,
+    and postflight; no Electron or Agent dependencies
   - `src/design-system/`: DesignSystemV2 schema, presets, and resolution
   - `src/shared/`: presentation model, command model, session and IPC types
   - `src/main/project/`: local project sandbox, artifact IO, diffs
-  - `src/main/deck/`: thumbnails, export history, PPTX export
+  - `src/main/deck/`: Host-side deck persistence and export recovery
   - `skills/`: SVG-native workflow skills. Core create:
     `ppt-workflow` → `ppt-design` → `ppt-design-layout` → `ppt-build`. Short
     paths: `ppt-edit`, `ppt-beautify`, `ppt-review`, `ppt-export`. Optional

@@ -1,6 +1,6 @@
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
 import { SUB_AGENT_TOOLS } from "../src/main/agent/subagent/workspace-tools";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
 import {
   formatAgentProgressMessage,
   formatAgentToolActivity,
@@ -17,7 +17,7 @@ import {
 
 describe("agent activity display", () => {
   it("covers every registered main and sub-agent tool", () => {
-    const registry = createDefaultToolRegistry();
+    const registry = createPptToolRegistry();
     const tools = [...registry.getCoreTools(), ...registry.getDeferredTools(), ...SUB_AGENT_TOOLS];
 
     for (const tool of tools) {

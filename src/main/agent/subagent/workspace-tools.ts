@@ -4,16 +4,16 @@ import { delimiter, isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { AgentSearchConfig } from "@shared/agent-gateway-config";
 import { z } from "zod";
-import type { PromptStage } from "../runtime/prompts/prompt-stage";
-import { isSkillRecommendedForStage } from "../runtime/prompts/skill-stage-policy";
+import type { PromptStage } from "../../plugins/ppt/prompts/prompt-stage";
 import {
   SUB_AGENT_TOOL_PERMISSION_PROFILES,
   type ToolPermissionProfile,
 } from "../runtime/tools/tool-access-policy";
 import { executeWebSearch, formatWebSearchOutput, webSearchSchema } from "../search/web-search";
 import type { SkillRegistry } from "../skills/loadSkillsDir";
-import type { SkillSession } from "../skills/skill-types";
+import type { SkillEntry, SkillSession } from "../skills/skill-types";
 import { type LoadSkillResult, loadSkillSchema } from "../tools/core/load-skill";
+import type { WorkspaceFilePolicy } from "../tools/files/workspace-file-policy";
 import {
   canonicalizeWorkspaceRoot,
   WorkspaceFileError,
@@ -33,10 +33,12 @@ export interface SubAgentToolContext {
   workspaceRoot: string;
   /** Session-scoped read receipts and optimistic file versions. */
   fileService?: WorkspaceFileService;
+  filePolicy?: WorkspaceFilePolicy;
   searchConfig?: AgentSearchConfig;
   signal?: AbortSignal;
   skillRegistry?: SkillRegistry;
   skillSession?: SkillSession;
+  skillGuidance?: (entry: SkillEntry) => string;
   promptStage?: PromptStage;
 }
 
@@ -77,6 +79,7 @@ function toSubAgentWorkspaceTool<TParams extends z.ZodObject<any>, TResult>(
       contract.execute(args, {
         workspaceRoot: context.workspaceRoot,
         fileService: resolveFileService(context),
+        filePolicy: context.filePolicy,
       }),
   };
 }
@@ -170,8 +173,6 @@ export const loadSkillSubAgentTool: SubAgentToolDefinition<
       );
     }
 
-    const stage = context.promptStage ?? "discover";
-    const recommended = isSkillRecommendedForStage(entry.name, stage, entry);
     const alreadyLoaded = context.skillSession?.loadedSkillNames.has(entry.name) ?? false;
     context.skillSession?.loadedSkillNames.add(entry.name);
 
@@ -183,9 +184,7 @@ export const loadSkillSubAgentTool: SubAgentToolDefinition<
       alreadyLoaded,
       guidance: alreadyLoaded
         ? "Skill already loaded. Follow it; keep tool use minimal."
-        : recommended
-          ? "This skill matches the current context. Apply only the parts relevant to the user's task."
-          : `This skill is not normally suggested for '${stage}', but it is available. Apply it only where the current task requires it.`,
+        : (context.skillGuidance?.(entry) ?? "Apply only the parts relevant to the user's task."),
     };
   },
 };

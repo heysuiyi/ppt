@@ -1,3 +1,4 @@
+import { canonicalJson, hashArtifactValue } from "@ppt/core/artifact-hash";
 import type { CommandBus, PreparedCommandMutation, PresentationCommand } from "@shared/commands";
 import type { Presentation } from "@shared/presentation";
 import type {
@@ -7,11 +8,7 @@ import type {
   ProposalId,
 } from "@shared/presentation-lifecycle";
 import type { FileSessionStore } from "../session-store";
-import {
-  type ContentAddressedBlobStore,
-  canonicalJson,
-  hashArtifactValue,
-} from "./content-addressed-blob-store";
+import type { ContentAddressedBlobStore } from "./content-addressed-blob-store";
 import type { PresentationLifecycleOrchestrator } from "./presentation-lifecycle-orchestrator";
 
 export interface ProposalCommitIdentity {

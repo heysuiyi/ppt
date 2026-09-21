@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it } from "vitest";
-import { inspectPptxExport } from "../src/main/deck/pptx-postflight";
-import { exportToPptx } from "../src/main/ppt-exporter";
+import { exportToPptx } from "../src/ppt/core/ppt-exporter";
+import { inspectPptxExport } from "../src/ppt/core/pptx-postflight";
 import type { Slide } from "../src/shared/presentation";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 

@@ -1,30 +1,29 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  buildSystemPromptContext,
-  MEMORY_INDEX_RELATIVE_PATH,
-} from "../src/main/agent/runtime/prompts/prompt-context";
-import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "../src/main/agent/runtime/prompts/prompt-sections";
-import { resolvePromptStage } from "../src/main/agent/runtime/prompts/prompt-stage";
-import { SystemPromptBuilder } from "../src/main/agent/runtime/prompts/system-prompt";
-import {
-  assembleSystemPrompt,
-  clearSystemPromptCache,
-  getSystemPrompt,
-  SystemPromptManager,
-  splitSystemPromptPrefix,
-} from "../src/main/agent/runtime/prompts/system-prompt-assembler";
 import {
   createEmptySkillRegistry,
   registerSkillFromContent,
 } from "../src/main/agent/skills/loadSkillsDir";
 import { createSkillSession } from "../src/main/agent/skills/skill-types";
 import { askUserTool } from "../src/main/agent/tools/core/ask-user";
-import { loadSkillTool } from "../src/main/agent/tools/core/load-skill";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
+import {
+  buildSystemPromptContext,
+  MEMORY_INDEX_RELATIVE_PATH,
+} from "../src/main/plugins/ppt/prompts/prompt-context";
+import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "../src/main/plugins/ppt/prompts/prompt-sections";
+import { resolvePromptStage } from "../src/main/plugins/ppt/prompts/prompt-stage";
+import { SystemPromptBuilder } from "../src/main/plugins/ppt/prompts/system-prompt";
+import {
+  assembleSystemPrompt,
+  clearSystemPromptCache,
+  getSystemPrompt,
+  SystemPromptManager,
+  splitSystemPromptPrefix,
+} from "../src/main/plugins/ppt/prompts/system-prompt-assembler";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 const SAMPLE_SKILL = `---
@@ -145,14 +144,16 @@ describe("system prompt assembly", () => {
       presentation: createStarterPresentation(),
       selectedElementIds: [],
       discoverySession: { discoveredToolNames: new Set<string>() },
-      registry: createDefaultToolRegistry(),
+      registry: createPptToolRegistry(),
       messageHistory: [],
       skillRegistry: registry,
       skillSession: createSkillSession(),
       promptStage: "author" as const,
     };
 
-    const result = await loadSkillTool.execute({ skillName: "ppt-beautify" }, context as any);
+    const result = await context.registry
+      .get("LoadSkill")!
+      .execute({ skillName: "ppt-beautify" }, context as any);
     expect(result.name).toBe("ppt-beautify");
     expect(result.guidance).toContain("not normally suggested");
   });

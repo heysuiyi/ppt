@@ -235,11 +235,11 @@ Query checkpoint 与 PptJob persistence 正交：
 - `src/main/application-data.ts`
 - `src/shared/presentation-lifecycle.ts`
 - `src/main/presentation-lifecycle/`
-- `src/main/agent/tools/core/begin-ppt-capability.ts`
-- `src/main/agent/tools/core/svg-deck-lifecycle.ts`
-- `src/main/agent/tools/core/preview-svg-page.ts`
-- `src/main/agent/tools/core/submit-svg-deck.ts`
-- `src/main/agent/tools/core/submit-ppt-review.ts`
+- `src/main/plugins/ppt/tools/begin-ppt-capability.ts`
+- `src/main/plugins/ppt/tools/svg-deck-lifecycle.ts`
+- `src/main/plugins/ppt/tools/preview-svg-page.ts`
+- `src/main/plugins/ppt/tools/submit-svg-deck.ts`
+- `src/main/plugins/ppt/tools/submit-ppt-review.ts`
 - `src/main/session-store.ts`
 - `src/main/index.ts`
 - `src/shared/ipc.ts`

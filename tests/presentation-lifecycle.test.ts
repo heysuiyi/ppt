@@ -1,15 +1,12 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  ContentAddressedBlobStore,
-  canonicalJson,
-  hashArtifactValue,
-} from "@main/presentation-lifecycle/content-addressed-blob-store";
+import { ContentAddressedBlobStore } from "@main/presentation-lifecycle/content-addressed-blob-store";
 import { PresentationCommitService } from "@main/presentation-lifecycle/presentation-commit-service";
 import { PresentationLifecycleOrchestrator } from "@main/presentation-lifecycle/presentation-lifecycle-orchestrator";
 import { PresentationLifecycleRepository } from "@main/presentation-lifecycle/presentation-lifecycle-repository";
 import { FileSessionStore } from "@main/session-store";
+import { canonicalJson, hashArtifactValue } from "@ppt/core/artifact-hash";
 import { CommandBus } from "@shared/commands";
 import type { Presentation } from "@shared/presentation";
 import { createStarterPresentation } from "@shared/presentation-fixtures";

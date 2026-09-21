@@ -1,10 +1,10 @@
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { describe, expect, it } from "vitest";
-import { CommitGate } from "../src/main/agent/gate/commit-gate";
-import { RiskPolicy } from "../src/main/agent/gate/risk-policy";
 import type { AgentModelGateway } from "../src/main/agent/gateway/types";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
-import { AgentService } from "../src/main/agent/service";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+import { CommitGate } from "../src/main/plugins/ppt/gate/commit-gate";
+import { RiskPolicy } from "../src/main/plugins/ppt/gate/risk-policy";
+import { AgentService } from "../src/main/plugins/ppt/service";
 import { CommandBus } from "../src/shared/commands";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
@@ -36,7 +36,7 @@ describe("AgentService thread run ownership", () => {
     };
     const service = new AgentService(
       new CommandBus(createStarterPresentation()),
-      new AgentRuntime(new ToolRegistry(), gateway),
+      createPptRuntime(new ToolRegistry(), gateway),
       new CommitGate(new RiskPolicy()),
     );
 

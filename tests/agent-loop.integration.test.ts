@@ -1,23 +1,23 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CommitGate } from "../src/main/agent/gate/commit-gate";
-import { RiskPolicy } from "../src/main/agent/gate/risk-policy";
 import { AgentGateway } from "../src/main/agent/gateway";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
-import { AgentService } from "../src/main/agent/service";
 import { scanSkills } from "../src/main/agent/skills/loadSkillsDir";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { DeckExportService } from "../src/main/deck/deck-export-service";
-import { inspectPptxExport } from "../src/main/deck/pptx-postflight";
-import { slideThumbnailService } from "../src/main/deck/slide-thumbnail-service";
+import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";
+import { CommitGate } from "../src/main/plugins/ppt/gate/commit-gate";
+import { RiskPolicy } from "../src/main/plugins/ppt/gate/risk-policy";
+import { AgentService } from "../src/main/plugins/ppt/service";
 import { ContentAddressedBlobStore } from "../src/main/presentation-lifecycle/content-addressed-blob-store";
 import { PresentationCommitService } from "../src/main/presentation-lifecycle/presentation-commit-service";
 import { PresentationLifecycleOrchestrator } from "../src/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
 import { PresentationLifecycleRepository } from "../src/main/presentation-lifecycle/presentation-lifecycle-repository";
 import { PresentationLifecycleToolBridge } from "../src/main/presentation-lifecycle/presentation-lifecycle-tool-bridge";
 import { FileSessionStore } from "../src/main/session-store";
+import { DeckExportService } from "../src/ppt/core/deck-export-service";
+import { inspectPptxExport } from "../src/ppt/core/pptx-postflight";
 import { CommandBus } from "../src/shared/commands";
 import type { AgentRunResult } from "../src/shared/ipc";
 import { asPresentationId, asProjectId } from "../src/shared/presentation-lifecycle";
@@ -151,8 +151,8 @@ describe("Layer 1 real-gateway agent loop", () => {
         skillRegistry.size,
         "repo skills/ must load for the SVG-native workflow",
       ).toBeGreaterThan(0);
-      const runtime = new AgentRuntime(
-        createDefaultToolRegistry(),
+      const runtime = createPptRuntime(
+        createPptToolRegistry(),
         gateway,
         skillRegistry,
         sessionStore.conversationDatabase,

@@ -2,7 +2,7 @@
 
 > 文档类型：现行验证契约 + 本轮目标分层
 > 最后核对：2026-08-12
-> 事实来源：`tests/`、`src/main/ppt-exporter.ts`、`src/main/deck/`、`src/design-system/evaluation.ts`
+> 事实来源：`tests/`、`src/ppt/core/ppt-exporter.ts`、`src/main/deck/`、`src/design-system/evaluation.ts`
 
 本文回答：Agent PPT 的「端到端」要证明什么，以及各层分别用什么手段证明。
 它不是 Runtime 不变量；行为事实仍以代码和测试为准。

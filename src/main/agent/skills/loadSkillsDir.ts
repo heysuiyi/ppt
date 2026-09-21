@@ -1,27 +1,11 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { normalizePromptStage, type PromptStage } from "../runtime/prompts/prompt-stage";
 import {
   parseSkillFrontmatterFields,
   readFrontmatterString,
   readFrontmatterStringList,
 } from "./parseSkillFrontmatterFields";
 import type { SkillCard, SkillEntry, SkillFrontmatter } from "./skill-types";
-
-function readFrontmatterStages(frontmatter: Record<string, unknown>): PromptStage[] | undefined {
-  const raw = readFrontmatterStringList(frontmatter, "stages");
-  if (!raw?.length) return undefined;
-  const stages = raw
-    .map((item) => {
-      try {
-        return normalizePromptStage(item);
-      } catch {
-        return null;
-      }
-    })
-    .filter((item): item is PromptStage => item !== null);
-  return stages.length > 0 ? stages : undefined;
-}
 
 const SKILL_FILE = "SKILL.md";
 
@@ -35,7 +19,7 @@ function buildFrontmatter(raw: Record<string, unknown>, fallbackName: string): S
     name,
     description,
     when_to_use: whenToUse,
-    stages: readFrontmatterStages(raw),
+    stages: readFrontmatterStringList(raw, "stages"),
   };
 }
 

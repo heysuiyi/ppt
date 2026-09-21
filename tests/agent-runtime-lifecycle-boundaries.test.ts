@@ -1,12 +1,12 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { AgentModelGateway } from "../src/main/agent/gateway/types";
 import { DurableConversationHistoryStore } from "../src/main/agent/persistence/conversation-history-store";
 import { DurableRunStore } from "../src/main/agent/persistence/durable-run-store";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import type { StopBlock } from "../src/main/agent/runtime/hooks/hook-blocks";
 import { clearHooks, registerHook } from "../src/main/agent/runtime/hooks/hook-registry";
 import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
@@ -45,7 +45,7 @@ describe("AgentRuntime terminal boundaries", () => {
       throw new Error("stop audit unavailable");
     });
 
-    const result = await new AgentRuntime(new ToolRegistry(), textGateway("completed")).run({
+    const result = await createPptRuntime(new ToolRegistry(), textGateway("completed")).run({
       threadId: "stop-hook-thread",
       request: "finish",
       presentationSnapshot: createStarterPresentation(),
@@ -65,7 +65,7 @@ describe("AgentRuntime terminal boundaries", () => {
       reason: "Request stopped before model execution.",
     }));
 
-    const result = await new AgentRuntime(new ToolRegistry(), textGateway("unused")).run({
+    const result = await createPptRuntime(new ToolRegistry(), textGateway("unused")).run({
       threadId: "prompt-stop-history-thread",
       request: "stop this request",
       presentationSnapshot: createStarterPresentation(),
@@ -142,7 +142,7 @@ describe("AgentRuntime terminal boundaries", () => {
       },
     };
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "tool-stop-history-thread",
       request: "call the stopped tool",
       presentationSnapshot: createStarterPresentation(),
@@ -210,7 +210,7 @@ describe("AgentRuntime terminal boundaries", () => {
       },
     };
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "step-limit-history-thread",
       request: "use one step",
       presentationSnapshot: createStarterPresentation(),
@@ -289,7 +289,7 @@ describe("AgentRuntime terminal boundaries", () => {
       },
     };
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "terminal-tool-history-thread",
       request: "update title",
       presentationSnapshot: createStarterPresentation(),
@@ -329,7 +329,7 @@ describe("AgentRuntime terminal boundaries", () => {
     });
 
     await expect(
-      new AgentRuntime(new ToolRegistry(), failingGateway("primary model failure")).run({
+      createPptRuntime(new ToolRegistry(), failingGateway("primary model failure")).run({
         threadId: "failed-thread",
         request: "fail",
         presentationSnapshot: createStarterPresentation(),
@@ -358,7 +358,7 @@ describe("AgentRuntime terminal boundaries", () => {
     });
 
     await expect(
-      new AgentRuntime(new ToolRegistry(), textGateway("unused")).run({
+      createPptRuntime(new ToolRegistry(), textGateway("unused")).run({
         threadId: "aborted-thread",
         request: "abort",
         presentationSnapshot: createStarterPresentation(),
@@ -391,7 +391,7 @@ describe("AgentRuntime terminal boundaries", () => {
     };
 
     await expect(
-      new AgentRuntime(new ToolRegistry(), gateway).run({
+      createPptRuntime(new ToolRegistry(), gateway).run({
         threadId: "downstream-abort-thread",
         request: "abort",
         presentationSnapshot: createStarterPresentation(),
@@ -459,7 +459,7 @@ describe("AgentRuntime terminal boundaries", () => {
     };
 
     await expect(
-      new AgentRuntime(registry, gateway).run({
+      createPptRuntime(registry, gateway).run({
         threadId: "late-background-thread",
         runId: "late-background-run",
         request: "preview",
@@ -495,7 +495,7 @@ describe("AgentRuntime terminal boundaries", () => {
     const controller = new AbortController();
     const removeListener = vi.spyOn(controller.signal, "removeEventListener");
     await expect(
-      new AgentRuntime(new ToolRegistry(), textGateway("unused")).run({
+      createPptRuntime(new ToolRegistry(), textGateway("unused")).run({
         threadId: "busy-thread",
         runId: "new-run",
         request: "blocked",
@@ -517,7 +517,7 @@ describe("AgentRuntime terminal boundaries", () => {
       .mockRejectedValueOnce(new Error("History storage unavailable"));
     try {
       await expect(
-        new AgentRuntime(new ToolRegistry(), textGateway("unused")).run({
+        createPptRuntime(new ToolRegistry(), textGateway("unused")).run({
           threadId: "history-read-failed-thread",
           runId: "failed-history-reader",
           request: "read previous History",

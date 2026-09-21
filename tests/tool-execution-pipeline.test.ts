@@ -1,3 +1,4 @@
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
@@ -5,7 +6,6 @@ import type {
   AgentModelGateway,
   AgentModelRequest,
 } from "../src/main/agent/gateway/types";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import type { PostToolUseBlock } from "../src/main/agent/runtime/hooks/hook-blocks";
 import { clearHooks, registerHook } from "../src/main/agent/runtime/hooks/hook-registry";
 import type { PreToolUseBlock } from "../src/main/agent/runtime/tools/permission-check";
@@ -114,7 +114,7 @@ describe("unified tool execution pipeline", () => {
       [{ type: "text", text: "done" }],
     ]);
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "unified-deferred-pipeline",
       request: "run deferred target",
       presentationSnapshot: createStarterPresentation(),
@@ -190,7 +190,7 @@ describe("unified tool execution pipeline", () => {
       [{ type: "text", text: "permission handled" }],
     ]);
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "permission-survives-clear-hooks",
       request: "run deferred target",
       presentationSnapshot: createStarterPresentation(),
@@ -254,7 +254,7 @@ describe("unified tool execution pipeline", () => {
       ],
       [{ type: "text", text: "invalid output handled" }],
     ]);
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "deferred-output-validation",
       request: "run deferred target",
       presentationSnapshot: createStarterPresentation(),

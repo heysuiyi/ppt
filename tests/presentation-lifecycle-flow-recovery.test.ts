@@ -1,36 +1,33 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
+import { canonicalJson, hashArtifactValue } from "@ppt/core/artifact-hash";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { CommitGate } from "../src/main/agent/gate/commit-gate";
-import { RiskPolicy } from "../src/main/agent/gate/risk-policy";
 import type {
   AgentModelContentBlock,
   AgentModelGateway,
   AgentModelRequest,
   AgentModelResponse,
 } from "../src/main/agent/gateway/types";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
-import { AgentService } from "../src/main/agent/service";
-import { beginPptCapabilityTool } from "../src/main/agent/tools/core/begin-ppt-capability";
-import { previewSvgPageTool } from "../src/main/agent/tools/core/preview-svg-page";
-import { submitSvgDeckTool } from "../src/main/agent/tools/core/submit-svg-deck";
 import { WorkspaceFileService } from "../src/main/agent/tools/files/workspace-file-service";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { recoverInterruptedExport } from "../src/main/deck/export-recovery";
-import { slideThumbnailService } from "../src/main/deck/slide-thumbnail-service";
-import { exportToPptx } from "../src/main/ppt-exporter";
-import {
-  ContentAddressedBlobStore,
-  canonicalJson,
-  hashArtifactValue,
-} from "../src/main/presentation-lifecycle/content-addressed-blob-store";
+import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";
+import { CommitGate } from "../src/main/plugins/ppt/gate/commit-gate";
+import { RiskPolicy } from "../src/main/plugins/ppt/gate/risk-policy";
+import { AgentService } from "../src/main/plugins/ppt/service";
+import { beginPptCapabilityTool } from "../src/main/plugins/ppt/tools/begin-ppt-capability";
+import { previewSvgPageTool } from "../src/main/plugins/ppt/tools/preview-svg-page";
+import { submitSvgDeckTool } from "../src/main/plugins/ppt/tools/submit-svg-deck";
+import { ContentAddressedBlobStore } from "../src/main/presentation-lifecycle/content-addressed-blob-store";
 import { PresentationCommitService } from "../src/main/presentation-lifecycle/presentation-commit-service";
 import { PresentationLifecycleOrchestrator } from "../src/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
 import { PresentationLifecycleRepository } from "../src/main/presentation-lifecycle/presentation-lifecycle-repository";
 import { PresentationLifecycleToolBridge } from "../src/main/presentation-lifecycle/presentation-lifecycle-tool-bridge";
 import { FileSessionStore } from "../src/main/session-store";
+import { exportToPptx } from "../src/ppt/core/ppt-exporter";
 import { CommandBus } from "../src/shared/commands";
 import type { Presentation } from "../src/shared/presentation";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
@@ -120,7 +117,7 @@ describe("Presentation lifecycle flow and crash recovery", () => {
       [toolUse("submit-deck", "SubmitSvgDeck", submission)],
     ]);
     const queryIds: QueryId[] = [];
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       gateway,
       undefined,

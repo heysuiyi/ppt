@@ -37,16 +37,16 @@
 | 本地凭据存储 | **Implemented** | `src/main/credential-store.ts`、`src/shared/credentials.ts`（Main-only `safeStorage`；Renderer 只见状态） |
 | 模型调用恢复 | **Implemented** | `src/main/agent/runtime/turns/model-call-recovery.ts`、`src/main/agent/runtime/model/with-retry.ts` |
 | Context 压缩 | **Implemented** | `src/main/agent/runtime/context-compact/` |
-| System Prompt 分区 | **Implemented** | `src/main/agent/runtime/prompts/` |
+| System Prompt 分区 | **Implemented** | `src/main/plugins/ppt/prompts/` |
 | 动态工具系统 | **Implemented** | `src/main/agent/tools/tool-registry.ts`、`src/main/agent/tools/tool-loader.ts`、`src/main/agent/runtime/tools/` |
 | 文件安全操作 | **Implemented** | `src/main/agent/tools/files/workspace-file-service.ts`、`src/main/agent/tools/core/workspace-files.ts` |
 | 项目文件管理 | **Implemented** | `src/main/project/project-file-service.ts`、`src/shared/ipc.ts`、`src/renderer/src/components/ProjectFilesPage.tsx` |
-| 权限与审批 | **Implemented** | `src/main/agent/runtime/tools/permission-check.ts`、`src/main/agent/runtime/tools/tool-approval-broker.ts`、`src/main/agent/gate/commit-gate.ts` |
+| 权限与审批 | **Implemented** | `src/main/agent/runtime/tools/permission-check.ts`、`src/main/agent/runtime/tools/tool-approval-broker.ts`、`src/main/plugins/ppt/gate/commit-gate.ts` |
 | Skill 渐进加载 | **Implemented** | `src/main/agent/skills/loadSkillsDir.ts`、`src/main/agent/tools/core/load-skill.ts`、`skills/` |
 | Task / teammate | **Implemented** | `src/main/agent/task/`、`src/main/agent/teammate/`、`src/main/agent/subagent/` |
 | 后台任务 | **Partial** | `src/main/agent/runtime/background/` |
 | 持久化与恢复 | **Implemented** | `src/main/agent/persistence/`、`src/main/agent/runtime/lifecycle/checkpoint-coordinator.ts` |
-| Web / 图片检索 | **Implemented** | `src/main/agent/search/`、`src/main/agent/tools/core/web-search.ts`、`src/main/agent/tools/core/search-slide-images.ts` |
+| Web / 图片检索 | **Implemented** | `src/main/agent/search/`、`src/main/agent/tools/core/web-search.ts`、`src/main/plugins/ppt/tools/search-slide-images.ts` |
 | SVG-native 创建 | **Implemented** | `skills/ppt-workflow/`、`preview-svg-page.ts`、`submit-svg-deck.ts` |
 | Layout Grammar / element-IR | **Not adopted** | 作者工具与共享库已从仓库删除；产品 STRICT SVG-only。空 Deferred 壳（`SearchExtraTools` / `ExecuteExtraTool`）有意保留且不进默认注册表 |
 | 渲染反馈与质量门 | **Implemented** | deck validators、quality gate、`PreviewSvgPage` 预览门禁 |
@@ -64,7 +64,7 @@
 ```text
 Renderer / IPC
   → AgentService                         应用用例与并发入口
-  → PresentationAgentRunFactory         组装一次 Run 的依赖
+  → AgentRunFactory         组装一次 Run 的依赖
   → AgentRuntime / AgentRunScope         lease、恢复、资源与终态
   → query() AsyncGenerator               model → tools → transition
   → ModelTurnRunner / ToolTurnRunner     单圈执行

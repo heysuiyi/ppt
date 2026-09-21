@@ -1,3 +1,5 @@
+import { requirePptCapability } from "@main/plugins/ppt/context";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ToolPreflight } from "../src/main/agent/runtime/tools/tool-preflight";
@@ -8,7 +10,7 @@ import type {
   ToolContext,
   ToolDefinition,
 } from "../src/main/agent/tools/tool-definition";
-import { createDefaultToolRegistry, ToolRegistry } from "../src/main/agent/tools/tool-registry";
+import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import {
   asPptCapabilityRequestId,
@@ -87,16 +89,12 @@ const deferredRestyleTool: ToolDefinition<any, any> = {
   loadPolicy: "deferred",
   inputSchema: z.object({ note: z.string().optional() }),
   risk: "low",
-  behavior: {
-    presentation: {
-      allowedCapabilities: ["edit", "restyle"],
-    },
-  },
+  validateContext: requirePptCapability(["edit", "restyle"]),
   execute: async () => ({ ok: true }),
 };
 
 function createCapabilityTestRegistry(): ToolRegistry {
-  const defaults = createDefaultToolRegistry();
+  const defaults = createPptToolRegistry();
   const registry = new ToolRegistry();
   for (const tool of defaults.getCoreTools()) {
     registry.register(tool);
@@ -145,9 +143,9 @@ async function prepare(input: {
 
 describe("Presentation tool capability preflight", () => {
   it("marks every product Presentation work tool with an explicit capability contract", () => {
-    const registry = createDefaultToolRegistry();
+    const registry = createPptToolRegistry();
     for (const name of PRESENTATION_TOOL_NAMES) {
-      expect(registry.get(name)?.behavior?.presentation?.allowedCapabilities, name).toBeTruthy();
+      expect(registry.get(name)?.validateContext, name).toBeTruthy();
     }
   });
 

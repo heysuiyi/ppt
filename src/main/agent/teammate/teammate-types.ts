@@ -8,8 +8,10 @@ import type {
   AgentModelToolResultBlock,
 } from "../gateway";
 import type { SkillRegistry } from "../skills/loadSkillsDir";
+import type { SkillCard, SkillEntry } from "../skills/skill-types";
 import type { TaskListSnapshotListener } from "../task/task-list-publisher";
 import type { TaskDispatchMode, TaskStore } from "../task/task-store";
+import type { WorkspaceFilePolicy } from "../tools/files/workspace-file-policy";
 import type { AgentMailboxMessage } from "./message-bus";
 
 export type TeammateStatus = "running" | "idle" | "stopped" | "failed";
@@ -23,6 +25,12 @@ export interface TeammateHandle {
   lastError?: string;
 }
 
+export interface TeammateDomainContext {
+  instructions: string;
+  skillGuidance?(entry: SkillEntry): string;
+  rankSkills?(cards: SkillCard[]): SkillCard[];
+}
+
 export interface SpawnTeammateThreadOptions {
   name: string;
   role: string;
@@ -30,6 +38,8 @@ export interface SpawnTeammateThreadOptions {
   /** Start by polling the shared board instead of executing prompt as a lead assignment. */
   startIdle?: boolean;
   workspaceRoot: string;
+  filePolicy?: WorkspaceFilePolicy;
+  domain?: TeammateDomainContext;
   gateway: AgentModelGateway;
   model?: AgentModelSelection;
   maxSteps?: number;

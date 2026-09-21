@@ -224,8 +224,8 @@ Skill 提供知识和工作建议，不拥有工具权限。SKILL.md frontmatter
 - `src/main/agent/runtime/tools/tool-access-policy.ts`
 - `src/main/agent/runtime/tools/tool-result-data.ts`
 - `src/main/agent/runtime/hooks/`
-- `src/main/agent/tools/core/preview-svg-page.ts`
-- `src/main/agent/tools/core/submit-svg-deck.ts`
+- `src/main/plugins/ppt/tools/preview-svg-page.ts`
+- `src/main/plugins/ppt/tools/submit-svg-deck.ts`
 
 ## 11. 验收
 

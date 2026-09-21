@@ -62,14 +62,14 @@ request
 - SVG、素材、完整命令和 Presentation snapshot 等大值进入 content-addressed blob
   store；lifecycle SQLite 只保存 blob reference。
 
-相关实现：`src/main/agent/tools/core/preview-svg-page.ts`、
-`src/main/agent/tools/core/submit-svg-deck.ts`、
-`src/main/agent/tools/core/svg-deck-lifecycle.ts`、`skills/ppt-workflow/SKILL.md`。
+相关实现：`src/main/plugins/ppt/tools/preview-svg-page.ts`、
+`src/main/plugins/ppt/tools/submit-svg-deck.ts`、
+`src/main/plugins/ppt/tools/svg-deck-lifecycle.ts`、`skills/ppt-workflow/SKILL.md`。
 
 ## 3. 作者表面（SVG-only）
 
 产品 Agent **作者表面**仅为 SVG-native。Grammar / 命令轨作者工具已从默认注册表
-**下架**；`createDefaultToolRegistry()` 不再注册 `ExecuteLayoutPlan`、
+**下架**；`createPptToolRegistry()` 不再注册 `ExecuteLayoutPlan`、
 `PreviewCommands`、`SubmitCommands`、`InsertSlideImage` 或旧 beautify/layout 工具。
 该不变量由 `tests/svg-native-tool-surface.test.ts` 锁定。共享库物理删除是清理项。
 
@@ -249,10 +249,10 @@ dev 阶段不迁移 AppData 旧路径，不 backfill/hydrate 旧 session 或 wor
 - `src/main/application-data.ts`
 - `src/shared/presentation-lifecycle.ts`
 - `src/main/presentation-lifecycle/`
-- `src/main/agent/tools/core/begin-ppt-capability.ts`
-- `src/main/agent/tools/core/preview-svg-page.ts`
-- `src/main/agent/tools/core/submit-svg-deck.ts`
-- `src/main/agent/tools/core/submit-ppt-review.ts`
+- `src/main/plugins/ppt/tools/begin-ppt-capability.ts`
+- `src/main/plugins/ppt/tools/preview-svg-page.ts`
+- `src/main/plugins/ppt/tools/submit-svg-deck.ts`
+- `src/main/plugins/ppt/tools/submit-ppt-review.ts`
 - `src/main/index.ts`
 - `src/main/project/`
 - `src/main/project/project-file-service.ts`
@@ -260,7 +260,7 @@ dev 阶段不迁移 AppData 旧路径，不 backfill/hydrate 旧 session 或 wor
 - `src/renderer/src/components/project-store.ts`
 - `src/renderer/src/components/ProjectFilesPage.tsx`
 - `src/shared/project-artifact-state.ts`
-- `src/main/agent/gate/`
+- `src/main/plugins/ppt/gate/`
 - `src/shared/commands.ts`（`CommandBus`；SVG deck 命令：add/remove-slide、titles、set-design-system、restore-slide）
 - `src/shared/presentation.ts`（STRICT SVG-only `visualSource`）
 

@@ -46,6 +46,65 @@ afterEach(async () => {
 });
 
 describe("ConversationDatabase", () => {
+  it.each(["completed", "failed", "interrupted"] as const)(
+    "recovers a lease whose owner is %s without losing the checkpoint",
+    async (status) => {
+      const database = await createDatabase();
+      try {
+        database.replaceState({ activeSessionId: "s1", sessions: [snapshot("s1")] });
+        database.beginRun({ runId: "old", sessionId: "s1", threadId: "thread" });
+        const lease = database.openRunCheckpointLease({
+          threadId: "thread",
+          runId: "old",
+          resume: false,
+        });
+        if (lease.type !== "opened") throw new Error("Expected lease");
+        expect(
+          database.openRunCheckpointLease({ threadId: "thread", runId: "new", resume: false }),
+        ).toMatchObject({ type: "lease_busy", activeRunId: "old" });
+        const checkpoint = { durable: "preserved" };
+        database.saveRunCheckpointCas({
+          threadId: "thread",
+          runId: "old",
+          generation: lease.generation,
+          expectedRevision: 0,
+          nextRevision: 1,
+          checkpoint,
+        });
+        database.finishRun({ runId: "old", status });
+        const next = database.openRunCheckpointLease({
+          threadId: "thread",
+          runId: "new",
+          resume: true,
+        });
+        expect(next).toMatchObject({
+          type: "opened",
+          generation: lease.generation + 1,
+          checkpoint,
+        });
+        expect(
+          database.saveRunCheckpointCas({
+            threadId: "thread",
+            runId: "old",
+            generation: lease.generation,
+            expectedRevision: 1,
+            nextRevision: 2,
+            checkpoint: {},
+          }),
+        ).toBe("stale_generation");
+        expect(
+          database.closeRunCheckpointLease({
+            threadId: "thread",
+            runId: "old",
+            generation: lease.generation,
+          }),
+        ).toBe(false);
+      } finally {
+        database.close();
+      }
+    },
+  );
+
   it("stores sessions and messages without workspace transcripts", async () => {
     const database = await createDatabase();
     const session = snapshot("s1");

@@ -34,7 +34,7 @@ describe("AgentRuntime query-loop structure", () => {
       "lifecycle/agent-run-scope.ts",
       "agent-run-finalizer.ts",
       "turns/prepared-agent-run.ts",
-      "presentation-agent-run-factory.ts",
+      "agent-run-factory.ts",
       "turns/model-turn-runner.ts",
       "turns/tool-turn-runner.ts",
       "agent-runtime.ts",

@@ -1,6 +1,7 @@
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
 import {
   LEAD_TASK_PERMISSIONS,
@@ -12,7 +13,6 @@ import {
   taskCreateSchema,
   taskReviewApproveSchema,
 } from "../src/main/agent/tools/core/task-tools";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
 
 async function workspace(): Promise<string> {
   return mkdtemp(join(tmpdir(), "task-protocol-"));
@@ -25,7 +25,7 @@ const teammate = (store: TaskStore, actorId: string): TaskCommandPrincipal =>
 
 describe("Task protocol v1", () => {
   it("registers only the responsibility-separated model tools", () => {
-    const registry = createDefaultToolRegistry();
+    const registry = createPptToolRegistry();
     const names = registry.getCoreTools().map((tool) => tool.name);
     expect(names).toContain("TaskCreate");
     expect(names).toContain("TaskReviewApprove");

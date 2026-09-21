@@ -21,6 +21,7 @@ import type {
   LogManagerStatus,
   RendererLogReport,
 } from "./logging";
+import type { ExportPresentationOptions } from "./ppt-export";
 import type { Presentation } from "./presentation";
 import type { PptJobProjection } from "./presentation-lifecycle";
 import type { ListRemoteModelsRequest, ListRemoteModelsResult } from "./remote-models";
@@ -411,18 +412,4 @@ export interface DesktopApi {
   cancelAgentSession(sessionId: string): Promise<boolean>;
   resolveToolApproval(runId: string, approvalId: string, approved: boolean): Promise<boolean>;
   pollLeadInbox(sessionId: string): Promise<AgentInboxPollResult>;
-}
-
-export const exportPresentationOptionsSchema = z
-  .object({
-    /** Explicit human approval for assets whose commercial license is not yet verified. */
-    allowUnverifiedAssets: z.boolean().optional(),
-  })
-  .strict();
-
-export type ExportPresentationOptions = z.infer<typeof exportPresentationOptionsSchema>;
-
-export interface DeckExportResult {
-  filePath: string;
-  slideCount: number;
 }

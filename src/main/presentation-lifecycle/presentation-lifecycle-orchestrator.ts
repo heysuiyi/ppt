@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
+import { canonicalJson, hashArtifactValue } from "@ppt/core/artifact-hash";
 import { type Presentation, presentationSchema } from "@shared/presentation";
 import {
   type ArtifactDependency,
@@ -34,11 +35,7 @@ import {
   type ValidationReport,
 } from "@shared/presentation-lifecycle";
 import { z } from "zod";
-import {
-  ContentAddressedBlobStore,
-  canonicalJson,
-  hashArtifactValue,
-} from "./content-addressed-blob-store";
+import { ContentAddressedBlobStore } from "./content-addressed-blob-store";
 import type {
   ArtifactCommitResult,
   PresentationLifecycleRepository,

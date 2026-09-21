@@ -59,7 +59,7 @@ export type AgentRuntimeStreamEvent =
 export interface AgentRuntimeOptions {
   threadId: ThreadId;
   request: string;
-  presentationSnapshot: Presentation;
+  presentationSnapshot?: Presentation;
   currentSlideId?: string;
   selectedElementIds: string[];
   model?: AgentModelSelection;
@@ -98,8 +98,12 @@ export interface AgentRuntimeOptions {
   stageHint?: string;
 }
 
-export type AgentRuntimeInput = Omit<AgentRuntimeOptions, "threadId" | "runId" | "startMode"> & {
+export type AgentRuntimeInput = Omit<
+  AgentRuntimeOptions,
+  "threadId" | "runId" | "startMode" | "selectedElementIds"
+> & {
   threadId: string;
+  selectedElementIds?: string[];
   runId?: string;
   startMode?: QueryStartMode;
 };
@@ -107,6 +111,7 @@ export type AgentRuntimeInput = Omit<AgentRuntimeOptions, "threadId" | "runId" |
 export function normalizeAgentRuntimeOptions(input: AgentRuntimeInput): AgentRuntimeOptions {
   return {
     ...input,
+    selectedElementIds: input.selectedElementIds ?? [],
     threadId: asThreadId(input.threadId),
     runId: input.runId ? asRunId(input.runId) : undefined,
     startMode: input.startMode ?? { type: "new_query" },

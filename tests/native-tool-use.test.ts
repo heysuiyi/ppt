@@ -1,3 +1,4 @@
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { AgentGatewayError } from "../src/main/agent/gateway";
@@ -7,14 +8,13 @@ import type {
   AgentModelRequest,
   AgentModelResponse,
 } from "../src/main/agent/gateway/types";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import { clearHooks, registerHook } from "../src/main/agent/runtime/hooks/hook-registry";
 import type { AgentRuntimeStreamEvent } from "../src/main/agent/runtime/runtime-types";
-import { listSlidesTool } from "../src/main/agent/tools/core/list-slides";
-import { readPresentationSnapshotTool } from "../src/main/agent/tools/core/read-presentation-snapshot";
 import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { toToolSchema } from "../src/main/agent/tools/tool-schema";
+import { listSlidesTool } from "../src/main/plugins/ppt/tools/list-slides";
+import { readPresentationSnapshotTool } from "../src/main/plugins/ppt/tools/read-presentation-snapshot";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import { createFakeCommandProposalTool } from "./fake-command-proposal-tool";
 
@@ -74,7 +74,7 @@ describe("native ContentBlock runtime path", () => {
       ],
     ]);
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "native-thread",
       request: "Create a title",
       presentationSnapshot: createStarterPresentation(),
@@ -97,7 +97,7 @@ describe("native ContentBlock runtime path", () => {
     const registry = new ToolRegistry();
     registry.register(fakeSubmit);
     const gateway = createGateway([text("已完成，无需修改幻灯片。")]);
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "native-message-thread",
       request: "解释一下当前进度",
       presentationSnapshot: createStarterPresentation(),
@@ -111,7 +111,7 @@ describe("native ContentBlock runtime path", () => {
     registry.register(fakeSubmit);
     const gateway = createGateway([text("我是你的 PPT 智能助手。\n\n说说你的需求，我马上开干。")]);
     let streamed = "";
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "native-stream-thread",
       request: "你是谁？",
       presentationSnapshot: createStarterPresentation(),
@@ -153,7 +153,7 @@ describe("native ContentBlock runtime path", () => {
       };
       const events: AgentRuntimeStreamEvent[] = [];
 
-      const runPromise = new AgentRuntime(new ToolRegistry(), gateway).run({
+      const runPromise = createPptRuntime(new ToolRegistry(), gateway).run({
         threadId: "stream-attempt-reset",
         request: "retry",
         presentationSnapshot: createStarterPresentation(),
@@ -186,7 +186,7 @@ describe("native ContentBlock runtime path", () => {
     const registry = new ToolRegistry();
     registry.register(fakeSubmit);
     const gateway = createGateway([text("**可以。** 先讲概念，再决定是否制作 PPT。")]);
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "native-markdown-thread",
       request: "先不做 PPT，解释一下这个概念",
       presentationSnapshot: createStarterPresentation(),
@@ -210,7 +210,7 @@ describe("native ContentBlock runtime path", () => {
       ],
       text("两个只读工具均已执行。"),
     ]);
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "native-batch-thread",
       request: "读取当前演示文稿",
       presentationSnapshot: createStarterPresentation(),
@@ -231,7 +231,7 @@ describe("native ContentBlock runtime path", () => {
     registry.register(listSlidesTool);
     const jsonLookingText = '{"type":"tool.call","data":{"toolName":"ListSlides","args":{}}}';
     const gateway = createGateway([text(jsonLookingText)]);
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "no-envelope-thread",
       request: "show raw text",
       presentationSnapshot: createStarterPresentation(),
@@ -291,7 +291,7 @@ describe("tool lifecycle commit boundary", () => {
     });
     const gateway = lifecycleGateway();
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "pre-hook-failure",
       request: "run tool",
       presentationSnapshot: createStarterPresentation(),
@@ -324,7 +324,7 @@ describe("tool lifecycle commit boundary", () => {
     });
     const gateway = lifecycleGateway();
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "post-hook-failure",
       request: "run tool",
       presentationSnapshot: createStarterPresentation(),
@@ -354,7 +354,7 @@ describe("tool lifecycle commit boundary", () => {
     );
     const gateway = lifecycleGateway();
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "invalid-output",
       request: "run tool",
       presentationSnapshot: createStarterPresentation(),
@@ -381,7 +381,7 @@ describe("tool lifecycle commit boundary", () => {
     );
     const gateway = lifecycleGateway();
 
-    await new AgentRuntime(registry, gateway).run({
+    await createPptRuntime(registry, gateway).run({
       threadId: "mapping-failure",
       request: "run tool",
       presentationSnapshot: createStarterPresentation(),

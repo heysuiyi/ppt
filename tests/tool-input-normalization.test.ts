@@ -1,3 +1,4 @@
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type {
@@ -5,7 +6,6 @@ import type {
   AgentModelRequest,
   AgentModelResponse,
 } from "../src/main/agent/gateway/types";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import { askUserTool } from "../src/main/agent/tools/core/ask-user";
 import { toToolCard } from "../src/main/agent/tools/tool-card";
 import { parseDefinedToolInput, parseToolInput } from "../src/main/agent/tools/tool-input";
@@ -115,7 +115,7 @@ describe("tool input normalization", () => {
     registry.register(askUserTool);
     const progress: string[] = [];
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "ask-user-normalization",
       request: "做一份培训 PPT",
       presentationSnapshot: createStarterPresentation(),

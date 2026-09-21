@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { assertDesignSpecMatchesTemplateState } from "../src/main/agent/tools/core/project-template-state";
+import { assertDesignSpecMatchesTemplateState } from "../src/main/plugins/ppt/tools/project-template-state";
 import {
   getBuiltinTemplate,
   listAutoPoolTemplates,

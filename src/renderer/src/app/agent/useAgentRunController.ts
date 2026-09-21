@@ -76,6 +76,8 @@ export function useAgentRunController({
     useState<AgentRunController["submissionPhase"]>("idle");
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isCancellingRun, setIsCancellingRun] = useState(false);
+  // Restoring a session must not authorize model calls for its persisted inbox.
+  const [inboxSessionId, setInboxSessionId] = useState<string | null>(null);
   const {
     activeRunIdRef,
     activeRunTraceRef,
@@ -182,15 +184,18 @@ export function useAgentRunController({
           },
           onAccepted: (event) => {
             accepted = true;
+            if (!isSidechain) setInboxSessionId(event.sessionId);
             setSubmissionPhase("preparing");
             applySessionState(event.bootstrap, { preserveDraft: true, syncPresentation: false });
             if (!customRequest) setRequest((current) => (current === activeRequest ? "" : current));
           },
           onRunning: () => setSubmissionPhase("running"),
         });
+        if (result.status !== "chat" && result.status !== "completed") setInboxSessionId(null);
         await waitForRunStreamCompletion(runId);
         await applyAgentResult(result, activeRunTraceRef.current, runId);
       } catch (error) {
+        setInboxSessionId(null);
         if (!accepted) {
           setChatMessages(sourceMessages);
           notify(formatPublicErrorMessage(error, "请求未被受理，请重试。"));
@@ -236,6 +241,7 @@ export function useAgentRunController({
   );
 
   useInboxPoller({
+    enabled: inboxSessionId === activeSessionId,
     activeSessionId,
     sessionLoaded,
     busy,
@@ -250,6 +256,7 @@ export function useAgentRunController({
     if (!activeRunIdRef.current || isCancellingRun) return;
 
     setIsCancellingRun(true);
+    setInboxSessionId(null);
     syncActivityTrace(appendStep(activeRunTraceRef.current, "正在中断当前会话…", "running"));
 
     try {

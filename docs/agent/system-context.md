@@ -189,12 +189,12 @@ Gateway 是出站请求准备的权威点；provider driver 不再重复配对�
 
 ## 11. 关键实现
 
-- `src/main/agent/runtime/prompts/system-prompt.ts`
-- `src/main/agent/runtime/prompts/system-prompt-assembler.ts`
-- `src/main/agent/runtime/prompts/prompt-context.ts`
-- `src/main/agent/runtime/prompts/prompt-sections.ts`
-- `src/main/agent/runtime/prompts/prompt-stage.ts`
-- `src/main/agent/runtime/prompts/skill-stage-policy.ts`
+- `src/main/plugins/ppt/prompts/system-prompt.ts`
+- `src/main/plugins/ppt/prompts/system-prompt-assembler.ts`
+- `src/main/plugins/ppt/prompts/prompt-context.ts`
+- `src/main/plugins/ppt/prompts/prompt-sections.ts`
+- `src/main/plugins/ppt/prompts/prompt-stage.ts`
+- `src/main/plugins/ppt/prompts/skill-stage-policy.ts`
 - `src/main/agent/runtime/context-compact/model-messages.ts`
 - `src/main/agent/runtime/context-compact/prepare-context.ts`
 

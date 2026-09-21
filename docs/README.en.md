@@ -44,6 +44,7 @@ Superseded implementation plans are not archived in the main tree.
 | Doc | Content |
 |---|---|
 | [Architecture overview](./architecture/overview.md) | Five layers, data flow, state boundaries, autonomy |
+| [PPT core and built-in plugin](./architecture/ppt-plugin.md) | Core/host/plugin boundaries, entry points, persistence constraints, and verification |
 | [Engineering capability map](./architecture/engineering-capabilities.md) | Capability placement, maturity, gaps, verification entry points |
 | [Capability scorecard](./architecture/capability-scorecard.md) | 0–10 domain scores (includes workbench CSS/UI themes); opinion snapshot, not a behavior contract |
 | [End-to-end quality evidence](./architecture/e2e-quality.md) | Layered verification: Layer 1 agent loop + Layer 2 export golden (Implemented); visual / Office (Proposed) |

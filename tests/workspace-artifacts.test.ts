@@ -7,7 +7,7 @@ import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
 import {
   probeWorkspaceArtifactDetails,
   probeWorkspaceArtifacts,
-} from "../src/main/agent/runtime/presentation/workspace-artifacts";
+} from "../src/main/plugins/ppt/presentation/workspace-artifacts";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import {
   createDefaultBriefMarkdown,

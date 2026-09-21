@@ -1,18 +1,12 @@
-import { normalize, posix, resolve } from "node:path";
+import { normalize, resolve } from "node:path";
 import { z } from "zod";
 import {
   type ToolPermissionProfile,
   type ToolRisk,
   WORKSPACE_FILE_TOOL_PERMISSION_PROFILES,
 } from "../../runtime/tools/tool-access-policy";
-import { assertDesignSpecMatchesTemplatePolicy } from "../core/project-template-state";
-import {
-  isSvgDeckLockPath,
-  SVG_DECK_DESIGN_SPEC_PATH,
-  type SvgDeckDesignSpec,
-  validateSvgDeckLockContent,
-} from "../core/svg-deck-locks";
-import type { PptLifecycleToolBridge, ToolRuntimeBehavior } from "../tool-definition";
+import type { ToolRuntimeBehavior } from "../tool-definition";
+import type { WorkspaceFilePolicy } from "./workspace-file-policy";
 import {
   countOccurrences,
   globWorkspaceFiles,
@@ -23,7 +17,7 @@ import {
 export interface WorkspaceFileToolContext {
   readonly workspaceRoot?: string;
   readonly fileService?: WorkspaceFileService;
-  readonly presentationLifecycle?: Pick<PptLifecycleToolBridge, "observeArtifactChanges">;
+  readonly filePolicy?: WorkspaceFilePolicy;
 }
 
 export interface WorkspaceFileToolContract<
@@ -188,23 +182,16 @@ export const writeFileContract: WorkspaceFileToolContract<
   name: "WriteFile",
   description:
     "在 workspace 内创建或原子覆盖 UTF-8 文本文件。覆盖已有文件时，" +
-    "必须具有当前 thread 的 ReadFile receipt；磁盘版本变化会拒绝写入。" +
-    "写入 design/design-spec.json 或 slides/page-plan.json 时会按 SVG deck 锁契约做硬校验，非法内容不落盘。",
+    "必须具有当前 thread 的 ReadFile receipt；磁盘版本变化会拒绝写入。",
   inputSchema: writeFileSchema,
   outputSchema: writeFileOutputSchema,
-  behavior: {
-    ...workspacePathParallelBehavior(),
-    presentation: {
-      allowedCapabilities: ["create", "edit", "restyle"],
-      isRequired: (args) => isPresentationOwnedWorkspacePath(args.path),
-    },
-  },
+  behavior: workspacePathParallelBehavior(),
   risk: "medium",
   permission: WORKSPACE_FILE_TOOL_PERMISSION_PROFILES.WriteFile,
   isEnabled: hasWorkspaceFileService,
   execute: async (args, context) => {
     const fileService = requireFileService(context);
-    await assertSvgDeckLockContentIfNeeded(args.path, args.content, fileService);
+    await context.filePolicy?.validateContent(args.path, args.content, fileService);
     const result = await fileService.write(args.path, args.content, {
       expectedVersion: args.expected_version,
     });
@@ -220,23 +207,16 @@ export const editFileContract: WorkspaceFileToolContract<
   name: "EditFile",
   description:
     "在已读取的 workspace 文件中执行精确文本替换。默认要求 old_string 唯一匹配；" +
-    "只有显式 replace_all=true 才会替换所有匹配，版本冲突时拒绝修改。" +
-    "编辑 design/design-spec.json 或 slides/page-plan.json 时，替换后的完整内容必须满足 SVG deck 锁契约。",
+    "只有显式 replace_all=true 才会替换所有匹配，版本冲突时拒绝修改。",
   inputSchema: editFileSchema,
   outputSchema: editFileOutputSchema,
-  behavior: {
-    ...workspacePathParallelBehavior(),
-    presentation: {
-      allowedCapabilities: ["create", "edit", "restyle"],
-      isRequired: (args) => isPresentationOwnedWorkspacePath(args.path),
-    },
-  },
+  behavior: workspacePathParallelBehavior(),
   risk: "medium",
   permission: WORKSPACE_FILE_TOOL_PERMISSION_PROFILES.EditFile,
   isEnabled: hasWorkspaceFileService,
   execute: async (args, context) => {
     const fileService = requireFileService(context);
-    if (isSvgDeckLockPath(args.path)) {
+    if (context.filePolicy?.requiresContentValidation(args.path)) {
       const current = await fileService.inspect(args.path);
       const replacements = countOccurrences(current.content, args.old_string);
       if (replacements === 0) {
@@ -255,7 +235,7 @@ export const editFileContract: WorkspaceFileToolContract<
       const updated = args.replace_all
         ? current.content.split(args.old_string).join(args.new_string)
         : current.content.replace(args.old_string, args.new_string);
-      await assertSvgDeckLockContentIfNeeded(args.path, updated, fileService);
+      await context.filePolicy.validateContent(args.path, updated, fileService);
     }
     const result = await fileService.edit(args.path, args.old_string, args.new_string, {
       expectedVersion: args.expected_version,
@@ -292,18 +272,6 @@ function workspacePathParallelBehavior(): ToolRuntimeBehavior<{ path: string }> 
   };
 }
 
-function isPresentationOwnedWorkspacePath(input: string): boolean {
-  const path = posix.normalize(input.replace(/\\/g, "/")).replace(/^\.\//, "").toLowerCase();
-  return (
-    path === "design/design-spec.json" ||
-    path === "slides/page-plan.json" ||
-    path === "slides/storyboard.json" ||
-    path === "deck/snapshot.json" ||
-    path.startsWith("slides/svg/") ||
-    path.startsWith("assets/")
-  );
-}
-
 function requireFileService(context: WorkspaceFileToolContext): WorkspaceFileService {
   if (!context.workspaceRoot || !context.fileService) {
     throw new Error("Workspace file tools require a configured workspace.");
@@ -316,32 +284,12 @@ async function observeArtifactChange(
   paths: readonly string[],
   source: "capability_probe" | "agent_read" | "agent_write",
 ): Promise<void> {
-  if (!context.workspaceRoot || !context.presentationLifecycle) return;
-  await context.presentationLifecycle.observeArtifactChanges({
+  if (!context.workspaceRoot) return;
+  await context.filePolicy?.observe?.({
     workspaceRoot: context.workspaceRoot,
     paths,
     source,
   });
-}
-
-async function assertSvgDeckLockContentIfNeeded(
-  path: string,
-  content: string,
-  fileService: WorkspaceFileService,
-): Promise<void> {
-  if (!isSvgDeckLockPath(path)) return;
-  try {
-    const validated = validateSvgDeckLockContent(path, content);
-    const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
-    if (normalized === SVG_DECK_DESIGN_SPEC_PATH) {
-      await assertDesignSpecMatchesTemplatePolicy(fileService, validated as SvgDeckDesignSpec);
-    }
-  } catch (error) {
-    throw new WorkspaceFileError(
-      "LOCK_SCHEMA_INVALID",
-      error instanceof Error ? error.message : String(error),
-    );
-  }
 }
 
 export function formatReadFileResultForModel(result: z.infer<typeof readFileOutputSchema>): string {

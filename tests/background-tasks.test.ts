@@ -1,3 +1,4 @@
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type {
@@ -6,17 +7,16 @@ import type {
   AgentModelResponse,
   AgentModelToolUseBlock,
 } from "../src/main/agent/gateway/types";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import {
   BackgroundTaskManager,
   formatBackgroundNotifications,
 } from "../src/main/agent/runtime/background/background-task-manager";
 import { executeExtraToolTool } from "../src/main/agent/tools/core/execute-extra-tool";
-import { previewSlideTool } from "../src/main/agent/tools/core/preview-slide";
 import { searchExtraToolsTool } from "../src/main/agent/tools/core/search-extra-tools";
 import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { toToolSchema } from "../src/main/agent/tools/tool-schema";
+import { previewSlideTool } from "../src/main/plugins/ppt/tools/preview-slide";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 function deferred<T>() {
@@ -280,7 +280,7 @@ describe("AgentRuntime background tool path", () => {
     registry.register(searchExtraToolsTool);
     registry.register(executeExtraToolTool);
     registry.register(mockExportTool);
-    const runtime = new AgentRuntime(registry, gateway);
+    const runtime = createPptRuntime(registry, gateway);
 
     const result = await runtime.run({
       threadId: "background-export-thread",
@@ -354,7 +354,7 @@ describe("AgentRuntime background tool path", () => {
       ],
     }));
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "background-step-limit",
       runId: "background-step-limit-run",
       request: "preview once",

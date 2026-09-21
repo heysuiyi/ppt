@@ -11,6 +11,7 @@
     "types": ["node", "electron"],
     "baseUrl": ".",
     "paths": {
+      "@ppt/*": ["src/ppt/*"],
       "@shared/*": ["src/shared/*"],
       "@design-system": ["src/design-system/index.ts"],
       "@design-system/*": ["src/design-system/*"],
@@ -21,6 +22,7 @@
     "electron.vite.config.ts",
     "vitest.config.ts",
     "src/main/**/*.ts",
+    "src/ppt/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
     "src/design-system/**/*.ts",

@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentModelContentBlock,
@@ -8,7 +9,6 @@ import type {
   AgentModelRequest,
   AgentModelResponse,
 } from "../src/main/agent/gateway/types";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import { webSearchTool } from "../src/main/agent/tools/core/web-search";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { createSessionPresentation } from "../src/shared/session";
@@ -83,7 +83,7 @@ describe("discover-stage WebSearch routing", () => {
     registry.register(webSearchTool);
     const progress: string[] = [];
 
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "url-evaluation",
       request: "https://example.com/article 这篇文章怎么样？",
       presentationSnapshot: createSessionPresentation("Article review"),

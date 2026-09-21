@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { liftSvgText } from "../src/main/deck/svg-text-lift";
+import { liftSvgText } from "../src/ppt/core/svg-text-lift";
 import { utf8ToBase64 } from "../src/shared/base64";
 import type { SlideNarrative } from "../src/shared/presentation";
 import {
@@ -32,7 +32,7 @@ vi.mock("pptxgenjs", () => ({
   },
 }));
 
-import { exportToPptx } from "../src/main/ppt-exporter";
+import { exportToPptx } from "../src/ppt/core/ppt-exporter";
 
 const NARRATIVE: SlideNarrative = {
   role: "cover",

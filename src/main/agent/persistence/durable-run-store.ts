@@ -3,13 +3,13 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import type { AgentExecutionStrategy, AgentModelSelection } from "@shared/agent";
 import type { ConversationDatabase } from "../../conversation-database";
+import type { PptTaskPlan } from "../../plugins/ppt/task/ppt-task-types";
 import type {
   AgentModelMessage,
   AgentModelToolResultBlock,
   AgentModelToolUseBlock,
 } from "../gateway";
 import type { DurableBackgroundTask } from "../runtime/background/background-task-manager";
-import type { PptTaskPlan } from "../runtime/ppt-task/ppt-task-types";
 import type { QueryId, RunId, ThreadId } from "../runtime/query/query-types";
 import { asRunId, asThreadId } from "../runtime/query/query-types";
 import type { AgentRuntimeResult } from "../runtime/runtime-types";
@@ -80,7 +80,7 @@ export interface DurableRunCheckpointV2Payload {
   request: string;
   model?: AgentModelSelection;
   executionStrategy?: AgentExecutionStrategy;
-  baseRevision: number;
+  baseRevision?: number;
   transcript: Array<Record<string, unknown>>;
   pendingUserContent: string[];
   discoveredToolNames: string[];

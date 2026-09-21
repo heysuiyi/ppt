@@ -1,6 +1,5 @@
+import { exportPresentationOptionsSchema } from "@shared/ppt-export";
 import { describe, expect, it } from "vitest";
-
-import { exportPresentationOptionsSchema } from "../src/shared/ipc";
 import {
   rasterDataImageSourceSchema,
   slideSchema,

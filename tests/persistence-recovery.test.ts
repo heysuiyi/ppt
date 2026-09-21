@@ -2,9 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { describe, expect, it } from "vitest";
-import { CommitGate } from "../src/main/agent/gate/commit-gate";
-import { RiskPolicy } from "../src/main/agent/gate/risk-policy";
 import type {
   AgentModelContentBlock,
   AgentModelGateway,
@@ -12,13 +11,14 @@ import type {
   AgentModelResponse,
 } from "../src/main/agent/gateway/types";
 import { DurableRunStore } from "../src/main/agent/persistence/durable-run-store";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import { asRunId, asThreadId } from "../src/main/agent/runtime/query/query-types";
-import { AgentService } from "../src/main/agent/service";
 import { MessageBus } from "../src/main/agent/teammate/message-bus";
 import { askUserTool } from "../src/main/agent/tools/core/ask-user";
-import { beginPptCapabilityTool } from "../src/main/agent/tools/core/begin-ppt-capability";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+import { CommitGate } from "../src/main/plugins/ppt/gate/commit-gate";
+import { RiskPolicy } from "../src/main/plugins/ppt/gate/risk-policy";
+import { AgentService } from "../src/main/plugins/ppt/service";
+import { beginPptCapabilityTool } from "../src/main/plugins/ppt/tools/begin-ppt-capability";
 import { ContentAddressedBlobStore } from "../src/main/presentation-lifecycle/content-addressed-blob-store";
 import { PresentationCommitService } from "../src/main/presentation-lifecycle/presentation-commit-service";
 import { PresentationLifecycleOrchestrator } from "../src/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
@@ -61,7 +61,7 @@ describe("durable agent recovery", () => {
     const repository = new PresentationLifecycleRepository(join(workspaceRoot, "lifecycle.sqlite"));
     const lifecycle = new PresentationLifecycleOrchestrator(repository);
     const presentation = createStarterPresentation();
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       new ToolRegistry(),
       gatewayFor([[{ type: "text", text: "这是普通问答。" }]]),
       undefined,
@@ -107,7 +107,7 @@ describe("durable agent recovery", () => {
     const presentation = createStarterPresentation();
     const registry = new ToolRegistry();
     registry.register(beginPptCapabilityTool);
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       gatewayFor([
         [
@@ -198,7 +198,7 @@ describe("durable agent recovery", () => {
         },
       ],
     ]);
-    const runtime = new AgentRuntime(
+    const runtime = createPptRuntime(
       registry,
       gateway,
       undefined,
@@ -293,7 +293,7 @@ describe("durable agent recovery", () => {
     });
     const gateway = gatewayFor([[{ type: "text", text: "continued once" }]]);
 
-    await new AgentRuntime(new ToolRegistry(), gateway).run({
+    await createPptRuntime(new ToolRegistry(), gateway).run({
       threadId: "inbox-recovery",
       request: "continue",
       presentationSnapshot: createStarterPresentation(),
@@ -338,7 +338,7 @@ describe("durable agent recovery", () => {
 
     const registry = new ToolRegistry();
     const gateway = gatewayFor([[{ type: "text", text: "已先对账持久化状态。" }]]);
-    const result = await new AgentRuntime(registry, gateway).run({
+    const result = await createPptRuntime(registry, gateway).run({
       threadId: "interrupted-thread",
       request: "继续",
       presentationSnapshot: createStarterPresentation(),
@@ -410,7 +410,7 @@ describe("durable agent recovery", () => {
     });
 
     const gateway = gatewayFor([[{ type: "text", text: "reconciled" }]]);
-    await new AgentRuntime(new ToolRegistry(), gateway).run({
+    await createPptRuntime(new ToolRegistry(), gateway).run({
       threadId: "interrupted-wave-thread",
       runId: "replacement-wave-run",
       request: "continue",
@@ -442,7 +442,7 @@ describe("durable agent recovery", () => {
       },
     };
     await expect(
-      new AgentRuntime(new ToolRegistry(), failingGateway).run({
+      createPptRuntime(new ToolRegistry(), failingGateway).run({
         threadId: "stream-recovery-thread",
         runId: "failed-stream-run",
         request: "original request",
@@ -461,7 +461,7 @@ describe("durable agent recovery", () => {
     );
 
     const recoveredGateway = gatewayFor([[{ type: "text", text: "replayed safely" }]]);
-    const result = await new AgentRuntime(new ToolRegistry(), recoveredGateway).run({
+    const result = await createPptRuntime(new ToolRegistry(), recoveredGateway).run({
       threadId: "stream-recovery-thread",
       runId: "recovered-stream-run",
       request: "continue after crash",
@@ -493,7 +493,7 @@ describe("durable agent recovery", () => {
         },
       ],
     ]);
-    const first = await new AgentRuntime(registry, firstGateway).run({
+    const first = await createPptRuntime(registry, firstGateway).run({
       threadId: "thread-recovery",
       runId: "thread-recovery",
       request: "制作演示文稿",
@@ -516,7 +516,7 @@ describe("durable agent recovery", () => {
     expect(checkpoint.inflight?.workspace.toolResults[0]).toMatchObject({ toolUseId: "ask-1" });
 
     const secondGateway = gatewayFor([[{ type: "text", text: "已按管理层受众继续。" }]]);
-    const second = await new AgentRuntime(registry, secondGateway).run({
+    const second = await createPptRuntime(registry, secondGateway).run({
       threadId: "thread-recovery",
       runId: "run-2",
       request: "受众是管理层",
@@ -541,7 +541,7 @@ describe("durable agent recovery", () => {
     expect(resumedCheckpoint.queryId).not.toBe(resumedCheckpoint.lastRunId);
     expect(resumedCheckpoint.queryId).not.toBe(resumedCheckpoint.threadId);
 
-    await new AgentRuntime(
+    await createPptRuntime(
       registry,
       gatewayFor([[{ type: "text", text: "新的请求已完成。" }]]),
     ).run({
@@ -615,7 +615,7 @@ describe("durable agent recovery", () => {
     );
     const firstService = new AgentService(
       firstBus,
-      new AgentRuntime(registry, gateway),
+      createPptRuntime(registry, gateway),
       new CommitGate(new RiskPolicy()),
       workspaceRoot,
       undefined,
@@ -642,7 +642,7 @@ describe("durable agent recovery", () => {
     const foreignPresentation = createStarterPresentation();
     const foreignService = new AgentService(
       new CommandBus(foreignPresentation),
-      new AgentRuntime(registry, gatewayFor([])),
+      createPptRuntime(registry, gatewayFor([])),
       new CommitGate(new RiskPolicy()),
       workspaceRoot,
       undefined,
@@ -682,7 +682,7 @@ describe("durable agent recovery", () => {
     );
     const restoredService = new AgentService(
       restoredBus,
-      new AgentRuntime(registry, gatewayFor([])),
+      createPptRuntime(registry, gatewayFor([])),
       new CommitGate(new RiskPolicy()),
       workspaceRoot,
       undefined,
@@ -784,7 +784,7 @@ describe("durable agent recovery", () => {
     );
     const firstService = new AgentService(
       firstBus,
-      new AgentRuntime(registry, gatewayFor([])),
+      createPptRuntime(registry, gatewayFor([])),
       new CommitGate(new RiskPolicy()),
       workspaceRoot,
       undefined,
@@ -848,7 +848,7 @@ describe("durable agent recovery", () => {
       );
       const restoredService = new AgentService(
         restoredBus,
-        new AgentRuntime(registry, gatewayFor([])),
+        createPptRuntime(registry, gatewayFor([])),
         new CommitGate(new RiskPolicy()),
         workspaceRoot,
         undefined,

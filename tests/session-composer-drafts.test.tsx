@@ -115,6 +115,46 @@ async function setupRun() {
 }
 
 describe("composer submission boundaries", () => {
+  it("does not start an inbox turn when an existing session is loaded", async () => {
+    vi.mocked(window.desktopApi.pollLeadInbox).mockResolvedValue({
+      hasMessages: true,
+      count: 1,
+      preview: "interrupted teammate",
+      types: ["error"],
+    });
+    const { result } = await setupRun();
+    await act(async () => result.current.session.selectSession("restored"));
+    expect(window.desktopApi.pollLeadInbox).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
+  });
+
+  it("enables inbox turns after an explicit run, then stops after an inbox failure", async () => {
+    const { result } = await setupRun();
+    vi.mocked(executeAgentRun).mockImplementationOnce(async ({ request, onAccepted }) => {
+      onAccepted({
+        requestId: request.requestId,
+        runId: request.requestId,
+        sessionId: "created",
+        threadId: "thread",
+        bootstrap: snapshot("created"),
+      });
+      return { status: "chat", message: "done" };
+    });
+    await act(async () => result.current.run.startAgent("start"));
+    vi.mocked(window.desktopApi.pollLeadInbox).mockResolvedValue({
+      hasMessages: true,
+      count: 1,
+      preview: "result",
+      types: ["result"],
+    });
+    vi.mocked(executeAgentRun).mockRejectedValueOnce(new Error("lease busy"));
+    await waitFor(() => expect(executeAgentRun).toHaveBeenCalledTimes(2), { timeout: 2_000 });
+    const pollsAfterFailure = vi.mocked(window.desktopApi.pollLeadInbox).mock.calls.length;
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 1_100)));
+    expect(executeAgentRun).toHaveBeenCalledTimes(2);
+    expect(window.desktopApi.pollLeadInbox).toHaveBeenCalledTimes(pollsAfterFailure);
+  });
+
   it("fills suggestions without starting a run", async () => {
     const { result } = await setupRun();
     act(() => result.current.run.suggestPrompt("建议内容"));

@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { canonicalJson, hashArtifactValue, hashBytes } from "@ppt/core/artifact-hash";
 import { formatPublicErrorMessage } from "@shared/agent-activity-display";
 import type { PersistedDisplayCard } from "@shared/card-display-protocol";
 import { CommandBus } from "@shared/commands";
@@ -15,8 +16,6 @@ import {
   type AgentRunResult,
   type AgentStreamEvent,
   type CreateSessionOptions,
-  type ExportPresentationOptions,
-  exportPresentationOptionsSchema,
   projectArtifactDiffRequestSchema,
   projectFileOpenRequestSchema,
   projectFileSaveRequestSchema,
@@ -24,6 +23,10 @@ import {
   submitAgentRequestSchema,
 } from "@shared/ipc";
 import type { AppLogLevel, LogManagerSettings, RendererLogReport } from "@shared/logging";
+import {
+  type ExportPresentationOptions,
+  exportPresentationOptionsSchema,
+} from "@shared/ppt-export";
 import {
   asPresentationId,
   asProjectId,
@@ -45,9 +48,8 @@ import {
   shell,
   type WebContents,
 } from "electron";
+import { DeckExportService } from "../ppt/core/deck-export-service";
 import { toResultDisplayEvents, toStreamDisplayEvent } from "./agent/display/display-event-adapter";
-import { CommitGate } from "./agent/gate/commit-gate";
-import { RiskPolicy } from "./agent/gate/risk-policy";
 import { AgentGateway } from "./agent/gateway";
 import { ListRemoteModelsError, listRemoteModels } from "./agent/gateway/list-remote-models";
 import {
@@ -62,10 +64,8 @@ import {
   updateLogManagerSettings,
   withLogContext,
 } from "./agent/logger";
-import { AgentRuntime } from "./agent/runtime/agent-runtime";
 import { isRuntimeCancellation } from "./agent/runtime/lifecycle/runtime-cancellation";
 import { ToolApprovalBroker } from "./agent/runtime/tools/tool-approval-broker";
-import { AgentService, type AgentServiceEvent } from "./agent/service";
 import {
   createEmptySkillRegistry,
   type SkillRegistry,
@@ -74,7 +74,6 @@ import {
 import { acceptAgentRequest } from "./agent/submit-agent-request";
 import { formatMailboxMessagesForHistory, MessageBus } from "./agent/teammate/message-bus";
 import { TeammateManager } from "./agent/teammate/spawn-teammate";
-import { createDefaultToolRegistry } from "./agent/tools/tool-registry";
 import { AgentSettingsStore } from "./agent-settings-store";
 import { configureApplicationDataRoot, getApplicationDataRoot } from "./application-data";
 import {
@@ -83,16 +82,14 @@ import {
   hydrateAgentRunServices,
 } from "./credential-runtime";
 import { CredentialStore } from "./credential-store";
-import { deckExportService } from "./deck/deck-export-service";
 import { recoverInterruptedExport } from "./deck/export-recovery";
-import { slideThumbnailService } from "./deck/slide-thumbnail-service";
+import { createPptRuntime, createPptToolRegistry } from "./plugins/ppt";
+import { slideThumbnailService } from "./plugins/ppt/adapters/electron-thumbnail-service";
+import { CommitGate } from "./plugins/ppt/gate/commit-gate";
+import { RiskPolicy } from "./plugins/ppt/gate/risk-policy";
+import { AgentService, type AgentServiceEvent } from "./plugins/ppt/service";
 import { PresentationArtifactChangeObserver } from "./presentation-lifecycle/artifact-change-observer";
-import {
-  ContentAddressedBlobStore,
-  canonicalJson,
-  hashArtifactValue,
-  hashBytes,
-} from "./presentation-lifecycle/content-addressed-blob-store";
+import { ContentAddressedBlobStore } from "./presentation-lifecycle/content-addressed-blob-store";
 import { PresentationCommitService } from "./presentation-lifecycle/presentation-commit-service";
 import { PresentationLifecycleOrchestrator } from "./presentation-lifecycle/presentation-lifecycle-orchestrator";
 import { PresentationLifecycleRepository } from "./presentation-lifecycle/presentation-lifecycle-repository";
@@ -109,6 +106,7 @@ if (!app.isPackaged && !process.env.AGENT_LOG_DIR?.trim()) {
 }
 ensureUiThemesDirectory(applicationDataRoot);
 
+const deckExportService = new DeckExportService(createModuleLogger("ppt-exporter"));
 const logger = createModuleLogger("main");
 const agentGateway = new AgentGateway();
 const toolApprovalBroker = new ToolApprovalBroker();
@@ -180,7 +178,7 @@ function createSessionRuntime(
   applicationDataRoot: string,
 ): SessionRuntime {
   const commandBus = new CommandBus(snapshot.presentation);
-  const registry = createDefaultToolRegistry();
+  const registry = createPptToolRegistry();
   const runtimeRoot = join(applicationDataRoot, "runtime", snapshot.session.id);
   const projectStorageIdentity =
     sessionStore.resolveWorkspaceRoot(snapshot) ?? `session:${snapshot.session.id}`;
@@ -203,7 +201,7 @@ function createSessionRuntime(
   );
   const agentService = new AgentService(
     commandBus,
-    new AgentRuntime(
+    createPptRuntime(
       registry,
       agentGateway,
       skillRegistry,

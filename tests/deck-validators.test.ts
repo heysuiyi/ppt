@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { AssetValidator } from "../src/main/deck/validators/asset-validator";
-import { LayoutValidator } from "../src/main/deck/validators/layout-validator";
-import { StyleValidator } from "../src/main/deck/validators/style-validator";
+import { AssetValidator } from "../src/ppt/core/validators/asset-validator";
+import { LayoutValidator } from "../src/ppt/core/validators/layout-validator";
+import { StyleValidator } from "../src/ppt/core/validators/style-validator";
 import type { Presentation, Slide, SlideNarrative } from "../src/shared/presentation";
 import { createSvgTestSlide } from "../src/shared/presentation-fixtures";
 import { TEST_DESIGN_SYSTEM, testDesignSystem } from "./design-engine-test-utils";

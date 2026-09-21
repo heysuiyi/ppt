@@ -23,7 +23,8 @@ normalize options
 | 对象 | 所有权 |
 |---|---|
 | `AgentService` | 应用用例、Renderer/IPC 输入、跨 Run 服务 |
-| `PresentationAgentRunFactory` | 将 Presentation 场景依赖装配成 Prepared Run |
+| `AgentRunFactory` | 将宿主服务和可选 RuntimePlugin 装配成 Prepared Run |
+| `createPptPlugin` | PPT 上下文、任务状态、Prompt/revision 与领域 checkpoint 内容 |
 | `AgentRunScope` | lease、History、checkpoint、Session、取消、后台任务、事件端口 |
 | `PreparedAgentRun` | QueryParams、初始 State/Workspace、runner 所需依赖 |
 | `query()` | 单一线性 model → tools → next state 循环 |
@@ -127,7 +128,7 @@ Presentation 特有策略通过 RunFactory、Tool 或 CompletionPolicy 注入。
 ## 10. 关键实现
 
 - `src/main/agent/runtime/agent-runtime.ts`
-- `src/main/agent/runtime/presentation-agent-run-factory.ts`
+- `src/main/agent/runtime/agent-run-factory.ts`
 - `src/main/agent/runtime/lifecycle/agent-run-scope.ts`
 - `src/main/agent/runtime/turns/prepared-agent-run.ts`
 - `src/main/agent/runtime/query/query.ts`

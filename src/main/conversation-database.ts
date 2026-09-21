@@ -685,11 +685,20 @@ export class ConversationDatabase {
         | undefined;
 
       if (row?.active_run_id && row.active_run_id !== input.runId && !input.allowTakeover) {
-        return {
-          type: "lease_busy" as const,
-          activeRunId: row.active_run_id,
-          generation: row.writer_generation,
-        };
+        // A crash can leave a lease after startup recovery interrupts its owner.
+        // Only a known terminal owner is safe to fence out; unknown owners stay busy.
+        const terminalOwner = this.database
+          .prepare(
+            "SELECT 1 FROM runs WHERE run_id = ? AND status IN ('completed', 'failed', 'interrupted')",
+          )
+          .get(row.active_run_id);
+        if (!terminalOwner) {
+          return {
+            type: "lease_busy" as const,
+            activeRunId: row.active_run_id,
+            generation: row.writer_generation,
+          };
+        }
       }
       if (row?.active_run_id === input.runId) {
         const checkpoint = JSON.parse(row.checkpoint_json) as unknown;

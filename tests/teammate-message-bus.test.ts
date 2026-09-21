@@ -1,13 +1,14 @@
 import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { createPptRuntime } from "@main/plugins/ppt/plugin";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it, vi } from "vitest";
 import type {
   AgentModelContentBlock,
   AgentModelGateway,
   AgentModelRequest,
 } from "../src/main/agent/gateway/types";
-import { AgentRuntime } from "../src/main/agent/runtime/agent-runtime";
 import { resetDefaultHooksForTests } from "../src/main/agent/runtime/hooks/default-hooks";
 import type { PostToolUseBlock, StopBlock } from "../src/main/agent/runtime/hooks/hook-blocks";
 import { clearHooks, registerHook } from "../src/main/agent/runtime/hooks/hook-registry";
@@ -25,7 +26,6 @@ import {
 import { ProtocolStateStore } from "../src/main/agent/teammate/protocol-state";
 import { TeammateManager } from "../src/main/agent/teammate/spawn-teammate";
 import type { ToolContext } from "../src/main/agent/tools/tool-definition";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import type { TeammateProgressEvent } from "../src/shared/teammate-progress";
 
@@ -312,7 +312,7 @@ function createToolContext(input: {
     presentation: createStarterPresentation(),
     selectedElementIds: [],
     discoverySession: { discoveredToolNames: new Set<string>() },
-    registry: createDefaultToolRegistry(),
+    registry: createPptToolRegistry(),
     messageHistory: [],
     workspaceRoot: input.workspaceRoot,
     gateway: input.gateway,
@@ -796,7 +796,7 @@ describe("TeammateManager", () => {
     await manager.consumeLeadInbox();
     expect(manager.getProtocolState(requestId as string)?.status).toBe("pending");
 
-    const respondTool = createDefaultToolRegistry().get("respond_plan_approval");
+    const respondTool = createPptToolRegistry().get("respond_plan_approval");
     expect(respondTool).toBeDefined();
     await respondTool!.execute(
       {
@@ -1015,7 +1015,7 @@ describe("TeammateManager", () => {
       modelMessage("First review done."),
       modelMessage("Second review done."),
     ]);
-    const registry = createDefaultToolRegistry();
+    const registry = createPptToolRegistry();
 
     manager.spawn({
       name: "reviewer",
@@ -1254,7 +1254,7 @@ describe("Lead teammate tools", () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "ppt-teammate-tools-"));
     const bus = new MessageBus(MessageBus.defaultMailboxDir(workspaceRoot));
     const manager = new TeammateManager(bus);
-    const tool = createDefaultToolRegistry().get("send_teammate_message");
+    const tool = createPptToolRegistry().get("send_teammate_message");
 
     expect(tool).toBeDefined();
     await expect(
@@ -1288,8 +1288,8 @@ describe("Lead inbox injection", () => {
     });
 
     const approvalRequests: unknown[] = [];
-    const runtime = new AgentRuntime(
-      createDefaultToolRegistry(),
+    const runtime = createPptRuntime(
+      createPptToolRegistry(),
       createSequenceGateway([modelMessage("Handled teammate permission request.")]),
     );
 

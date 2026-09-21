@@ -1,14 +1,12 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { canonicalJson } from "@ppt/core/artifact-hash";
 import { afterEach, describe, expect, it } from "vitest";
-import { submitPptReviewTool } from "../src/main/agent/tools/core/submit-ppt-review";
 import type { ToolContext } from "../src/main/agent/tools/tool-definition";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
-import {
-  ContentAddressedBlobStore,
-  canonicalJson,
-} from "../src/main/presentation-lifecycle/content-addressed-blob-store";
+import { submitPptReviewTool } from "../src/main/plugins/ppt/tools/submit-ppt-review";
+import { ContentAddressedBlobStore } from "../src/main/presentation-lifecycle/content-addressed-blob-store";
 import { PresentationLifecycleOrchestrator } from "../src/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
 import { PresentationLifecycleRepository } from "../src/main/presentation-lifecycle/presentation-lifecycle-repository";
 import { PresentationLifecycleToolBridge } from "../src/main/presentation-lifecycle/presentation-lifecycle-tool-bridge";

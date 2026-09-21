@@ -1,6 +1,6 @@
 import { createDisplayEventId, type DisplayEvent } from "@shared/card-display-protocol";
 import type { AgentRunResult } from "@shared/ipc";
-import type { AgentServiceEvent } from "../service";
+import type { AgentServiceEvent } from "../../plugins/ppt/service";
 
 function now(): string {
   return new Date().toISOString();

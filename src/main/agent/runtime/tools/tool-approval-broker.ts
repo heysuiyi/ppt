@@ -1,4 +1,4 @@
-import type { AgentServiceEventListener } from "../../service";
+import type { AgentServiceEventListener } from "../../../plugins/ppt/service";
 import { formatToolApprovalDetail } from "./format-tool-approval";
 import type { ToolApprovalHandler, ToolApprovalRequest } from "./permission-check";
 

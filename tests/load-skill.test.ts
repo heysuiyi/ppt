@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
-import { SystemPromptBuilder } from "../src/main/agent/runtime/prompts/system-prompt";
 import {
   createEmptySkillRegistry,
   listSkills,
@@ -16,7 +16,7 @@ import {
 import { createSkillSession } from "../src/main/agent/skills/skill-types";
 import { askUserTool } from "../src/main/agent/tools/core/ask-user";
 import { loadSkillTool } from "../src/main/agent/tools/core/load-skill";
-import { createDefaultToolRegistry } from "../src/main/agent/tools/tool-registry";
+import { SystemPromptBuilder } from "../src/main/plugins/ppt/prompts/system-prompt";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 const SAMPLE_SKILL = `---
@@ -72,7 +72,7 @@ describe("load_skill two-layer design", () => {
       presentation: createStarterPresentation(),
       selectedElementIds: [],
       discoverySession: { discoveredToolNames: new Set<string>() },
-      registry: createDefaultToolRegistry(),
+      registry: createPptToolRegistry(),
       messageHistory: [],
       skillRegistry: registry,
       skillSession,
@@ -118,8 +118,8 @@ describe("load_skill two-layer design", () => {
     expect(prompt).not.toContain("# Code Review");
   });
 
-  it("createDefaultToolRegistry includes LoadSkill core tool", () => {
-    const registry = createDefaultToolRegistry();
+  it("createPptToolRegistry includes LoadSkill core tool", () => {
+    const registry = createPptToolRegistry();
     expect(registry.get("LoadSkill")?.loadPolicy).toBe("core");
     expect(registry.get("LoadSkill")?.category).toBe("core");
   });
