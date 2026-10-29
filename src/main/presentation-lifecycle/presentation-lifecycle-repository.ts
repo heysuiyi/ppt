@@ -1,6 +1,3 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { hashArtifactValue } from "@ppt/core/artifact-hash";
 import {
   type ArtifactDependency,
@@ -29,16 +26,7 @@ import {
   type StaleArtifact,
   toPptJobProjection,
 } from "@shared/presentation-lifecycle";
-import { withSqliteTransaction } from "../sqlite-transaction";
-import { init } from "../storage";
-
-interface JsonRow {
-  json: string;
-}
-
-interface ArtifactRow {
-  revision_json: string;
-}
+import { createStorage, type Storage } from "../storage";
 
 export type JobCasResult =
   | { type: "updated"; state: PptJobState }
@@ -78,33 +66,28 @@ export interface StalePropagationResult {
 
 export interface PresentationLifecycleRepositoryOptions {
   filePath: string;
-  connection: DatabaseSync;
+  storage: Storage;
 }
 
 /**
  * Durable Presentation business repository. Query checkpoints deliberately
  * remain in their existing tables; only explicit lifecycle calls mutate these
  * records.
+ * A path owns its storage; an injected storage is borrowed and never closed here.
  */
 export class PresentationLifecycleRepository {
-  private readonly database: DatabaseSync;
-  private readonly ownsDatabase: boolean;
+  private readonly storage: Storage;
+  private readonly ownsStorage: boolean;
   readonly filePath: string;
 
   constructor(source: string | PresentationLifecycleRepositoryOptions) {
     this.filePath = typeof source === "string" ? source : source.filePath;
-    this.ownsDatabase = typeof source === "string";
-    if (typeof source === "string") {
-      mkdirSync(dirname(source), { recursive: true });
-      this.database = new DatabaseSync(source);
-    } else {
-      this.database = source.connection;
-    }
-    init(this.database);
+    this.ownsStorage = typeof source === "string";
+    this.storage = typeof source === "string" ? createStorage(source) : source.storage;
   }
 
   close(): void {
-    if (this.ownsDatabase) this.database.close();
+    if (this.ownsStorage) this.storage.close();
   }
 
   createOrGetJob(input: {
@@ -131,21 +114,7 @@ export class PresentationLifecycleRepository {
         createdAt: input.params.createdAt,
         updatedAt: input.params.createdAt,
       });
-      this.database
-        .prepare(`
-        INSERT INTO ppt_jobs(
-          job_id, project_id, presentation_id, state_revision,
-          state_json, created_at, updated_at
-        ) VALUES(?, ?, ?, 0, ?, ?, ?)
-      `)
-        .run(
-          state.jobId,
-          state.params.projectId,
-          state.params.presentationId,
-          JSON.stringify(state),
-          state.createdAt,
-          state.updatedAt,
-        );
+      this.storage.pptJobs.insert(state);
       this.insertCapabilityRequest(request);
       this.appendJobEvent(state.jobId, state.stateRevision, "job_created", state);
       return { type: "created", state };
@@ -153,17 +122,11 @@ export class PresentationLifecycleRepository {
   }
 
   getJob(jobId: PptJobId): PptJobState | undefined {
-    const row = this.database
-      .prepare("SELECT state_json AS json FROM ppt_jobs WHERE job_id = ?")
-      .get(jobId) as JsonRow | undefined;
-    return row ? pptJobStateSchema.parse(JSON.parse(row.json)) : undefined;
+    return this.storage.pptJobs.findById(jobId);
   }
 
   getJobByPresentationId(presentationId: PresentationId): PptJobState | undefined {
-    const row = this.database
-      .prepare("SELECT state_json AS json FROM ppt_jobs WHERE presentation_id = ?")
-      .get(presentationId) as JsonRow | undefined;
-    return row ? pptJobStateSchema.parse(JSON.parse(row.json)) : undefined;
+    return this.storage.pptJobs.findByPresentationId(presentationId);
   }
 
   getProjectionByPresentationId(presentationId: PresentationId): PptJobProjection | undefined {
@@ -181,23 +144,14 @@ export class PresentationLifecycleRepository {
   getCapabilityRequest(
     requestId: PptCapabilityRequest["requestId"],
   ): PptCapabilityRequest | undefined {
-    const row = this.database
-      .prepare("SELECT request_json AS json FROM ppt_capability_requests WHERE request_id = ?")
-      .get(requestId) as JsonRow | undefined;
-    return row ? pptCapabilityRequestSchema.parse(JSON.parse(row.json)) : undefined;
+    return this.storage.pptCapabilityRequests.findById(requestId);
   }
 
   getCapabilityRequestByQuery(
     jobId: PptJobId,
     queryId: PptCapabilityRequest["queryId"] & string,
   ): PptCapabilityRequest | undefined {
-    const row = this.database
-      .prepare(`
-      SELECT request_json AS json FROM ppt_capability_requests
-      WHERE job_id = ? AND query_id = ?
-    `)
-      .get(jobId, queryId) as JsonRow | undefined;
-    return row ? pptCapabilityRequestSchema.parse(JSON.parse(row.json)) : undefined;
+    return this.storage.pptCapabilityRequests.findByQuery(jobId, queryId);
   }
 
   updateJobStateCas(input: {
@@ -225,20 +179,11 @@ export class PresentationLifecycleRepository {
       if (!this.getCapabilityRequest(nextState.currentRequest.requestId)) {
         throw new Error("Job state references an unknown capability request.");
       }
-      const result = this.database
-        .prepare(`
-        UPDATE ppt_jobs
-        SET state_revision = ?, state_json = ?, updated_at = ?
-        WHERE job_id = ? AND state_revision = ?
-      `)
-        .run(
-          nextState.stateRevision,
-          JSON.stringify(nextState),
-          nextState.updatedAt,
-          nextState.jobId,
-          input.expectedStateRevision,
-        );
-      if (result.changes !== 1) {
+      const updated = this.storage.pptJobs.updateStateIfRevision(
+        nextState,
+        input.expectedStateRevision,
+      );
+      if (!updated) {
         return { type: "conflict", current: this.requireJob(nextState.jobId) };
       }
       this.appendJobEvent(
@@ -272,14 +217,12 @@ export class PresentationLifecycleRepository {
           ? { type: "already_committed", revision: byId }
           : { type: "conflict", existing: byId };
       }
-      const byKey = this.database
-        .prepare(`
-        SELECT revision_json FROM ppt_artifact_revisions
-        WHERE job_id = ? AND idempotency_key = ?
-      `)
-        .get(revision.jobId, idempotencyKey) as ArtifactRow | undefined;
+      const byKey = this.storage.pptArtifactRevisions.findByIdempotency(
+        revision.jobId,
+        idempotencyKey,
+      );
       if (byKey) {
-        const existing = parseArtifactRow(byKey);
+        const existing = byKey;
         return artifactPayloadsEqual(existing, revision)
           ? { type: "already_committed", revision: existing }
           : { type: "conflict", existing };
@@ -288,47 +231,16 @@ export class PresentationLifecycleRepository {
         this.assertDependency(revision.jobId, dependency);
       }
 
-      this.database
-        .prepare(`
-        INSERT INTO ppt_artifact_revisions(
-          revision_id, artifact_id, job_id, kind, stage, schema_version,
-          content_hash, revision_json, idempotency_key, committed_at
-        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-        .run(
-          revision.revisionId,
-          revision.artifactId,
-          revision.jobId,
-          revision.kind,
-          revision.stage,
-          revision.schemaVersion,
-          revision.contentHash,
-          JSON.stringify(revision),
-          idempotencyKey,
-          revision.committedAt,
-        );
-      const insertDependency = this.database.prepare(`
-        INSERT INTO ppt_artifact_dependencies(
-          artifact_revision_id, dependency_artifact_id,
-          dependency_revision_id, dependency_content_hash
-        ) VALUES(?, ?, ?, ?)
-      `);
-      for (const dependency of revision.dependencies) {
-        insertDependency.run(
-          revision.revisionId,
-          dependency.artifactId,
-          dependency.revisionId,
-          dependency.contentHash,
-        );
-      }
-      this.database
-        .prepare(`
-        INSERT INTO ppt_artifact_heads(job_id, artifact_id, revision_id)
-        VALUES(?, ?, ?)
-        ON CONFLICT(job_id, artifact_id)
-        DO UPDATE SET revision_id = excluded.revision_id
-      `)
-        .run(revision.jobId, revision.artifactId, revision.revisionId);
+      this.storage.pptArtifactRevisions.insert(revision, idempotencyKey);
+      this.storage.pptArtifactDependencies.insertForRevision({
+        revisionId: revision.revisionId,
+        dependencies: revision.dependencies,
+      });
+      this.storage.pptArtifactHeads.upsert(
+        revision.jobId,
+        revision.artifactId,
+        revision.revisionId,
+      );
       return { type: "committed", revision };
     });
   }
@@ -343,46 +255,20 @@ export class PresentationLifecycleRepository {
     jobId: PptJobId,
     idempotencyKey: string,
   ): ArtifactRevision | undefined {
-    const row = this.database
-      .prepare(`
-      SELECT revision_json FROM ppt_artifact_revisions
-      WHERE job_id = ? AND idempotency_key = ?
-    `)
-      .get(jobId, idempotencyKey) as ArtifactRow | undefined;
-    return row ? parseArtifactRow(row) : undefined;
+    return this.storage.pptArtifactRevisions.findByIdempotency(jobId, idempotencyKey);
   }
 
   getArtifactHead(jobId: PptJobId, artifactId: ArtifactId): ArtifactRevision | undefined {
-    const row = this.database
-      .prepare(`
-      SELECT revision_id FROM ppt_artifact_heads
-      WHERE job_id = ? AND artifact_id = ?
-    `)
-      .get(jobId, artifactId) as { revision_id: string } | undefined;
-    return row ? this.readArtifactRevision(row.revision_id as ArtifactRevisionId) : undefined;
+    const revisionId = this.storage.pptArtifactHeads.findRevisionId(jobId, artifactId);
+    return revisionId ? this.readArtifactRevision(revisionId) : undefined;
   }
 
   listArtifactRevisions(jobId: PptJobId): ArtifactRevision[] {
-    const rows = this.database
-      .prepare(`
-      SELECT revision_json FROM ppt_artifact_revisions
-      WHERE job_id = ? ORDER BY committed_at, revision_id
-    `)
-      .all(jobId) as unknown as ArtifactRow[];
-    return rows.map(parseArtifactRow);
+    return this.storage.pptArtifactRevisions.listByJob(jobId);
   }
 
   listArtifactHeads(jobId: PptJobId): ArtifactPointer[] {
-    const rows = this.database
-      .prepare(`
-      SELECT r.revision_json
-      FROM ppt_artifact_heads h
-      JOIN ppt_artifact_revisions r ON r.revision_id = h.revision_id
-      WHERE h.job_id = ?
-      ORDER BY r.committed_at, r.revision_id
-    `)
-      .all(jobId) as unknown as ArtifactRow[];
-    return rows.map((row) => pointerFor(parseArtifactRow(row)));
+    return this.storage.pptArtifactHeads.listRevisionsByJob(jobId).map(pointerFor);
   }
 
   startStageAttempt(input: Omit<PptStageAttempt, "attempt" | "status">): StageAttemptStartResult {
@@ -399,53 +285,27 @@ export class PresentationLifecycleRepository {
           ? { type: "already_started", attempt: existing }
           : { type: "conflict", attempt: existing };
       }
-      const byKey = this.database
-        .prepare(`
-        SELECT attempt_json AS json FROM ppt_stage_attempts
-        WHERE job_id = ? AND idempotency_key = ?
-      `)
-        .get(input.jobId, input.idempotencyKey) as JsonRow | undefined;
+      const byKey = this.storage.pptStageAttempts.findByIdempotency(
+        input.jobId,
+        input.idempotencyKey,
+      );
       if (byKey) {
-        const attempt = pptStageAttemptSchema.parse(JSON.parse(byKey.json));
+        const attempt = byKey;
         return { type: "conflict", attempt };
       }
-      const count = this.database
-        .prepare(`
-        SELECT COUNT(*) AS count FROM ppt_stage_attempts
-        WHERE job_id = ? AND stage = ?
-      `)
-        .get(input.jobId, input.stage) as { count: number };
+      const count = this.storage.pptStageAttempts.countByStage(input.jobId, input.stage);
       const attempt = pptStageAttemptSchema.parse({
         ...input,
-        attempt: count.count + 1,
+        attempt: count + 1,
         status: "running",
       });
-      this.database
-        .prepare(`
-        INSERT INTO ppt_stage_attempts(
-          stage_run_id, job_id, stage, attempt, status,
-          idempotency_key, attempt_json, started_at, completed_at
-        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, NULL)
-      `)
-        .run(
-          attempt.stageRunId,
-          attempt.jobId,
-          attempt.stage,
-          attempt.attempt,
-          attempt.status,
-          attempt.idempotencyKey,
-          JSON.stringify(attempt),
-          attempt.startedAt,
-        );
+      this.storage.pptStageAttempts.insert(attempt);
       return { type: "started", attempt };
     });
   }
 
   getStageAttempt(stageRunId: PptStageRunId): PptStageAttempt | undefined {
-    const row = this.database
-      .prepare("SELECT attempt_json AS json FROM ppt_stage_attempts WHERE stage_run_id = ?")
-      .get(stageRunId) as JsonRow | undefined;
-    return row ? pptStageAttemptSchema.parse(JSON.parse(row.json)) : undefined;
+    return this.storage.pptStageAttempts.findById(stageRunId);
   }
 
   finishStageAttempt(input: {
@@ -481,19 +341,8 @@ export class PresentationLifecycleRepository {
           throw new Error("Stage attempt artifact must belong to the same PptJob and stage.");
         }
       }
-      const result = this.database
-        .prepare(`
-        UPDATE ppt_stage_attempts
-        SET status = ?, attempt_json = ?, completed_at = ?
-        WHERE stage_run_id = ? AND status = 'running'
-      `)
-        .run(
-          completed.status,
-          JSON.stringify(completed),
-          completed.completedAt!,
-          completed.stageRunId,
-        );
-      return result.changes === 1
+      const updated = this.storage.pptStageAttempts.updateIfRunning(completed);
+      return updated
         ? { type: "finished", attempt: completed }
         : {
             type: "conflict",
@@ -503,13 +352,7 @@ export class PresentationLifecycleRepository {
   }
 
   listStageAttempts(jobId: PptJobId): PptStageAttempt[] {
-    const rows = this.database
-      .prepare(`
-      SELECT attempt_json AS json FROM ppt_stage_attempts
-      WHERE job_id = ? ORDER BY started_at, attempt
-    `)
-      .all(jobId) as unknown as JsonRow[];
-    return rows.map((row) => pptStageAttemptSchema.parse(JSON.parse(row.json)));
+    return this.storage.pptStageAttempts.listByJob(jobId);
   }
 
   propagateStale(input: {
@@ -671,28 +514,13 @@ export class PresentationLifecycleRepository {
         }
         return { type: "existing", proposal: existing };
       }
-      this.database
-        .prepare(`
-        INSERT INTO ppt_proposals(
-          proposal_id, job_id, status, proposal_json, created_at, resolved_at
-        ) VALUES(?, ?, ?, ?, ?, NULL)
-      `)
-        .run(
-          proposal.proposalId,
-          proposal.jobId,
-          proposal.status,
-          JSON.stringify(proposal),
-          proposal.createdAt,
-        );
+      this.storage.pptProposals.insert(proposal);
       return { type: "created", proposal };
     });
   }
 
   getProposal(proposalId: ProposalId): PptProposal | undefined {
-    const row = this.database
-      .prepare("SELECT proposal_json AS json FROM ppt_proposals WHERE proposal_id = ?")
-      .get(proposalId) as JsonRow | undefined;
-    return row ? pptProposalSchema.parse(JSON.parse(row.json)) : undefined;
+    return this.storage.pptProposals.findById(proposalId);
   }
 
   resolveProposal(input: {
@@ -713,14 +541,8 @@ export class PresentationLifecycleRepository {
         status: input.status,
         resolvedAt: input.resolvedAt,
       });
-      const result = this.database
-        .prepare(`
-        UPDATE ppt_proposals
-        SET status = ?, proposal_json = ?, resolved_at = ?
-        WHERE proposal_id = ? AND status = 'waiting_approval'
-      `)
-        .run(proposal.status, JSON.stringify(proposal), proposal.resolvedAt!, proposal.proposalId);
-      return result.changes === 1
+      const updated = this.storage.pptProposals.updateIfWaitingApproval(proposal);
+      return updated
         ? { type: "resolved", proposal }
         : { type: "conflict", proposal: this.getProposal(proposal.proposalId)! };
     });
@@ -734,33 +556,20 @@ export class PresentationLifecycleRepository {
   }): SideEffectClaimResult {
     return this.transaction(() => {
       this.requireJob(input.jobId);
-      const row = this.database
-        .prepare(`
-        SELECT status, result_json, error FROM ppt_side_effects
-        WHERE job_id = ? AND operation = ? AND effect_key = ?
-      `)
-        .get(input.jobId, input.operation, input.key) as
-        | { status: string; result_json: string | null; error: string | null }
-        | undefined;
-      if (row) {
-        if (row.status === "succeeded") {
+      const effect = this.storage.pptSideEffects.findByKey(input);
+      if (effect) {
+        if (effect.status === "succeeded") {
           return {
             type: "succeeded",
-            result: row.result_json ? JSON.parse(row.result_json) : undefined,
+            result: effect.result,
           };
         }
-        if (row.status === "failed") {
-          return { type: "failed", error: row.error ?? "Unknown side-effect failure." };
+        if (effect.status === "failed") {
+          return { type: "failed", error: effect.error ?? "Unknown side-effect failure." };
         }
         return { type: "in_progress" };
       }
-      this.database
-        .prepare(`
-        INSERT INTO ppt_side_effects(
-          job_id, operation, effect_key, status, claimed_at
-        ) VALUES(?, ?, ?, 'in_progress', ?)
-      `)
-        .run(input.jobId, input.operation, input.key, input.claimedAt);
+      this.storage.pptSideEffects.insertClaim(input);
       return { type: "claimed" };
     });
   }
@@ -777,23 +586,7 @@ export class PresentationLifecycleRepository {
     if (input.status === "failed" && !input.error?.trim()) {
       throw new Error("Failed side effects require an error.");
     }
-    const result = this.database
-      .prepare(`
-      UPDATE ppt_side_effects
-      SET status = ?, result_json = ?, error = ?, completed_at = ?
-      WHERE job_id = ? AND operation = ? AND effect_key = ?
-        AND status = 'in_progress'
-    `)
-      .run(
-        input.status,
-        input.result === undefined ? null : JSON.stringify(input.result),
-        input.error ?? null,
-        input.completedAt,
-        input.jobId,
-        input.operation,
-        input.key,
-      );
-    return result.changes === 1;
+    return this.storage.pptSideEffects.completeIfInProgress(input);
   }
 
   private insertCapabilityRequest(request: PptCapabilityRequest): void {
@@ -806,20 +599,7 @@ export class PresentationLifecycleRepository {
       }
       return;
     }
-    this.database
-      .prepare(`
-      INSERT INTO ppt_capability_requests(
-        request_id, job_id, query_id, capability, request_json, requested_at
-      ) VALUES(?, ?, ?, ?, ?, ?)
-    `)
-      .run(
-        request.requestId,
-        request.jobId,
-        request.queryId ?? null,
-        request.capability,
-        JSON.stringify(request),
-        request.requestedAt,
-      );
+    this.storage.pptCapabilityRequests.insert(request);
   }
 
   private requireJob(jobId: PptJobId): PptJobState {
@@ -829,10 +609,7 @@ export class PresentationLifecycleRepository {
   }
 
   private readArtifactRevision(revisionId: ArtifactRevisionId): ArtifactRevision | undefined {
-    const row = this.database
-      .prepare("SELECT revision_json FROM ppt_artifact_revisions WHERE revision_id = ?")
-      .get(revisionId) as ArtifactRow | undefined;
-    return row ? parseArtifactRow(row) : undefined;
+    return this.storage.pptArtifactRevisions.findById(revisionId);
   }
 
   private assertDependency(jobId: PptJobId, dependency: ArtifactDependency): void {
@@ -855,26 +632,22 @@ export class PresentationLifecycleRepository {
     eventType: string,
     payload: unknown,
   ): void {
-    this.database
-      .prepare(`
-      INSERT INTO ppt_job_events(
-        job_id, state_revision, event_type, payload_json, created_at
-      ) VALUES(?, ?, ?, ?, ?)
-    `)
-      .run(jobId, stateRevision, eventType, JSON.stringify(payload), new Date().toISOString());
+    this.storage.pptJobEvents.append({
+      jobId,
+      stateRevision,
+      eventType,
+      payload,
+      createdAt: new Date().toISOString(),
+    });
   }
 
   withTransaction<T>(operation: () => T): T {
-    return withSqliteTransaction(this.database, operation);
+    return this.storage.transaction(operation);
   }
 
   private transaction<T>(operation: () => T): T {
     return this.withTransaction(operation);
   }
-}
-
-function parseArtifactRow(row: ArtifactRow): ArtifactRevision {
-  return artifactRevisionSchema.parse(JSON.parse(row.revision_json));
 }
 
 function pointerFor(revision: ArtifactRevision): ArtifactPointer {

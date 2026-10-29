@@ -222,7 +222,11 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `src/design-system/`：DesignSystemV2 schema、预设与解析
 - `src/shared/`：演示文稿模型、命令模型、会话与 IPC 类型
 - `src/main/project/`：本地项目沙箱、产物读写、diff 和依赖状态
-- `src/main/storage/`：统一 SQLite 初始化入口 `init(connection)`，集中管理全部表、索引、连接配置和已有检查点字段迁移；可重复调用，不清空数据。连接创建与关闭、CRUD、会话恢复和 JSON/项目文件初始化仍由原模块负责。
+- `src/main/storage/`：SQLite 数据访问层，按数据对象目录内聚（如 `session/`、`checkpoint/`、`ppt-job/`），目录内按需放置 DO、DTO、Mapper。
+  - `init(connection)` 集中管理表、索引、连接配置和已有检查点字段迁移，可重复调用且保留数据。
+  - `createStorage(filePath)` 创建并初始化单个连接，装配所有 Mapper，提供同步 `transaction()` 和 `close()`；业务不接触原始连接或 SQL。借用同一 Storage 的业务仓库不关闭它。
+  - Mapper 负责参数化 SQL、记录映射、具名检索和条件写入；运行状态、租约接管、幂等解释、产物关联校验、失效传播及恢复规则仍由业务服务负责。
+  - 会话与 PPT 生命周期共享连接和嵌套 SAVEPOINT；数据库提交成功后才发布内存状态、通知及工作区镜像。JSON 配置、项目文件和文件型 Blob 存储保持原有实现，未为闲置的 `blobs` 表新增 CRUD。
 - `src/main/deck/`：缩略图、导出历史、PPTX 导出服务
 - `skills/`：核心创建 `ppt-workflow` → `ppt-design` → `ppt-design-layout` → `ppt-build`；短路径 `ppt-edit` / `ppt-beautify` / `ppt-review` / `ppt-export`；可选上游 Skill（`ppt-brief` / `ppt-outline` / `ppt-storyboard` / `ppt-research`）仅知识包，经 ReadFile/WriteFile 写入，非 lifecycle 硬锁
 - `tests/`：Agent、导出、上下文压缩、工具审批和项目产物测试

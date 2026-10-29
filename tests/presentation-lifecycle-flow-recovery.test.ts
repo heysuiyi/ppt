@@ -583,7 +583,7 @@ async function createSessionStore(root: string): Promise<FileSessionStore> {
 function createSharedRepository(store: FileSessionStore): PresentationLifecycleRepository {
   const repository = new PresentationLifecycleRepository({
     filePath: store.conversationDatabase.filePath,
-    connection: store.conversationDatabase.sqliteConnection,
+    storage: store.conversationDatabase.storage,
   });
   repositories.push(repository);
   return repository;
@@ -622,19 +622,14 @@ function loadRun(
       result_json: string | null;
     }
   | undefined {
-  return store.conversationDatabase.sqliteConnection
-    .prepare(`
-    SELECT status, query_id, result_json
-    FROM runs
-    WHERE run_id = ?
-  `)
-    .get(runId) as
-    | {
-        status: string;
-        query_id: string | null;
-        result_json: string | null;
+  const run = store.conversationDatabase.storage.runs.findById(runId);
+  return run
+    ? {
+        status: run.status,
+        query_id: run.queryId ?? null,
+        result_json: run.result === undefined ? null : JSON.stringify(run.result),
       }
-    | undefined;
+    : undefined;
 }
 
 async function createCommitHarness(prefix: string) {

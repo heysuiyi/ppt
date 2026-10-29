@@ -124,7 +124,7 @@ describe("Layer 1 real-gateway agent loop", () => {
       );
       const repository = new PresentationLifecycleRepository({
         filePath: sessionStore.conversationDatabase.filePath,
-        connection: sessionStore.conversationDatabase.sqliteConnection,
+        storage: sessionStore.conversationDatabase.storage,
       });
       repositories.push(repository);
       const lifecycle = new PresentationLifecycleOrchestrator(repository);

@@ -105,6 +105,140 @@ describe("ConversationDatabase", () => {
     },
   );
 
+  it("keeps CAS byte equality, serialization order and conditional fencing", async () => {
+    const database = await createDatabase();
+    try {
+      const lease = database.openRunCheckpointLease({
+        threadId: "thread",
+        runId: "owner",
+        resume: false,
+      });
+      if (lease.type !== "opened") throw new Error("Expected lease");
+      let serializations = 0;
+      const checkpoint = {
+        toJSON() {
+          serializations += 1;
+          return { second: 2, first: 1 };
+        },
+      };
+      const write = {
+        threadId: "thread",
+        runId: "owner",
+        generation: lease.generation,
+        expectedRevision: 0,
+        nextRevision: 1,
+        checkpoint,
+      };
+      expect(database.saveRunCheckpointCas(write)).toBe("saved");
+      expect(serializations).toBe(1);
+      expect(database.saveRunCheckpointCas(write)).toBe("already_applied");
+      expect(serializations).toBe(2);
+      expect(database.saveRunCheckpointCas({ ...write, checkpoint: { first: 1, second: 2 } })).toBe(
+        "revision_conflict",
+      );
+      expect(
+        database.saveRunCheckpointCas({ ...write, expectedRevision: 3, nextRevision: 4 }),
+      ).toBe("revision_conflict");
+      expect(serializations).toBe(3);
+      expect(
+        database.saveRunCheckpointCas({
+          ...write,
+          runId: "other",
+          checkpoint: {
+            toJSON() {
+              throw new Error("A stale writer must not serialize.");
+            },
+          },
+        }),
+      ).toBe("stale_generation");
+      expect(
+        database.storage.checkpoints.updateIfLeaseMatches(
+          { ...write, expectedRevision: 0, nextRevision: 2 },
+          JSON.stringify({ overwritten: true }),
+        ),
+      ).toBe(false);
+      expect(
+        database.storage.checkpoints.updateIfLeaseMatches(
+          { ...write, generation: lease.generation + 1, expectedRevision: 1, nextRevision: 2 },
+          JSON.stringify({ overwritten: true }),
+        ),
+      ).toBe(false);
+      expect(database.inspectRunCheckpointLease(write)).toEqual({
+        type: "active",
+        revision: 1,
+        checkpoint: { second: 2, first: 1 },
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rolls back replacement cascades and all conversation mappers in an outer transaction", async () => {
+    const database = await createDatabase();
+    try {
+      database.replaceState({ activeSessionId: "s1", sessions: [snapshot("s1")] });
+      database.beginRun({ runId: "existing", sessionId: "s1" });
+      const original = database.loadState();
+      const originalEvents = database.listRunEvents("existing");
+      expect(() =>
+        database.withTransaction(() => {
+          database.replaceState({ activeSessionId: "s2", sessions: [snapshot("s2")] });
+          database.beginRun({ runId: "new", sessionId: "s2" });
+          const lease = database.openRunCheckpointLease({
+            threadId: "new-thread",
+            runId: "new",
+            resume: false,
+          });
+          if (lease.type !== "opened") throw new Error("Expected lease");
+          database.saveRunCheckpointCas({
+            threadId: "new-thread",
+            runId: "new",
+            generation: lease.generation,
+            expectedRevision: 0,
+            nextRevision: 1,
+            checkpoint: { saved: true },
+          });
+          database.storage.serviceThreads.save("new-thread", { active: true });
+          database.storage.agentConversationHistories.save("new-thread", [{ role: "user" }]);
+          database.saveContextSnapshotForRun("new", { messages: [] }, ["summary"]);
+          throw new Error("Abort shared transaction");
+        }),
+      ).toThrow("Abort shared transaction");
+      expect(database.loadState()).toEqual(original);
+      expect(database.listRunEvents("existing")).toEqual(originalEvents);
+      expect(database.hasRun("existing")).toBe(true);
+      expect(database.storage.runs.findById("new")).toBeUndefined();
+      expect(database.storage.checkpoints.findLease("new-thread")).toBeUndefined();
+      expect(database.storage.serviceThreads.load("new-thread")).toBeUndefined();
+      expect(database.storage.agentConversationHistories.load("new-thread")).toBeUndefined();
+      expect(database.latestContextSnapshot("s2")).toBeUndefined();
+    } finally {
+      database.close();
+    }
+  });
+
+  it("restores the previous full state when replacement fails partway through messages", async () => {
+    const database = await createDatabase();
+    try {
+      database.replaceState({ activeSessionId: "s1", sessions: [snapshot("s1")] });
+      database.beginRun({ runId: "existing", sessionId: "s1" });
+      const original = database.loadState();
+      const replacement = snapshot("s2");
+      replacement.messages[1].id = replacement.messages[0].id;
+      expect(() =>
+        database.replaceState({
+          activeSessionId: "s2",
+          sessions: [replacement],
+        }),
+      ).toThrow();
+      expect(database.loadState()).toEqual(original);
+      expect(database.hasRun("existing")).toBe(true);
+      expect(database.storage.sessions.listIds()).toEqual(["s1"]);
+    } finally {
+      database.close();
+    }
+  });
+
   it("stores sessions and messages without workspace transcripts", async () => {
     const database = await createDatabase();
     const session = snapshot("s1");
@@ -264,16 +398,16 @@ describe("ConversationDatabase", () => {
     const database = await createDatabase();
     database.replaceState({ activeSessionId: "s1", sessions: [snapshot("s1")] });
     database.beginRun({ runId: "run-1", sessionId: "s1", request: "continue" });
-    database.saveRunCheckpoint("thread-1", { phase: "tool_running" }, "run-1");
-    database.saveServiceThread("thread-1", { status: "active" });
+    database.storage.checkpoints.save("thread-1", { phase: "tool_running" }, "run-1");
+    database.storage.serviceThreads.save("thread-1", { status: "active" });
     const compacted = database.saveContextSnapshotForRun(
       "run-1",
       { messages: [{ role: "user", content: "summary" }] },
       ["L4 compact_history"],
     );
 
-    expect(database.loadRunCheckpoint("thread-1")).toEqual({ phase: "tool_running" });
-    expect(database.loadServiceThread("thread-1")).toEqual({ status: "active" });
+    expect(database.storage.checkpoints.load("thread-1")).toEqual({ phase: "tool_running" });
+    expect(database.storage.serviceThreads.load("thread-1")).toEqual({ status: "active" });
     expect(compacted?.summary).toContain("compact_history");
     expect(database.latestContextSnapshot("s1")?.modelContext).toEqual({
       messages: [{ role: "user", content: "summary" }],

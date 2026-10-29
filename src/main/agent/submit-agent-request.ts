@@ -56,8 +56,9 @@ export async function acceptAgentRequest(
   let messages = snapshot.messages;
   let threadId: string | undefined;
   const latest = store.conversationDatabase.latestSessionRun(sessionId);
-  const durable =
-    latest && store.conversationDatabase.loadServiceThread<DurableServiceThread>(latest.threadId);
+  const durable = latest?.threadId
+    ? store.conversationDatabase.storage.serviceThreads.load<DurableServiceThread>(latest.threadId)
+    : undefined;
   if (request.action.type === "edit") {
     const messageId = request.action.messageId;
     const index = messages.findIndex(

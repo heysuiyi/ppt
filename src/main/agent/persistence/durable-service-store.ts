@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { AgentExecutionStrategy, AgentModelSelection } from "@shared/agent";
 import type { AgentConversationMessage } from "@shared/session-recovery";
-import type { ConversationDatabase } from "../../conversation-database";
+import type { Storage } from "../../storage";
 import { readJsonFile, writeJsonFileAtomic, writeTextFileAtomic } from "./atomic-json-file";
 
 interface DurableMemoryEntry {
@@ -27,7 +27,7 @@ function safeThreadId(threadId: string): string {
 }
 
 export class DurableServiceStore {
-  constructor(private readonly storage: string | ConversationDatabase) {}
+  constructor(private readonly storage: string | Storage) {}
 
   private pathFor(threadId: string): string {
     if (typeof this.storage !== "string") {
@@ -38,7 +38,7 @@ export class DurableServiceStore {
 
   async load(threadId: string): Promise<DurableServiceThread | undefined> {
     if (typeof this.storage !== "string") {
-      const state = this.storage.loadServiceThread<DurableServiceThread>(threadId);
+      const state = this.storage.serviceThreads.load<DurableServiceThread>(threadId);
       if (state?.version !== 1 || state.threadId !== threadId) return undefined;
       return state;
     }
@@ -49,7 +49,7 @@ export class DurableServiceStore {
 
   async save(state: DurableServiceThread): Promise<void> {
     if (typeof this.storage !== "string") {
-      this.storage.saveServiceThread(state.threadId, state);
+      this.storage.serviceThreads.save(state.threadId, state);
       return;
     }
     await writeJsonFileAtomic(this.pathFor(state.threadId), state);

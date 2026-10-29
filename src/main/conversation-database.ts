@@ -1,118 +1,58 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import {
-  type AppendConversationEventInput,
-  type ConversationEvent,
-  type ConversationEventPage,
-  conversationEventSchema,
+import type {
+  AppendConversationEventInput,
+  ConversationEvent,
+  ConversationEventPage,
 } from "@shared/conversation-events";
 import {
   migrateDisplayCardsToSvgOnly,
   migratePresentationToSvgOnly,
   repairPresentationIdentities,
 } from "@shared/presentation-repair";
-import {
-  type SessionSnapshot,
-  sessionChatMessageSchema,
-  sessionSnapshotSchema,
-} from "@shared/session";
-import { withSqliteTransaction } from "./sqlite-transaction";
-import { init } from "./storage";
-
-interface StoredSessionRow {
-  id: string;
-  ordinal: number;
-  snapshot_json: string;
-}
-
-interface StoredMessageRow {
-  message_json: string;
-}
-
-interface StoredEventRow {
-  id: number;
-  session_id: string;
-  run_id: string | null;
-  thread_id: string | null;
-  sequence: number;
-  kind: string;
-  visibility: string;
-  payload_json: string;
-  created_at: string;
-}
+import { type SessionSnapshot, sessionSnapshotSchema } from "@shared/session";
+import { createStorage, type Storage } from "./storage";
+import type { CheckpointCasInput } from "./storage/checkpoint/checkpoint.dto";
+import type { StoredContextSnapshot } from "./storage/context-snapshot/context-snapshot.dto";
+import type { BeginRunInput, FinishRunInput, LatestSessionRun } from "./storage/run/run.dto";
 
 export interface ConversationDatabaseState {
   activeSessionId: string;
   sessions: SessionSnapshot[];
 }
 
-export interface StoredContextSnapshot {
-  id: number;
-  sessionId: string;
-  threadId?: string;
-  coveredSequenceStart: number;
-  coveredSequenceEnd: number;
-  summary: string;
-  modelContext: unknown;
-  tokenEstimate?: number;
-  createdAt: string;
-}
-
 /**
- * Application-owned SQLite database. This is the only durable store for
- * conversations, model runs, checkpoints and context compaction snapshots.
- * Workspace directories are deliberately absent from all persistence paths.
+ * Coordinates durable conversation state, run lifecycle and checkpoint ownership.
+ * SQL and stored-record conversion belong to the object mappers in storage.
  */
 export class ConversationDatabase {
-  private readonly database: DatabaseSync;
+  readonly storage: Storage;
 
   constructor(readonly filePath: string) {
-    mkdirSync(dirname(filePath), { recursive: true });
-    this.database = new DatabaseSync(filePath);
-    init(this.database);
+    this.storage = createStorage(filePath);
   }
 
   close(): void {
-    this.database.close();
-  }
-
-  get sqliteConnection(): DatabaseSync {
-    return this.database;
+    this.storage.close();
   }
 
   withTransaction<T>(operation: () => T): T {
-    return withSqliteTransaction(this.database, operation);
+    return this.storage.transaction(operation);
   }
 
   loadState(): ConversationDatabaseState {
-    const activeRow = this.database
-      .prepare("SELECT value FROM app_state WHERE key = 'active_session_id'")
-      .get() as { value?: string } | undefined;
-    const rows = this.database
-      .prepare("SELECT id, ordinal, snapshot_json FROM sessions ORDER BY ordinal ASC")
-      .all() as unknown as StoredSessionRow[];
-
-    const sessions = rows.map((row) => {
-      const stored = JSON.parse(row.snapshot_json) as Omit<SessionSnapshot, "messages">;
+    const requestedActive = this.storage.appState.findActiveSessionId() ?? "";
+    const sessions = this.storage.sessions.listOrdered().map((row) => {
+      const stored = JSON.parse(row.snapshotJson) as Omit<SessionSnapshot, "messages">;
       const repairedPresentation = migratePresentationToSvgOnly(
         repairPresentationIdentities(stored.presentation).value,
       ).value;
       const repairedDisplayCards = migrateDisplayCardsToSvgOnly(stored.displayCards ?? []).value;
-      const messageRows = this.database
-        .prepare("SELECT message_json FROM messages WHERE session_id = ? ORDER BY ordinal ASC")
-        .all(row.id) as unknown as StoredMessageRow[];
       return sessionSnapshotSchema.parse({
         ...stored,
         presentation: repairedPresentation,
         displayCards: repairedDisplayCards,
-        messages: messageRows.map((message) =>
-          sessionChatMessageSchema.parse(JSON.parse(message.message_json)),
-        ),
+        messages: this.storage.messages.listForSession(row.id),
       });
     });
-
-    const requestedActive = activeRow?.value ?? "";
     return {
       activeSessionId: sessions.some((item) => item.session.id === requestedActive)
         ? requestedActive
@@ -122,83 +62,38 @@ export class ConversationDatabase {
   }
 
   ensureProject(workspacePath: string, title: string): string {
-    const existing = this.database
-      .prepare("SELECT id FROM projects WHERE workspace_path = ?")
-      .get(workspacePath) as { id: string } | undefined;
+    const existingId = this.storage.projects.findIdByWorkspacePath(workspacePath);
     const now = new Date().toISOString();
-    if (existing) {
-      this.database
-        .prepare("UPDATE projects SET title = ?, updated_at = ? WHERE id = ?")
-        .run(title, now, existing.id);
-      return existing.id;
+    if (existingId !== undefined) {
+      this.storage.projects.updateTitle(existingId, title, now);
+      return existingId;
     }
     const id = crypto.randomUUID();
-    this.database
-      .prepare(`
-      INSERT INTO projects(id, workspace_path, title, created_at, updated_at)
-      VALUES(?, ?, ?, ?, ?)
-    `)
-      .run(id, workspacePath, title, now, now);
+    this.storage.projects.insert(id, workspacePath, title, now);
     return id;
   }
 
   replaceState(state: ConversationDatabaseState): void {
-    this.transaction(() => {
-      this.database
-        .prepare(
-          "INSERT INTO app_state(key, value) VALUES('active_session_id', ?) " +
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        )
-        .run(state.activeSessionId);
-
+    this.withTransaction(() => {
+      this.storage.appState.setActiveSessionId(state.activeSessionId);
       const ids = new Set(state.sessions.map((snapshot) => snapshot.session.id));
-      const existing = this.database.prepare("SELECT id FROM sessions").all() as unknown as Array<{
-        id: string;
-      }>;
-      const deleteSession = this.database.prepare("DELETE FROM sessions WHERE id = ?");
-      for (const row of existing) {
-        if (!ids.has(row.id)) deleteSession.run(row.id);
+      for (const id of this.storage.sessions.listIds()) {
+        if (!ids.has(id)) this.storage.sessions.deleteById(id);
       }
-
-      const upsertSession = this.database.prepare(`
-        INSERT INTO sessions(id, ordinal, snapshot_json, created_at, updated_at, workspace_path)
-        VALUES(?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          ordinal = excluded.ordinal,
-          snapshot_json = excluded.snapshot_json,
-          updated_at = excluded.updated_at,
-          workspace_path = excluded.workspace_path
-      `);
-      const deleteMessages = this.database.prepare("DELETE FROM messages WHERE session_id = ?");
-      const insertMessage = this.database.prepare(`
-        INSERT INTO messages(
-          session_id, message_id, ordinal, role, thread_id,
-          message_json, created_at, updated_at
-        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      for (const [sessionOrdinal, snapshot] of state.sessions.entries()) {
-        const { messages: _messages, ...storedSnapshot } = snapshot;
-        upsertSession.run(
-          snapshot.session.id,
-          sessionOrdinal,
-          JSON.stringify(storedSnapshot),
-          snapshot.session.createdAt,
-          snapshot.session.updatedAt,
-          snapshot.session.workspacePath ?? null,
-        );
-        deleteMessages.run(snapshot.session.id);
-        for (const [ordinal, message] of snapshot.messages.entries()) {
-          const now = new Date().toISOString();
-          insertMessage.run(
+      for (const [ordinal, snapshot] of state.sessions.entries()) {
+        const { messages, ...storedSnapshot } = snapshot;
+        this.storage.sessions.upsert({
+          id: snapshot.session.id,
+          ordinal,
+          snapshot: storedSnapshot,
+        });
+        this.storage.messages.deleteForSession(snapshot.session.id);
+        for (const [messageOrdinal, message] of messages.entries()) {
+          this.storage.messages.insert(
             snapshot.session.id,
-            message.id,
-            ordinal,
-            message.role,
-            message.threadId ?? null,
-            JSON.stringify(message),
-            now,
-            now,
+            messageOrdinal,
+            message,
+            new Date().toISOString(),
           );
         }
       }
@@ -206,72 +101,28 @@ export class ConversationDatabase {
   }
 
   hasRun(runId: string): boolean {
-    return Boolean(this.database.prepare("SELECT 1 FROM runs WHERE run_id = ?").get(runId));
+    return this.storage.runs.exists(runId);
   }
 
-  latestSessionRun(sessionId: string): { runId: string; threadId: string } | undefined {
-    return this.database
-      .prepare(
-        "SELECT run_id AS runId, thread_id AS threadId FROM runs WHERE session_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1",
-      )
-      .get(sessionId) as { runId: string; threadId: string } | undefined;
+  latestSessionRun(sessionId: string): LatestSessionRun | undefined {
+    return this.storage.runs.latestForSession(sessionId);
   }
 
-  acceptRun(
-    state: ConversationDatabaseState,
-    input: Parameters<ConversationDatabase["beginRun"]>[0],
-  ): void {
-    this.transaction(() => {
+  acceptRun(state: ConversationDatabaseState, input: BeginRunInput): void {
+    this.withTransaction(() => {
       if (this.hasRun(input.runId)) throw new Error("This request has already been accepted.");
       this.replaceState(state);
       this.beginRun(input);
-      this.database
-        .prepare("UPDATE runs SET status = 'preparing' WHERE run_id = ?")
-        .run(input.runId);
+      this.storage.runs.markPreparing(input.runId);
     });
   }
 
   markRunRunning(runId: string): void {
-    this.database
-      .prepare("UPDATE runs SET status = 'running' WHERE run_id = ? AND status = 'preparing'")
-      .run(runId);
+    this.storage.runs.markRunning(runId);
   }
 
-  beginRun(input: {
-    runId: string;
-    sessionId: string;
-    threadId?: string;
-    provider?: string;
-    model?: string;
-    request?: string;
-  }): void {
-    const now = new Date().toISOString();
-    this.database
-      .prepare(`
-      INSERT INTO runs(
-        run_id, session_id, thread_id, provider, model, status,
-        request_text, started_at, updated_at
-      ) VALUES(?, ?, ?, ?, ?, 'running', ?, ?, ?)
-      ON CONFLICT(run_id) DO UPDATE SET
-        thread_id = excluded.thread_id,
-        provider = excluded.provider,
-        model = excluded.model,
-        status = 'running',
-        request_text = excluded.request_text,
-        updated_at = excluded.updated_at,
-        completed_at = NULL,
-        error = NULL
-    `)
-      .run(
-        input.runId,
-        input.sessionId,
-        input.threadId ?? input.runId,
-        input.provider ?? null,
-        input.model ?? null,
-        input.request ?? null,
-        now,
-        now,
-      );
+  beginRun(input: BeginRunInput): void {
+    this.storage.runs.upsertStarted(input, new Date().toISOString());
     this.appendEvent({
       sessionId: input.sessionId,
       runId: input.runId,
@@ -296,30 +147,20 @@ export class ConversationDatabase {
   }
 
   bindRunQueryId(runId: string, queryId: string): void {
-    const row = this.database
-      .prepare("SELECT session_id, thread_id, query_id FROM runs WHERE run_id = ?")
-      .get(runId) as
-      | {
-          session_id: string;
-          thread_id: string | null;
-          query_id: string | null;
-        }
-      | undefined;
+    const row = this.storage.runs.findQueryBinding(runId);
     if (!row) throw new Error(`Run not found: ${runId}`);
-    if (queryId === runId || queryId === row.thread_id) {
+    if (queryId === runId || queryId === row.threadId) {
       throw new Error("QueryId must be distinct from runId and threadId.");
     }
-    if (row.query_id === queryId) return;
-    if (row.query_id) {
-      throw new Error(`Run ${runId} is already bound to QueryId ${row.query_id}.`);
+    if (row.queryId === queryId) return;
+    if (row.queryId) {
+      throw new Error(`Run ${runId} is already bound to QueryId ${row.queryId}.`);
     }
-    this.database
-      .prepare("UPDATE runs SET query_id = ?, updated_at = ? WHERE run_id = ? AND query_id IS NULL")
-      .run(queryId, new Date().toISOString(), runId);
+    this.storage.runs.bindQueryIdIfUnbound(runId, queryId, new Date().toISOString());
     this.appendEvent({
-      sessionId: row.session_id,
+      sessionId: row.sessionId,
       runId,
-      threadId: row.thread_id ?? undefined,
+      threadId: row.threadId,
       kind: "query_started",
       visibility: "internal",
       payload: { queryId },
@@ -327,41 +168,17 @@ export class ConversationDatabase {
   }
 
   getRunQueryId(runId: string): string | undefined {
-    const row = this.database.prepare("SELECT query_id FROM runs WHERE run_id = ?").get(runId) as
-      | { query_id: string | null }
-      | undefined;
-    return row?.query_id ?? undefined;
+    return this.storage.runs.findQueryId(runId);
   }
 
-  finishRun(input: {
-    runId: string;
-    status: "completed" | "failed" | "interrupted";
-    result?: unknown;
-    error?: string;
-    threadId?: string;
-  }): void {
-    const row = this.database
-      .prepare("SELECT session_id, thread_id FROM runs WHERE run_id = ?")
-      .get(input.runId) as { session_id: string; thread_id?: string } | undefined;
+  finishRun(input: FinishRunInput): void {
+    const row = this.storage.runs.findSession(input.runId);
     if (!row) return;
-    const now = new Date().toISOString();
-    this.database
-      .prepare(`
-      UPDATE runs SET status = ?, result_json = ?, error = ?,
-        updated_at = ?, completed_at = ? WHERE run_id = ?
-    `)
-      .run(
-        input.status,
-        input.result === undefined ? null : JSON.stringify(input.result),
-        input.error ?? null,
-        now,
-        now,
-        input.runId,
-      );
+    this.storage.runs.finish(input, new Date().toISOString());
     this.appendEvent({
-      sessionId: row.session_id,
+      sessionId: row.sessionId,
       runId: input.runId,
-      threadId: input.threadId ?? row.thread_id,
+      threadId: input.threadId ?? row.threadId,
       kind:
         input.status === "completed"
           ? "run_completed"
@@ -373,71 +190,23 @@ export class ConversationDatabase {
   }
 
   loadTerminalRunResult<T>(runId: string): T | undefined {
-    const row = this.database
-      .prepare("SELECT status, result_json FROM runs WHERE run_id = ?")
-      .get(runId) as
-      | {
-          status: "preparing" | "running" | "completed" | "failed" | "interrupted";
-          result_json: string | null;
-        }
-      | undefined;
-    if (!row || row.status === "running" || row.result_json === null) return undefined;
-    return JSON.parse(row.result_json) as T;
+    const row = this.storage.runs.findResult(runId);
+    if (!row || row.status === "running" || row.resultJson === undefined) return undefined;
+    return JSON.parse(row.resultJson) as T;
   }
 
   interruptRunningRuns(error = "Application restarted before the run completed."): string[] {
-    const rows = this.database
-      .prepare(
-        "SELECT run_id FROM runs WHERE status IN ('running', 'preparing') ORDER BY started_at",
-      )
-      .all() as Array<{ run_id: string }>;
-    for (const row of rows) {
-      this.finishRun({
-        runId: row.run_id,
-        status: "interrupted",
-        error,
-      });
-    }
-    return rows.map((row) => row.run_id);
+    const ids = this.storage.runs.listUnfinishedIds();
+    for (const runId of ids) this.finishRun({ runId, status: "interrupted", error });
+    return ids;
   }
 
   appendEvent(input: AppendConversationEventInput): ConversationEvent | undefined {
     const sessionId = input.sessionId ?? this.sessionIdForRun(input.runId);
     if (!sessionId) return undefined;
     const createdAt = input.createdAt ?? new Date().toISOString();
-    const next = this.database
-      .prepare(
-        "SELECT COALESCE(MAX(sequence), -1) + 1 AS next FROM conversation_events WHERE session_id = ?",
-      )
-      .get(sessionId) as { next: number };
-    const result = this.database
-      .prepare(`
-      INSERT INTO conversation_events(
-        session_id, run_id, thread_id, sequence, kind,
-        visibility, payload_json, created_at
-      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-      .run(
-        sessionId,
-        input.runId ?? null,
-        input.threadId ?? null,
-        next.next,
-        input.kind,
-        input.visibility ?? "user_visible",
-        JSON.stringify(input.payload ?? {}),
-        createdAt,
-      );
-    return conversationEventSchema.parse({
-      id: Number(result.lastInsertRowid),
-      sessionId,
-      runId: input.runId,
-      threadId: input.threadId,
-      sequence: next.next,
-      kind: input.kind,
-      visibility: input.visibility ?? "user_visible",
-      payload: input.payload ?? {},
-      createdAt,
-    });
+    const sequence = this.storage.conversationEvents.nextSequence(sessionId);
+    return this.storage.conversationEvents.insert({ ...input, sessionId, createdAt }, sequence);
   }
 
   appendRuntimeEvent(
@@ -451,57 +220,11 @@ export class ConversationDatabase {
 
   listEvents(sessionId: string, cursor = 0, limit = 200): ConversationEventPage {
     const safeLimit = Math.max(1, Math.min(500, limit));
-    const rows = this.database
-      .prepare(`
-      SELECT id, session_id, run_id, thread_id, sequence, kind,
-        visibility, payload_json, created_at
-      FROM conversation_events
-      WHERE session_id = ? AND sequence >= ?
-      ORDER BY sequence ASC
-      LIMIT ?
-    `)
-      .all(sessionId, cursor, safeLimit + 1) as unknown as StoredEventRow[];
-    const hasMore = rows.length > safeLimit;
-    const pageRows = rows.slice(0, safeLimit);
-    return {
-      events: pageRows.map((row) => this.toConversationEvent(row)),
-      nextCursor: hasMore ? pageRows.at(-1)!.sequence + 1 : undefined,
-    };
+    return this.storage.conversationEvents.listForSession(sessionId, cursor, safeLimit);
   }
 
   listRunEvents(runId: string): ConversationEvent[] {
-    const rows = this.database
-      .prepare(`
-      SELECT id, session_id, run_id, thread_id, sequence, kind,
-        visibility, payload_json, created_at
-      FROM conversation_events
-      WHERE run_id = ?
-      ORDER BY sequence ASC
-    `)
-      .all(runId) as unknown as StoredEventRow[];
-    return rows.map((row) => this.toConversationEvent(row));
-  }
-
-  saveRunCheckpoint(threadId: string, checkpoint: unknown, runId?: string): void {
-    this.database
-      .prepare(`
-      INSERT INTO run_checkpoints(thread_id, run_id, checkpoint_json, updated_at)
-      VALUES(?, ?, ?, ?)
-      ON CONFLICT(thread_id) DO UPDATE SET
-        run_id = excluded.run_id,
-        checkpoint_json = excluded.checkpoint_json,
-        updated_at = excluded.updated_at
-    `)
-      .run(threadId, runId ?? null, JSON.stringify(checkpoint), new Date().toISOString());
-  }
-
-  loadRunCheckpoint<T>(threadId: string): T | undefined {
-    const row = this.database
-      .prepare("SELECT checkpoint_json FROM run_checkpoints WHERE thread_id = ?")
-      .get(threadId) as { checkpoint_json: string } | undefined;
-    if (!row) return undefined;
-    const parsed = JSON.parse(row.checkpoint_json) as T | null;
-    return parsed ?? undefined;
+    return this.storage.conversationEvents.listForRun(runId);
   }
 
   openRunCheckpointLease(input: {
@@ -512,63 +235,35 @@ export class ConversationDatabase {
   }):
     | { type: "opened"; generation: number; revision: number; checkpoint?: unknown }
     | { type: "lease_busy"; activeRunId: string; generation: number } {
-    return this.transaction(() => {
-      const row = this.database
-        .prepare(`
-        SELECT checkpoint_json, active_run_id, writer_generation, writer_revision
-        FROM run_checkpoints WHERE thread_id = ?
-      `)
-        .get(input.threadId) as
-        | {
-            checkpoint_json: string;
-            active_run_id: string | null;
-            writer_generation: number;
-            writer_revision: number;
-          }
-        | undefined;
-
-      if (row?.active_run_id && row.active_run_id !== input.runId && !input.allowTakeover) {
-        // A crash can leave a lease after startup recovery interrupts its owner.
-        // Only a known terminal owner is safe to fence out; unknown owners stay busy.
-        const terminalOwner = this.database
-          .prepare(
-            "SELECT 1 FROM runs WHERE run_id = ? AND status IN ('completed', 'failed', 'interrupted')",
-          )
-          .get(row.active_run_id);
-        if (!terminalOwner) {
+    return this.withTransaction(() => {
+      const row = this.storage.checkpoints.findLease(input.threadId);
+      if (row?.activeRunId && row.activeRunId !== input.runId && !input.allowTakeover) {
+        // Recovery may interrupt a crashed owner; only a known terminal owner can be fenced out.
+        if (!this.storage.runs.isTerminal(row.activeRunId)) {
           return {
             type: "lease_busy" as const,
-            activeRunId: row.active_run_id,
-            generation: row.writer_generation,
+            activeRunId: row.activeRunId,
+            generation: row.writerGeneration,
           };
         }
       }
-      if (row?.active_run_id === input.runId) {
-        const checkpoint = JSON.parse(row.checkpoint_json) as unknown;
+      if (row?.activeRunId === input.runId) {
+        const checkpoint = JSON.parse(row.checkpointJson) as unknown;
         return {
           type: "opened" as const,
-          generation: row.writer_generation,
-          revision: row.writer_revision,
+          generation: row.writerGeneration,
+          revision: row.writerRevision,
           ...(checkpoint ? { checkpoint } : {}),
         };
       }
-
-      const generation = (row?.writer_generation ?? 0) + 1;
-      const now = new Date().toISOString();
-      this.database
-        .prepare(`
-        INSERT INTO run_checkpoints(
-          thread_id, run_id, checkpoint_json, active_run_id,
-          writer_generation, writer_revision, lease_updated_at, updated_at
-        ) VALUES(?, NULL, 'null', ?, ?, 0, ?, ?)
-        ON CONFLICT(thread_id) DO UPDATE SET
-          active_run_id = excluded.active_run_id,
-          writer_generation = excluded.writer_generation,
-          writer_revision = 0,
-          lease_updated_at = excluded.lease_updated_at
-      `)
-        .run(input.threadId, input.runId, generation, now, now);
-      const checkpoint = row ? (JSON.parse(row.checkpoint_json) as unknown) : undefined;
+      const generation = (row?.writerGeneration ?? 0) + 1;
+      this.storage.checkpoints.acquireLease(
+        input.threadId,
+        input.runId,
+        generation,
+        new Date().toISOString(),
+      );
+      const checkpoint = row ? (JSON.parse(row.checkpointJson) as unknown) : undefined;
       return {
         type: "opened" as const,
         generation,
@@ -578,73 +273,32 @@ export class ConversationDatabase {
     });
   }
 
-  saveRunCheckpointCas(input: {
-    threadId: string;
-    runId: string;
-    generation: number;
-    expectedRevision: number;
-    nextRevision: number;
-    checkpoint: unknown;
-  }): "saved" | "already_applied" | "stale_generation" | "revision_conflict" {
-    return this.transaction(() => {
-      const row = this.database
-        .prepare(`
-        SELECT active_run_id, writer_generation, writer_revision, checkpoint_json
-        FROM run_checkpoints WHERE thread_id = ?
-      `)
-        .get(input.threadId) as
-        | {
-            active_run_id: string | null;
-            writer_generation: number;
-            writer_revision: number;
-            checkpoint_json: string;
-          }
-        | undefined;
-      if (!row || row.active_run_id !== input.runId || row.writer_generation !== input.generation)
+  saveRunCheckpointCas(
+    input: CheckpointCasInput,
+  ): "saved" | "already_applied" | "stale_generation" | "revision_conflict" {
+    return this.withTransaction(() => {
+      const row = this.storage.checkpoints.findLease(input.threadId);
+      if (!row || row.activeRunId !== input.runId || row.writerGeneration !== input.generation) {
         return "stale_generation";
-
+      }
       const payload = JSON.stringify(input.checkpoint);
-      if (row.writer_revision === input.nextRevision) {
-        return row.checkpoint_json === payload ? "already_applied" : "revision_conflict";
+      if (row.writerRevision === input.nextRevision) {
+        return row.checkpointJson === payload ? "already_applied" : "revision_conflict";
       }
       if (
-        row.writer_revision !== input.expectedRevision ||
+        row.writerRevision !== input.expectedRevision ||
         input.nextRevision !== input.expectedRevision + 1
-      )
+      ) {
         return "revision_conflict";
-
-      const result = this.database
-        .prepare(`
-        UPDATE run_checkpoints
-        SET run_id = ?, checkpoint_json = ?, writer_revision = ?,
-            lease_updated_at = ?, updated_at = ?
-        WHERE thread_id = ? AND active_run_id = ?
-          AND writer_generation = ? AND writer_revision = ?
-      `)
-        .run(
-          input.runId,
-          payload,
-          input.nextRevision,
-          new Date().toISOString(),
-          new Date().toISOString(),
-          input.threadId,
-          input.runId,
-          input.generation,
-          input.expectedRevision,
-        );
-      return result.changes === 1 ? "saved" : "revision_conflict";
+      }
+      return this.storage.checkpoints.updateIfLeaseMatches(input, payload)
+        ? "saved"
+        : "revision_conflict";
     });
   }
 
   closeRunCheckpointLease(input: { threadId: string; runId: string; generation: number }): boolean {
-    const result = this.database
-      .prepare(`
-      UPDATE run_checkpoints
-      SET active_run_id = NULL, lease_updated_at = ?
-      WHERE thread_id = ? AND active_run_id = ? AND writer_generation = ?
-    `)
-      .run(new Date().toISOString(), input.threadId, input.runId, input.generation);
-    return result.changes === 1;
+    return this.storage.checkpoints.releaseLease(input.threadId, input.runId, input.generation);
   }
 
   inspectRunCheckpointLease(input: {
@@ -652,89 +306,22 @@ export class ConversationDatabase {
     runId: string;
     generation: number;
   }): { type: "active"; revision: number; checkpoint?: unknown } | { type: "stale" } {
-    const row = this.database
-      .prepare(`
-      SELECT active_run_id, writer_generation, writer_revision, checkpoint_json
-      FROM run_checkpoints WHERE thread_id = ?
-    `)
-      .get(input.threadId) as
-      | {
-          active_run_id: string | null;
-          writer_generation: number;
-          writer_revision: number;
-          checkpoint_json: string;
-        }
-      | undefined;
-    if (!row || row.active_run_id !== input.runId || row.writer_generation !== input.generation)
+    const row = this.storage.checkpoints.findLease(input.threadId);
+    if (!row || row.activeRunId !== input.runId || row.writerGeneration !== input.generation) {
       return { type: "stale" };
-    const checkpoint = JSON.parse(row.checkpoint_json) as unknown;
+    }
+    const checkpoint = JSON.parse(row.checkpointJson) as unknown;
     return {
       type: "active",
-      revision: row.writer_revision,
+      revision: row.writerRevision,
       ...(checkpoint ? { checkpoint } : {}),
     };
-  }
-
-  saveServiceThread(threadId: string, state: unknown): void {
-    this.database
-      .prepare(`
-      INSERT INTO service_threads(thread_id, state_json, updated_at)
-      VALUES(?, ?, ?)
-      ON CONFLICT(thread_id) DO UPDATE SET
-        state_json = excluded.state_json,
-        updated_at = excluded.updated_at
-    `)
-      .run(threadId, JSON.stringify(state), new Date().toISOString());
-  }
-
-  loadServiceThread<T>(threadId: string): T | undefined {
-    const row = this.database
-      .prepare("SELECT state_json FROM service_threads WHERE thread_id = ?")
-      .get(threadId) as { state_json: string } | undefined;
-    return row ? (JSON.parse(row.state_json) as T) : undefined;
-  }
-
-  saveAgentConversationHistory(threadId: string, messages: unknown): void {
-    this.database
-      .prepare(`
-      INSERT INTO agent_conversation_histories(thread_id, messages_json, updated_at)
-      VALUES(?, ?, ?)
-      ON CONFLICT(thread_id) DO UPDATE SET
-        messages_json = excluded.messages_json,
-        updated_at = excluded.updated_at
-    `)
-      .run(threadId, JSON.stringify(messages), new Date().toISOString());
-  }
-
-  loadAgentConversationHistory<T>(threadId: string): T | undefined {
-    const row = this.database
-      .prepare("SELECT messages_json FROM agent_conversation_histories WHERE thread_id = ?")
-      .get(threadId) as { messages_json: string } | undefined;
-    return row ? (JSON.parse(row.messages_json) as T) : undefined;
   }
 
   saveContextSnapshot(
     input: Omit<StoredContextSnapshot, "id" | "createdAt">,
   ): StoredContextSnapshot {
-    const createdAt = new Date().toISOString();
-    const result = this.database
-      .prepare(`
-      INSERT INTO context_snapshots(
-        session_id, thread_id, covered_sequence_start, covered_sequence_end,
-        summary, model_context_json, token_estimate, created_at
-      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-      .run(
-        input.sessionId,
-        input.threadId ?? null,
-        input.coveredSequenceStart,
-        input.coveredSequenceEnd,
-        input.summary,
-        JSON.stringify(input.modelContext),
-        input.tokenEstimate ?? null,
-        createdAt,
-      );
-    return { ...input, id: Number(result.lastInsertRowid), createdAt };
+    return this.storage.contextSnapshots.insert(input, new Date().toISOString());
   }
 
   saveContextSnapshotForRun(
@@ -742,75 +329,25 @@ export class ConversationDatabase {
     modelContext: unknown,
     notes: string[],
   ): StoredContextSnapshot | undefined {
-    const run = this.database
-      .prepare("SELECT session_id, thread_id FROM runs WHERE run_id = ?")
-      .get(runId) as { session_id: string; thread_id?: string } | undefined;
+    const run = this.storage.runs.findSession(runId);
     if (!run) return undefined;
-    const boundary = this.database
-      .prepare(
-        "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM conversation_events WHERE session_id = ?",
-      )
-      .get(run.session_id) as { sequence: number };
-    const previous = this.latestContextSnapshot(run.session_id);
+    const boundary = this.storage.conversationEvents.lastSequence(run.sessionId);
+    const previous = this.latestContextSnapshot(run.sessionId);
     return this.saveContextSnapshot({
-      sessionId: run.session_id,
-      threadId: run.thread_id,
+      sessionId: run.sessionId,
+      threadId: run.threadId,
       coveredSequenceStart: previous ? previous.coveredSequenceEnd + 1 : 0,
-      coveredSequenceEnd: boundary.sequence,
+      coveredSequenceEnd: boundary,
       summary: notes.join("\n") || "Prepared model context snapshot.",
       modelContext,
     });
   }
 
   latestContextSnapshot(sessionId: string): StoredContextSnapshot | undefined {
-    const row = this.database
-      .prepare(`
-      SELECT id, session_id, thread_id, covered_sequence_start, covered_sequence_end,
-        summary, model_context_json, token_estimate, created_at
-      FROM context_snapshots WHERE session_id = ?
-      ORDER BY covered_sequence_end DESC, id DESC LIMIT 1
-    `)
-      .get(sessionId) as Record<string, unknown> | undefined;
-    if (!row) return undefined;
-    return {
-      id: Number(row.id),
-      sessionId: String(row.session_id),
-      threadId: row.thread_id ? String(row.thread_id) : undefined,
-      coveredSequenceStart: Number(row.covered_sequence_start),
-      coveredSequenceEnd: Number(row.covered_sequence_end),
-      summary: String(row.summary),
-      modelContext: JSON.parse(String(row.model_context_json)),
-      tokenEstimate:
-        row.token_estimate === null || row.token_estimate === undefined
-          ? undefined
-          : Number(row.token_estimate),
-      createdAt: String(row.created_at),
-    };
+    return this.storage.contextSnapshots.latestForSession(sessionId);
   }
 
   private sessionIdForRun(runId: string | undefined): string | undefined {
-    if (!runId) return undefined;
-    const row = this.database.prepare("SELECT session_id FROM runs WHERE run_id = ?").get(runId) as
-      | { session_id: string }
-      | undefined;
-    return row?.session_id;
-  }
-
-  private toConversationEvent(row: StoredEventRow): ConversationEvent {
-    return conversationEventSchema.parse({
-      id: row.id,
-      sessionId: row.session_id,
-      runId: row.run_id ?? undefined,
-      threadId: row.thread_id ?? undefined,
-      sequence: row.sequence,
-      kind: row.kind,
-      visibility: row.visibility,
-      payload: JSON.parse(row.payload_json),
-      createdAt: row.created_at,
-    });
-  }
-
-  private transaction<T>(task: () => T): T {
-    return this.withTransaction(task);
+    return runId ? this.storage.runs.findSession(runId)?.sessionId : undefined;
   }
 }

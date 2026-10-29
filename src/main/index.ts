@@ -385,7 +385,7 @@ app.whenReady().then(async () => {
   await sessionStore.initialize();
   presentationLifecycleRepository = new PresentationLifecycleRepository({
     filePath: join(applicationDataRoot, "conversations.sqlite"),
-    connection: sessionStore.conversationDatabase.sqliteConnection,
+    storage: sessionStore.conversationDatabase.storage,
   });
   presentationLifecycleOrchestrator = new PresentationLifecycleOrchestrator(
     presentationLifecycleRepository,

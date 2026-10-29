@@ -200,7 +200,7 @@ export class DurableRunStore {
 
   async load(threadId: string): Promise<DurableRunCheckpoint | undefined> {
     if (typeof this.storage !== "string") {
-      const stored = this.storage.loadRunCheckpoint<
+      const stored = this.storage.storage.checkpoints.load<
         DurableRunCheckpoint | DurableRunCheckpointEnvelope
       >(threadId);
       return checkpointPayload(stored, threadId);
@@ -213,7 +213,7 @@ export class DurableRunStore {
 
   async save(checkpoint: DurableRunCheckpoint): Promise<void> {
     if (typeof this.storage !== "string") {
-      this.storage.saveRunCheckpoint(
+      this.storage.storage.checkpoints.save(
         checkpoint.threadId,
         checkpoint,
         checkpoint.version === 1 ? checkpoint.runId : checkpoint.lastRunId,

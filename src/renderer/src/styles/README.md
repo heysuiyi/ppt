@@ -4,6 +4,8 @@
 
 Token redesign research, current-runtime discrepancies, retention/removal candidates, and staged adoption: [工作台 Token 体系调研与新版建议](./token-system-review.md). This is a proposal, not an implemented replacement.
 
+Concrete Studio dark/light and Catnip dark/light mappings, shared component states, optical corrections, and rollout gates: [三风格主题优化与渐进接入方案](./token-system-plan.md). Candidate colors have formula checks only; runtime adoption and visual acceptance are not complete.
+
 ## Layers
 
 | Layer | Path | Role |

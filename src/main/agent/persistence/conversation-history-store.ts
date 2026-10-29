@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { ConversationDatabase } from "../../conversation-database";
+import type { Storage } from "../../storage";
 import type { AgentModelMessage } from "../gateway";
 import { readJsonFile, writeJsonFileAtomic } from "./atomic-json-file";
 
@@ -21,11 +21,11 @@ function safeThreadId(threadId: string): string {
 
 /** Canonical thread-level model history, separate from UI chat and query checkpoints. */
 export class DurableConversationHistoryStore implements ConversationHistoryStore {
-  constructor(private readonly storage: string | ConversationDatabase) {}
+  constructor(private readonly storage: string | Storage) {}
 
   async load(threadId: string): Promise<AgentModelMessage[] | undefined> {
     if (typeof this.storage !== "string") {
-      return this.storage.loadAgentConversationHistory<AgentModelMessage[]>(threadId);
+      return this.storage.agentConversationHistories.load<AgentModelMessage[]>(threadId);
     }
     const record = await readJsonFile<ConversationHistoryRecord>(this.pathFor(threadId));
     if (record?.version !== 1 || record.threadId !== threadId) return undefined;
@@ -35,7 +35,7 @@ export class DurableConversationHistoryStore implements ConversationHistoryStore
   async save(threadId: string, messages: readonly AgentModelMessage[]): Promise<void> {
     const cloned = structuredClone([...messages]);
     if (typeof this.storage !== "string") {
-      this.storage.saveAgentConversationHistory(threadId, cloned);
+      this.storage.agentConversationHistories.save(threadId, cloned);
       return;
     }
     await writeJsonFileAtomic(this.pathFor(threadId), {

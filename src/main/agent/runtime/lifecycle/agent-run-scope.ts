@@ -60,7 +60,7 @@ export class AgentRunScope {
           ? new DurableRunStore(options.workspaceRoot)
           : undefined;
       const historyStore = input.conversationDatabase
-        ? new DurableConversationHistoryStore(input.conversationDatabase)
+        ? new DurableConversationHistoryStore(input.conversationDatabase.storage)
         : options.workspaceRoot
           ? new DurableConversationHistoryStore(options.workspaceRoot)
           : undefined;

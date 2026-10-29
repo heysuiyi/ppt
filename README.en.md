@@ -222,7 +222,11 @@ Key areas:
 - `src/design-system/`: DesignSystemV2 schema, presets, and resolution
 - `src/shared/`: presentation model, command model, session and IPC types
 - `src/main/project/`: local project sandbox, artifact IO, diffs, dependency status
-- `src/main/storage/`: the single SQLite initialization API, `init(connection)`, owns all tables, indexes, connection settings, and existing checkpoint-column migrations. Repeated calls preserve data. Connection ownership, CRUD, session recovery, and JSON/project-file initialization remain in their existing modules.
+- `src/main/storage/`: SQLite data access organized by object (`session/`, `checkpoint/`, `ppt-job/`, etc.), with colocated DO, DTO, and Mapper files where needed.
+  - `init(connection)` owns tables, indexes, connection settings, and existing checkpoint-column migrations; repeated calls preserve data.
+  - `createStorage(filePath)` opens and initializes one connection, assembles all mappers, and provides synchronous `transaction()` and `close()` methods. Business code receives no raw connection or SQL API. Repositories borrowing the same Storage do not close it.
+  - Mappers own parameterized SQL, record mapping, named queries, and conditional writes. Business services retain run transitions, lease takeover, idempotency decisions, artifact validation, stale propagation, and recovery rules.
+  - Session and Presentation lifecycle writes share the connection and nested SAVEPOINTs; memory, notifications, and workspace mirrors are published after the database commit. JSON settings, project files, and filesystem Blob storage remain unchanged; no CRUD was added for the unused `blobs` table.
 - `src/main/deck/`: thumbnails, export history, PPTX export services
 - `skills/`: core create `ppt-workflow` → `ppt-design` → `ppt-design-layout` → `ppt-build`; short paths `ppt-edit` / `ppt-beautify` / `ppt-review` / `ppt-export`; optional upstream skills (`ppt-brief` / `ppt-outline` / `ppt-storyboard` / `ppt-research`) are knowledge-only and written via ReadFile/WriteFile — not lifecycle hard locks
 - `tests/`: coverage for Agent behavior, export, context compaction, approvals, and project artifacts

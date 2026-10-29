@@ -87,6 +87,7 @@ import {
   listUploadedTemplateDescriptors,
 } from "./project/template-import-service";
 import { materializeCustomTemplate } from "./project/template-materialize-service";
+import type { BeginRunInput } from "./storage/run/run.dto";
 
 const storedSessionSchema = sessionSnapshotSchema;
 const logger = createModuleLogger("session-store");
@@ -629,7 +630,7 @@ export class FileSessionStore {
   async acceptAgentRun(
     sessionId: string,
     messages: SessionChatMessage[],
-    input: Parameters<ConversationDatabase["beginRun"]>[0],
+    input: BeginRunInput,
     newSession?: SessionSnapshot,
   ): Promise<void> {
     const write = this.writeQueue

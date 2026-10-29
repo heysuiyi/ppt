@@ -45,7 +45,7 @@ describe("canonical conversation history store", () => {
     const root = await mkdtemp(join(tmpdir(), "agent-history-db-"));
     const database = new ConversationDatabase(join(root, "conversation.sqlite"));
     try {
-      const store = new DurableConversationHistoryStore(database);
+      const store = new DurableConversationHistoryStore(database.storage);
       await store.save("thread", history);
       expect(await store.load("thread")).toEqual(history);
     } finally {

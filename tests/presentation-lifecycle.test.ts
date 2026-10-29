@@ -17,6 +17,7 @@ import {
   asProjectId,
   asProposalId,
   asQueryId,
+  type PptJobState,
   pptProposalSchema,
   type ValidationReport,
 } from "@shared/presentation-lifecycle";
@@ -53,7 +54,7 @@ async function createCommitService() {
   const presentation = bootstrap.activeSession!.presentation;
   const repository = new PresentationLifecycleRepository({
     filePath,
-    connection: sessionStore.conversationDatabase.sqliteConnection,
+    storage: sessionStore.conversationDatabase.storage,
   });
   repositories.push(repository);
   const orchestrator = new PresentationLifecycleOrchestrator(repository);
@@ -140,6 +141,92 @@ afterEach(async () => {
 });
 
 describe("presentation lifecycle", () => {
+  it("keeps borrowed storage open when the lifecycle repository closes", async () => {
+    const { sessionId, sessionStore, repository, projectId, presentationId } =
+      await createCommitService();
+    repository.close();
+    repository.close();
+
+    const replacement = new PresentationLifecycleRepository({
+      filePath: sessionStore.conversationDatabase.filePath,
+      storage: sessionStore.conversationDatabase.storage,
+    });
+    repositories.push(replacement);
+    const state = new PresentationLifecycleOrchestrator(replacement).beginCapability({
+      projectId,
+      presentationId,
+      queryId: asQueryId("shared-owner-query"),
+      capability: "create",
+      instruction: "Create after closing a borrower",
+      requestedAt: NOW,
+    });
+    sessionStore.conversationDatabase.beginRun({
+      runId: "shared-owner-run",
+      sessionId,
+      threadId: "shared-owner-thread",
+      request: "Owner remains usable",
+    });
+
+    expect(replacement.getJob(state.jobId)).toEqual(state);
+    expect(
+      sessionStore.conversationDatabase.storage.runs.findById("shared-owner-run"),
+    ).toMatchObject({ sessionId, status: "running" });
+  });
+
+  it("rolls back nested lifecycle writes with their owning conversation transaction", async () => {
+    const { sessionId, sessionStore, repository, orchestrator, projectId, presentationId } =
+      await createCommitService();
+    const queryId = asQueryId("shared-rollback-query");
+    let rolledBackJob: PptJobState | undefined;
+
+    expect(() =>
+      sessionStore.conversationDatabase.withTransaction(() => {
+        sessionStore.conversationDatabase.beginRun({
+          runId: "shared-rollback-run",
+          sessionId,
+          threadId: "shared-rollback-thread",
+          request: "Rollback both domains",
+        });
+        const state = orchestrator.beginCapability({
+          projectId,
+          presentationId,
+          queryId,
+          capability: "create",
+          instruction: "Rollback lifecycle creation",
+          requestedAt: NOW,
+        });
+        rolledBackJob = state;
+        expect(repository.listArtifactRevisions(state.jobId).length).toBeGreaterThan(0);
+        expect(
+          repository.claimSideEffect({
+            jobId: state.jobId,
+            operation: "apply",
+            key: "shared-rollback-effect",
+            claimedAt: NOW,
+          }),
+        ).toEqual({ type: "claimed" });
+        throw new Error("rollback shared storage");
+      }),
+    ).toThrow("rollback shared storage");
+
+    expect(
+      sessionStore.conversationDatabase.storage.runs.findById("shared-rollback-run"),
+    ).toBeUndefined();
+    expect(rolledBackJob).toBeDefined();
+    const state = rolledBackJob!;
+    expect(repository.getJobByPresentationId(presentationId)).toBeUndefined();
+    expect(repository.getCapabilityRequest(state.currentRequest.requestId)).toBeUndefined();
+    expect(repository.listArtifactRevisions(state.jobId)).toEqual([]);
+    expect(repository.listArtifactHeads(state.jobId)).toEqual([]);
+    expect(
+      sessionStore.conversationDatabase.storage.pptSideEffects.findByKey({
+        jobId: state.jobId,
+        operation: "apply",
+        key: "shared-rollback-effect",
+      }),
+    ).toBeUndefined();
+  });
+
   it("uses canonical JSON and content-addressed blobs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "ppt-blobs-"));
     temporaryDirectories.push(directory);
@@ -492,12 +579,18 @@ describe("presentation lifecycle", () => {
     orchestrator.subscribe(() => {
       throw new Error("broken projection consumer");
     });
+    const previousPresentation = commandBus.getSnapshot();
+    const attemptedPresentation = {
+      ...previousPresentation,
+      title: "This presentation must roll back",
+      revision: previousPresentation.revision + 1,
+    };
 
     await expect(
       orchestrator.withProjectionNotificationBatch(() =>
         sessionStore.commitPresentationTransaction({
           sessionId,
-          presentation: commandBus.getSnapshot(),
+          presentation: attemptedPresentation,
           commitLifecycle: () => {
             orchestrator.beginCapability({
               projectId,
@@ -514,6 +607,12 @@ describe("presentation lifecycle", () => {
     ).rejects.toThrow(/force outer rollback/);
     expect(projections).toEqual([]);
     expect(repository.getJobByPresentationId(presentationId)).toBeUndefined();
+    expect(sessionStore.getSession(sessionId).presentation).toEqual(previousPresentation);
+    expect(
+      sessionStore.conversationDatabase
+        .loadState()
+        .sessions.find((snapshot) => snapshot.session.id === sessionId)?.presentation,
+    ).toEqual(previousPresentation);
 
     expect(() =>
       orchestrator.beginCapability({

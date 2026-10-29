@@ -175,7 +175,7 @@ describe("Main-owned Agent submission", () => {
     const { store } = await fixture();
     const first = request();
     const admitted = await acceptAgentRequest(store, settings, first);
-    store.conversationDatabase.saveServiceThread(first.requestId, {
+    store.conversationDatabase.storage.serviceThreads.save(first.requestId, {
       version: 1,
       threadId: first.requestId,
       status: "waiting_user",
@@ -206,7 +206,7 @@ describe("Main-owned Agent submission", () => {
     const { store } = await fixture();
     const first = request();
     const admitted = await acceptAgentRequest(store, settings, first);
-    store.conversationDatabase.saveServiceThread(first.requestId, {
+    store.conversationDatabase.storage.serviceThreads.save(first.requestId, {
       version: 1,
       threadId: first.requestId,
       status: "waiting_user",

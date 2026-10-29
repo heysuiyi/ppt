@@ -593,7 +593,7 @@ describe("durable agent recovery", () => {
     ]);
     const firstRepository = new PresentationLifecycleRepository({
       filePath: lifecyclePath,
-      connection: sessionStore.conversationDatabase.sqliteConnection,
+      storage: sessionStore.conversationDatabase.storage,
     });
     const firstLifecycle = new PresentationLifecycleOrchestrator(firstRepository);
     firstLifecycle.beginCapability({
@@ -668,7 +668,7 @@ describe("durable agent recovery", () => {
     const restoredBus = new CommandBus(sessionStore.getSession(sessionId).presentation);
     const restoredRepository = new PresentationLifecycleRepository({
       filePath: lifecyclePath,
-      connection: sessionStore.conversationDatabase.sqliteConnection,
+      storage: sessionStore.conversationDatabase.storage,
     });
     const restoredLifecycle = new PresentationLifecycleOrchestrator(restoredRepository);
     const restoredCommitService = new PresentationCommitService(
@@ -761,7 +761,7 @@ describe("durable agent recovery", () => {
     ];
     let repository = new PresentationLifecycleRepository({
       filePath: lifecyclePath,
-      connection: sessionStore.conversationDatabase.sqliteConnection,
+      storage: sessionStore.conversationDatabase.storage,
     });
     let lifecycle = new PresentationLifecycleOrchestrator(repository);
     lifecycle.beginCapability({
@@ -833,7 +833,7 @@ describe("durable agent recovery", () => {
       repository.close();
       repository = new PresentationLifecycleRepository({
         filePath: lifecyclePath,
-        connection: sessionStore.conversationDatabase.sqliteConnection,
+        storage: sessionStore.conversationDatabase.storage,
       });
       lifecycle = new PresentationLifecycleOrchestrator(repository);
       const restoredBus = new CommandBus(sessionStore.getSession(sessionId).presentation);

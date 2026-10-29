@@ -161,7 +161,7 @@ export class AgentService {
     private readonly lifecycleBlobStore?: ContentAddressedBlobStore,
   ) {
     this.durableStore = conversationDatabase
-      ? new DurableServiceStore(conversationDatabase)
+      ? new DurableServiceStore(conversationDatabase.storage)
       : workspaceRoot
         ? new DurableServiceStore(workspaceRoot)
         : undefined;
