@@ -221,6 +221,7 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `src/design-system/`：DesignSystemV2 schema、预设与解析
 - `src/shared/`：演示文稿模型、命令模型、会话与 IPC 类型
 - `src/main/project/`：本地项目沙箱、产物读写、diff 和依赖状态
+- `src/main/storage/`：统一 SQLite 初始化入口 `init(connection)`，集中管理全部表、索引、连接配置和已有检查点字段迁移；可重复调用，不清空数据。连接创建与关闭、CRUD、会话恢复和 JSON/项目文件初始化仍由原模块负责。
 - `src/main/deck/`：缩略图、导出历史、PPTX 导出服务
 - `skills/`：核心创建 `ppt-workflow` → `ppt-design` → `ppt-design-layout` → `ppt-build`；短路径 `ppt-edit` / `ppt-beautify` / `ppt-review` / `ppt-export`；可选上游 Skill（`ppt-brief` / `ppt-outline` / `ppt-storyboard` / `ppt-research`）仅知识包，经 ReadFile/WriteFile 写入，非 lifecycle 硬锁
 - `tests/`：Agent、导出、上下文压缩、工具审批和项目产物测试

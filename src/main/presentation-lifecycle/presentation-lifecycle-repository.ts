@@ -30,6 +30,7 @@ import {
   toPptJobProjection,
 } from "@shared/presentation-lifecycle";
 import { withSqliteTransaction } from "../sqlite-transaction";
+import { init } from "../storage";
 
 interface JsonRow {
   json: string;
@@ -99,7 +100,7 @@ export class PresentationLifecycleRepository {
     } else {
       this.database = source.connection;
     }
-    this.initializeSchema();
+    init(this.database);
   }
 
   close(): void {
@@ -793,118 +794,6 @@ export class PresentationLifecycleRepository {
         input.key,
       );
     return result.changes === 1;
-  }
-
-  private initializeSchema(): void {
-    this.database.exec(`
-      PRAGMA journal_mode = WAL;
-      PRAGMA foreign_keys = ON;
-      PRAGMA synchronous = FULL;
-      PRAGMA busy_timeout = 5000;
-
-      CREATE TABLE IF NOT EXISTS ppt_jobs (
-        job_id TEXT PRIMARY KEY,
-        project_id TEXT NOT NULL,
-        presentation_id TEXT NOT NULL UNIQUE,
-        state_revision INTEGER NOT NULL,
-        state_json TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS ppt_capability_requests (
-        request_id TEXT PRIMARY KEY,
-        job_id TEXT NOT NULL REFERENCES ppt_jobs(job_id) ON DELETE CASCADE,
-        query_id TEXT,
-        capability TEXT NOT NULL,
-        request_json TEXT NOT NULL,
-        requested_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS ppt_requests_job_requested
-        ON ppt_capability_requests(job_id, requested_at);
-      CREATE UNIQUE INDEX IF NOT EXISTS ppt_requests_query
-        ON ppt_capability_requests(job_id, query_id)
-        WHERE query_id IS NOT NULL;
-
-      CREATE TABLE IF NOT EXISTS ppt_artifact_revisions (
-        revision_id TEXT PRIMARY KEY,
-        artifact_id TEXT NOT NULL,
-        job_id TEXT NOT NULL REFERENCES ppt_jobs(job_id) ON DELETE CASCADE,
-        kind TEXT NOT NULL,
-        stage TEXT NOT NULL,
-        schema_version INTEGER NOT NULL,
-        content_hash TEXT NOT NULL,
-        revision_json TEXT NOT NULL,
-        idempotency_key TEXT NOT NULL,
-        committed_at TEXT NOT NULL,
-        UNIQUE(job_id, idempotency_key)
-      );
-      CREATE INDEX IF NOT EXISTS ppt_revisions_job_artifact
-        ON ppt_artifact_revisions(job_id, artifact_id, committed_at);
-
-      CREATE TABLE IF NOT EXISTS ppt_artifact_dependencies (
-        artifact_revision_id TEXT NOT NULL
-          REFERENCES ppt_artifact_revisions(revision_id) ON DELETE CASCADE,
-        dependency_artifact_id TEXT NOT NULL,
-        dependency_revision_id TEXT NOT NULL
-          REFERENCES ppt_artifact_revisions(revision_id),
-        dependency_content_hash TEXT NOT NULL,
-        PRIMARY KEY(artifact_revision_id, dependency_revision_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS ppt_artifact_heads (
-        job_id TEXT NOT NULL REFERENCES ppt_jobs(job_id) ON DELETE CASCADE,
-        artifact_id TEXT NOT NULL,
-        revision_id TEXT NOT NULL
-          REFERENCES ppt_artifact_revisions(revision_id),
-        PRIMARY KEY(job_id, artifact_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS ppt_stage_attempts (
-        stage_run_id TEXT PRIMARY KEY,
-        job_id TEXT NOT NULL REFERENCES ppt_jobs(job_id) ON DELETE CASCADE,
-        stage TEXT NOT NULL,
-        attempt INTEGER NOT NULL,
-        status TEXT NOT NULL,
-        idempotency_key TEXT NOT NULL,
-        attempt_json TEXT NOT NULL,
-        started_at TEXT NOT NULL,
-        completed_at TEXT,
-        UNIQUE(job_id, idempotency_key)
-      );
-
-      CREATE TABLE IF NOT EXISTS ppt_proposals (
-        proposal_id TEXT PRIMARY KEY,
-        job_id TEXT NOT NULL REFERENCES ppt_jobs(job_id) ON DELETE CASCADE,
-        status TEXT NOT NULL,
-        proposal_json TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        resolved_at TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS ppt_side_effects (
-        job_id TEXT NOT NULL REFERENCES ppt_jobs(job_id) ON DELETE CASCADE,
-        operation TEXT NOT NULL,
-        effect_key TEXT NOT NULL,
-        status TEXT NOT NULL,
-        result_json TEXT,
-        error TEXT,
-        claimed_at TEXT NOT NULL,
-        completed_at TEXT,
-        PRIMARY KEY(job_id, operation, effect_key)
-      );
-
-      CREATE TABLE IF NOT EXISTS ppt_job_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        job_id TEXT NOT NULL REFERENCES ppt_jobs(job_id) ON DELETE CASCADE,
-        state_revision INTEGER NOT NULL,
-        event_type TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS ppt_events_job_revision
-        ON ppt_job_events(job_id, state_revision, id);
-    `);
   }
 
   private insertCapabilityRequest(request: PptCapabilityRequest): void {

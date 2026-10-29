@@ -18,6 +18,7 @@ import {
   sessionSnapshotSchema,
 } from "@shared/session";
 import { withSqliteTransaction } from "./sqlite-transaction";
+import { init } from "./storage";
 
 interface StoredSessionRow {
   id: string;
@@ -69,7 +70,7 @@ export class ConversationDatabase {
   constructor(readonly filePath: string) {
     mkdirSync(dirname(filePath), { recursive: true });
     this.database = new DatabaseSync(filePath);
-    this.initializeSchema();
+    init(this.database);
   }
 
   close(): void {
@@ -82,164 +83,6 @@ export class ConversationDatabase {
 
   withTransaction<T>(operation: () => T): T {
     return withSqliteTransaction(this.database, operation);
-  }
-
-  private initializeSchema(): void {
-    this.database.exec(`
-      PRAGMA journal_mode = WAL;
-      PRAGMA foreign_keys = ON;
-      PRAGMA synchronous = FULL;
-      PRAGMA busy_timeout = 5000;
-
-      CREATE TABLE IF NOT EXISTS app_state (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS projects (
-        id TEXT PRIMARY KEY,
-        workspace_path TEXT NOT NULL UNIQUE,
-        title TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        ordinal INTEGER NOT NULL,
-        snapshot_json TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        workspace_path TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS messages (
-        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        message_id TEXT NOT NULL,
-        ordinal INTEGER NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
-        thread_id TEXT,
-        message_json TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY(session_id, message_id),
-        UNIQUE(session_id, ordinal)
-      );
-
-      CREATE INDEX IF NOT EXISTS messages_session_ordinal
-        ON messages(session_id, ordinal);
-      CREATE INDEX IF NOT EXISTS messages_thread
-        ON messages(thread_id);
-
-      CREATE TABLE IF NOT EXISTS runs (
-        run_id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        thread_id TEXT,
-        query_id TEXT,
-        provider TEXT,
-        model TEXT,
-        status TEXT NOT NULL,
-        request_text TEXT,
-        result_json TEXT,
-        error TEXT,
-        started_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        completed_at TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS runs_session_started
-        ON runs(session_id, started_at);
-      CREATE INDEX IF NOT EXISTS runs_thread
-        ON runs(thread_id);
-      CREATE INDEX IF NOT EXISTS runs_query
-        ON runs(query_id);
-
-      CREATE TABLE IF NOT EXISTS conversation_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        run_id TEXT REFERENCES runs(run_id) ON DELETE CASCADE,
-        thread_id TEXT,
-        sequence INTEGER NOT NULL,
-        kind TEXT NOT NULL,
-        visibility TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        UNIQUE(session_id, sequence)
-      );
-
-      CREATE INDEX IF NOT EXISTS events_session_sequence
-        ON conversation_events(session_id, sequence);
-      CREATE INDEX IF NOT EXISTS events_run
-        ON conversation_events(run_id, id);
-
-      CREATE TABLE IF NOT EXISTS run_checkpoints (
-        thread_id TEXT PRIMARY KEY,
-        run_id TEXT,
-        checkpoint_json TEXT NOT NULL,
-        active_run_id TEXT,
-        writer_generation INTEGER NOT NULL DEFAULT 0,
-        writer_revision INTEGER NOT NULL DEFAULT 0,
-        lease_updated_at TEXT,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS service_threads (
-        thread_id TEXT PRIMARY KEY,
-        state_json TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS agent_conversation_histories (
-        thread_id TEXT PRIMARY KEY,
-        messages_json TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS context_snapshots (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        thread_id TEXT,
-        covered_sequence_start INTEGER NOT NULL,
-        covered_sequence_end INTEGER NOT NULL,
-        summary TEXT NOT NULL,
-        model_context_json TEXT NOT NULL,
-        token_estimate INTEGER,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS context_session_boundary
-        ON context_snapshots(session_id, covered_sequence_end DESC);
-
-      CREATE TABLE IF NOT EXISTS blobs (
-        hash TEXT PRIMARY KEY,
-        media_type TEXT NOT NULL,
-        byte_length INTEGER NOT NULL,
-        relative_path TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-    `);
-    const checkpointColumns = new Set(
-      (
-        this.database.prepare("PRAGMA table_info(run_checkpoints)").all() as unknown as Array<{
-          name: string;
-        }>
-      ).map((column) => column.name),
-    );
-    const migrations = [
-      ["active_run_id", "ALTER TABLE run_checkpoints ADD COLUMN active_run_id TEXT"],
-      [
-        "writer_generation",
-        "ALTER TABLE run_checkpoints ADD COLUMN writer_generation INTEGER NOT NULL DEFAULT 0",
-      ],
-      [
-        "writer_revision",
-        "ALTER TABLE run_checkpoints ADD COLUMN writer_revision INTEGER NOT NULL DEFAULT 0",
-      ],
-      ["lease_updated_at", "ALTER TABLE run_checkpoints ADD COLUMN lease_updated_at TEXT"],
-    ] as const;
-    for (const [column, sql] of migrations) {
-      if (!checkpointColumns.has(column)) this.database.exec(sql);
-    }
   }
 
   loadState(): ConversationDatabaseState {
