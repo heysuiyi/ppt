@@ -8,12 +8,16 @@
 
 .settings-nav {
   display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
   flex-direction: column;
   gap: var(--space-3);
 }
 
 .settings-nav-filter {
   width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
   height: var(--settings-control-height);
   padding: 0 10px;
   border: 1px solid var(--border-default);
@@ -36,6 +40,7 @@
 .settings-nav-group {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   gap: 2px;
   padding-bottom: 6px;
 }
@@ -46,6 +51,7 @@
 
 .settings-nav-item {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 10px;
   min-height: 30px;
@@ -60,6 +66,12 @@
   cursor: pointer;
   width: 100%;
   transition: var(--transition-color);
+}
+
+.settings-nav-item > span:last-child,
+.settings-nav-back > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .settings-nav-item-icon {
@@ -85,6 +97,7 @@
 
 .settings-nav-back {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 6px;
   width: 100%;

@@ -62,48 +62,17 @@ function NonSvgSlidePlaceholder({ slide }: { slide: Slide }) {
 
 interface MirrorSlideFrameProps {
   slide: Slide;
-  fallbackWidth: number;
   className?: string;
 }
 
-function MirrorSlideFrame({ slide, fallbackWidth, className }: MirrorSlideFrameProps) {
-  const frameRef = useRef<HTMLDivElement>(null);
-  const [frameWidth, setFrameWidth] = useState(fallbackWidth);
-  const isSvgSlide = slide.visualSource?.kind === "svg";
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-    const updateWidth = () => {
-      const measuredWidth = frame.getBoundingClientRect().width;
-      if (measuredWidth > 0) setFrameWidth(measuredWidth);
-    };
-    updateWidth();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateWidth);
-      return () => window.removeEventListener("resize", updateWidth);
-    }
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, []);
-
+function MirrorSlideFrame({ slide, className }: MirrorSlideFrameProps) {
   return (
-    <div ref={frameRef} className={["mirror-slide-frame", className].filter(Boolean).join(" ")}>
-      <div
-        className="slide-viewport"
-        style={{
-          width: 1280,
-          height: 720,
-          background: "#ffffff",
-          transform: `scale(${frameWidth / 1280})`,
-          transformOrigin: "top left",
-          position: "absolute",
-          inset: 0,
-        }}
-      >
-        {isSvgSlide ? <SvgSlideSurface slide={slide} /> : <NonSvgSlidePlaceholder slide={slide} />}
-      </div>
+    <div className={["mirror-slide-frame", className].filter(Boolean).join(" ")}>
+      {slide.visualSource?.kind === "svg" ? (
+        <SvgSlideSurface slide={slide} />
+      ) : (
+        <NonSvgSlidePlaceholder slide={slide} />
+      )}
     </div>
   );
 }
@@ -122,6 +91,20 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenIndex, setFullscreenIndex] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  const [fullscreenWidth, setFullscreenWidth] = useState(0);
+  const fullscreenViewportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const viewport = fullscreenViewportRef.current;
+    if (!isFullscreen || !viewport || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      setFullscreenWidth(Math.min(width, (height * 1280) / 720));
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [isFullscreen]);
   const artifactCards = useArtifactCardManager((state) => state.cards);
   const inspectionPreviews = useMemo(
     () => selectLatestSlidePreviews(artifactCards),
@@ -257,7 +240,7 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
     if (index === undefined) return null;
     const slide = slides[index];
     if (!slide) return null;
-    return <MirrorSlideFrame slide={slide} fallbackWidth={960} />;
+    return <MirrorSlideFrame slide={slide} />;
   };
 
   return (
@@ -436,11 +419,7 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
                   onClick={handleFullscreenOpen}
                   aria-label={`放大查看第 ${Math.max(0, selectedSlideIndex) + 1} 页：${selectedSlide.title}`}
                 >
-                  <MirrorSlideFrame
-                    slide={selectedSlide}
-                    fallbackWidth={isExpanded ? 960 : 320}
-                    className="mirror-focus-frame"
-                  />
+                  <MirrorSlideFrame slide={selectedSlide} className="mirror-focus-frame" />
                   <span className="mirror-focus-canvas-action">点击放大查看</span>
                 </button>
               </section>
@@ -465,11 +444,7 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
                     aria-label={`选择第 ${index + 1} 页：${slide.title}`}
                     aria-current={isSelected ? "page" : undefined}
                   >
-                    <MirrorSlideFrame
-                      slide={slide}
-                      fallbackWidth={isExpanded ? 220 : 150}
-                      className="mirror-slide-wrapper"
-                    />
+                    <MirrorSlideFrame slide={slide} className="mirror-slide-wrapper" />
                     <span className="mirror-card-meta">
                       <span className="mirror-card-identity">
                         <span className="slide-number">
@@ -515,6 +490,7 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
               {/* 主幻灯片预览区 */}
               <div
                 className="slideshow-viewport-container"
+                ref={fullscreenViewportRef}
                 onClick={(e) => {
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -525,20 +501,19 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
                     setFullscreenIndex((prev) => Math.max(0, prev - 1));
                   }
                 }}
-                style={{ cursor: "pointer" }}
+                style={{ cursor: "pointer", minWidth: 0, minHeight: 0 }}
               >
                 {slides[fullscreenIndex] ? (
                   <div
                     className="slide-viewport"
                     style={{
-                      width: 1280,
-                      height: 720,
+                      width: fullscreenWidth,
+                      height: "auto",
+                      aspectRatio: "1280 / 720",
                       background: "#ffffff",
                       boxShadow: "var(--slideshow-slide-shadow)",
                       borderRadius: 8,
                       position: "relative",
-                      transform: `scale(${Math.min(window.innerWidth / 1380, window.innerHeight / 820)})`,
-                      transformOrigin: "center center",
                     }}
                   >
                     {slides[fullscreenIndex].visualSource?.kind === "svg" ? (

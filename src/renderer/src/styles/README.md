@@ -2,6 +2,8 @@
 
 `../styles.css` is the public stylesheet entry. Keep it as an ordered import map so the renderer import in `main.tsx` stays stable.
 
+Token redesign research, current-runtime discrepancies, retention/removal candidates, and staged adoption: [工作台 Token 体系调研与新版建议](./token-system-review.md). This is a proposal, not an implemented replacement.
+
 ## Layers
 
 | Layer | Path | Role |
@@ -26,7 +28,7 @@ Appearance is applied by `useAppearanceRuntime` on `document.documentElement`:
 
 - `dataset.skin` — currently only `studio` (built-in token base)
 - `dataset.colorScheme` — `light` \| `dark`
-- `dataset.accent` / `dataset.controlShape` — accent + radius family
+- Accent / control-shape selectors remain in CSS as legacy branches; the runtime no longer sets these attributes, and persisted legacy settings are removed.
 - `style.colorScheme` — native form controls / scrollbars
 
 **Do not** use `.dark-theme` or UI-level `[data-theme]` for workbench appearance.
@@ -38,7 +40,7 @@ Default: `skin=studio`, `colorScheme=dark`.
 
 ## User CSS themes
 
-Custom workbench themes live in `{applicationDataRoot}/themes/<id>/theme.css` (usually `~/.agent-ppt/themes/<id>/theme.css`). Settings → 界面外观 lists `Studio` plus discovered folders; selecting one injects the full stylesheet into `<style id="user-ui-theme">`. The theme root path is fixed (no custom directory picker).
+Custom workbench themes live in `{applicationDataRoot}/themes/<id>/theme.css` (usually `~/.agent-ppt/themes/<id>/theme.css`). Settings → 界面外观 lists built-in `Studio` and `Catnip` plus discovered folders. Catnip uses bundled CSS; custom themes use the discovered stylesheet. Both are injected into `<style id="user-ui-theme">`. The theme root path is fixed (no custom directory picker).
 
 **Stable contract (recommended):** override semantic variables under `:root[data-skin][data-color-scheme="dark|light"]` (`--surface-*`, `--text-*`, `--border-*`, accents/status). A token-only theme should recolor window chrome, sidebar, composer, and settings without targeting component classes.
 
@@ -53,7 +55,7 @@ The `[data-skin]` part is load-bearing: `tokens/skins/studio.css` assigns the sa
 
 Component class names may change. Slide paper / deck preview surfaces intentionally keep fixed light paper colors and are not part of the theme contract.
 
-Built-in id `studio` is reserved; a user folder named `studio` is ignored. Relative `url(./asset)` inside theme folders is not loaded yet.
+Built-in ids `studio` and `catnip` are reserved; user folders with those names are ignored. Relative `url(./asset)` inside theme folders is not loaded yet. Refreshing the theme list does not reload the CSS of the currently selected id.
 
 ## Placement: three questions
 

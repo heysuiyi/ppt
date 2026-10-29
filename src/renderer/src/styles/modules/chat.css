@@ -22,7 +22,8 @@
 
 /* Chat scroll viewport */
 .chat-scroll-viewport {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -71,6 +72,7 @@
 
 .chat-conversation-shell {
   width: 100%;
+  min-width: 0;
   max-width: 760px;
   margin: 0 auto;
   padding-inline: 20px;
@@ -85,7 +87,10 @@
   --chat-scrollbar-gutter: 8px;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
   min-height: 0;
+  container-type: inline-size;
   transition:
     opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
     transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
@@ -93,15 +98,34 @@
     margin 0.45s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.chat-workspace-column > .canvas-header {
+  flex: 0 0 auto;
+  min-width: 0;
+  height: auto;
+}
+
+.chat-workspace-column .chat-session-title {
+  max-width: 100%;
+}
+
+.chat-workspace-column > .center-focal-content-area {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  justify-content: safe center;
+}
+
 .chat-stream {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   gap: 0;
   padding: 18px 0 28px;
 }
 
 .chat-message {
   width: 100%;
+  min-width: 0;
   max-width: 100%;
   margin: 0;
 }
@@ -302,7 +326,7 @@
   filter: none;
 }
 
-@media (max-width: 620px) {
+@container (max-width: 620px) {
   .user-message-editor-header {
     align-items: flex-start;
     flex-direction: column;
@@ -467,6 +491,7 @@
 .chat-input-stack {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .chat-input-stack .task-plan-card {
@@ -745,7 +770,7 @@
   background: transparent;
 }
 
-@media (max-width: 700px) {
+@container (max-width: 700px) {
   .chat-conversation-shell {
     padding-inline: 18px;
   }

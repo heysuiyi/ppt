@@ -1,6 +1,8 @@
 /* ??????? */
 aside {
-  height: 100%;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   background: var(--surface-base);
   border-right: none;
   display: flex;
@@ -31,7 +33,8 @@ aside {
 }
 
 .panel-header {
-  height: 48px;
+  flex: 0 0 auto;
+  min-width: 0;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
@@ -129,7 +132,10 @@ aside {
 /* ?????? */
 .sections-container {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 10px;
   display: flex;
   flex-direction: column;
@@ -183,7 +189,9 @@ aside {
 .workbench-sidebar {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .workbench-sidebar-top {
@@ -347,7 +355,9 @@ aside {
 .workbench-sidebar-list {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 2px 8px 12px;
 }
 
@@ -814,6 +824,8 @@ aside {
 }
 
 .left-footer {
+  flex: 0 0 auto;
+  min-width: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;

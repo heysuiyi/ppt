@@ -27,7 +27,11 @@ export function App() {
     <main className="app-shell">
       <AppTopbar {...topbar} />
       <NotificationViewport message={shell.notificationMessage} />
-      <div className={shell.workspaceClassName} style={shell.workspaceStyle}>
+      <div
+        ref={shell.workspaceRef}
+        className={shell.workspaceClassName}
+        style={shell.workspaceStyle}
+      >
         {content.area === "workspace" ? (
           <WorkspaceView {...content.props} />
         ) : (

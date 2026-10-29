@@ -6,11 +6,14 @@
   flex-direction: column;
   color: var(--text-primary);
   background: var(--surface-raised);
+  overflow: hidden;
+  container-type: inline-size;
 }
 
 .project-files-header {
   display: flex;
   flex: 0 0 auto;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
@@ -48,6 +51,8 @@
 .project-files-job-status {
   display: flex;
   flex: 0 0 auto;
+  min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
   gap: 9px;
   min-height: 34px;
@@ -87,8 +92,10 @@
 .project-files-body {
   display: grid;
   flex: 1;
+  min-width: 0;
   min-height: 0;
-  grid-template-columns: minmax(220px, 290px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, min(30%, 290px)) minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .project-files-browser {
@@ -103,6 +110,9 @@
 .project-files-browser-summary {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
   padding: 11px 14px;
@@ -113,6 +123,7 @@
 
 .project-files-groups {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: 8px;
@@ -273,11 +284,14 @@
   flex-direction: column;
   padding: 18px;
   gap: 10px;
+  overflow: auto;
 }
 
 .project-files-editor-header {
   display: flex;
   flex: 0 0 auto;
+  min-width: 0;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
@@ -294,6 +308,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-size: 16px;
+  overflow-wrap: anywhere;
 }
 
 .project-files-editor-header p {
@@ -322,6 +337,7 @@
   display: flex;
   flex: 0 0 auto;
   gap: 6px;
+  flex-wrap: wrap;
   color: var(--text-muted);
   font-size: 9px;
 }
@@ -337,6 +353,8 @@
   display: flex;
   flex: 0 0 auto;
   justify-content: flex-end;
+  min-width: 0;
+  flex-wrap: wrap;
   gap: 7px;
 }
 
@@ -380,8 +398,9 @@
 .project-files-textarea {
   width: 100%;
   min-width: 0;
-  min-height: 180px;
-  flex: 1;
+  min-height: 0;
+  flex: 1 1 0;
+  overflow: auto;
   resize: none;
   padding: 14px 16px;
   border: 1px solid var(--border-default);
@@ -412,6 +431,9 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
   justify-content: space-between;
   gap: 12px;
   padding: 8px 10px;
@@ -447,7 +469,8 @@
 .project-files-diff {
   display: flex;
   max-height: 34%;
-  min-height: 100px;
+  min-width: 0;
+  min-height: 0;
   flex: 0 1 auto;
   flex-direction: column;
   overflow: hidden;
@@ -468,6 +491,8 @@
 }
 
 .project-files-diff pre {
+  flex: 1;
+  min-width: 0;
   min-height: 0;
   margin: 0;
   padding: 10px 12px;
@@ -482,6 +507,8 @@
 .project-files-empty {
   display: flex;
   flex: 1;
+  min-width: 0;
+  overflow: auto;
   min-height: 0;
   align-items: center;
   justify-content: center;
@@ -514,9 +541,9 @@
   margin: auto;
 }
 
-@media (max-width: 920px) {
+@container (max-width: 920px) {
   .project-files-body {
-    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, min(30%, 230px)) minmax(0, 1fr);
   }
 
   .project-files-metadata {

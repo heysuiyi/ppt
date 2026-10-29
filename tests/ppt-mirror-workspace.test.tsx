@@ -90,6 +90,7 @@ describe("PPTMirror preview workspace", () => {
   afterEach(() => {
     cleanup();
     clearAllDisplayCardManagers();
+    vi.unstubAllGlobals();
   });
 
   it("hosts the latest inspection batch in the right preview and syncs page selection", () => {
@@ -112,6 +113,46 @@ describe("PPTMirror preview workspace", () => {
     expect(
       screen.getByRole("button", { name: "选择第 2 页：核心结论" }).getAttribute("aria-current"),
     ).toBe("page");
+  });
+
+  it("fits slideshow pages to the container while preserving 16:9 and disconnects on close", () => {
+    let resize: ResizeObserverCallback;
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect = disconnect;
+      },
+    );
+    render(<MirrorHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "放映演示文稿" }));
+
+    const slide = document.querySelector<HTMLElement>(
+      ".slideshow-lightbox-content .slide-viewport",
+    )!;
+    const resizeContainer = (width: number, height: number) => {
+      act(() => {
+        resize([{ contentRect: { width, height } } as ResizeObserverEntry], {} as ResizeObserver);
+      });
+    };
+
+    resizeContainer(1000, 360);
+    expect(slide.style.width).toBe("640px");
+    expect(slide.style.aspectRatio).toBe("1280 / 720");
+
+    resizeContainer(480, 600);
+    expect(slide.style.width).toBe("480px");
+
+    resizeContainer(1440, 810);
+    expect(slide.style.width).toBe("1440px");
+
+    fireEvent.click(screen.getByRole("button", { name: /关闭放映/ }));
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(document.querySelector(".slideshow-lightbox-overlay")).toBeNull();
   });
 
   it("exports by session id without uploading the renderer presentation snapshot", async () => {

@@ -4,7 +4,14 @@ import {
   useNotificationCardManager,
 } from "@shared/cards/display-card-managers";
 import { getWorkspaceLabel } from "@shared/workspace";
-import { type ComponentProps, type CSSProperties, useEffect, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  type RefCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { AppTopbar } from "./AppTopbar";
 import { useAgentActivityStream } from "./agent/useAgentActivityStream";
 import { useAgentRunController } from "./agent/useAgentRunController";
@@ -28,6 +35,7 @@ type AppModel = {
     notificationMessage: string | null;
     workspaceClassName: string;
     workspaceStyle: CSSProperties;
+    workspaceRef: RefCallback<HTMLDivElement>;
   };
   topbar: ComponentProps<typeof AppTopbar>;
   content:
@@ -242,6 +250,7 @@ export function useAppModel(): AppModel {
       notificationMessage: toastMessage,
       workspaceClassName: workbenchLayout.workspaceClassName,
       workspaceStyle: workbenchLayout.workspaceStyle,
+      workspaceRef: workbenchLayout.workspaceRef,
     },
     topbar: {
       state: { location, sidebarCollapsed: workbenchLayout.isPrimarySidebarCollapsed },

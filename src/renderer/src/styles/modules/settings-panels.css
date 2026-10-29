@@ -3,8 +3,13 @@
  */
 
 .settings-page {
-  height: 100%;
-  overflow-y: auto;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  container-type: inline-size;
   background: var(--surface-raised);
   color: var(--text-primary);
   font-size: var(--settings-font-ui);
@@ -12,13 +17,16 @@
 }
 
 .settings-console-container {
-  height: 100%;
-  overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
   background: var(--surface-raised);
 }
 
 .settings-page-inner {
   width: 100%;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   max-width: var(--settings-content-width);
   margin: 0 auto;
   display: flex;
@@ -28,8 +36,17 @@
   box-sizing: border-box;
 }
 
+.settings-page-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
 .settings-page-header {
   display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
@@ -65,18 +82,21 @@
 
 .settings-panel-stack {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: var(--space-4);
 }
 
 .settings-panel {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: var(--space-4);
 }
 
 .settings-section {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--settings-section-pad);
@@ -106,7 +126,8 @@
 
 .settings-row {
   display: grid;
-  grid-template-columns: minmax(120px, var(--settings-label-width)) minmax(0, 1fr);
+  min-width: 0;
+  grid-template-columns: minmax(0, var(--settings-label-width)) minmax(0, 1fr);
   align-items: center;
   gap: var(--space-3) var(--space-4);
   min-height: var(--settings-row-height);
@@ -118,6 +139,8 @@
 }
 
 .settings-row-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-primary);
   font-size: var(--settings-font-ui);
   font-weight: var(--font-weight-medium);
@@ -139,6 +162,7 @@
 
 .settings-hint {
   margin: 0;
+  overflow-wrap: anywhere;
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: 1.5;
@@ -146,6 +170,8 @@
 
 .settings-panel-fade {
   display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
 }
 
@@ -160,6 +186,7 @@
 
 .settings-card {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-3) 0;
@@ -199,7 +226,7 @@
   font-weight: var(--font-weight-medium);
 }
 
-@media (max-width: 720px) {
+@container (max-width: 720px) {
   .settings-row {
     grid-template-columns: 1fr;
     align-items: start;

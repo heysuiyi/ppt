@@ -223,7 +223,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </span>
               ) : null}
             </header>
-            <div key={activeCategory} className="view-enter">
+            <div key={activeCategory} className="settings-page-body view-enter">
               {renderCategory(props, webSearchController)}
             </div>
           </div>

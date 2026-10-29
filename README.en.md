@@ -217,6 +217,7 @@ PPTX exporter (hybrid: SVG background + editable text)
 Key areas:
 
 - `src/renderer/`: React workspace, chat stream, live PPT mirror, settings console; `src/renderer/src/App.tsx` directly owns the shared layout and workspace/settings view selection
+  - Container-driven layout: the root bounds the window height and Flex/Grid allocates the remaining space. `useWorkbenchLayout` owns panel-width CSS variables and observes the actual container with `ResizeObserver`. Panels scroll independently and local responsive rules use container queries; shrinking the window preserves the saved preview-width preference. SVG previews retain their 16:9 ratio and 1280×720 authoring coordinates.
 - `src/main/agent/`: Agent runtime, tool registry, model gateways, commit gate, sub-agents
 - `src/design-system/`: DesignSystemV2 schema, presets, and resolution
 - `src/shared/`: presentation model, command model, session and IPC types

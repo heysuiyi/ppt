@@ -142,9 +142,11 @@
 .workspace-canvas-content {
   background: var(--surface-raised);
   display: grid;
-  grid-template-columns: minmax(560px, 1fr) 6px minmax(300px, var(--secondary-pane-width, 380px));
-  height: 100%;
-  width: 100%;
+  grid-template-columns: minmax(0, 1fr) 6px minmax(0, var(--secondary-pane-width, 380px));
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   transition:
     var(--transition-panel),
@@ -174,9 +176,8 @@
 
 .workspace-canvas-content-chat-only .chat-workspace-column {
   flex: 1;
-  width: 100%;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
 }
 
 /* PPT 镜像在无数据时关闭隐藏，有数据时动画打开 */
@@ -196,12 +197,11 @@
 }
 
 .workspace-canvas-content.ppt-mirror-open {
-  grid-template-columns: minmax(560px, 1fr) 6px minmax(300px, var(--secondary-pane-width, 380px));
+  grid-template-columns: minmax(0, 1fr) 6px minmax(0, var(--secondary-pane-width, 380px));
 }
 
 .workspace-canvas-content.ppt-mirror-open .mirror-panel {
-  width: 100%;
-  min-width: 300px;
+  min-width: 0;
   opacity: 1;
   transform: translateX(0);
   transition: var(--transition-panel);
@@ -209,6 +209,7 @@
 
 .chat-workspace-column {
   min-width: 0;
+  min-height: 0;
 }
 
 /* PPT 镜像放大展开模式 */
@@ -271,6 +272,8 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   background: var(--surface-raised);
 }
 
