@@ -18,24 +18,9 @@
   width: 100%;
   min-width: 0;
   flex-shrink: 0;
-  min-height: var(--control-height-md);
-  padding: 4px var(--control-padding-inline);
-  border: 1px solid var(--border-default);
-  border-radius: var(--field-border-radius);
-  background: var(--surface-sunken);
-  color: var(--text-primary);
-  font-family: var(--font-body);
   font-size: var(--settings-font-nav);
-  line-height: var(--text-base-lh);
 }
 
-.settings-nav-filter:focus {
-  border-color: var(--border-focused);
-}
-
-.settings-nav-filter::placeholder {
-  color: var(--text-muted);
-}
 
 .settings-nav-group {
   display: flex;

@@ -5,17 +5,15 @@
 
 :root {
   /*
-   * Surfaces — assigned by skin. Ordered by elevation, not by lightness:
-   * canvas < base < raised < sunken < overlay.
-   * In a dark skin every step above `raised` gets lighter, so `sunken` reads as
-   * a mild lift on a page and as a recess inside an `overlay` card. Making
-   * `sunken` darker than `raised` here would turn every input into a black hole.
+   * Surfaces are roles, not a lightness ladder: canvas/base are window chrome,
+   * raised is the primary work area, sunken is an inset control, overlay floats.
+   * Light chrome is darker than its work area; dark chrome is lighter.
    */
-  --surface-canvas: var(--raw-neutral-975);
-  --surface-base: var(--raw-neutral-900);
-  --surface-raised: var(--raw-neutral-850);
-  --surface-sunken: var(--raw-neutral-800);
-  --surface-overlay: var(--raw-neutral-750);
+  --surface-canvas: #232323;
+  --surface-base: #232323;
+  --surface-raised: #1c1c1c;
+  --surface-sunken: #202020;
+  --surface-overlay: #272727;
   --surface-hover: rgba(255, 255, 255, 0.04);
   --surface-active: rgba(255, 255, 255, 0.07);
   --modal-backdrop: color-mix(in srgb, var(--surface-canvas) 78%, transparent);

@@ -113,7 +113,7 @@ describe("SettingsRegion credential controls", () => {
 
     expect(screen.getByText(/Linux basic_text/)).toBeTruthy();
     expect(screen.getByText(/已配置（系统安全存储或环境变量）/)).toBeTruthy();
-    const keyInput = screen.getByLabelText("Tavily API Key");
+    const keyInput = screen.getByLabelText("Tavily API Key", { selector: "input" });
     fireEvent.change(keyInput, { target: { value: "tvly-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
@@ -179,7 +179,7 @@ describe("SettingsRegion credential controls", () => {
 
   it("keeps an unsaved Tavily key draft while switching categories", () => {
     const view = renderSearchSettings();
-    fireEvent.change(screen.getByLabelText("Tavily API Key"), {
+    fireEvent.change(screen.getByLabelText("Tavily API Key", { selector: "input" }), {
       target: { value: "tvly-unsaved" },
     });
 
@@ -188,9 +188,9 @@ describe("SettingsRegion credential controls", () => {
     expect(screen.queryByLabelText("Tavily API Key")).toBeNull();
 
     view.rerender(<SettingsRegion {...view.props} activeCategory="web-search" />);
-    expect((screen.getByLabelText("Tavily API Key") as HTMLInputElement).value).toBe(
-      "tvly-unsaved",
-    );
+    expect(
+      (screen.getByLabelText("Tavily API Key", { selector: "input" }) as HTMLInputElement).value,
+    ).toBe("tvly-unsaved");
   });
 
   it("does not load presentation or storage data for unrelated categories", () => {

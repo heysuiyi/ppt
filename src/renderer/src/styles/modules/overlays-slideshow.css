@@ -1,7 +1,7 @@
 /* Fullscreen slideshow lightbox */
 
-/* 全屏放映灯箱模态窗�?*/
 .slideshow-lightbox-overlay {
+  padding: 0;
   --slideshow-slide-shadow: var(--elevation-3);
   position: fixed;
   top: 0;
@@ -27,6 +27,11 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .slideshow-top-bar {
@@ -60,23 +65,6 @@
   color: var(--text-secondary);
 }
 
-.slideshow-close {
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-default);
-  color: var(--text-primary);
-  padding: 6px 14px;
-  border-radius: var(--button-border-radius);
-  cursor: pointer;
-  font-size: var(--text-sm);
-  font-weight: var(--type-label-weight);
-  font-family: var(--font-display);
-  transition: var(--transition-color);
-}
-
-.slideshow-close:hover {
-  background: var(--surface-hover);
-}
-
 .slideshow-viewport-container {
   flex: 1;
   min-width: 0;
@@ -98,23 +86,18 @@
   position: relative;
 }
 
-.slideshow-nav-arrow {
+.slideshow-nav-arrow.ui-icon-button {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
   background: var(--surface-sunken);
-  border: 1px solid var(--border-default);
+  border-color: var(--border-default);
   color: var(--text-primary);
   width: 54px;
   height: 54px;
   border-radius: 50%;
   /* Optical chevron size inside a fixed circular hit target, not reading text. */
   font-size: 32px;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: var(--transition-color);
-  user-select: none;
   z-index: var(--z-dropdown);
 }
 

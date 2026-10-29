@@ -1,7 +1,7 @@
 import type { AgentToolDisplayCategory } from "@shared/agent-activity-display";
 import type { ProcessTraceRow } from "@shared/process-trace-rows";
 import type React from "react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -13,7 +13,7 @@ import {
   UsersIcon,
 } from "./Icons";
 import { MessageMarkdown } from "./MessageMarkdown";
-import { type FoldToken, useChatScroll } from "./useChatScroll";
+import { useChatFold } from "./useChatFold";
 
 interface ProcessTraceItemProps {
   row: ProcessTraceRow;
@@ -36,21 +36,12 @@ export const ProcessTraceItem: React.FC<ProcessTraceItemProps> = ({
   defaultExpanded = false,
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const chatScroll = useChatScroll();
   const liveBodyRef = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLButtonElement>(null);
-  const pendingFoldRef = useRef<FoldToken | null>(null);
+  const { anchorRef: titleRef, transactFold } = useChatFold<HTMLButtonElement>();
   const hasBody = Boolean(row.content?.trim() || (row.lines && row.lines.length > 0));
   const effectiveExpanded = hasBody && expanded;
   const CaretIcon = effectiveExpanded ? ChevronDownIcon : ChevronRightIcon;
   const ToolCategoryIcon = row.toolCategory ? TOOL_CATEGORY_ICONS[row.toolCategory] : null;
-
-  useLayoutEffect(() => {
-    const pending = pendingFoldRef.current;
-    if (!pending) return;
-    pendingFoldRef.current = null;
-    chatScroll.commitFold(pending);
-  }, [chatScroll]);
 
   useEffect(() => {
     if (row.kind === "thought") {
@@ -77,8 +68,7 @@ export const ProcessTraceItem: React.FC<ProcessTraceItemProps> = ({
   }, [row.streaming, effectiveExpanded]);
 
   const toggleExpanded = () => {
-    pendingFoldRef.current = chatScroll.beginFold(titleRef.current);
-    setExpanded((value) => !value);
+    transactFold(() => setExpanded((value) => !value));
   };
 
   const statusIndicator = row.status ? (

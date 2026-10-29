@@ -2,10 +2,7 @@
 
 /* 斜杠命令自动补全弹出浮层 */
 .slash-menu-popup {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 0;
-  right: 0;
+  position: fixed;
   background: var(--surface-overlay);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -54,7 +51,8 @@
   transition: var(--transition-color);
 }
 
-.slash-menu-item:hover {
+.slash-menu-item:hover,
+.slash-menu-item.is-active {
   background: var(--surface-hover);
 }
 

@@ -5,11 +5,11 @@ type WindowThemePreset = Exclude<WindowThemeMode, "system">;
 
 const WINDOW_FRAME_BY_THEME: Record<WindowThemePreset, { background: string; symbol: string }> = {
   light: {
-    background: "#e8eaed",
+    background: "#edeef0",
     symbol: "#0f1217",
   },
   dark: {
-    background: "#181818",
+    background: "#232323",
     symbol: "#ffffff",
   },
 };

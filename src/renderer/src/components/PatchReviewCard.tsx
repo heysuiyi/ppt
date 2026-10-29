@@ -1,6 +1,7 @@
 import type { DisplayEvent } from "@shared/card-display-protocol";
 import type React from "react";
 import { useState } from "react";
+import { Button } from "./Button";
 import { ResolvedCard } from "./ResolvedCard";
 
 type PatchEvent = Extract<DisplayEvent, { kind: "review.patch-ready" }>;
@@ -86,25 +87,21 @@ export const PatchReviewCard: React.FC<PatchReviewCardProps> = ({
           {renderDiffPreview()}
           {(patch.contentBefore ?? "").split("\n").length > 8 ||
           (patch.contentAfter ?? "").split("\n").length > 8 ? (
-            <button
-              type="button"
-              className="patch-expand-btn"
-              onClick={() => setExpanded((value) => !value)}
-            >
+            <Button variant="quiet" size="sm" onClick={() => setExpanded((value) => !value)}>
               {expanded ? "收起 diff" : "展开完整 diff"}
-            </button>
+            </Button>
           ) : null}
         </>
       )}
 
       {!isResolved && (
         <div className="patch-review-buttons">
-          <button type="button" disabled={busy} onClick={onReject} className="btn-reject">
+          <Button disabled={busy} onClick={onReject}>
             拒绝变更
-          </button>
-          <button type="button" disabled={busy} onClick={onAccept} className="btn-apply">
+          </Button>
+          <Button disabled={busy} onClick={onAccept} data-theme-emphasis="primary">
             确认接受
-          </button>
+          </Button>
         </div>
       )}
     </div>

@@ -1,0 +1,79 @@
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: var(--control-gap);
+  box-sizing: border-box;
+  min-height: var(--control-height-md);
+  padding: 4px var(--control-padding-inline);
+  border: 1px solid var(--border-default);
+  border-radius: var(--button-border-radius);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: var(--type-label-weight);
+  line-height: var(--text-sm-lh);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition: var(--transition-color);
+}
+.ui-button[data-size="sm"] {
+  min-height: var(--control-height-sm);
+}
+.ui-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-focused);
+  color: var(--text-primary);
+}
+.ui-button--primary {
+  background: var(--accent-action-bg);
+  border-color: var(--accent-action-bg);
+  color: var(--text-on-accent);
+}
+.ui-button--primary:hover:not(:disabled) {
+  background: var(--accent-action-hover-bg);
+  border-color: var(--accent-action-bg);
+  color: var(--text-on-accent);
+}
+.ui-button--quiet {
+  background: transparent;
+  border-color: transparent;
+}
+.ui-button--danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.ui-button--danger:hover:not(:disabled) {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+}
+.ui-button:is([aria-pressed="true"], [aria-selected="true"], [aria-current="page"]),
+.ui-button:is([aria-pressed="true"], [aria-selected="true"], [aria-current="page"]):hover:not(
+  :disabled
+) {
+  border-color: var(--accent-selected-border);
+  background: var(--accent-selected-bg);
+  color: var(--accent-selected-text);
+}
+.ui-button:active:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.ui-button--primary:active:not(:disabled) {
+  background: var(--accent-action-active-bg);
+}
+.ui-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ui-icon-button {
+  width: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  padding: 0;
+}
+.ui-icon-button[data-size="md"] {
+  width: var(--control-height-md);
+  min-width: var(--control-height-md);
+}

@@ -34,7 +34,7 @@ export const InteractionCardHost: React.FC<InteractionCardHostProps> = ({
   );
 
   return (
-    <>
+    <div className="card-stack">
       {cards.map((card) => {
         const event = card.event;
         if (event.kind === "interaction.question-requested") {
@@ -59,6 +59,6 @@ export const InteractionCardHost: React.FC<InteractionCardHostProps> = ({
 
         return null;
       })}
-    </>
+    </div>
   );
 };

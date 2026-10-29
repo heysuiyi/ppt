@@ -132,7 +132,7 @@
   flex: 0 0 14px;
 }
 .process-trace-row-status--running .process-trace-row-tool-icon {
-  animation: process-trace-tool-icon-pulse 1.4s var(--ease-in-out) infinite;
+  animation: process-trace-tool-icon-pulse var(--duration-loading-mid) var(--ease-in-out) infinite;
 }
 .process-trace-row-status--failed {
   color: var(--danger);
@@ -172,8 +172,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   transition:
-    color 0.15s ease,
-    filter 0.15s ease;
+    color var(--duration-fast) var(--ease-out),
+    filter var(--duration-fast) var(--ease-out);
 }
 .process-trace-row--active .process-trace-row-label {
   color: var(--text-secondary);

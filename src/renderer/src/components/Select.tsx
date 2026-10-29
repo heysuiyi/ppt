@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cx } from "../lib/cx";
 import { CheckIcon, ChevronDownIcon } from "./Icons";
+import { useOverlayLayer, useOverlayOwner } from "./overlay-lifecycle";
+import { usePopoverPosition } from "./popover-position";
 
 export interface SelectOption {
   value: string;
@@ -13,46 +15,15 @@ export interface SelectProps {
   value: string;
   options: SelectOption[];
   onChange: (value: string) => void;
-  variant?: "settings" | "block" | "ide";
+  variant?: "settings" | "block" | "compact";
+  placement?: "auto" | "above" | "below";
   placeholder?: string;
   disabled?: boolean;
   ariaLabel?: string;
+  "aria-label"?: string;
+  id?: string;
+  "aria-labelledby"?: string;
   className?: string;
-}
-
-interface MenuPosition {
-  top: number;
-  left: number;
-  width: number;
-  placement: "below" | "above";
-}
-
-const MENU_GAP = 4;
-const MENU_MAX_HEIGHT = 280;
-const MENU_MIN_WIDTH = 180;
-
-function measureMenuPosition(trigger: HTMLElement): MenuPosition {
-  const rect = trigger.getBoundingClientRect();
-  const width = Math.max(rect.width, MENU_MIN_WIDTH);
-  const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP;
-  const spaceAbove = rect.top - MENU_GAP;
-  const placeAbove = spaceBelow < Math.min(MENU_MAX_HEIGHT, 160) && spaceAbove > spaceBelow;
-
-  if (placeAbove) {
-    return {
-      top: Math.max(8, rect.top - MENU_GAP),
-      left: Math.min(rect.left, window.innerWidth - width - 8),
-      width,
-      placement: "above",
-    };
-  }
-
-  return {
-    top: rect.bottom + MENU_GAP,
-    left: Math.min(rect.left, window.innerWidth - width - 8),
-    width,
-    placement: "below",
-  };
 }
 
 export function Select({
@@ -60,189 +31,82 @@ export function Select({
   options,
   onChange,
   variant = "settings",
+  placement = "auto",
   placeholder = "选择…",
   disabled = false,
   ariaLabel,
+  "aria-label": nativeAriaLabel,
+  id,
+  "aria-labelledby": labelledBy,
   className,
 }: SelectProps) {
   const listboxId = useId();
-  const optionIdPrefix = useId();
-  const rootRef = useRef<HTMLDivElement>(null);
+  const owner = useOverlayOwner();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [position, setPosition] = useState<MenuPosition | null>(null);
-
-  const selected = options.find((option) => option.value === value);
   const selectedIndex = options.findIndex((option) => option.value === value);
-  const resolvedVariant = variant === "ide" ? "settings" : variant;
-
-  const close = useCallback(() => {
-    setOpen(false);
-    setPosition(null);
-  }, []);
-
-  const openMenu = useCallback(() => {
-    if (disabled || options.length === 0) return;
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
-    setPosition(measureMenuPosition(trigger));
-    setOpen(true);
-  }, [disabled, options.length, selectedIndex]);
-
-  const selectValue = useCallback(
-    (next: string) => {
-      onChange(next);
-      close();
-      window.requestAnimationFrame(() => triggerRef.current?.focus());
-    },
-    [close, onChange],
+  const selected = options[selectedIndex];
+  const label = ariaLabel ?? nativeAriaLabel;
+  const close = useCallback(() => setOpen(false), []);
+  const position = usePopoverPosition(
+    open,
+    menuRef,
+    () => triggerRef.current?.getBoundingClientRect() ?? null,
+    placement,
   );
-
-  useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
-    setPosition(measureMenuPosition(triggerRef.current));
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const reposition = () => {
-      if (!triggerRef.current) return;
-      setPosition(measureMenuPosition(triggerRef.current));
-    };
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (rootRef.current?.contains(target)) return;
-      if (menuRef.current?.contains(target)) return;
-      close();
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" || event.key === "Tab") {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-        }
-        close();
-        if (event.key === "Escape") {
-          window.requestAnimationFrame(() => triggerRef.current?.focus());
-        }
-        return;
-      }
-
+  const openMenu = () => {
+    if (disabled || options.length === 0) return;
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    setOpen(true);
+  };
+  const selectValue = (next: string) => {
+    onChange(next);
+    close();
+    triggerRef.current?.focus();
+  };
+  useOverlayLayer(open, {
+    depth: owner.depth + 1,
+    root: () => menuRef.current,
+    trigger: () => triggerRef.current,
+    outside: true,
+    dismiss: close,
+    tab: close,
+    keydown: (event) => {
       if (options.length === 0) return;
-
-      if (event.key === "ArrowDown") {
+      if (["ArrowDown", "ArrowUp", "Home", "End", "Enter", " "].includes(event.key)) {
         event.preventDefault();
-        setActiveIndex((index) => (index + 1) % options.length);
-        return;
+        event.stopImmediatePropagation();
       }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
+      if (event.key === "ArrowDown") setActiveIndex((index) => (index + 1) % options.length);
+      else if (event.key === "ArrowUp")
         setActiveIndex((index) => (index <= 0 ? options.length - 1 : index - 1));
-        return;
-      }
-      if (event.key === "Home") {
-        event.preventDefault();
-        setActiveIndex(0);
-        return;
-      }
-      if (event.key === "End") {
-        event.preventDefault();
-        setActiveIndex(options.length - 1);
-        return;
-      }
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
+      else if (event.key === "Home") setActiveIndex(0);
+      else if (event.key === "End") setActiveIndex(options.length - 1);
+      else if (event.key === "Enter" || event.key === " ") {
         const option = options[activeIndex];
         if (option) selectValue(option.value);
       }
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown, true);
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown, true);
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
-    };
-  }, [activeIndex, close, open, options, selectValue]);
-
+    },
+  });
+  useEffect(() => {
+    if (disabled || options.length === 0) close();
+  }, [disabled, options.length, close]);
+  useEffect(() => {
+    if (open) setActiveIndex((index) => Math.min(Math.max(index, 0), options.length - 1));
+  }, [options.length, open]);
   useEffect(() => {
     if (!open || activeIndex < 0) return;
-    const optionEl = menuRef.current?.querySelector<HTMLElement>(
-      `[data-option-index="${activeIndex}"]`,
-    );
-    optionEl?.scrollIntoView?.({ block: "nearest" });
+    menuRef.current
+      ?.querySelector<HTMLElement>(`[data-option-index="${activeIndex}"]`)
+      ?.scrollIntoView?.({ block: "nearest" });
   }, [activeIndex, open]);
-
-  const activeOptionId = activeIndex >= 0 ? `${optionIdPrefix}-option-${activeIndex}` : undefined;
-
-  const menu =
-    open && position
-      ? createPortal(
-          <div
-            ref={menuRef}
-            id={listboxId}
-            role="listbox"
-            aria-label={ariaLabel}
-            className={cx("ui-select-menu", position.placement === "above" && "is-above")}
-            style={{
-              top: position.placement === "above" ? undefined : position.top,
-              bottom:
-                position.placement === "above" ? window.innerHeight - position.top : undefined,
-              left: position.left,
-              width: position.width,
-              maxHeight: MENU_MAX_HEIGHT,
-            }}
-          >
-            {options.map((option, index) => {
-              const isSelected = option.value === value;
-              const isActive = index === activeIndex;
-              return (
-                <button
-                  key={option.value === "" ? "__empty__" : option.value}
-                  id={`${optionIdPrefix}-option-${index}`}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  data-option-index={index}
-                  className={cx(
-                    "ui-select-option",
-                    isSelected && "is-selected",
-                    isActive && "is-active",
-                  )}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => selectValue(option.value)}
-                >
-                  <span className="ui-select-option-copy">
-                    <span className="ui-select-option-label">{option.label}</span>
-                    {option.hint ? (
-                      <span className="ui-select-option-hint">{option.hint}</span>
-                    ) : null}
-                  </span>
-                  {isSelected ? <CheckIcon size={12} className="ui-select-option-check" /> : null}
-                </button>
-              );
-            })}
-          </div>,
-          document.body,
-        )
-      : null;
-
   return (
     <div
-      ref={rootRef}
       className={cx(
         "ui-select",
-        `ui-select--${resolvedVariant}`,
+        `ui-select--${variant}`,
         open && "is-open",
         disabled && "is-disabled",
         className,
@@ -250,6 +114,7 @@ export function Select({
     >
       <button
         ref={triggerRef}
+        id={id}
         type="button"
         className={cx("ui-select-trigger", open && "is-open")}
         disabled={disabled}
@@ -257,17 +122,17 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
-        aria-activedescendant={open ? activeOptionId : undefined}
-        aria-label={ariaLabel}
+        aria-label={label}
+        aria-labelledby={labelledBy}
+        aria-activedescendant={open && activeIndex >= 0 ? `${listboxId}-${activeIndex}` : undefined}
         onClick={() => {
           if (open) close();
           else openMenu();
         }}
         onKeyDown={(event) => {
-          if (disabled) return;
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
             event.preventDefault();
-            if (!open) openMenu();
+            openMenu();
           }
         }}
       >
@@ -283,7 +148,58 @@ export function Select({
         </span>
         <ChevronDownIcon size={12} className="ui-select-chevron" />
       </button>
-      {menu}
+      {open
+        ? createPortal(
+            <div
+              ref={menuRef}
+              id={listboxId}
+              role="listbox"
+              aria-label={label}
+              className={cx("ui-select-menu", position?.above && "is-above")}
+              style={
+                position
+                  ? {
+                      top: position.top,
+                      left: position.left,
+                      width: position.width,
+                      maxHeight: position.maxHeight,
+                    }
+                  : { visibility: "hidden" }
+              }
+            >
+              {options.map((option, index) => (
+                <button
+                  key={option.value}
+                  id={`${listboxId}-${index}`}
+                  type="button"
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={option.value === value}
+                  data-option-index={index}
+                  className={cx(
+                    "ui-select-option",
+                    option.value === value && "is-selected",
+                    index === activeIndex && "is-active",
+                  )}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => selectValue(option.value)}
+                >
+                  <span className="ui-select-option-copy">
+                    <span className="ui-select-option-label">{option.label}</span>
+                    {option.hint ? (
+                      <span className="ui-select-option-hint">{option.hint}</span>
+                    ) : null}
+                  </span>
+                  {option.value === value ? (
+                    <CheckIcon size={12} className="ui-select-option-check" />
+                  ) : null}
+                </button>
+              ))}
+            </div>,
+            owner.portalHost ?? document.body,
+          )
+        : null}
     </div>
   );
 }

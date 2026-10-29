@@ -104,7 +104,12 @@
   padding: var(--card-padding);
   border: 1px solid var(--border-subtle);
   border-radius: var(--card-border-radius);
-  background: var(--surface-base);
+  /* Light sections lift above the work area; dark sections recede below it. */
+  background: color-mix(in srgb, var(--surface-raised) 50%, var(--surface-overlay));
+}
+
+:root[data-color-scheme="dark"] .settings-section {
+  background: color-mix(in srgb, var(--surface-raised) 80%, black);
 }
 
 .settings-section-title {
@@ -192,40 +197,6 @@
   border: 0;
   border-radius: 0;
   background: transparent;
-}
-
-.settings-card-header {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--control-gap);
-  min-height: var(--control-height-sm);
-}
-
-.settings-card-title-block {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  min-height: var(--control-height-sm);
-}
-
-.settings-card-title-block h3 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--type-heading-weight);
-  line-height: var(--text-md-lh);
-  overflow-wrap: anywhere;
-}
-
-.settings-card-meta {
-  flex: 0 0 auto;
-  align-self: center;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  font-weight: var(--type-label-weight);
-  line-height: var(--text-sm-lh);
 }
 
 @container (max-width: 720px) {

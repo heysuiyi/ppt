@@ -2,10 +2,10 @@ import type { AgentActivityItem } from "@shared/agent-activity";
 import { summarizeProcessTrace } from "@shared/agent-activity";
 import { buildProcessTraceRows } from "@shared/process-trace-rows";
 import type React from "react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "./Icons";
 import { ProcessTraceItem } from "./ProcessTraceItem";
-import { type FoldToken, useChatScroll } from "./useChatScroll";
+import { useChatFold } from "./useChatFold";
 
 type UserPinned = "open" | "closed";
 
@@ -41,7 +41,7 @@ export const ProcessTracePanel: React.FC<ProcessTracePanelProps> = ({
   defaultOpen = false,
   defaultExpandRows = false,
 }) => {
-  const chatScroll = useChatScroll();
+  const { anchorRef: headerRef, transactFold } = useChatFold<HTMLButtonElement>();
   const [userPinned, setUserPinned] = useState<UserPinned | null>(defaultOpen ? "open" : null);
   const [open, setOpen] = useState(() => {
     if (defaultOpen) return true;
@@ -51,8 +51,6 @@ export const ProcessTracePanel: React.FC<ProcessTracePanelProps> = ({
     !live && durationMs !== undefined ? secondsFromDurationMs(durationMs) : 0,
   );
   const startedAtRef = useRef<number | null>(live ? (startedAt ?? Date.now()) : null);
-  const headerRef = useRef<HTMLButtonElement>(null);
-  const pendingFoldRef = useRef<FoldToken | null>(null);
   const openRef = useRef(open);
   openRef.current = open;
   const userPinnedRef = useRef(userPinned);
@@ -60,18 +58,10 @@ export const ProcessTracePanel: React.FC<ProcessTracePanelProps> = ({
 
   const setOpenWithScroll = (nextOpen: boolean) => {
     if (openRef.current === nextOpen) return;
-    pendingFoldRef.current = chatScroll.beginFold(headerRef.current);
-    setOpen(nextOpen);
+    transactFold(() => setOpen(nextOpen));
   };
   const setOpenWithScrollRef = useRef(setOpenWithScroll);
   setOpenWithScrollRef.current = setOpenWithScroll;
-
-  useLayoutEffect(() => {
-    const pending = pendingFoldRef.current;
-    if (!pending) return;
-    pendingFoldRef.current = null;
-    chatScroll.commitFold(pending);
-  }, [chatScroll]);
 
   useEffect(() => {
     if (!live) {

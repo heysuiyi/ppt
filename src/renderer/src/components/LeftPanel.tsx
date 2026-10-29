@@ -2,6 +2,8 @@ import type { SessionSummary } from "@shared/session";
 import { getWorkspaceLabel, groupSessionsByWorkspace } from "@shared/workspace";
 import React from "react";
 import type { WorkspacePage } from "../app/appViewState";
+import { Button, IconButton } from "./Button";
+import { Input } from "./Field";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -13,6 +15,7 @@ import {
   SidebarPanelIcon,
   TrashIcon,
 } from "./Icons";
+import { Menu } from "./Menu";
 
 interface LeftPanelProps {
   sessions: SessionSummary[];
@@ -41,15 +44,18 @@ function SessionRow({
   onContextMenu: (event: React.MouseEvent) => void;
 }) {
   return (
-    <button
+    <Button
+      variant="quiet"
+      size="sm"
       type="button"
       className={`session-row ${isActive ? "active" : ""}`}
+      aria-current={isActive ? "page" : undefined}
       onClick={onSelect}
       onContextMenu={onContextMenu}
       title={session.title}
     >
       <span className="session-title">{session.title}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -98,7 +104,9 @@ function WorkspaceSection({
         >
           {isCollapsed ? <ChevronRightIcon size={14} /> : <ChevronDownIcon size={14} />}
         </span>
-        <button
+        <IconButton
+          variant="quiet"
+          size="sm"
           type="button"
           className="workspace-add-btn"
           title="在此目录下新建会话"
@@ -108,7 +116,7 @@ function WorkspaceSection({
           }}
         >
           <PlusIcon size={14} />
-        </button>
+        </IconButton>
       </div>
       {!isCollapsed ? (
         <div className="session-list">
@@ -150,6 +158,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
   const [sessionSearchQuery, setSessionSearchQuery] = React.useState("");
   const searchAreaRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const contextTriggerRef = React.useRef<HTMLElement | null>(null);
 
   React.useEffect(() => {
     if (isSearchOpen) {
@@ -211,15 +220,13 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
     groupedSessions.find((group) => group.workspacePath === "__unknown__")?.sessions ?? [];
   const hasSessionList = visibleSessions.length > 0;
 
-  React.useEffect(() => {
-    const handleClose = () => setContextMenu(null);
-    window.addEventListener("click", handleClose);
-    return () => window.removeEventListener("click", handleClose);
-  }, []);
-
   const handleContextMenu = (event: React.MouseEvent, sessionId: string) => {
     event.preventDefault();
-    setContextMenu({ x: event.clientX, y: event.clientY, sessionId });
+    const target = event.currentTarget as HTMLElement;
+    target.focus();
+    contextTriggerRef.current = target;
+    const rect = target.getBoundingClientRect();
+    setContextMenu({ x: event.clientX || rect.left, y: event.clientY || rect.bottom, sessionId });
   };
 
   if (collapsed) {
@@ -232,7 +239,9 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
         <div className="sidebar-brand-mark" title="Agent PPT" aria-label="Agent PPT">
           <img src="./icon.png" alt="" />
         </div>
-        <button
+        <IconButton
+          variant="quiet"
+          size="sm"
           type="button"
           className="sidebar-rail-btn"
           onClick={onToggleCollapsed}
@@ -240,8 +249,10 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
           aria-label="展开导航"
         >
           <SidebarPanelIcon size={17} />
-        </button>
-        <button
+        </IconButton>
+        <IconButton
+          variant="quiet"
+          size="sm"
           type="button"
           className="sidebar-rail-btn"
           onClick={onNewSession}
@@ -249,8 +260,10 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
           aria-label="新建会话"
         >
           <PlusIcon size={17} />
-        </button>
-        <button
+        </IconButton>
+        <Button
+          variant="quiet"
+          size="sm"
           type="button"
           className={`sidebar-rail-btn${page === "chat" ? " active" : ""}`}
           onClick={onOpenWorkspace}
@@ -259,8 +272,10 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
           aria-current={page === "chat" ? "page" : undefined}
         >
           <FolderIcon size={17} />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
           type="button"
           className={`sidebar-rail-btn${page === "files" ? " active" : ""}`}
           onClick={onOpenFiles}
@@ -269,9 +284,11 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
           aria-current={page === "files" ? "page" : undefined}
         >
           <FileIcon size={17} />
-        </button>
+        </Button>
         <div className="sidebar-rail-spacer" />
-        <button
+        <IconButton
+          variant="quiet"
+          size="sm"
           type="button"
           className="sidebar-rail-btn"
           onClick={onToggleSettings}
@@ -279,7 +296,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
           aria-label="设置"
         >
           <SettingsIcon size={18} />
-        </button>
+        </IconButton>
       </aside>
     );
   }
@@ -293,11 +310,19 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
             <span>Agent PPT</span>
           </div>
         </div>
-        <button type="button" className="workbench-sidebar-action-row" onClick={onNewSession}>
+        <Button
+          variant="quiet"
+          size="sm"
+          type="button"
+          className="workbench-sidebar-action-row"
+          onClick={onNewSession}
+        >
           <PlusIcon size={14} className="workspace-icon" />
           <span>新建会话</span>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
           type="button"
           className={`workbench-sidebar-action-row${page === "chat" ? " active" : ""}`}
           onClick={onOpenWorkspace}
@@ -305,8 +330,10 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
         >
           <FolderIcon size={14} className="workspace-icon" />
           <span>Agent 工作区</span>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
           type="button"
           className={`workbench-sidebar-action-row${page === "files" ? " active" : ""}`}
           onClick={onOpenFiles}
@@ -314,18 +341,21 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
         >
           <FileIcon size={14} className="workspace-icon" />
           <span>项目文件</span>
-        </button>
+        </Button>
         <div ref={searchAreaRef}>
-          <button
+          <Button
+            variant="quiet"
+            size="sm"
             type="button"
+            aria-pressed={isSearchOpen}
             className={`workbench-sidebar-action-row ${isSearchOpen ? "active" : ""}`}
             onClick={() => setIsSearchOpen((value) => !value)}
           >
             <SearchIcon size={14} className="workspace-icon" />
             <span>搜索会话</span>
-          </button>
+          </Button>
           {isSearchOpen ? (
-            <input
+            <Input
               ref={searchInputRef}
               className="workbench-sidebar-search-input"
               value={sessionSearchQuery}
@@ -375,7 +405,9 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
       </div>
 
       <div className="panel-footer left-footer flex justify-between items-center">
-        <button
+        <Button
+          variant="quiet"
+          size="sm"
           type="button"
           className="settings-nav-back"
           onClick={onToggleSettings}
@@ -384,28 +416,27 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
         >
           <SettingsIcon size={14} />
           <span>设置</span>
-        </button>
+        </Button>
       </div>
 
-      {contextMenu ? (
-        <div
-          className="custom-context-menu"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-          onContextMenu={(event) => event.preventDefault()}
-        >
-          <div
-            className="custom-context-menu-item danger"
-            onClick={(event) => {
-              event.stopPropagation();
-              setContextMenu(null);
-              onDeleteSession(contextMenu.sessionId);
-            }}
-          >
-            <TrashIcon size={14} />
-            <span>删除会话</span>
-          </div>
-        </div>
-      ) : null}
+      <Menu
+        open={Boolean(contextMenu)}
+        onClose={() => setContextMenu(null)}
+        label="会话操作"
+        anchorRef={contextTriggerRef}
+        point={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : undefined}
+        items={[
+          {
+            id: "delete",
+            label: "删除会话",
+            icon: <TrashIcon size={14} />,
+            danger: true,
+            onSelect: () => {
+              if (contextMenu) onDeleteSession(contextMenu.sessionId);
+            },
+          },
+        ]}
+      />
     </aside>
   );
 };

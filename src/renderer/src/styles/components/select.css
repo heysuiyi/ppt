@@ -1,4 +1,4 @@
-/* Shared select (settings + forms). Menu portals to body. */
+/* Shared select. Menus portal into the current dialog owner or the document body. */
 
 .ui-select {
   position: relative;
@@ -14,6 +14,23 @@
 .ui-select--block {
   display: flex;
   width: 100%;
+}
+
+.ui-select--compact {
+  max-width: 148px;
+}
+
+.ui-select--compact .ui-select-trigger {
+  padding: 2px 4px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.ui-select--compact .ui-select-value-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ui-select.is-disabled {

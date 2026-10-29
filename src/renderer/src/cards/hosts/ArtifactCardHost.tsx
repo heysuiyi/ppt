@@ -46,7 +46,7 @@ export const ArtifactCardHost: React.FC<ArtifactCardHostProps> = ({
   );
 
   return (
-    <>
+    <div className="card-stack">
       {cards.map((card) => {
         const event = card.event;
         if (event.kind !== "artifact.ready") return null;
@@ -110,6 +110,6 @@ export const ArtifactCardHost: React.FC<ArtifactCardHostProps> = ({
 
         return null;
       })}
-    </>
+    </div>
   );
 };

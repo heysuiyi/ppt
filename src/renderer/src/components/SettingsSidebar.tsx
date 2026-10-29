@@ -2,6 +2,7 @@ import type React from "react";
 import { useMemo, useState } from "react";
 import { cx } from "../lib/cx";
 import type { SettingsCategory } from "../settingsCategories";
+import { Input } from "./Field";
 import {
   BrainIcon,
   ChartIcon,
@@ -78,7 +79,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
     <aside className="left-panel settings-sidebar" data-ui-region="sidebar">
       <div className="sections-container flex-1">
         <nav className="settings-nav" aria-label="设置导航">
-          <input
+          <Input
             type="search"
             className="settings-nav-filter"
             value={filter}

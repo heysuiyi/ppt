@@ -144,17 +144,7 @@
   align-items: flex-start;
   gap: 7px;
   padding: 7px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--field-border-radius);
-  color: var(--text-secondary);
-  background: transparent;
   text-align: left;
-  cursor: pointer;
-}
-
-.project-files-file:hover {
-  color: var(--text-primary);
-  background: var(--surface-hover);
 }
 
 .project-files-file.active {
@@ -319,53 +309,11 @@
   gap: 7px;
 }
 
-.project-files-button {
-  display: inline-flex;
-  min-height: var(--control-height-md);
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 5px 10px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--button-border-radius);
-  color: var(--text-secondary);
-  background: var(--surface-raised);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  font-weight: var(--type-label-weight);
-  cursor: pointer;
-}
-
-.project-files-button:hover:not(:disabled) {
-  color: var(--text-primary);
-  border-color: var(--border-focused);
-  background: var(--surface-hover);
-}
-
-.project-files-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.48;
-}
-
-.project-files-button.is-primary {
-  color: var(--text-on-accent);
-  border-color: var(--accent-action-bg);
-  background: var(--accent-action-bg);
-}
-
-.project-files-button.is-primary:hover:not(:disabled) {
-  background: var(--accent-action-hover-bg);
-}
-
-.project-files-button.is-primary:active:not(:disabled) {
-  background: var(--accent-action-active-bg);
-}
-
-.project-files-button--icon {
+.project-files-refresh {
   flex: 0 0 auto;
 }
 
-.project-files-textarea {
+.project-files-textarea.ui-field {
   width: 100%;
   min-width: 0;
   min-height: 0;
@@ -373,27 +321,11 @@
   overflow: auto;
   resize: none;
   padding: 14px 16px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--card-border-radius);
-  outline: none;
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--surface-sunken) 94%, transparent);
   font-family: var(--font-body);
   font-size: var(--text-md);
   font-weight: var(--type-body-weight);
   line-height: 1.75;
   tab-size: 2;
-}
-
-.project-files-textarea:focus {
-  border-color: var(--border-focused);
-  box-shadow: 0 0 0 3px var(--accent-primary-glow);
-}
-
-.project-files-textarea[readonly] {
-  cursor: default;
-  color: var(--text-secondary);
-  background: var(--surface-sunken);
 }
 
 .project-files-notice {
@@ -423,16 +355,6 @@
   color: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 30%, transparent);
   background: color-mix(in srgb, var(--danger) 8%, transparent);
-}
-
-.project-files-notice button {
-  flex: 0 0 auto;
-  padding: 3px 7px;
-  border: 1px solid currentColor;
-  border-radius: var(--button-border-radius);
-  color: inherit;
-  background: transparent;
-  cursor: pointer;
 }
 
 .project-files-diff {
@@ -522,9 +444,4 @@
   .project-files-editor {
     padding: 14px;
   }
-}
-
-.project-files-textarea:focus-visible {
-  outline: 2px solid var(--border-focused);
-  outline-offset: 2px;
 }

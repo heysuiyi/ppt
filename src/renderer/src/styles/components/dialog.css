@@ -1,0 +1,29 @@
+.ui-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  background: var(--modal-backdrop);
+}
+
+.ui-dialog {
+  position: relative;
+  box-sizing: border-box;
+  width: min(640px, 100%);
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-border-radius);
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  box-shadow: var(--elevation-3);
+}
+
+.ui-dialog-portals {
+  display: contents;
+}

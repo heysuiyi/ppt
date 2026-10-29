@@ -44,32 +44,6 @@
   display: flex;
 }
 
-.approval-buttons button {
-  cursor: pointer;
-  transition: var(--transition-color);
-}
-
-.tool-approval-card {
-  margin: 8px 0;
-}
-
-.tool-approval-detail {
-  margin: 8px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--button-border-radius);
-  background: var(--surface-sunken);
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 160px;
-  overflow: auto;
-}
-
-.tool-approval-card--resolved {
-  opacity: 0.85;
-}
-
 /* Action Dock 阻塞授权�?*/
 .unified-agent-input-shell {
   position: relative;
@@ -118,134 +92,6 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--layout-gap-compact);
-}
-
-.tool-approval-gate-btn {
-  min-height: 36px;
-  padding: 0 16px;
-  border-radius: var(--button-border-radius);
-  font-size: var(--text-sm);
-  font-weight: var(--type-label-weight);
-  cursor: pointer;
-  transition: var(--transition-color);
-}
-
-.tool-approval-gate-btn--deny {
-  background: var(--surface-raised);
-  border: 1px solid var(--border-default);
-  color: var(--text-secondary);
-}
-
-.tool-approval-gate-btn--deny:hover {
-  background: color-mix(in srgb, var(--danger) 8%, transparent);
-  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
-  color: var(--danger);
-}
-
-.tool-approval-gate-btn--allow {
-  background: var(--accent-action-bg);
-  border: 1px solid transparent;
-  color: var(--text-on-accent);
-}
-
-.tool-approval-gate-btn--allow:hover {
-  background: var(--accent-action-hover-bg);
-}
-
-.tool-approval-gate-btn--allow:active:not(:disabled) {
-  background: var(--accent-action-active-bg);
-}
-
-/* 子任务流式活动块 */
-.agent-task-block {
-  margin: 6px 0;
-  border: 1px solid var(--border-default);
-  border-radius: var(--card-border-radius);
-  background: var(--surface-sunken);
-  overflow: hidden;
-}
-
-.agent-task-block--active {
-  border-color: var(--accent-primary-glow);
-}
-
-.agent-task-block-header {
-  display: flex;
-  align-items: center;
-  gap: var(--layout-gap-compact);
-  width: 100%;
-  padding: 10px 12px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-}
-
-.agent-task-block-title {
-  font-weight: var(--type-heading-weight);
-  flex-shrink: 0;
-}
-
-.agent-task-block-description {
-  flex: 1;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-sm);
-}
-
-.agent-task-block-body {
-  padding: 0 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.agent-task-block-body--empty {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.agent-task-step {
-  display: flex;
-  align-items: center;
-  gap: var(--layout-gap-compact);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  padding: 4px 0;
-}
-
-.agent-task-step--running {
-  color: var(--text-primary);
-}
-
-.approval-buttons button.primary {
-  background: var(--accent-action-bg);
-  border: 1px solid transparent;
-  color: var(--text-on-accent);
-}
-
-.approval-buttons button.primary:hover {
-  background: var(--accent-action-hover-bg);
-}
-
-.approval-buttons button.primary:active:not(:disabled) {
-  background: var(--accent-action-active-bg);
-}
-
-.btn-preview-affected {
-  background: color-mix(in srgb, var(--surface-raised) 80%, transparent);
-  border: 1px solid var(--border-default);
-  color: var(--text-secondary);
-}
-
-.btn-preview-affected:hover {
-  background: var(--surface-hover);
-  color: var(--text-primary);
 }
 
 /* 产物 Patch 审核卡片 */
@@ -355,26 +201,6 @@
   margin-top: 4px;
 }
 
-.patch-expand-btn {
-  background: transparent;
-  border: none;
-  color: var(--accent-link-text);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  padding: 0;
-  margin-bottom: 10px;
-}
-
 .patch-review-buttons {
   display: flex;
-}
-
-.patch-review-buttons button {
-  cursor: pointer;
-  transition: var(--transition-color);
-}
-
-.patch-review-buttons button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }

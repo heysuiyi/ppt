@@ -1,8 +1,11 @@
 import type { AppLogEntry, AppLogLevel, LogManagerStatus } from "@shared/logging";
 import { normalizeWorkspacePath } from "@shared/workspace";
 import React from "react";
+import { Button } from "./Button";
 import { FolderIcon, RefreshIcon, TrashIcon } from "./Icons";
 import { Select } from "./Select";
+import { Switch } from "./Switch";
+import { RangeField, SettingsRow, SettingsSection } from "./settings/SettingsPrimitives";
 
 interface LogManagementPanelProps {
   notify: (message: string) => void;
@@ -104,12 +107,11 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
 
   return (
     <div className="settings-panel-stack">
-      <section className="settings-section log-management-summary">
-        <div className="settings-section-title">
-          <h3>日志采集</h3>
-          <span className="settings-hint">{status?.fileEnabled ? "运行中" : "仅控制台"}</span>
-        </div>
-
+      <SettingsSection
+        className="log-management-summary"
+        title="日志采集"
+        hint={status?.fileEnabled ? "运行中" : "仅控制台"}
+      >
         <div className="log-status-grid">
           <div>
             <span>文件</span>
@@ -130,81 +132,57 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
         </div>
 
         <div className="settings-form-stack">
-          <div className="setting-row">
-            <span className="setting-row-copy">
-              <span className="setting-row-title">最低记录级别</span>
-            </span>
-            <span className="setting-row-control">
-              <Select
-                variant="block"
-                className="log-level-select"
-                ariaLabel="最低记录级别"
-                value={status?.level ?? "info"}
-                disabled={!status}
-                onChange={(next) => void updateSettings({ level: next as AppLogLevel })}
-                options={[
-                  { value: "debug", label: "Debug（完整诊断）" },
-                  { value: "info", label: "Info（推荐）" },
-                  { value: "warn", label: "Warn（仅问题）" },
-                  { value: "error", label: "Error（仅错误）" },
-                ]}
-              />
-            </span>
-          </div>
-          <label className="setting-row">
-            <span className="setting-row-copy">
-              <span className="setting-row-title">写入日志文件</span>
-            </span>
-            <span className="setting-row-control">
-              <span className="toggle-switch">
-                <input
-                  type="checkbox"
-                  checked={status?.fileEnabled ?? false}
-                  disabled={!status}
-                  onChange={(event) => void updateSettings({ fileEnabled: event.target.checked })}
-                />
-                <span className="toggle-slider" />
-              </span>
-            </span>
-          </label>
-          <div className="setting-row">
-            <span className="setting-row-copy">
-              <span className="setting-row-title">保留天数</span>
-              <span className="settings-hint">{retentionDraft} 天</span>
-            </span>
-            <span className="setting-row-control">
-              <input
-                className="settings-range"
-                type="range"
-                min={1}
-                max={90}
-                step={1}
-                disabled={!status}
-                value={retentionDraft}
-                onChange={(event) => setRetentionDraft(parseInt(event.target.value, 10))}
-                onMouseUp={commitRetention}
-                onTouchEnd={commitRetention}
-                onKeyUp={commitRetention}
-                aria-label="日志保留天数"
-              />
-            </span>
-          </div>
+          <SettingsRow label="最低记录级别">
+            <Select
+              variant="block"
+              className="log-level-select"
+              ariaLabel="最低记录级别"
+              value={status?.level ?? "info"}
+              disabled={!status}
+              onChange={(next) => void updateSettings({ level: next as AppLogLevel })}
+              options={[
+                { value: "debug", label: "Debug（完整诊断）" },
+                { value: "info", label: "Info（推荐）" },
+                { value: "warn", label: "Warn（仅问题）" },
+                { value: "error", label: "Error（仅错误）" },
+              ]}
+            />
+          </SettingsRow>
+          <SettingsRow label="写入日志文件">
+            <Switch
+              label="写入日志文件"
+              checked={status?.fileEnabled ?? false}
+              disabled={!status}
+              onChange={(event) => void updateSettings({ fileEnabled: event.target.checked })}
+            />
+          </SettingsRow>
+          <SettingsRow label="保留天数">
+            <RangeField
+              valueLabel={`${retentionDraft} 天`}
+              min={1}
+              max={90}
+              step={1}
+              disabled={!status}
+              value={retentionDraft}
+              onChange={(event) => setRetentionDraft(parseInt(event.target.value, 10))}
+              onMouseUp={commitRetention}
+              onTouchEnd={commitRetention}
+              onKeyUp={commitRetention}
+              aria-label="日志保留天数"
+            />
+          </SettingsRow>
         </div>
 
         <div className="log-management-actions">
-          <button
-            className="settings-secondary-btn"
-            onClick={() => void refresh()}
-            disabled={loading}
-          >
+          <Button onClick={() => void refresh()} disabled={loading}>
             <RefreshIcon size={14} /> {loading ? "刷新中" : "刷新"}
-          </button>
-          <button className="settings-secondary-btn" onClick={() => void openDirectory()}>
+          </Button>
+          <Button onClick={() => void openDirectory()}>
             <FolderIcon size={14} /> 打开目录
-          </button>
-          <button className="settings-secondary-btn log-clear-btn" onClick={() => void clearLogs()}>
+          </Button>
+          <Button variant="danger" className="log-clear-btn" onClick={() => void clearLogs()}>
             <TrashIcon size={14} /> 清理日志
-          </button>
+          </Button>
         </div>
         {status && (
           <div className="settings-path-display">
@@ -212,13 +190,9 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
             <span>{normalizeWorkspacePath(status.directory)}</span>
           </div>
         )}
-      </section>
+      </SettingsSection>
 
-      <section className="settings-section">
-        <div className="settings-section-title">
-          <h3>最近问题</h3>
-          <span className="settings-hint">Warn / Error · {entries.length}</span>
-        </div>
+      <SettingsSection title="最近问题" hint={`Warn / Error · ${entries.length}`}>
         <div className="log-entry-list">
           {entries.length === 0 ? (
             <div className="log-empty-state">最近日志中没有捕获到警告或错误</div>
@@ -241,7 +215,7 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
             ))
           )}
         </div>
-      </section>
+      </SettingsSection>
     </div>
   );
 };

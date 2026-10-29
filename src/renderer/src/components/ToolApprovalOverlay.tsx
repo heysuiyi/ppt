@@ -3,6 +3,7 @@ import {
   getAgentToolDisplayCopy,
 } from "@shared/agent-activity-display";
 import type React from "react";
+import { Button } from "./Button";
 
 export interface PendingToolApproval {
   approvalId: string;
@@ -27,8 +28,7 @@ export const ToolApprovalOverlay: React.FC<ToolApprovalOverlayProps> = ({
   return (
     <section
       className="tool-approval-gate"
-      role="alertdialog"
-      aria-modal="true"
+      role="region"
       aria-labelledby={`tool-approval-title-${approval.approvalId}`}
       aria-describedby={`tool-approval-detail-${approval.approvalId}`}
     >
@@ -44,21 +44,12 @@ export const ToolApprovalOverlay: React.FC<ToolApprovalOverlayProps> = ({
         {description}
       </div>
       <div className="tool-approval-gate-actions">
-        <button
-          type="button"
-          className="tool-approval-gate-btn tool-approval-gate-btn--deny"
-          onClick={() => onResolve(approval.approvalId, false)}
-          autoFocus
-        >
+        <Button variant="secondary" onClick={() => onResolve(approval.approvalId, false)} autoFocus>
           暂不允许
-        </button>
-        <button
-          type="button"
-          className="tool-approval-gate-btn tool-approval-gate-btn--allow"
-          onClick={() => onResolve(approval.approvalId, true)}
-        >
+        </Button>
+        <Button variant="primary" onClick={() => onResolve(approval.approvalId, true)}>
           允许继续
-        </button>
+        </Button>
       </div>
     </section>
   );

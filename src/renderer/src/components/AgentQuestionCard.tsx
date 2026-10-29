@@ -5,6 +5,9 @@ import type {
 } from "@shared/agent-question";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { ArtifactCard, CardActions, CardHeader } from "./ArtifactCard";
+import { Button } from "./Button";
+import { Textarea } from "./Field";
 import { ResolvedCard } from "./ResolvedCard";
 
 interface AgentQuestionCardProps {
@@ -92,11 +95,8 @@ export const AgentQuestionCard: React.FC<AgentQuestionCardProps> = ({
   };
 
   return (
-    <div className="inline-artifact-card agent-question-card">
-      <div className="inline-artifact-card-header">
-        <span className="inline-artifact-badge">确认问题</span>
-        <span className="inline-artifact-title">需要确认</span>
-      </div>
+    <ArtifactCard className="agent-question-card">
+      <CardHeader badge="确认问题" title="需要确认" />
 
       {options.length > 0 && (
         <div
@@ -133,7 +133,7 @@ export const AgentQuestionCard: React.FC<AgentQuestionCardProps> = ({
 
       {showFreeText && !resolved && (
         <div className="agent-question-free-text">
-          <textarea
+          <Textarea
             value={freeText}
             disabled={!interactive}
             placeholder={question.placeholder || "请输入补充信息"}
@@ -146,31 +146,31 @@ export const AgentQuestionCard: React.FC<AgentQuestionCardProps> = ({
               }
             }}
           />
-          <div className="inline-artifact-actions">
-            <button
-              type="button"
-              className="btn-apply"
+          <CardActions>
+            <Button
+              size="sm"
+              data-theme-emphasis="primary"
               disabled={!interactive || (!freeText.trim() && selectedOptions.length === 0)}
               onClick={resolveWithFreeText}
             >
               {question.submitLabel || "提交回答"}
-            </button>
-          </div>
+            </Button>
+          </CardActions>
         </div>
       )}
 
       {isMultiple && !resolved && !showFreeText && (
-        <div className="inline-artifact-actions">
-          <button
-            type="button"
-            className="btn-apply"
+        <CardActions>
+          <Button
+            size="sm"
+            data-theme-emphasis="primary"
             disabled={disabled || selectedOptions.length === 0}
             onClick={() => resolveWithOptions(selectedOptions)}
           >
             {question.submitLabel || "确认选择"}
-          </button>
-        </div>
+          </Button>
+        </CardActions>
       )}
-    </div>
+    </ArtifactCard>
   );
 };

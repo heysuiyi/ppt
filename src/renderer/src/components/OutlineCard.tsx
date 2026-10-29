@@ -1,5 +1,7 @@
 import type { OutlineItem } from "@shared/project-artifacts";
 import type React from "react";
+import { ArtifactCard, CardActions, CardHeader } from "./ArtifactCard";
+import { Button } from "./Button";
 
 interface OutlineCardProps {
   items: OutlineItem[];
@@ -8,11 +10,8 @@ interface OutlineCardProps {
 }
 
 export const OutlineCard: React.FC<OutlineCardProps> = ({ items, busy, onRevise }) => (
-  <div className="inline-artifact-card outline-card">
-    <div className="inline-artifact-card-header">
-      <span className="inline-artifact-badge">内容大纲</span>
-      <span className="inline-artifact-title">内容大纲预览</span>
-    </div>
+  <ArtifactCard className="outline-card">
+    <CardHeader badge="内容大纲" title="内容大纲预览" />
 
     <ol className="outline-card-list">
       {items.map((item, index) => (
@@ -37,11 +36,11 @@ export const OutlineCard: React.FC<OutlineCardProps> = ({ items, busy, onRevise 
     </ol>
 
     {onRevise ? (
-      <div className="inline-artifact-actions">
-        <button type="button" disabled={busy} className="btn-secondary" onClick={onRevise}>
+      <CardActions>
+        <Button size="sm" disabled={busy} onClick={onRevise}>
           继续修改
-        </button>
-      </div>
+        </Button>
+      </CardActions>
     ) : null}
-  </div>
+  </ArtifactCard>
 );

@@ -4,6 +4,7 @@ import {
 } from "@shared/commercial-communication";
 import type { BriefFields } from "@shared/project-artifacts";
 import type React from "react";
+import { ArtifactCard, CardHeader } from "./ArtifactCard";
 
 interface BriefCardProps {
   fields: BriefFields;
@@ -24,11 +25,8 @@ const FIELD_LABELS: Array<{ key: keyof BriefFields; label: string }> = [
 ];
 
 export const BriefCard: React.FC<BriefCardProps> = ({ fields }) => (
-  <div className="inline-artifact-card brief-card">
-    <div className="inline-artifact-card-header">
-      <span className="inline-artifact-badge">需求简报</span>
-      <span className="inline-artifact-title">需求简报摘要</span>
-    </div>
+  <ArtifactCard className="brief-card">
+    <CardHeader badge="需求简报" title="需求简报摘要" />
 
     <dl className="brief-card-fields">
       {FIELD_LABELS.map(({ key, label }) => (
@@ -44,5 +42,5 @@ export const BriefCard: React.FC<BriefCardProps> = ({ fields }) => (
         </div>
       ))}
     </dl>
-  </div>
+  </ArtifactCard>
 );

@@ -1,16 +1,13 @@
-import { formatPublicErrorMessage } from "@shared/agent-activity-display";
-import { hasUnverifiedCommercialAssets } from "@shared/asset-license";
-import { utf8ToBase64 } from "@shared/base64";
 import { useArtifactCardManager } from "@shared/cards/display-card-managers";
 import {
   getSlidePreviewBatchKey,
   selectLatestSlidePreviews,
 } from "@shared/cards/select-slide-previews";
-import type { Presentation, Slide } from "@shared/presentation";
+import type { Presentation } from "@shared/presentation";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { confirmSvgExportExpectation } from "../app/presentation/exportExpectations";
+import { Button, IconButton } from "./Button";
+import { Dialog } from "./Dialog";
 import {
   CheckIcon,
   ClosePreviewIcon,
@@ -20,10 +17,13 @@ import {
   LayoutIcon,
   PlayIcon,
 } from "./Icons";
+import { PreviewNavigation } from "./PreviewNavigation";
 import { SlidePreviewGallery } from "./SlidePreviewGallery";
+import { SlidePreviewSurface } from "./SlidePreviewSurface";
 
 interface PPTMirrorProps {
-  sessionId: string;
+  isExporting: boolean;
+  onExport: () => void;
   presentation: Presentation;
   selectedSlideId: string;
   onSelectSlide: (slideId: string) => void;
@@ -31,54 +31,10 @@ interface PPTMirrorProps {
   highlightSlideId: string | null; // AI 当前正在更新的页面 ID
   isExpanded?: boolean;
   onToggleExpand?: () => void;
-  triggerToast?: (msg: string) => void;
 }
-
-function SvgSlideSurface({ slide }: { slide: Slide }) {
-  if (slide.visualSource?.kind !== "svg") return null;
-  const source = `data:image/svg+xml;base64,${utf8ToBase64(slide.visualSource.markup)}`;
-  return (
-    <img
-      src={source}
-      alt={slide.title}
-      style={{
-        display: "block",
-        width: "100%",
-        height: "100%",
-        objectFit: "fill",
-      }}
-    />
-  );
-}
-
-function NonSvgSlidePlaceholder({ slide }: { slide: Slide }) {
-  return (
-    <div className="slide-non-svg-placeholder">
-      <span>{slide.title}</span>
-      <small>此页非 SVG 原生，无法预览</small>
-    </div>
-  );
-}
-
-interface MirrorSlideFrameProps {
-  slide: Slide;
-  className?: string;
-}
-
-function MirrorSlideFrame({ slide, className }: MirrorSlideFrameProps) {
-  return (
-    <div className={["mirror-slide-frame", className].filter(Boolean).join(" ")}>
-      {slide.visualSource?.kind === "svg" ? (
-        <SvgSlideSurface slide={slide} />
-      ) : (
-        <NonSvgSlidePlaceholder slide={slide} />
-      )}
-    </div>
-  );
-}
-
 export const PPTMirror: React.FC<PPTMirrorProps> = ({
-  sessionId,
+  isExporting,
+  onExport,
   presentation,
   selectedSlideId,
   onSelectSlide,
@@ -86,11 +42,9 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
   highlightSlideId,
   isExpanded = false,
   onToggleExpand,
-  triggerToast,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenIndex, setFullscreenIndex] = useState(0);
-  const [isExporting, setIsExporting] = useState(false);
   const [fullscreenWidth, setFullscreenWidth] = useState(0);
   const fullscreenViewportRef = useRef<HTMLDivElement>(null);
 
@@ -117,31 +71,6 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
   const surfacedInspectionBatchRef = useRef<string | undefined>(inspectionBatchKey);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-
-  const handleDownload = async () => {
-    if (!sessionId || isExporting) return;
-    if (!confirmSvgExportExpectation(presentation)) return;
-    const needsApproval = hasUnverifiedCommercialAssets(presentation);
-    const allowUnverifiedAssets = needsApproval
-      ? window.confirm("演示文稿包含尚未核实商业授权的图片。是否明确批准本次导出？")
-      : false;
-    if (needsApproval && !allowUnverifiedAssets) return;
-    setIsExporting(true);
-    try {
-      const savedPath = await window.desktopApi.exportPresentation(sessionId, {
-        allowUnverifiedAssets,
-      });
-      if (savedPath) {
-        triggerToast?.(`已成功导出至: ${savedPath}`);
-      }
-    } catch (error) {
-      console.error(error);
-      triggerToast?.(`导出失败：${formatPublicErrorMessage(error, "请稍后重试。")}`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   const slides = presentation.slides;
   const slideOrder = useMemo(
     () => new Map(slides.map((slide, index) => [slide.id, index])),
@@ -187,30 +116,6 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
       });
     }
   }, [activeView, selectedSlideId, highlightSlideId]);
-
-  // 监听全屏放映时的键盘事件
-  useEffect(() => {
-    if (!isFullscreen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "Space" || e.key === " ") {
-        e.preventDefault();
-        setFullscreenIndex((prev) => Math.min(slides.length - 1, prev + 1));
-      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-        e.preventDefault();
-        setFullscreenIndex((prev) => Math.max(0, prev - 1));
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        setIsFullscreen(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isFullscreen, slides.length]);
-
   // 当全屏放映的页面改变时，同步选中状态到主工作区
   useEffect(() => {
     if (isFullscreen && slides[fullscreenIndex]) {
@@ -240,7 +145,7 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
     if (index === undefined) return null;
     const slide = slides[index];
     if (!slide) return null;
-    return <MirrorSlideFrame slide={slide} />;
+    return <SlidePreviewSurface slide={slide} className="mirror-slide-frame" />;
   };
 
   return (
@@ -254,40 +159,40 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
           <span title={presentation.title || "未命名演示文稿"}>PPT 预览</span>
         </div>
         <div className="mirror-header-actions">
-          <button
+          <IconButton
             onClick={handleFullscreenOpen}
-            className="action-icon-btn mirror-header-icon-btn"
+            className="mirror-header-icon-btn"
             disabled={slides.length === 0}
             aria-label="放映演示文稿"
             title="放映演示文稿"
           >
             <PlayIcon size={16} />
-          </button>
-          <button
-            onClick={handleDownload}
-            className="action-icon-btn mirror-header-icon-btn"
+          </IconButton>
+          <IconButton
+            onClick={onExport}
+            className="mirror-header-icon-btn"
             disabled={isExporting}
             aria-label="下载 PPT"
             title="下载 PPT"
           >
             <DownloadIcon size={16} />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
             onClick={onToggleExpand}
-            className="action-icon-btn mirror-header-icon-btn mirror-expand-toggle-btn"
+            className="mirror-header-icon-btn mirror-expand-toggle-btn"
             aria-label={isExpanded ? "收缩预览" : "放大预览"}
             title={isExpanded ? "收缩预览" : "放大预览"}
           >
             {isExpanded ? <CompressIcon size={16} /> : <ExpandIcon size={16} />}
-          </button>
-          <button
+          </IconButton>
+          <IconButton
             onClick={onCloseMirror}
-            className="action-icon-btn mirror-header-icon-btn mirror-panel-close-btn"
+            className="mirror-header-icon-btn mirror-panel-close-btn"
             aria-label="关闭右侧预览"
             title="关闭右侧预览"
           >
             <ClosePreviewIcon size={16} />
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -332,28 +237,11 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
                   : "等待生成演示文稿"}
               </span>
             </div>
-            <div className="mirror-page-navigation" aria-label="页面导航">
-              <button
-                type="button"
-                onClick={() => selectRelativeSlide(-1)}
-                disabled={selectedSlideIndex <= 0}
-                aria-label="选择上一页"
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                onClick={() => selectRelativeSlide(1)}
-                disabled={
-                  slides.length === 0 ||
-                  selectedSlideIndex < 0 ||
-                  selectedSlideIndex >= slides.length - 1
-                }
-                aria-label="选择下一页"
-              >
-                ›
-              </button>
-            </div>
+            <PreviewNavigation
+              index={selectedSlideIndex}
+              count={slides.length}
+              onNavigate={selectRelativeSlide}
+            />
           </div>
         ) : (
           <div className="mirror-view-summary mirror-inspection-summary">
@@ -419,7 +307,10 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
                   onClick={handleFullscreenOpen}
                   aria-label={`放大查看第 ${Math.max(0, selectedSlideIndex) + 1} 页：${selectedSlide.title}`}
                 >
-                  <MirrorSlideFrame slide={selectedSlide} className="mirror-focus-frame" />
+                  <SlidePreviewSurface
+                    slide={selectedSlide}
+                    className="mirror-slide-frame mirror-focus-frame"
+                  />
                   <span className="mirror-focus-canvas-action">点击放大查看</span>
                 </button>
               </section>
@@ -444,7 +335,11 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
                     aria-label={`选择第 ${index + 1} 页：${slide.title}`}
                     aria-current={isSelected ? "page" : undefined}
                   >
-                    <MirrorSlideFrame slide={slide} className="mirror-slide-wrapper" />
+                    <SlidePreviewSurface
+                      slide={slide}
+                      compact
+                      className="mirror-slide-frame mirror-slide-wrapper"
+                    />
                     <span className="mirror-card-meta">
                       <span className="mirror-card-identity">
                         <span className="slide-number">
@@ -471,79 +366,72 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
         )}
       </div>
 
-      {/* 4. 全屏放映灯箱模态窗口 */}
-      {isFullscreen &&
-        createPortal(
-          <div className="slideshow-lightbox-overlay" onClick={() => setIsFullscreen(false)}>
-            <div className="slideshow-lightbox-content" onClick={(e) => e.stopPropagation()}>
-              {/* 顶栏控制 */}
-              <div className="slideshow-top-bar">
-                <span className="slideshow-title">{presentation.title}</span>
-                <span className="slideshow-progress">
-                  第 {fullscreenIndex + 1} 页 / 共 {slides.length} 页
-                </span>
-                <button className="slideshow-close" onClick={() => setIsFullscreen(false)}>
-                  ✕ 关闭放映
-                </button>
-              </div>
+      <Dialog
+        open={isFullscreen}
+        onClose={() => setIsFullscreen(false)}
+        label={`${presentation.title || "演示文稿"} 放映`}
+        overlayClassName="slideshow-lightbox-overlay"
+        className="slideshow-lightbox-content"
+        onKeyDown={(event) => {
+          if (["ArrowRight", "ArrowDown", " "].includes(event.key)) {
+            event.preventDefault();
+            setFullscreenIndex((index) => Math.min(slides.length - 1, index + 1));
+          } else if (["ArrowLeft", "ArrowUp"].includes(event.key)) {
+            event.preventDefault();
+            setFullscreenIndex((index) => Math.max(0, index - 1));
+          }
+        }}
+      >
+        {/* 顶栏控制 */}
+        <div className="slideshow-top-bar">
+          <span className="slideshow-title">{presentation.title}</span>
+          <span className="slideshow-progress">
+            第 {fullscreenIndex + 1} 页 / 共 {slides.length} 页
+          </span>
+          <Button variant="secondary" onClick={() => setIsFullscreen(false)}>
+            ✕ 关闭放映
+          </Button>
+        </div>
 
-              {/* 主幻灯片预览区 */}
-              <div
-                className="slideshow-viewport-container"
-                ref={fullscreenViewportRef}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left;
-                  if (clickX > rect.width / 2) {
-                    setFullscreenIndex((prev) => Math.min(slides.length - 1, prev + 1));
-                  } else {
-                    setFullscreenIndex((prev) => Math.max(0, prev - 1));
-                  }
-                }}
-                style={{ cursor: "pointer", minWidth: 0, minHeight: 0 }}
-              >
-                {slides[fullscreenIndex] ? (
-                  <div
-                    className="slide-viewport slideshow-slide-viewport"
-                    style={{ width: fullscreenWidth }}
-                  >
-                    {slides[fullscreenIndex].visualSource?.kind === "svg" ? (
-                      <SvgSlideSurface slide={slides[fullscreenIndex]} />
-                    ) : (
-                      <NonSvgSlidePlaceholder slide={slides[fullscreenIndex]} />
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-white">无页面</div>
-                )}
-              </div>
-
-              {/* 左右翻页控制器 */}
-              <button
-                className="slideshow-nav-arrow left"
-                disabled={fullscreenIndex === 0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFullscreenIndex((i) => Math.max(0, i - 1));
-                }}
-              >
-                ‹
-              </button>
-              <button
-                className="slideshow-nav-arrow right"
-                disabled={fullscreenIndex === slides.length - 1}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFullscreenIndex((i) => Math.min(slides.length - 1, i + 1));
-                }}
-              >
-                ›
-              </button>
+        {/* 主幻灯片预览区 */}
+        <div
+          className="slideshow-viewport-container"
+          ref={fullscreenViewportRef}
+          onClick={(e) => {
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            if (clickX > rect.width / 2) {
+              setFullscreenIndex((prev) => Math.min(slides.length - 1, prev + 1));
+            } else {
+              setFullscreenIndex((prev) => Math.max(0, prev - 1));
+            }
+          }}
+          style={{ cursor: "pointer", minWidth: 0, minHeight: 0 }}
+        >
+          {slides[fullscreenIndex] ? (
+            <div
+              className="slide-viewport slideshow-slide-viewport"
+              style={{ width: fullscreenWidth }}
+            >
+              <SlidePreviewSurface slide={slides[fullscreenIndex]} />
             </div>
-          </div>,
-          document.body,
-        )}
+          ) : (
+            <div className="text-white">无页面</div>
+          )}
+        </div>
+
+        <PreviewNavigation
+          variant="slideshow"
+          index={fullscreenIndex}
+          count={slides.length}
+          previousLabel="放映上一页"
+          nextLabel="放映下一页"
+          onNavigate={(delta) =>
+            setFullscreenIndex((index) => Math.max(0, Math.min(slides.length - 1, index + delta)))
+          }
+        />
+      </Dialog>
     </aside>
   );
 };

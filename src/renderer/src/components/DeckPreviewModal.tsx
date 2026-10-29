@@ -1,9 +1,10 @@
-import { utf8ToBase64 } from "@shared/base64";
-import type { Presentation, Slide } from "@shared/presentation";
+import type { Presentation } from "@shared/presentation";
 import type React from "react";
-import { useEffect } from "react";
-import { createPortal } from "react-dom";
+import { Button, IconButton } from "./Button";
+import { Dialog } from "./Dialog";
 import { ClosePreviewIcon } from "./Icons";
+import { PreviewNavigation } from "./PreviewNavigation";
+import { SlidePreviewSurface } from "./SlidePreviewSurface";
 
 interface DeckPreviewModalProps {
   open: boolean;
@@ -13,15 +14,6 @@ interface DeckPreviewModalProps {
   onClose: () => void;
 }
 
-function NonSvgSlidePlaceholder({ slide }: { slide: Slide }) {
-  return (
-    <div className="slide-non-svg-placeholder">
-      <span>{slide.title}</span>
-      <small>此页非 SVG 原生，无法预览</small>
-    </div>
-  );
-}
-
 export const DeckPreviewModal: React.FC<DeckPreviewModalProps> = ({
   open,
   presentation,
@@ -29,76 +21,64 @@ export const DeckPreviewModal: React.FC<DeckPreviewModalProps> = ({
   onSelectSlide,
   onClose,
 }) => {
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   const activeIndex = Math.max(
     0,
     presentation.slides.findIndex((slide) => slide.id === selectedSlideId),
   );
-  const activeSlide = presentation.slides[activeIndex] ?? presentation.slides[0];
+  const activeSlide = presentation.slides[activeIndex];
+  const navigate = (delta: number) => {
+    const slide =
+      presentation.slides[
+        Math.max(0, Math.min(presentation.slides.length - 1, activeIndex + delta))
+      ];
+    if (slide) onSelectSlide(slide.id);
+  };
 
-  return createPortal(
-    <div className="deck-preview-modal-overlay" onClick={onClose}>
-      <div className="deck-preview-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="deck-preview-modal-header">
-          <div>
-            <h3>{presentation.title || "演示文稿预览"}</h3>
-            <p>只读预览 · 共 {presentation.slides.length} 页</p>
-          </div>
-          <button type="button" className="action-icon-btn" onClick={onClose} title="关闭预览">
-            <ClosePreviewIcon size={16} />
-          </button>
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      label={presentation.title || "演示文稿预览"}
+      overlayClassName="deck-preview-modal-overlay"
+      className="deck-preview-modal"
+    >
+      <div className="deck-preview-modal-header">
+        <div>
+          <h3>{presentation.title || "演示文稿预览"}</h3>
+          <p>只读预览 · 共 {presentation.slides.length} 页</p>
         </div>
-
-        <div className="deck-preview-modal-body">
-          <aside className="deck-preview-modal-sidebar">
-            {presentation.slides.map((slide, index) => (
-              <button
-                key={slide.id}
-                type="button"
-                className={`deck-preview-modal-thumb ${slide.id === activeSlide?.id ? "active" : ""}`}
-                onClick={() => onSelectSlide(slide.id)}
-              >
-                <span>{index + 1}</span>
-                <strong>{slide.title}</strong>
-              </button>
-            ))}
-          </aside>
-
-          <div className="deck-preview-modal-canvas">
-            {activeSlide ? (
-              <div className="deck-preview-modal-slide">
-                {activeSlide.visualSource?.kind === "svg" ? (
-                  <img
-                    src={`data:image/svg+xml;base64,${utf8ToBase64(activeSlide.visualSource.markup)}`}
-                    alt={activeSlide.title}
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "fill",
-                    }}
-                  />
-                ) : (
-                  <NonSvgSlidePlaceholder slide={activeSlide} />
-                )}
-              </div>
-            ) : (
-              <div className="deck-preview-modal-empty">暂无幻灯片内容</div>
-            )}
-          </div>
+        <PreviewNavigation
+          index={activeIndex}
+          count={presentation.slides.length}
+          onNavigate={navigate}
+        />
+        <IconButton onClick={onClose} title="关闭预览" aria-label="关闭预览">
+          <ClosePreviewIcon size={16} />
+        </IconButton>
+      </div>
+      <div className="deck-preview-modal-body">
+        <aside className="deck-preview-modal-sidebar">
+          {presentation.slides.map((slide, index) => (
+            <Button
+              key={slide.id}
+              variant="quiet"
+              className={`deck-preview-modal-thumb ${slide.id === activeSlide?.id ? "active" : ""}`}
+              aria-current={slide.id === activeSlide?.id ? "page" : undefined}
+              onClick={() => onSelectSlide(slide.id)}
+            >
+              <span>{index + 1}</span>
+              <strong>{slide.title}</strong>
+            </Button>
+          ))}
+        </aside>
+        <div className="deck-preview-modal-canvas">
+          {activeSlide ? (
+            <SlidePreviewSurface slide={activeSlide} className="deck-preview-modal-slide" />
+          ) : (
+            <div className="deck-preview-modal-empty">暂无幻灯片内容</div>
+          )}
         </div>
       </div>
-    </div>,
-    document.body,
+    </Dialog>
   );
 };

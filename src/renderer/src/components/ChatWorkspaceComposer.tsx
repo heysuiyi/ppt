@@ -3,12 +3,15 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { InteractionCardHost } from "../cards/hosts/InteractionCardHost";
 import { PermissionCardHost } from "../cards/hosts/PermissionCardHost";
+import { Button, IconButton } from "./Button";
 import { CHAT_WORKSPACE_COPY_ZH_CN as copy, getChatPromptTemplates } from "./chat-workspace-copy";
 import type {
   ChatRegionState,
@@ -18,8 +21,12 @@ import type {
   ChatWorkspaceRun,
   ChatWorkspaceComposer as ComposerData,
 } from "./chat-workspace-types";
-import { CheckIcon, ChevronDownIcon, FolderIcon, SendIcon, StopIcon } from "./Icons";
+import { Textarea } from "./Field";
+import { FolderIcon, SendIcon, StopIcon } from "./Icons";
+import { useOverlayOwner } from "./overlay-lifecycle";
+import { usePopoverPosition } from "./popover-position";
 import { RunStatusIndicator } from "./RunStatusIndicator";
+import { Select } from "./Select";
 
 interface ChatWorkspaceComposerProps {
   state: ChatRegionState;
@@ -68,15 +75,28 @@ export function ChatWorkspaceComposer({
   } = run;
   const { pendingToolApproval, canCancelRun, runStartedAt } = runtime;
   const { onResolveToolApproval } = actions;
-  const showSlashMenu = request.startsWith("/");
+  const [dismissedSlashRequest, setDismissedSlashRequest] = useState<string | null>(null);
+  const [activeTemplate, setActiveTemplate] = useState(0);
+  const slashListId = useId();
+  const showSlashMenu =
+    !centered &&
+    request.startsWith("/") &&
+    dismissedSlashRequest !== request &&
+    !locked &&
+    !runtime.pendingToolApproval;
   const promptTemplates = useMemo(
     () => getChatPromptTemplates(deck.presentation, deck.selectedSlideId),
     [deck.presentation, deck.selectedSlideId],
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const modelMenuRef = useRef<HTMLDivElement>(null);
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const selectedModel = models.find((model) => model.id === selectedModelId) ?? models[0];
+  const slashMenuRef = useRef<HTMLDivElement>(null);
+  const overlayOwner = useOverlayOwner();
+  const slashPosition = usePopoverPosition(
+    showSlashMenu,
+    slashMenuRef,
+    () => textareaRef.current?.getBoundingClientRect() ?? null,
+    "above",
+  );
   const isPermissionGateOpen = Boolean(pendingToolApproval && onResolveToolApproval);
 
   const handleSend = () => {
@@ -85,7 +105,38 @@ export function ChatWorkspaceComposer({
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
+  const completeTemplate = (index: number) => {
+    const template = promptTemplates[index];
+    if (!template) return;
+    onChangeRequest(template.command);
+    setDismissedSlashRequest(template.command);
+    textareaRef.current?.focus();
+  };
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (showSlashMenu) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setDismissedSlashRequest(request);
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveTemplate(
+          (index) =>
+            (index + (event.key === "ArrowDown" ? 1 : promptTemplates.length - 1)) %
+            promptTemplates.length,
+        );
+        return;
+      }
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        completeTemplate(activeTemplate);
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       handleSend();
@@ -101,22 +152,16 @@ export function ChatWorkspaceComposer({
     }
     resizeTextarea(textarea);
   }, [request]);
+  useEffect(() => {
+    setActiveTemplate((index) => Math.min(index, promptTemplates.length - 1));
+  }, [promptTemplates.length]);
 
   useEffect(() => {
-    if (!modelMenuOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!modelMenuRef.current?.contains(event.target as Node)) setModelMenuOpen(false);
-    };
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setModelMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [modelMenuOpen]);
+    if (showSlashMenu)
+      document
+        .getElementById(`${slashListId}-${activeTemplate}`)
+        ?.scrollIntoView?.({ block: "nearest" });
+  }, [activeTemplate, showSlashMenu, slashListId]);
 
   return (
     <div
@@ -130,22 +175,48 @@ export function ChatWorkspaceComposer({
           centered ? "center-focal-composer" : "chat-conversation-shell chat-conversation-footer"
         }
       >
-        {!centered && showSlashMenu && !locked && !runtime.pendingToolApproval && (
-          <div className="slash-menu-popup" role="listbox" aria-label={copy.promptTemplateAria}>
-            <div className="slash-menu-header">{copy.promptTemplateHeader}</div>
-            {promptTemplates.map((template) => (
-              <button
-                type="button"
-                key={template.command}
-                className="slash-menu-item"
-                onClick={() => onChangeRequest(template.command)}
-              >
-                <span className="cmd-text">{template.command}</span>
-                <span className="cmd-desc">{template.description}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        {showSlashMenu &&
+          createPortal(
+            <div
+              ref={slashMenuRef}
+              id={slashListId}
+              className="slash-menu-popup"
+              role="listbox"
+              aria-label={copy.promptTemplateAria}
+              style={
+                slashPosition
+                  ? {
+                      top: slashPosition.top,
+                      left: slashPosition.left,
+                      width: slashPosition.width,
+                      maxHeight: slashPosition.maxHeight,
+                    }
+                  : { visibility: "hidden" }
+              }
+            >
+              <div className="slash-menu-header" role="presentation">
+                {copy.promptTemplateHeader}
+              </div>
+              {promptTemplates.map((template, index) => (
+                <button
+                  type="button"
+                  key={template.command}
+                  id={`${slashListId}-${index}`}
+                  role="option"
+                  aria-selected={index === activeTemplate}
+                  tabIndex={-1}
+                  className={`slash-menu-item${index === activeTemplate ? " is-active" : ""}`}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveTemplate(index)}
+                  onClick={() => completeTemplate(index)}
+                >
+                  <span className="cmd-text">{template.command}</span>
+                  <span className="cmd-desc">{template.description}</span>
+                </button>
+              ))}
+            </div>,
+            overlayOwner.portalHost ?? document.body,
+          )}
 
         <div>
           {!centered && (
@@ -183,14 +254,15 @@ export function ChatWorkspaceComposer({
                     <strong id="sandbox-preflight-title">项目目录（可选）</strong>
                     <span>可直接发送，系统会自动创建托管沙箱；也可以先选择保存目录。</span>
                   </div>
-                  <button
-                    type="button"
+                  <Button
+                    variant="primary"
+                    size="sm"
                     className="sandbox-preflight-btn"
                     onClick={onPrepareWorkspace}
                     disabled={locked}
                   >
                     选择项目目录
-                  </button>
+                  </Button>
                 </section>
               )}
               {centered && (workspacePath || workspaceBound) && (
@@ -202,14 +274,15 @@ export function ChatWorkspaceComposer({
                     {workspacePath ? getWorkspaceLabel(workspacePath) : "托管空间"}
                   </span>
                   {!workspaceBound && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="primary"
+                      size="sm"
                       className="sandbox-preflight-btn"
                       disabled={locked}
                       onClick={onPrepareWorkspace}
                     >
                       更换
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
@@ -229,11 +302,13 @@ export function ChatWorkspaceComposer({
                 )}
 
                 <div className="input-textarea-row">
-                  <textarea
+                  <Textarea
                     ref={textareaRef}
                     value={request}
                     onChange={(event) => {
                       onChangeRequest(event.target.value);
+                      setDismissedSlashRequest(null);
+                      setActiveTemplate(0);
                       resizeTextarea(event.target);
                     }}
                     onKeyDown={handleKeyDown}
@@ -247,6 +322,14 @@ export function ChatWorkspaceComposer({
                     rows={centered ? 3 : 2}
                     className={`input-textarea${busy ? " input-textarea--busy" : ""}`}
                     aria-label="向演示文稿 Agent 输入指令"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-haspopup="listbox"
+                    aria-expanded={showSlashMenu}
+                    aria-controls={showSlashMenu ? slashListId : undefined}
+                    aria-activedescendant={
+                      showSlashMenu ? `${slashListId}-${activeTemplate}` : undefined
+                    }
                   />
                 </div>
 
@@ -262,51 +345,19 @@ export function ChatWorkspaceComposer({
                   </div>
 
                   <div className="functional-right">
-                    <div
-                      ref={modelMenuRef}
-                      className={`model-tier-select-wrapper${modelMenuOpen ? " is-open" : ""}${locked || models.length === 0 ? " is-disabled" : ""}`}
-                    >
-                      <button
-                        type="button"
-                        className="mini-model-select"
-                        disabled={locked || models.length === 0}
-                        aria-haspopup="listbox"
-                        aria-expanded={modelMenuOpen}
-                        onClick={() => setModelMenuOpen((open) => !open)}
-                      >
-                        <span>{selectedModel?.name ?? "选择模型"}</span>
-                        <ChevronDownIcon size={12} className="model-tier-select-icon" />
-                      </button>
+                    <Select
+                      variant="compact"
+                      placement={centered ? "below" : "above"}
+                      value={selectedModelId}
+                      onChange={setSelectedModelId}
+                      options={models.map((model) => ({ value: model.id, label: model.name }))}
+                      placeholder="选择模型"
+                      disabled={locked || models.length === 0}
+                      ariaLabel="选择智能体模型"
+                    />
 
-                      {modelMenuOpen && !locked && models.length > 0 ? (
-                        <div className="model-tier-menu" role="listbox" aria-label="选择智能体模型">
-                          {models.map((model) => {
-                            const selected = model.id === selectedModelId;
-                            return (
-                              <button
-                                key={model.id}
-                                type="button"
-                                role="option"
-                                aria-selected={selected}
-                                className={`model-tier-option${selected ? " is-selected" : ""}`}
-                                onClick={() => {
-                                  setSelectedModelId(model.id);
-                                  setModelMenuOpen(false);
-                                }}
-                              >
-                                <span className="model-tier-option-name">{model.name}</span>
-                                {selected ? (
-                                  <CheckIcon size={11} className="model-tier-option-check" />
-                                ) : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <button
-                      type="button"
+                    <IconButton
+                      variant={canCancelRun ? "danger" : "primary"}
                       onClick={canCancelRun && onCancelRun ? onCancelRun : handleSend}
                       disabled={
                         canCancelRun
@@ -324,7 +375,7 @@ export function ChatWorkspaceComposer({
                       title={canCancelRun ? "中止当前 Agent 会话" : "发送指令（Enter）"}
                     >
                       {canCancelRun ? <StopIcon size={13} /> : <SendIcon size={15} />}
-                    </button>
+                    </IconButton>
                   </div>
                 </div>
               </div>
@@ -334,16 +385,17 @@ export function ChatWorkspaceComposer({
         {centered && (
           <div className="center-suggestions">
             {copy.suggestions.map((suggestion) => (
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 key={suggestion}
-                type="button"
                 className="suggestion-chip"
                 disabled={locked}
                 title="填入输入框，确认后发送"
                 onClick={() => composer.onProposePrompt(suggestion)}
               >
                 {suggestion}
-              </button>
+              </Button>
             ))}
           </div>
         )}

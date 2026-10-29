@@ -6,7 +6,7 @@ import {
   type ProjectTemplatePolicy,
 } from "@shared/template-protocol";
 import React from "react";
-import { cx } from "../../lib/cx";
+import { Button } from "../Button";
 import { Select } from "../Select";
 import { SettingsPanel, SettingsRow, SettingsSection } from "./SettingsPrimitives";
 
@@ -271,9 +271,8 @@ export function PresentationSettingsPanel({
                     key={`${template.id}@${template.revisionId}`}
                     className="settings-choice-group"
                   >
-                    <button
-                      type="button"
-                      className={cx("settings-choice", active && "is-active")}
+                    <Button
+                      size="sm"
                       disabled={!activeSessionId}
                       aria-pressed={active}
                       onClick={() => void applyTemplate(template)}
@@ -282,10 +281,9 @@ export function PresentationSettingsPanel({
                         {template.name}
                         {active ? "（已应用到当前项目）" : "（仅在模板库）"}
                       </span>
-                    </button>
-                    <button
-                      type="button"
-                      className={cx("settings-choice", isAppDefault && "is-active")}
+                    </Button>
+                    <Button
+                      size="sm"
                       aria-pressed={isAppDefault}
                       onClick={() => {
                         setDefaultTemplateId(template.id);
@@ -293,7 +291,7 @@ export function PresentationSettingsPanel({
                       }}
                     >
                       <span>{isAppDefault ? "新项目默认 ✓" : "设为新项目默认"}</span>
-                    </button>
+                    </Button>
                   </div>
                 );
               })
@@ -354,27 +352,24 @@ export function PresentationSettingsPanel({
         </SettingsRow>
         <SettingsRow label="策略切换">
           <div className="settings-choice-group" role="group" aria-label="项目模板策略">
-            <button
-              type="button"
-              className={cx("settings-choice", projectPolicyMode === "auto" && "is-active")}
+            <Button
+              size="sm"
               disabled={!activeSessionId}
               onClick={() => void switchPolicy("auto")}
               aria-pressed={projectPolicyMode === "auto"}
             >
               <span>自动</span>
-            </button>
-            <button
-              type="button"
-              className={cx("settings-choice", projectPolicyMode === "default" && "is-active")}
+            </Button>
+            <Button
+              size="sm"
               disabled={!activeSessionId}
               onClick={() => void switchPolicy("default")}
               aria-pressed={projectPolicyMode === "default"}
             >
               <span>默认</span>
-            </button>
-            <button
-              type="button"
-              className={cx("settings-choice", projectPolicyMode === "custom" && "is-active")}
+            </Button>
+            <Button
+              size="sm"
               disabled={
                 !activeSessionId ||
                 (libraryTemplates.length === 0 && uploadedTemplates.length === 0)
@@ -383,7 +378,7 @@ export function PresentationSettingsPanel({
               aria-pressed={projectPolicyMode === "custom"}
             >
               <span>自定义</span>
-            </button>
+            </Button>
           </div>
         </SettingsRow>
         <SettingsRow label="能力等级">
@@ -394,13 +389,7 @@ export function PresentationSettingsPanel({
         </SettingsRow>
         <SettingsRow label="导入 PPTX/POTX">
           <div className="settings-choice-group" role="group" aria-label="导入参考模板">
-            <button
-              type="button"
-              className="settings-secondary-btn"
-              onClick={() => void importTemplate()}
-            >
-              选择并导入参考模板
-            </button>
+            <Button onClick={() => void importTemplate()}>选择并导入参考模板</Button>
           </div>
         </SettingsRow>
         <SettingsRow label="说明">

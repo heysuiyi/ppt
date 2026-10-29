@@ -1,3 +1,4 @@
+import { Button, IconButton } from "./Button";
 import { CHAT_WORKSPACE_COPY_ZH_CN as copy } from "./chat-workspace-copy";
 import type {
   ChatRegionState,
@@ -69,8 +70,8 @@ export function ChatWorkspaceHeader({
 
       <div className="canvas-header-right">
         {state.phase !== "welcome" && inputRuntime.pendingToolApproval && (
-          <button
-            type="button"
+          <Button
+            size="sm"
             className="team-decision-alert"
             onClick={onOpenPendingDecision}
             aria-label={copy.approvalAria(inputRuntime.pendingToolApproval.reason)}
@@ -81,17 +82,17 @@ export function ChatWorkspaceHeader({
             </span>
             <span>{copy.approvalRequired}</span>
             <b>1</b>
-          </button>
+          </Button>
         )}
         {state.phase !== "welcome" && !deck.isMirrorOpen && (
-          <button
-            className="action-icon-btn focus-toggle-btn"
+          <IconButton
+            className="focus-toggle-btn"
             onClick={deck.onToggleMirror}
             aria-label={copy.openPreview}
             title={copy.openPreview}
           >
             <OpenPreviewIcon size={16} />
-          </button>
+          </IconButton>
         )}
       </div>
     </div>

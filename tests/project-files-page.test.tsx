@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
+
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectFilesController } from "../src/renderer/src/app/project/useProjectFiles";
 import { LeftPanel } from "../src/renderer/src/components/LeftPanel";
 import { ProjectFilesPageContent } from "../src/renderer/src/components/ProjectFilesPage";
@@ -13,6 +16,8 @@ import {
   type PptJobProjection,
 } from "../src/shared/presentation-lifecycle";
 import type { ProjectArtifact } from "../src/shared/session";
+
+afterEach(cleanup);
 
 const ARTIFACTS: ProjectArtifact[] = [
   {
@@ -107,7 +112,7 @@ describe("ProjectFilesPageContent", () => {
   });
 
   it("renders artifact groups, an editable draft, diff, and metadata", () => {
-    const html = renderToStaticMarkup(
+    render(
       <ProjectFilesPageContent
         controller={createController({
           artifacts: ARTIFACTS,
@@ -141,20 +146,16 @@ describe("ProjectFilesPageContent", () => {
       />,
     );
 
-    expect(html).toContain("需求简报");
-    expect(html).toContain("演示文稿");
-    expect(html).toContain("导出记录");
-    expect(html).toContain("brief.md");
-    expect(html).toContain("# 更新简报");
-    expect(html).toContain("与磁盘版本的差异");
-    expect(html).toContain("未保存");
-    expect(html).not.toContain("readOnly");
-
-    const saveButton = html.match(
-      /<button[^>]*class="project-files-button is-primary"[^>]*>[\s\S]*?<\/button>/,
-    )?.[0];
-    expect(saveButton).toBeDefined();
-    expect(saveButton).not.toContain("disabled");
+    expect(screen.getByText("需求简报")).not.toBeNull();
+    expect(screen.getByText("演示文稿")).not.toBeNull();
+    expect(screen.getByText("导出记录")).not.toBeNull();
+    expect(screen.getAllByText("brief.md").length).toBeGreaterThan(0);
+    const editor = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "编辑 brief.md" });
+    expect(editor.value).toBe("# 更新简报");
+    expect(editor.readOnly).toBe(false);
+    expect(screen.getByRole("region", { name: "文件差异" })).not.toBeNull();
+    expect(screen.getByText("未保存")).not.toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "保存" }).disabled).toBe(false);
   });
 
   it("renders PptJob status, stage, waiting reason, and lifecycle stale count", () => {
@@ -230,7 +231,7 @@ describe("ProjectFilesPageContent", () => {
   });
 
   it("allows browsing but disables saving while the agent is running", () => {
-    const html = renderToStaticMarkup(
+    render(
       <ProjectFilesPageContent
         controller={createController({
           artifacts: ARTIFACTS,
@@ -257,12 +258,13 @@ describe("ProjectFilesPageContent", () => {
       />,
     );
 
-    expect(html).toContain("你仍可浏览文件，但保存暂不可用");
-    expect(html).toContain('title="Agent 运行期间不可保存"');
-    const saveButton = html.match(
-      /<button[^>]*class="project-files-button is-primary"[^>]*>[\s\S]*?<\/button>/,
-    )?.[0];
-    expect(saveButton).toContain("disabled");
+    expect(screen.getByText(/你仍可浏览文件，但保存暂不可用/)).not.toBeNull();
+    const saveButton = screen.getByRole<HTMLButtonElement>("button", { name: "保存" });
+    expect(saveButton.disabled).toBe(true);
+    expect(saveButton.title).toBe("Agent 运行期间不可保存");
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: /brief\.md/ }).disabled).toBe(
+      false,
+    );
   });
 
   it("honors backend read-only metadata and blocks binary files in the UI", () => {
@@ -314,7 +316,7 @@ describe("ProjectFilesPageContent", () => {
   });
 
   it("keeps reload guidance visible after a failed edit session", () => {
-    const html = renderToStaticMarkup(
+    render(
       <ProjectFilesPageContent
         controller={createController({
           artifacts: ARTIFACTS,
@@ -342,12 +344,13 @@ describe("ProjectFilesPageContent", () => {
       />,
     );
 
-    expect(html).toContain("当前编辑会话已失效，草稿仍在");
-    expect(html).toContain("重新载入");
-    const saveButton = html.match(
-      /<button[^>]*class="project-files-button is-primary"[^>]*>[\s\S]*?<\/button>/,
-    )?.[0];
-    expect(saveButton).toContain("disabled");
+    const notice = screen.getByRole("alert");
+    expect(notice.textContent).toContain("当前编辑会话已失效，草稿仍在");
+    expect(within(notice).getByRole("button", { name: "重新载入" })).not.toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "保存" }).disabled).toBe(true);
+    expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "编辑 brief.md" }).value).toBe(
+      "preserved draft",
+    );
   });
 });
 

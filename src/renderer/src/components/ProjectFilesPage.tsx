@@ -1,7 +1,9 @@
 import type { PptJobProjection } from "@shared/presentation-lifecycle";
-import { type KeyboardEvent, useEffect, useMemo } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo } from "react";
 import { formatProjectFileSize, groupProjectFiles } from "../app/project/projectFilesState";
 import { type ProjectFilesController, useProjectFiles } from "../app/project/useProjectFiles";
+import { Button } from "./Button";
+import { Textarea } from "./Field";
 import { CheckIcon, FileIcon, FolderIcon, RefreshIcon } from "./Icons";
 import { PptJobStatusBar } from "./PptJobStatusBar";
 import { useProjectStore } from "./project-store";
@@ -75,6 +77,52 @@ function lifecycleArtifactBadge(
     : null;
 }
 
+function useProjectFilesPageState(controller: ProjectFilesController, busy: boolean) {
+  const groups = useMemo(
+    () => groupProjectFiles(controller.files, controller.artifacts),
+    [controller.artifacts, controller.files],
+  );
+  const currentFile = controller.openedFile;
+  const canEdit = Boolean(currentFile?.editable) && !controller.binary;
+  const canSave =
+    canEdit && controller.dirty && !busy && !controller.isSaving && !controller.requiresReload;
+  const readOnlyReason = controller.binary
+    ? "二进制文件不支持文本编辑。"
+    : currentFile && !currentFile.editable
+      ? currentFile.readOnlyReason || "该项目文件由系统管理，仅供查看。"
+      : null;
+  const errorNotice =
+    controller.error ||
+    (controller.requiresReload
+      ? "当前编辑会话已失效，草稿仍在。请重新载入磁盘版本后再保存。"
+      : null);
+  return { groups, currentFile, canEdit, canSave, readOnlyReason, errorNotice };
+}
+
+function ProjectFileNotice({
+  children,
+  tone,
+  onReload,
+}: {
+  children: ReactNode;
+  tone?: "busy" | "error";
+  onReload?: () => void;
+}) {
+  return (
+    <div
+      className={`project-files-notice${tone ? ` is-${tone}` : ""}`}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      <span>{children}</span>
+      {onReload && (
+        <Button variant="secondary" onClick={onReload}>
+          重新载入
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function ProjectFilesPage({
   sessionId,
   sessionTitle,
@@ -122,19 +170,8 @@ export function ProjectFilesPageContent({
   busy,
   pptJob = null,
 }: ProjectFilesPageContentProps) {
-  const groups = useMemo(
-    () => groupProjectFiles(controller.files, controller.artifacts),
-    [controller.artifacts, controller.files],
-  );
-  const currentFile = controller.openedFile;
-  const canEdit = Boolean(currentFile?.editable) && !controller.binary;
-  const canSave =
-    canEdit && controller.dirty && !busy && !controller.isSaving && !controller.requiresReload;
-  const readOnlyReason = controller.binary
-    ? "二进制文件不支持文本编辑。"
-    : currentFile && !currentFile.editable
-      ? currentFile.readOnlyReason || "该项目文件由系统管理，仅供查看。"
-      : null;
+  const { groups, currentFile, canEdit, canSave, readOnlyReason, errorNotice } =
+    useProjectFilesPageState(controller, busy);
 
   const handleEditorKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -155,9 +192,10 @@ export function ProjectFilesPageContent({
             <span>{sessionTitle}</span>
           </p>
         </div>
-        <button
+        <Button
+          variant="secondary"
           type="button"
-          className="project-files-button project-files-button--icon"
+          className="project-files-refresh"
           onClick={() => void controller.refresh()}
           disabled={!hasSession || controller.isLoadingProject}
           aria-label="刷新项目文件"
@@ -165,7 +203,7 @@ export function ProjectFilesPageContent({
         >
           <RefreshIcon size={16} />
           <span>{controller.isLoadingProject ? "刷新中…" : "刷新"}</span>
-        </button>
+        </Button>
       </header>
 
       {hasSession && pptJob ? <PptJobStatusBar pptJob={pptJob} /> : null}
@@ -196,7 +234,8 @@ export function ProjectFilesPageContent({
                       {group.files.map((path) => {
                         const lifecycleBadge = lifecycleArtifactBadge(path, pptJob);
                         return (
-                          <button
+                          <Button
+                            variant="quiet"
                             type="button"
                             key={path}
                             className={`project-files-file${controller.selectedPath === path ? " active" : ""}`}
@@ -217,7 +256,7 @@ export function ProjectFilesPageContent({
                             {controller.selectedPath === path && controller.dirty ? (
                               <i aria-label="有未保存修改" title="有未保存修改" />
                             ) : null}
-                          </button>
+                          </Button>
                         );
                       })}
                     </div>
@@ -233,30 +272,21 @@ export function ProjectFilesPageContent({
           </nav>
 
           <main className="project-files-editor">
-            {busy ? (
-              <div className="project-files-notice is-busy" role="status">
+            {busy && (
+              <ProjectFileNotice tone="busy">
                 Agent 正在运行；你仍可浏览文件，但保存暂不可用。
-              </div>
-            ) : null}
-
-            {controller.error ? (
-              <div className="project-files-notice is-error" role="alert">
-                <span>{controller.error}</span>
-                {controller.requiresReload ? (
-                  <button type="button" onClick={() => void controller.reloadSelected()}>
-                    重新载入
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            {controller.requiresReload && !controller.error ? (
-              <div className="project-files-notice is-error" role="alert">
-                <span>当前编辑会话已失效，草稿仍在。请重新载入磁盘版本后再保存。</span>
-                <button type="button" onClick={() => void controller.reloadSelected()}>
-                  重新载入
-                </button>
-              </div>
-            ) : null}
+              </ProjectFileNotice>
+            )}
+            {errorNotice && (
+              <ProjectFileNotice
+                tone="error"
+                onReload={
+                  controller.requiresReload ? () => void controller.reloadSelected() : undefined
+                }
+              >
+                {errorNotice}
+              </ProjectFileNotice>
+            )}
 
             {!controller.selectedPath ? (
               <div className="project-files-empty is-editor">
@@ -296,50 +326,46 @@ export function ProjectFilesPageContent({
                   </div>
                 </div>
 
-                {readOnlyReason ? (
-                  <div className="project-files-notice" role="status">
-                    {readOnlyReason}
-                  </div>
-                ) : null}
+                {readOnlyReason ? <ProjectFileNotice>{readOnlyReason}</ProjectFileNotice> : null}
 
                 <div className="project-files-toolbar" role="toolbar" aria-label="文件编辑操作">
-                  <button
+                  <Button
+                    variant="secondary"
                     type="button"
-                    className="project-files-button"
                     onClick={() => void controller.reloadSelected()}
                     disabled={controller.isOpening || controller.isSaving}
                   >
                     重新载入
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
                     type="button"
-                    className="project-files-button"
                     onClick={controller.discardDraft}
                     disabled={!controller.dirty || controller.isSaving}
                   >
                     放弃修改
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
                     type="button"
-                    className="project-files-button"
                     onClick={() => void controller.requestDiff()}
                     disabled={controller.isLoadingDiff || controller.isSaving}
                   >
                     {controller.isLoadingDiff ? "比较中…" : "查看差异"}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="primary"
                     type="button"
-                    className="project-files-button is-primary"
                     onClick={() => void controller.save()}
                     disabled={!canSave}
                     title={busy ? "Agent 运行期间不可保存" : undefined}
                   >
                     <CheckIcon size={14} />
                     {controller.isSaving ? "保存中…" : "保存"}
-                  </button>
+                  </Button>
                 </div>
 
-                <textarea
+                <Textarea
                   className="project-files-textarea"
                   aria-label={`编辑 ${currentFile.path}`}
                   value={controller.draft}

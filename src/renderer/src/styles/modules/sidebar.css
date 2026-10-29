@@ -191,6 +191,10 @@ aside {
 
 /* Studio workbench sidebar */
 .workbench-sidebar {
+  /* Navigation selection stays quieter than the active work surface. */
+  --accent-selected-border: transparent;
+  --accent-selected-bg: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  --accent-selected-text: var(--text-primary);
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -246,36 +250,11 @@ aside {
   margin-bottom: 4px;
 }
 
-.sidebar-collapse-btn,
-.sidebar-rail-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: var(--transition-color);
-}
-
 .sidebar-collapse-btn {
   width: 28px;
   height: 28px;
   border-radius: var(--button-border-radius);
   transform: rotate(180deg);
-}
-
-.sidebar-collapse-btn:hover,
-.sidebar-rail-btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-subtle);
-  color: var(--text-primary);
-}
-
-.sidebar-rail-btn.active {
-  background: var(--surface-active);
-  border-color: transparent;
-  color: var(--text-primary);
 }
 
 .workbench-sidebar--rail {
@@ -284,11 +263,10 @@ aside {
   padding: 10px 7px 12px;
 }
 
-.sidebar-rail-btn {
+.workbench-sidebar--rail .sidebar-rail-btn {
   width: 40px;
   height: 40px;
   flex: 0 0 auto;
-  border-radius: var(--button-border-radius);
 }
 
 .sidebar-rail-spacer {
@@ -297,54 +275,13 @@ aside {
 
 .workbench-sidebar-action-row {
   width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--control-gap);
-  min-height: var(--control-height-md);
-  padding: var(--space-1) var(--control-padding-inline);
-  border: none;
-  border-radius: var(--button-border-radius);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-base);
-  font-weight: var(--type-label-weight);
+  justify-content: flex-start;
   text-align: left;
-  cursor: pointer;
-  transition: var(--transition-color);
-}
-
-.workbench-sidebar-action-row:hover {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-
-.workbench-sidebar-action-row.active {
-  background: var(--surface-active);
-  color: var(--text-primary);
 }
 
 .workbench-sidebar-search-input {
   width: calc(100% - 8px);
-  min-height: var(--control-height-sm);
   margin: 4px 4px 0;
-  padding: 0 9px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--field-border-radius);
-  background: var(--surface-sunken);
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  outline: none;
-  transition: var(--transition-color);
-}
-
-.workbench-sidebar-search-input:focus {
-  border-color: var(--border-focused);
-  box-shadow: none;
-}
-
-.workbench-sidebar-search-input::placeholder {
-  color: var(--text-muted);
 }
 
 .workbench-sidebar-section-label {
@@ -420,27 +357,18 @@ aside {
 }
 
 .workspace-toggle-btn,
-.workspace-add-btn {
+.workspace-header .workspace-add-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 22px;
+  min-width: 22px;
   height: 22px;
+  min-height: 22px;
   padding: 0;
-  border: none;
-  border-radius: var(--control-radius-xs);
-  background: transparent;
-  color: var(--text-muted);
   flex-shrink: 0;
   opacity: 0;
-  transition:
-    opacity var(--duration-fast) var(--ease-out),
-    background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
-}
-
-.workspace-add-btn {
-  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .workspace-header:hover .workspace-toggle-btn,
@@ -448,11 +376,6 @@ aside {
 .workspace-header:hover .workspace-add-btn,
 .workspace-add-btn:focus-visible {
   opacity: 1;
-}
-
-.workspace-add-btn:hover {
-  background: var(--surface-active);
-  color: var(--accent-link-text);
 }
 
 .session-list {
@@ -466,20 +389,7 @@ aside {
   width: 100%;
   display: block;
   padding: 5px 10px 5px 28px;
-  border: none;
-  border-radius: var(--control-radius-sm);
-  background: transparent;
   text-align: left;
-  cursor: pointer;
-  transition: var(--transition-color);
-}
-
-.session-row:hover {
-  background: var(--surface-hover);
-}
-
-.session-row.active {
-  background: var(--surface-active);
 }
 
 .session-title {

@@ -1,7 +1,7 @@
 import type { DiscoverAgentModelsRequest } from "@shared/agent-configuration";
 import { normalizeCredentialUrl } from "@shared/credentials";
 import type { RemoteModelInfo } from "@shared/remote-models";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   buildCustomVendorDraft,
   buildVendorDraftFromPreset,
@@ -18,8 +18,12 @@ import {
   type PresetVendorKind,
   type VendorKind,
 } from "../modelCatalog";
+import { Button, IconButton } from "./Button";
+import { Dialog } from "./Dialog";
+import { Input } from "./Field";
 import { Edit3Icon, PlusIcon, RefreshIcon, TrashIcon } from "./Icons";
 import { Select } from "./Select";
+import { Switch } from "./Switch";
 
 interface ModelManagementProps {
   vendors: ModelVendorConnection[];
@@ -114,8 +118,6 @@ export function ModelManagement({
   const [remoteSelectedIds, setRemoteSelectedIds] = useState<string[]>([]);
   const [remoteQuery, setRemoteQuery] = useState("");
   const [remotePending, setRemotePending] = useState(false);
-  const dialogRef = useRef<HTMLElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   const normalizedQuery = query.trim().toLowerCase();
   const dialogVisible = Boolean(draft) || kindPickerOpen;
@@ -152,46 +154,8 @@ export function ModelManagement({
     setRemoteQuery("");
     setRemotePending(false);
   };
-  const closeDialogRef = useRef(closeDialog);
-  closeDialogRef.current = closeDialog;
-
-  useEffect(() => {
-    if (!dialogVisible) {
-      const previous = returnFocusRef.current;
-      returnFocusRef.current = null;
-      previous?.focus();
-      return;
-    }
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const focusables = dialog.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
-    focusables[0]?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeDialogRef.current();
-        return;
-      }
-      if (event.key !== "Tab" || focusables.length === 0) return;
-      const first = focusables[0]!;
-      const last = focusables[focusables.length - 1]!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [dialogVisible]);
 
   const openAddKindPicker = () => {
-    returnFocusRef.current = document.activeElement as HTMLElement | null;
     setKindPickerOpen(true);
   };
 
@@ -214,7 +178,6 @@ export function ModelManagement({
   };
 
   const openEditVendor = (vendor: ModelVendorConnection) => {
-    returnFocusRef.current = document.activeElement as HTMLElement | null;
     const next =
       vendor.kind === "custom"
         ? buildCustomVendorDraft(vendor)
@@ -373,7 +336,7 @@ export function ModelManagement({
         <label className="model-pricing-currency">
           <span>计价货币</span>
           <Select
-            aria-label={`${model.name} 计价货币`}
+            ariaLabel={`${model.name} 计价货币`}
             value={currency}
             options={[
               { value: "CNY", label: "CNY" },
@@ -388,7 +351,7 @@ export function ModelManagement({
         </label>
         <label>
           <span>普通输入 / 百万 tokens</span>
-          <input
+          <Input
             type="number"
             min={0}
             step="any"
@@ -407,7 +370,7 @@ export function ModelManagement({
         </label>
         <label>
           <span>缓存命中输入 / 百万 tokens</span>
-          <input
+          <Input
             type="number"
             min={0}
             step="any"
@@ -427,7 +390,7 @@ export function ModelManagement({
         </label>
         <label>
           <span>输出 / 百万 tokens</span>
-          <input
+          <Input
             type="number"
             min={0}
             step="any"
@@ -452,26 +415,25 @@ export function ModelManagement({
     <div className="model-management-layout">
       <div className="cursor-model-card">
         <div className="cursor-model-search-row">
-          <input
+          <Input
             className="cursor-model-search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索厂商或模型"
             aria-label="搜索厂商或模型"
           />
-          <button
-            type="button"
-            className="cursor-model-icon-btn"
-            aria-label="刷新"
-            onClick={() => setQuery("")}
-          >
+          <IconButton aria-label="刷新" onClick={() => setQuery("")}>
             <RefreshIcon />
-          </button>
+          </IconButton>
         </div>
-        <button type="button" className="cursor-model-add-btn" onClick={openAddKindPicker}>
+        <Button
+          data-theme-emphasis="primary"
+          className="cursor-model-add-btn"
+          onClick={openAddKindPicker}
+        >
           <PlusIcon />
           添加厂商
-        </button>
+        </Button>
 
         <div className="vendor-card-list">
           {filteredVendors.length === 0 ? (
@@ -497,42 +459,35 @@ export function ModelManagement({
                         const selected = selectedModelId === model.id;
                         return (
                           <li key={model.id}>
-                            <button
-                              type="button"
-                              className={`vendor-model-chip${selected ? " is-selected" : ""}${
-                                model.enabled === false ? " is-disabled" : ""
-                              }`}
+                            <Button
+                              size="sm"
+                              aria-pressed={selected}
+                              className={`vendor-model-chip${model.enabled === false ? " is-disabled" : ""}`}
                               onClick={() => onSelectModel(model.id)}
                               title={model.model}
                             >
                               {model.name}
                               {flat?.credentialConfigured && model.enabled !== false ? "" : ""}
-                            </button>
+                            </Button>
                           </li>
                         );
                       })}
                     </ul>
                   </div>
                   <div className="vendor-card-actions">
-                    <label className="vendor-enable-toggle">
-                      <input
-                        type="checkbox"
-                        checked={vendor.enabled !== false}
-                        onChange={(event) => {
-                          void onSetVendorEnabled(vendor.id, event.target.checked);
-                        }}
-                        aria-label={`启用厂商 ${vendor.label}`}
-                      />
-                      <span>启用</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="cursor-model-icon-btn"
+                    <Switch
+                      label={`启用厂商 ${vendor.label}`}
+                      checked={vendor.enabled !== false}
+                      onChange={(event) => {
+                        void onSetVendorEnabled(vendor.id, event.target.checked);
+                      }}
+                    />
+                    <IconButton
                       aria-label={`编辑厂商 ${vendor.label}`}
                       onClick={() => openEditVendor(vendor)}
                     >
                       <Edit3Icon />
-                    </button>
+                    </IconButton>
                   </div>
                 </article>
               );
@@ -541,337 +496,309 @@ export function ModelManagement({
         </div>
       </div>
 
-      {dialogVisible ? (
-        <div className="model-dialog-backdrop" role="presentation" onMouseDown={closeDialog}>
-          <section
-            ref={dialogRef}
-            className="model-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={kindPickerOpen ? "选择厂商" : draft?.isNew ? "添加厂商" : "编辑厂商"}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <header className="model-dialog-header">
-              <div>
-                <h3>{kindPickerOpen ? "选择厂商" : draft?.isNew ? "添加厂商" : "编辑厂商"}</h3>
-                <p>
-                  {kindPickerOpen
-                    ? "选择要添加的模型服务商"
-                    : "配置连接、获取并多选模型；高级设置可调整单价与 API 模式。"}
-                </p>
+      <Dialog
+        open={dialogVisible}
+        onClose={closeDialog}
+        className="model-dialog"
+        label={kindPickerOpen ? "选择厂商" : draft?.isNew ? "添加厂商" : "编辑厂商"}
+      >
+        <header className="model-dialog-header">
+          <div>
+            <h3>{kindPickerOpen ? "选择厂商" : draft?.isNew ? "添加厂商" : "编辑厂商"}</h3>
+            <p>
+              {kindPickerOpen
+                ? "选择要添加的模型服务商"
+                : "配置连接、获取并多选模型；高级设置可调整单价与 API 模式。"}
+            </p>
+          </div>
+          <IconButton aria-label="关闭" onClick={closeDialog}>
+            ×
+          </IconButton>
+        </header>
+
+        <div className="model-dialog-body">
+          {kindPickerOpen ? (
+            <div className="vendor-kind-picker">
+              {VENDOR_KIND_OPTIONS.map((option) => (
+                <Button
+                  key={option.value}
+                  type="button"
+                  className="vendor-kind-option"
+                  onClick={() => startAddVendor(option.value)}
+                >
+                  <strong>{option.label}</strong>
+                  <span>{option.hint}</span>
+                </Button>
+              ))}
+            </div>
+          ) : draft ? (
+            <div className="model-dialog-form">
+              <label>
+                <span>显示名称</span>
+                <Input
+                  value={draft.label}
+                  onChange={(event) => updateDraft({ label: event.target.value })}
+                />
+              </label>
+
+              {(draft.kind === "deepseek" || draft.kind === "custom") && (
+                <label>
+                  <span>协议</span>
+                  <Select
+                    ariaLabel="协议"
+                    value={draft.protocol}
+                    options={(
+                      getModelVendorPreset(draft.kind)?.supportedProviders ?? [
+                        "openai",
+                        "anthropic",
+                      ]
+                    ).map((provider) => ({
+                      value: provider,
+                      label: protocolLabel(provider),
+                    }))}
+                    onChange={(value) =>
+                      setDraft(
+                        changeModelVendorDraftProtocol(draft, value as "openai" | "anthropic"),
+                      )
+                    }
+                  />
+                </label>
+              )}
+
+              <label>
+                <span>Base URL</span>
+                <Input
+                  value={draft.baseURL}
+                  onChange={(event) => updateDraft({ baseURL: event.target.value })}
+                  placeholder="https://"
+                />
+              </label>
+
+              <label>
+                <span>API Key</span>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  value={dialogApiKey}
+                  onChange={(event) => setDialogApiKey(event.target.value)}
+                  placeholder={
+                    vendors.find((vendor) => vendor.id === draft.id)?.credentialConfigured
+                      ? "已配置，留空则保留"
+                      : "填写 API Key"
+                  }
+                />
+              </label>
+
+              <div className="model-remote-toolbar">
+                <Button disabled={remotePending} onClick={() => void fetchRemoteModels()}>
+                  {remotePending ? "获取中…" : "获取模型列表"}
+                </Button>
+                <small className="model-pricing-hint">
+                  勾选后写入下方已选模型；可同时选择多个。
+                </small>
               </div>
-              <button
-                type="button"
-                className="model-dialog-close-btn"
-                aria-label="关闭"
-                onClick={closeDialog}
-              >
-                ×
-              </button>
-            </header>
 
-            <div className="model-dialog-body">
-              {kindPickerOpen ? (
-                <div className="vendor-kind-picker">
-                  {VENDOR_KIND_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className="vendor-kind-option"
-                      onClick={() => startAddVendor(option.value)}
-                    >
-                      <strong>{option.label}</strong>
-                      <span>{option.hint}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : draft ? (
-                <div className="model-dialog-form">
-                  <label>
-                    <span>显示名称</span>
-                    <input
-                      value={draft.label}
-                      onChange={(event) => updateDraft({ label: event.target.value })}
-                    />
-                  </label>
-
-                  {(draft.kind === "deepseek" || draft.kind === "custom") && (
-                    <label>
-                      <span>协议</span>
-                      <Select
-                        aria-label="协议"
-                        value={draft.protocol}
-                        options={(
-                          getModelVendorPreset(draft.kind)?.supportedProviders ?? [
-                            "openai",
-                            "anthropic",
-                          ]
-                        ).map((provider) => ({
-                          value: provider,
-                          label: protocolLabel(provider),
-                        }))}
-                        onChange={(value) =>
-                          setDraft(
-                            changeModelVendorDraftProtocol(draft, value as "openai" | "anthropic"),
-                          )
-                        }
-                      />
-                    </label>
-                  )}
-
-                  <label>
-                    <span>Base URL</span>
-                    <input
-                      value={draft.baseURL}
-                      onChange={(event) => updateDraft({ baseURL: event.target.value })}
-                      placeholder="https://"
-                    />
-                  </label>
-
-                  <label>
-                    <span>API Key</span>
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      value={dialogApiKey}
-                      onChange={(event) => setDialogApiKey(event.target.value)}
-                      placeholder={
-                        vendors.find((vendor) => vendor.id === draft.id)?.credentialConfigured
-                          ? "已配置，留空则保留"
-                          : "填写 API Key"
-                      }
-                    />
-                  </label>
-
-                  <div className="model-remote-toolbar">
-                    <button
-                      type="button"
-                      className="model-secondary-btn"
-                      disabled={remotePending}
-                      onClick={() => void fetchRemoteModels()}
-                    >
-                      {remotePending ? "获取中…" : "获取模型列表"}
-                    </button>
-                    <small className="model-pricing-hint">
-                      勾选后写入下方已选模型；可同时选择多个。
-                    </small>
-                  </div>
-
-                  {remoteModels.length > 0 ? (
-                    <div className="model-remote-picker">
-                      <input
-                        className="cursor-model-search"
-                        value={remoteQuery}
-                        onChange={(event) => setRemoteQuery(event.target.value)}
-                        placeholder="筛选远程模型"
-                        aria-label="筛选远程模型"
-                      />
-                      <ul className="model-remote-list">
-                        {filteredRemoteModels.map((model) => {
-                          const checked = remoteSelectedIds.includes(model.id);
-                          return (
-                            <li key={model.id}>
-                              <label className="model-remote-option">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => {
-                                    const next = checked
-                                      ? remoteSelectedIds.filter((id) => id !== model.id)
-                                      : [...remoteSelectedIds, model.id];
-                                    applyRemoteSelection(next);
-                                  }}
-                                />
-                                <span>
-                                  <strong>{model.displayName ?? model.id}</strong>
-                                  {model.displayName ? <small>{model.id}</small> : null}
-                                </span>
-                              </label>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  <div className="model-selected-list">
-                    <h4>已选模型（{draft.models.length}）</h4>
-                    {draft.models.length === 0 ? (
-                      <p className="model-empty-hint">请获取列表后勾选，或在高级设置中手动添加。</p>
-                    ) : (
-                      draft.models.map((model) => (
-                        <div key={model.id} className="model-selected-row">
-                          <div className="model-selected-row-main">
-                            <strong>{model.name}</strong>
-                            <span>{model.model}</span>
-                          </div>
-                          <label className="vendor-enable-toggle">
+              {remoteModels.length > 0 ? (
+                <div className="model-remote-picker">
+                  <Input
+                    className="cursor-model-search"
+                    value={remoteQuery}
+                    onChange={(event) => setRemoteQuery(event.target.value)}
+                    placeholder="筛选远程模型"
+                    aria-label="筛选远程模型"
+                  />
+                  <ul className="model-remote-list">
+                    {filteredRemoteModels.map((model) => {
+                      const checked = remoteSelectedIds.includes(model.id);
+                      return (
+                        <li key={model.id}>
+                          <label className="model-remote-option">
                             <input
                               type="checkbox"
-                              checked={model.enabled !== false}
-                              onChange={(event) => {
-                                const enabled = event.target.checked;
-                                updateDraftModel(model.id, { enabled });
-                                if (!draft.isNew) {
-                                  void onSetModelEnabled(model.id, enabled);
-                                }
+                              checked={checked}
+                              onChange={() => {
+                                const next = checked
+                                  ? remoteSelectedIds.filter((id) => id !== model.id)
+                                  : [...remoteSelectedIds, model.id];
+                                applyRemoteSelection(next);
                               }}
-                              aria-label={`启用模型 ${model.name}`}
                             />
-                            <span>启用</span>
+                            <span>
+                              <strong>{model.displayName ?? model.id}</strong>
+                              {model.displayName ? <small>{model.id}</small> : null}
+                            </span>
                           </label>
-                          <button
-                            type="button"
-                            className="cursor-model-icon-btn"
-                            aria-label={`删除模型 ${model.name}`}
-                            onClick={() => void removeDraftModel(model.id)}
-                          >
-                            <TrashIcon />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
 
-                  <button
-                    type="button"
-                    className={`model-vendor-advanced-toggle${advancedOpen ? " is-open" : ""}`}
-                    onClick={() => setAdvancedOpen((open) => !open)}
-                    aria-expanded={advancedOpen}
-                  >
-                    <span>高级设置</span>
-                    <span>{advancedOpen ? "收起" : "展开"}</span>
-                  </button>
-
-                  {advancedOpen ? (
-                    <div className="model-vendor-advanced">
-                      {draft.kind === "custom" ? (
-                        <button
-                          type="button"
-                          className="model-secondary-btn"
-                          onClick={() => {
-                            const entries = createCatalogEntriesFromRemoteIds(
-                              [{ id: `manual-${crypto.randomUUID()}`, displayName: "手动模型" }],
-                              draft.protocol,
-                            );
-                            updateDraft({
-                              models: [
-                                ...draft.models,
-                                {
-                                  ...entries[0]!,
-                                  model: "",
-                                  name: "手动模型",
-                                },
-                              ],
-                            });
-                          }}
-                        >
-                          手动添加模型
-                        </button>
-                      ) : null}
-                      {draft.models.map((model) => (
-                        <div key={model.id} className="model-advanced-block">
-                          <label>
-                            <span>显示名称</span>
-                            <input
-                              value={model.name}
-                              onChange={(event) =>
-                                updateDraftModel(model.id, { name: event.target.value })
-                              }
-                            />
-                          </label>
-                          <label>
-                            <span>Model ID</span>
-                            <input
-                              value={model.model}
-                              onChange={(event) =>
-                                updateDraftModel(model.id, { model: event.target.value })
-                              }
-                            />
-                          </label>
-                          {draft.protocol === "openai" ? (
-                            <label>
-                              <span>OpenAI API 模式</span>
-                              <Select
-                                aria-label={`${model.name} API 模式`}
-                                value={model.openaiApiMode}
-                                options={[
-                                  { value: "responses", label: "Responses" },
-                                  { value: "chat-completions", label: "Chat Completions" },
-                                ]}
-                                onChange={(value) =>
-                                  updateDraftModel(model.id, {
-                                    openaiApiMode: value as ModelCatalogEntry["openaiApiMode"],
-                                  })
-                                }
-                              />
-                            </label>
-                          ) : null}
-                          <label className="vendor-enable-toggle">
-                            <input
-                              type="checkbox"
-                              checked={model.supports1MContext === true}
-                              onChange={(event) =>
-                                updateDraftModel(model.id, {
-                                  supports1MContext: event.target.checked,
-                                })
-                              }
-                            />
-                            <span>声明支持 1M 上下文</span>
-                          </label>
-                          <label className="vendor-enable-toggle">
-                            <input
-                              type="checkbox"
-                              checked={model.pricing != null}
-                              onChange={(event) =>
-                                updateDraftModel(model.id, {
-                                  pricing: event.target.checked ? emptyPricing() : null,
-                                })
-                              }
-                            />
-                            <span>配置单价</span>
-                          </label>
-                          {model.pricing ? renderPricingFields(model) : null}
-                        </div>
-                      ))}
+              <div className="model-selected-list">
+                <h4>已选模型（{draft.models.length}）</h4>
+                {draft.models.length === 0 ? (
+                  <p className="model-empty-hint">请获取列表后勾选，或在高级设置中手动添加。</p>
+                ) : (
+                  draft.models.map((model) => (
+                    <div key={model.id} className="model-selected-row">
+                      <div className="model-selected-row-main">
+                        <strong>{model.name}</strong>
+                        <span>{model.model}</span>
+                      </div>
+                      <Switch
+                        label={`启用模型 ${model.name}`}
+                        checked={model.enabled !== false}
+                        onChange={(event) => {
+                          const enabled = event.target.checked;
+                          updateDraftModel(model.id, { enabled });
+                          if (!draft.isNew) {
+                            void onSetModelEnabled(model.id, enabled);
+                          }
+                        }}
+                      />
+                      <IconButton
+                        aria-label={`删除模型 ${model.name}`}
+                        onClick={() => void removeDraftModel(model.id)}
+                      >
+                        <TrashIcon />
+                      </IconButton>
                     </div>
+                  ))
+                )}
+              </div>
+
+              <Button
+                variant="quiet"
+                className={`model-vendor-advanced-toggle${advancedOpen ? " is-open" : ""}`}
+                onClick={() => setAdvancedOpen((open) => !open)}
+                aria-expanded={advancedOpen}
+              >
+                <span>高级设置</span>
+                <span>{advancedOpen ? "收起" : "展开"}</span>
+              </Button>
+
+              {advancedOpen ? (
+                <div className="model-vendor-advanced">
+                  {draft.kind === "custom" ? (
+                    <Button
+                      onClick={() => {
+                        const entries = createCatalogEntriesFromRemoteIds(
+                          [{ id: `manual-${crypto.randomUUID()}`, displayName: "手动模型" }],
+                          draft.protocol,
+                        );
+                        updateDraft({
+                          models: [
+                            ...draft.models,
+                            {
+                              ...entries[0]!,
+                              model: "",
+                              name: "手动模型",
+                            },
+                          ],
+                        });
+                      }}
+                    >
+                      手动添加模型
+                    </Button>
                   ) : null}
+                  {draft.models.map((model) => (
+                    <div key={model.id} className="model-advanced-block">
+                      <label>
+                        <span>显示名称</span>
+                        <Input
+                          value={model.name}
+                          onChange={(event) =>
+                            updateDraftModel(model.id, { name: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>Model ID</span>
+                        <Input
+                          value={model.model}
+                          onChange={(event) =>
+                            updateDraftModel(model.id, { model: event.target.value })
+                          }
+                        />
+                      </label>
+                      {draft.protocol === "openai" ? (
+                        <label>
+                          <span>OpenAI API 模式</span>
+                          <Select
+                            ariaLabel={`${model.name} API 模式`}
+                            value={model.openaiApiMode}
+                            options={[
+                              { value: "responses", label: "Responses" },
+                              { value: "chat-completions", label: "Chat Completions" },
+                            ]}
+                            onChange={(value) =>
+                              updateDraftModel(model.id, {
+                                openaiApiMode: value as ModelCatalogEntry["openaiApiMode"],
+                              })
+                            }
+                          />
+                        </label>
+                      ) : null}
+                      <div className="vendor-enable-toggle">
+                        <Switch
+                          label="声明支持 1M 上下文"
+                          checked={model.supports1MContext === true}
+                          onChange={(event) =>
+                            updateDraftModel(model.id, {
+                              supports1MContext: event.target.checked,
+                            })
+                          }
+                        />
+                        <span>声明支持 1M 上下文</span>
+                      </div>
+                      <div className="vendor-enable-toggle">
+                        <Switch
+                          label="配置单价"
+                          checked={model.pricing != null}
+                          onChange={(event) =>
+                            updateDraftModel(model.id, {
+                              pricing: event.target.checked ? emptyPricing() : null,
+                            })
+                          }
+                        />
+                        <span>配置单价</span>
+                      </div>
+                      {model.pricing ? renderPricingFields(model) : null}
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </div>
-
-            {!kindPickerOpen && draft ? (
-              <footer className="model-dialog-footer">
-                {!draft.isNew ? (
-                  <button
-                    type="button"
-                    className="model-dialog-danger-btn"
-                    disabled={credentialPending}
-                    onClick={() => void deleteCurrentVendor()}
-                  >
-                    删除厂商
-                  </button>
-                ) : (
-                  <span />
-                )}
-                <div className="model-dialog-actions">
-                  <button type="button" className="model-secondary-btn" onClick={closeDialog}>
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    className="model-primary-btn"
-                    disabled={credentialPending}
-                    onClick={() => void saveDraft()}
-                  >
-                    {credentialPending ? "保存中…" : "保存"}
-                  </button>
-                </div>
-              </footer>
-            ) : null}
-          </section>
+          ) : null}
         </div>
-      ) : null}
+
+        {!kindPickerOpen && draft ? (
+          <footer className="model-dialog-footer">
+            {!draft.isNew ? (
+              <Button
+                variant="danger"
+                disabled={credentialPending}
+                onClick={() => void deleteCurrentVendor()}
+              >
+                删除厂商
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="model-dialog-actions">
+              <Button onClick={closeDialog}>取消</Button>
+              <Button
+                variant="primary"
+                disabled={credentialPending}
+                onClick={() => void saveDraft()}
+              >
+                {credentialPending ? "保存中…" : "保存"}
+              </Button>
+            </div>
+          </footer>
+        ) : null}
+      </Dialog>
     </div>
   );
 }

@@ -53,20 +53,6 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
-.agent-run-terminal-notice button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: var(--text-sm);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.agent-run-terminal-notice button:hover {
-  color: var(--text-primary);
-}
 .agent-run-terminal-notice--failed button {
   color: var(--danger);
 }

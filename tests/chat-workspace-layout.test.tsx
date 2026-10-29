@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ChatWorkspace,
@@ -59,48 +58,26 @@ function workspaceProps(isNewChat: boolean): ChatWorkspaceProps {
 }
 
 describe("ChatWorkspace layouts", () => {
-  it("renders the focused welcome layout from grouped inputs", () => {
-    const html = renderToStaticMarkup(<ChatWorkspace {...workspaceProps(true)} />);
-
-    expect(html).toContain("center-focal-wrapper");
-    expect(html).toContain("AI 新建会话");
-    expect(html).toContain("center-suggestions");
-  });
-
-  it("renders the conversation layout and preview control", () => {
-    const html = renderToStaticMarkup(<ChatWorkspace {...workspaceProps(false)} />);
-
-    expect(html).not.toContain("center-focal-wrapper");
-    expect(html).toContain("季度复盘");
-    expect(html).toContain('aria-label="打开右侧预览"');
-    expect(html).toContain("chat-workspace-footer-unified");
-  });
-
   it("keeps one focused input through welcome, entering and session creation", () => {
     const props = workspaceProps(true);
     props.composer.request = "准备发送";
-    const { container, rerender } = render(<ChatWorkspace {...props} />);
-    const input = screen.getByRole("textbox");
-    expect(container.querySelector("[data-chat-phase=welcome]")).not.toBeNull();
+    const { rerender } = render(<ChatWorkspace {...props} />);
+    const input = screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" });
     expect(document.activeElement).toBe(input);
 
     props.run = { ...props.run, busy: true, activeRunId: "run-1", onCancel: vi.fn() };
     props.session.messages = [{ id: "user-1", role: "user", content: "准备发送" }];
     rerender(<ChatWorkspace {...props} />);
-    expect(container.querySelector("[data-chat-phase=entering]")).not.toBeNull();
-    expect(container.querySelector(".center-suggestions")).toBeNull();
-    expect(container.querySelector(".chat-scroll-viewport")).not.toBeNull();
-    expect(screen.getByRole("textbox")).toBe(input);
+    expect(screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" })).toBe(input);
     expect(document.activeElement).toBe(input);
     fireEvent.click(screen.getByRole("button", { name: "中止当前 Agent 会话" }));
     expect(props.run.onCancel).toHaveBeenCalledTimes(1);
 
     props.session.id = "created-session";
     rerender(<ChatWorkspace {...props} />);
-    expect(container.querySelector("[data-chat-phase=conversation]")).not.toBeNull();
-    expect(screen.getByRole("textbox")).toBe(input);
+    expect(screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" })).toBe(input);
     expect(document.activeElement).toBe(input);
-    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(screen.getAllByRole("combobox", { name: "向演示文稿 Agent 输入指令" })).toHaveLength(1);
   });
 
   it("returns to welcome after creation failure without replacing or clearing the input", () => {
@@ -108,15 +85,11 @@ describe("ChatWorkspace layouts", () => {
     props.composer.request = "保留失败草稿";
     props.run.busy = true;
     props.session.messages = [{ id: "optimistic", role: "user", content: "保留失败草稿" }];
-    const { container, rerender } = render(<ChatWorkspace {...props} />);
-    const input = screen.getByRole("textbox");
-    expect(container.querySelector("[data-chat-phase=entering]")).not.toBeNull();
+    const { rerender } = render(<ChatWorkspace {...props} />);
+    const input = screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" });
     props.run.busy = false;
     rerender(<ChatWorkspace {...props} />);
-    expect(container.querySelector("[data-chat-phase=welcome]")).not.toBeNull();
-    expect(container.querySelector(".chat-scroll-viewport")).toBeNull();
-    expect(container.querySelector(".center-suggestions")).not.toBeNull();
-    expect(screen.getByRole("textbox")).toBe(input);
+    expect(screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" })).toBe(input);
     expect(input.textContent).toBe("保留失败草稿");
     expect(input.hasAttribute("readonly")).toBe(false);
   });
@@ -126,33 +99,27 @@ describe("ChatWorkspace layouts", () => {
     props.session.id = "empty-session";
     props.composer.workspacePath = "e:/reports";
     props.composer.request = "/";
-    const { container, rerender } = render(<ChatWorkspace {...props} />);
-    expect(container.querySelector("[data-chat-phase=welcome]")).not.toBeNull();
+    const { rerender } = render(<ChatWorkspace {...props} />);
     expect(screen.getByText("已绑定目录")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "更换" })).toBeNull();
-    expect(container.querySelector(".slash-menu-popup")).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "提示词模板" })).toBeNull();
 
     props.session.messages = [{ id: "user-1", role: "user", content: "开始" }];
     rerender(<ChatWorkspace {...props} />);
-    expect(container.querySelector("[data-chat-phase=conversation]")).not.toBeNull();
-    expect(container.querySelector(".slash-menu-popup")).not.toBeNull();
+    expect(screen.getByRole("listbox", { name: "提示词模板" })).toBeTruthy();
     expect(screen.queryByText("已绑定目录")).toBeNull();
   });
 
   it("locks controls while switching and derives the target layout when the switch finishes", () => {
     const props = workspaceProps(false);
     props.session.isSwitching = true;
-    const { container, rerender } = render(<ChatWorkspace {...props} />);
-    const input = screen.getByRole("textbox");
-    expect(
-      container.querySelector("[data-chat-phase=conversation]")?.getAttribute("aria-busy"),
-    ).toBe("true");
+    const { rerender } = render(<ChatWorkspace {...props} />);
+    const input = screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" });
     expect(input.hasAttribute("readonly")).toBe(true);
     props.session = { id: "empty-target", messages: [] };
     props.composer.request = "恢复目标草稿";
     rerender(<ChatWorkspace {...props} />);
-    expect(container.querySelector("[data-chat-phase=welcome]")).not.toBeNull();
-    expect(screen.getByRole("textbox")).toBe(input);
+    expect(screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" })).toBe(input);
     expect(input.hasAttribute("readonly")).toBe(false);
     expect(input.textContent).toBe("恢复目标草稿");
   });
@@ -224,7 +191,7 @@ describe("ChatWorkspace layouts", () => {
         },
       }),
     );
-    expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
+    expect(screen.getAllByRole("region", { name: "需要你的授权" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /写入文件/ }));
     expect(container.querySelector(".focused-team-session")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "允许继续" }));

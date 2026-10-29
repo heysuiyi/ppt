@@ -67,7 +67,9 @@ describe("composer interactions", () => {
     render(<ChatWorkspaceComposer {...input} />);
     expect(screen.getByText("项目目录（可选）")).toBeTruthy();
     expect(screen.getByText(/系统会自动创建托管沙箱/)).toBeTruthy();
-    expect(screen.getByRole("textbox").textContent).toBe("https://example.com/report");
+    expect(screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" }).textContent).toBe(
+      "https://example.com/report",
+    );
     const send = screen.getByRole("button", { name: "发送指令" });
     expect(send.hasAttribute("disabled")).toBe(false);
     expect(send.classList.contains("is-ready")).toBe(true);
@@ -83,7 +85,9 @@ describe("composer interactions", () => {
     const send = screen.getByRole("button", { name: "发送指令" });
     expect(send.hasAttribute("disabled")).toBe(true);
     expect(send.classList.contains("is-ready")).toBe(false);
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" }), {
+      key: "Enter",
+    });
     expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
   });
 
@@ -111,7 +115,7 @@ describe("composer interactions", () => {
     input.state.phase = "conversation";
     rerender(<ChatWorkspaceComposer {...input} />);
     const menu = screen.getByRole("listbox", { name: "提示词模板" });
-    fireEvent.click(within(menu).getAllByRole("button")[0]);
+    fireEvent.click(within(menu).getAllByRole("option")[0]);
     expect(input.composer.onChangeRequest).toHaveBeenCalledWith("将整套演示统一为商务蓝视觉风格");
     expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
     input.composer.request = "将整套演示统一为商务蓝视觉风格";
@@ -129,13 +133,13 @@ describe("composer interactions", () => {
     const input = props();
     input.state.availability = "loading";
     const { rerender } = render(<ChatWorkspaceComposer {...input} />);
-    const textarea = screen.getByRole("textbox");
+    const textarea = screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" });
     expect(textarea.hasAttribute("readonly")).toBe(true);
     fireEvent.click(screen.getAllByTitle("填入输入框，确认后发送")[0]);
     expect(input.composer.onProposePrompt).not.toHaveBeenCalled();
     input.state.availability = "ready";
     rerender(<ChatWorkspaceComposer {...input} />);
-    expect(screen.getByRole("textbox")).toBe(textarea);
+    expect(screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" })).toBe(textarea);
     expect(textarea.hasAttribute("readonly")).toBe(false);
   });
 
@@ -160,11 +164,17 @@ describe("composer interactions", () => {
     const input = props();
     input.state.availability = "switching";
     render(<ChatWorkspaceComposer {...input} />);
-    expect(screen.getByRole("textbox").getAttribute("readonly")).not.toBeNull();
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(
+      screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" }).getAttribute("readonly"),
+    ).not.toBeNull();
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" }), {
+      key: "Enter",
+    });
     fireEvent.click(screen.getByRole("button", { name: "发送指令" }));
     fireEvent.click(screen.getByRole("button", { name: "选择项目目录" }));
-    expect(screen.getByRole("button", { name: "Model" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("combobox", { name: "选择智能体模型" }).hasAttribute("disabled")).toBe(
+      true,
+    );
     expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
     expect(input.composer.onPrepareWorkspace).not.toHaveBeenCalled();
   });
@@ -172,11 +182,40 @@ describe("composer interactions", () => {
   it("does not send when Enter confirms IME composition or inserts a newline", () => {
     const input = props();
     render(<ChatWorkspaceComposer {...input} />);
-    const textarea = screen.getByRole("textbox");
+    const textarea = screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" });
     fireEvent.keyDown(textarea, { key: "Enter", isComposing: true });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
     expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(input.composer.onSubmitRequest).toHaveBeenCalledTimes(1);
+  });
+  it("navigates slash completions without submitting and Escape dismisses them", () => {
+    const input = props();
+    input.state.phase = "conversation";
+    input.composer.request = "/";
+    render(<ChatWorkspaceComposer {...input} />);
+    const textarea = screen.getByRole("combobox", { name: "向演示文稿 Agent 输入指令" });
+    const options = screen.getAllByRole("option");
+    fireEvent.keyDown(textarea, { key: "ArrowDown" });
+    expect(textarea.getAttribute("aria-activedescendant")).toBe(options[1].id);
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(input.composer.onChangeRequest).toHaveBeenCalledWith("在末尾新增一页：");
+    expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
+    fireEvent.keyDown(textarea, { key: "Escape" });
+    expect(screen.queryByRole("listbox", { name: "提示词模板" })).toBeNull();
+    expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
+  });
+
+  it("selects a model using the shared keyboard listbox", () => {
+    const input = props();
+    input.composer.models.push({ ...input.composer.models[0], id: "second", name: "Second" });
+    render(<ChatWorkspaceComposer {...input} />);
+    const trigger = screen.getByRole("combobox", { name: "选择智能体模型" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    expect(input.composer.onSelectModel).toHaveBeenCalledWith("second");
+    expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox")).toBeNull();
   });
 });

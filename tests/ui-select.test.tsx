@@ -23,7 +23,7 @@ function Harness({
   const [value, setValue] = useState(initial);
   return (
     <Select
-      variant="ide"
+      variant="settings"
       ariaLabel="测试选择"
       value={value}
       disabled={disabled}

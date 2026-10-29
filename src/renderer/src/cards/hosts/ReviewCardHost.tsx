@@ -3,6 +3,7 @@ import type { DisplayEvent } from "@shared/card-display-protocol";
 import { recordDisplayCardAction, useReviewCardManager } from "@shared/cards/display-card-managers";
 import type React from "react";
 import { useEffect, useRef } from "react";
+import { Button } from "../../components/Button";
 import { FileIcon } from "../../components/Icons";
 import { PatchReviewCard } from "../../components/PatchReviewCard";
 import { ResolvedCard } from "../../components/ResolvedCard";
@@ -49,7 +50,7 @@ export const ReviewCardHost: React.FC<ReviewCardHostProps> = ({
   }, [cards, onFocusAffectedSlides]);
 
   return (
-    <>
+    <div className="card-stack">
       {cards.map((card) => {
         const event = card.event;
         if (event.kind === "review.patch-ready") {
@@ -135,25 +136,20 @@ export const ReviewCardHost: React.FC<ReviewCardHostProps> = ({
             </div>
             <div className="approval-buttons">
               {affectedSlideIds.length > 0 && onFocusAffectedSlides ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="btn-preview-affected"
-                  onClick={() => onFocusAffectedSlides(affectedSlideIds)}
-                >
+                <Button disabled={busy} onClick={() => onFocusAffectedSlides(affectedSlideIds)}>
                   预览受影响页
-                </button>
+                </Button>
               ) : null}
-              <button disabled={busy} onClick={() => resolve(false)} className="btn-reject">
+              <Button disabled={busy} onClick={() => resolve(false)}>
                 拒绝变更
-              </button>
-              <button disabled={busy} onClick={() => resolve(true)} className="btn-apply">
+              </Button>
+              <Button disabled={busy} onClick={() => resolve(true)} data-theme-emphasis="primary">
                 确认执行修改
-              </button>
+              </Button>
             </div>
           </div>
         );
       })}
-    </>
+    </div>
   );
 };

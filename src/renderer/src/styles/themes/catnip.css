@@ -14,14 +14,14 @@
 
 /* --------------------------------------------------------------------------
    1. Dark — 夜猫草莓
-   表面顺序：canvas < base < raised < sunken < overlay
+   较浅窗口壳衬托较深工作面，相邻表面以微色阶区分。
    -------------------------------------------------------------------------- */
 :root[data-skin][data-color-scheme="dark"] {
-  --surface-canvas: #120f17;
-  --surface-base: #1a1520;
+  --surface-canvas: #2a2232;
+  --surface-base: #2a2232;
   --surface-raised: #231b2b;
-  --surface-sunken: #2b2234;
-  --surface-overlay: #352940;
+  --surface-sunken: #271f2f;
+  --surface-overlay: #2e2636;
   --surface-hover: rgba(255, 132, 188, 0.09);
   --surface-active: rgba(255, 132, 188, 0.16);
 
@@ -30,9 +30,9 @@
   --text-muted: #b19bae;
   --text-on-accent: #2b1020;
 
-  --border-subtle: rgba(255, 165, 207, 0.08);
-  --border-default: rgba(255, 165, 207, 0.18);
-  --border-strong: rgba(255, 165, 207, 0.34);
+  --border-subtle: rgba(255, 165, 207, 0.03);
+  --border-default: rgba(255, 165, 207, 0.065);
+  --border-strong: rgba(255, 165, 207, 0.2);
   --border-focused: #ff78b5;
 
   --elevation-1: 0 2px 8px rgba(8, 5, 11, 0.46);
@@ -64,11 +64,7 @@
   --scrollbar-thumb-hover-color: #ff78b5;
 
   /* 主题私有变量 */
-  --catnip-shell-highlight: rgba(255, 130, 190, 0.15);
-  --catnip-shell-secondary: rgba(169, 115, 255, 0.13);
-  --catnip-panel-tint: rgba(255, 255, 255, 0.018);
   --catnip-panel-highlight: rgba(255, 255, 255, 0.055);
-  --catnip-grid-line: rgba(255, 190, 220, 0.025);
   --catnip-glass: rgba(26, 21, 32, 0.78);
   --catnip-code-bg: #19141f;
   --catnip-card-bg: color-mix(in srgb, var(--surface-base) 88%, var(--surface-canvas));
@@ -78,11 +74,11 @@
    2. Light — 草莓牛奶
    -------------------------------------------------------------------------- */
 :root[data-skin][data-color-scheme="light"] {
-  --surface-canvas: #f4e8ef;
-  --surface-base: #faeff4;
-  --surface-raised: #fffafd;
-  --surface-sunken: #f8edf3;
-  --surface-overlay: #ffffff;
+  --surface-canvas: #f5edf2;
+  --surface-base: #f5edf2;
+  --surface-raised: #fcf5fa;
+  --surface-sunken: #f8f0f5;
+  --surface-overlay: #fffafd;
   --surface-hover: rgba(255, 87, 158, 0.075);
   --surface-active: rgba(255, 87, 158, 0.135);
 
@@ -91,9 +87,9 @@
   --text-muted: #795b70;
   --text-on-accent: #ffffff;
 
-  --border-subtle: rgba(222, 84, 148, 0.1);
-  --border-default: rgba(222, 84, 148, 0.22);
-  --border-strong: rgba(222, 84, 148, 0.38);
+  --border-subtle: rgba(222, 84, 148, 0.03);
+  --border-default: rgba(222, 84, 148, 0.065);
+  --border-strong: rgba(222, 84, 148, 0.2);
   --border-focused: #b72a70;
 
   --elevation-1: 0 2px 8px rgba(173, 94, 132, 0.12);
@@ -124,11 +120,7 @@
   --scrollbar-thumb-color: rgba(220, 82, 146, 0.28);
   --scrollbar-thumb-hover-color: #f6539f;
 
-  --catnip-shell-highlight: rgba(255, 168, 209, 0.5);
-  --catnip-shell-secondary: rgba(202, 180, 255, 0.38);
-  --catnip-panel-tint: rgba(255, 255, 255, 0.42);
   --catnip-panel-highlight: rgba(255, 255, 255, 0.82);
-  --catnip-grid-line: rgba(175, 77, 126, 0.035);
   --catnip-glass: rgba(255, 249, 252, 0.8);
   --catnip-code-bg: #f6eaf1;
   --catnip-card-bg: color-mix(in srgb, var(--surface-base) 88%, var(--surface-canvas));
@@ -178,45 +170,6 @@
 }
 
 /* --------------------------------------------------------------------------
-   5. 窗口壳与整体氛围
-   -------------------------------------------------------------------------- */
-:root[data-color-scheme="dark"] .app-shell,
-:root[data-color-scheme="light"] .app-shell {
-  background:
-    radial-gradient(960px 680px at 5% -14%, var(--catnip-shell-highlight), transparent 62%),
-    radial-gradient(820px 580px at 102% 108%, var(--catnip-shell-secondary), transparent 60%),
-    repeating-linear-gradient(135deg, transparent 0 29px, var(--catnip-grid-line) 29px 30px),
-    var(--surface-canvas);
-}
-
-.window-titlebar,
-.workspace-container {
-  background: transparent;
-}
-
-.window-titlebar {
-  border-bottom: 1px solid var(--border-subtle);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--catnip-panel-highlight) 45%, transparent);
-  backdrop-filter: blur(16px) saturate(125%);
-}
-
-.workspace-container {
-  isolation: isolate;
-}
-
-[data-ui-region="canvas"] {
-  background: linear-gradient(180deg, var(--catnip-panel-tint), transparent 180px), transparent;
-}
-
-[data-ui-region="settings"] {
-  background: radial-gradient(
-    600px 300px at 100% 0%,
-    color-mix(in srgb, var(--accent-primary) 7%, transparent),
-    transparent 70%
-  );
-}
-
-/* --------------------------------------------------------------------------
    6. 滚动条
    -------------------------------------------------------------------------- */
 ::-webkit-scrollbar {
@@ -246,16 +199,8 @@
 
 /* --------------------------------------------------------------------------
    7. 侧栏
-   不强制覆盖侧栏容器底色，只建立边界、条目态和交互层级。
+   容器透出共享窗口底色，只装饰条目态和交互层级，不建立额外的分栏面。
    -------------------------------------------------------------------------- */
-[data-ui-region="sidebar"] {
-  border-right: 1px solid var(--border-subtle);
-  box-shadow:
-    10px 0 32px color-mix(in srgb, var(--surface-canvas) 44%, transparent),
-    inset -1px 0 0 color-mix(in srgb, var(--catnip-panel-highlight) 38%, transparent);
-  backdrop-filter: blur(14px) saturate(118%);
-}
-
 [data-ui-region="sidebar"] .workspace-header {
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -337,7 +282,7 @@
 [data-ui-region="composer"] .double-deck-panel-card {
   position: relative;
   overflow: visible;
-  border: 1.5px solid var(--border-default);
+  border: 1px solid transparent;
   border-radius: var(--panel-border-radius);
   background:
     linear-gradient(180deg, var(--catnip-panel-highlight), transparent 44%),
@@ -346,10 +291,8 @@
       color-mix(in srgb, var(--accent-primary) 8%, transparent),
       transparent 72%
     ),
-    var(--surface-raised);
-  box-shadow:
-    var(--elevation-2),
-    inset 0 1px 0 color-mix(in srgb, var(--catnip-panel-highlight) 75%, transparent);
+    var(--surface-sunken);
+  box-shadow: var(--composer-shadow);
   transition:
     border-color var(--duration-base) var(--ease-out),
     box-shadow var(--duration-base) var(--ease-out),
@@ -357,16 +300,12 @@
 }
 
 [data-ui-region="composer"] .double-deck-panel-card:hover {
-  border-color: color-mix(in srgb, var(--accent-primary) 36%, var(--border-default));
+  border-color: var(--border-subtle);
 }
 
 [data-ui-region="composer"] .double-deck-panel-card:focus-within {
-  border-color: var(--border-focused);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--border-focused) 28%, transparent),
-    0 0 24px var(--accent-primary-glow),
-    var(--elevation-2),
-    inset 0 1px 0 var(--catnip-panel-highlight);
+  border-color: transparent;
+  box-shadow: var(--composer-shadow-focus);
 }
 
 /* 猫耳 */
@@ -623,13 +562,17 @@
    9b. 聊天流卡片 — 顶部留白与猫耳
    卡片有两种挂载位置：锚定在 .assistant-message-main 内，或直接挂在 .chat-stream
    下，因此用后代选择器。以 .chat-stream 收口，避开镜像面板里复用
-   .inline-artifact-card 的 SlidePreviewGallery。
+   .artifact-card 的 SlidePreviewGallery。
    -------------------------------------------------------------------------- */
+.chat-stream .card-stack {
+  gap: 22px;
+  padding-block-start: 14px;
+}
+
 .chat-stream
-:is(.inline-artifact-card, .approval-card, .patch-review-card, .resolved-card, .task-plan-card) {
+  :is(.artifact-card, .approval-card, .patch-review-card, .resolved-card, .task-plan-card) {
   position: relative;
   overflow: visible;
-  margin-top: 22px;
   background: var(--catnip-card-bg);
   box-shadow:
     var(--elevation-1),
@@ -640,21 +583,9 @@
 }
 
 .chat-stream
-  :is(
-    .inline-artifact-card,
-    .approval-card,
-    .patch-review-card,
-    .resolved-card,
-    .task-plan-card
-  )::before,
+  :is(.artifact-card, .approval-card, .patch-review-card, .resolved-card, .task-plan-card)::before,
 .chat-stream
-  :is(
-    .inline-artifact-card,
-    .approval-card,
-    .patch-review-card,
-    .resolved-card,
-    .task-plan-card
-  )::after {
+  :is(.artifact-card, .approval-card, .patch-review-card, .resolved-card, .task-plan-card)::after {
   content: "";
   position: absolute;
   top: -11px;
@@ -678,13 +609,7 @@
 }
 
 .chat-stream
-  :is(
-    .inline-artifact-card,
-    .approval-card,
-    .patch-review-card,
-    .resolved-card,
-    .task-plan-card
-  )::before {
+  :is(.artifact-card, .approval-card, .patch-review-card, .resolved-card, .task-plan-card)::before {
   left: 26px;
   border-top-left-radius: 14px 18px;
   border-top-right-radius: 6px 4px;
@@ -693,13 +618,7 @@
 }
 
 .chat-stream
-  :is(
-    .inline-artifact-card,
-    .approval-card,
-    .patch-review-card,
-    .resolved-card,
-    .task-plan-card
-  )::after {
+  :is(.artifact-card, .approval-card, .patch-review-card, .resolved-card, .task-plan-card)::after {
   right: 26px;
   border-top-right-radius: 14px 18px;
   border-top-left-radius: 6px 4px;
@@ -729,7 +648,7 @@
 
 .chat-stream
   :is(
-    .inline-artifact-card,
+    .artifact-card,
     .approval-card,
     .patch-review-card,
     .resolved-card,
@@ -742,7 +661,7 @@
 
 .chat-stream
   :is(
-    .inline-artifact-card,
+    .artifact-card,
     .approval-card,
     .patch-review-card,
     .resolved-card,
@@ -754,7 +673,7 @@
 }
 
 /* overflow: visible 后，标题栏需自带顶部圆角，避免直角漏出 */
-.chat-stream .inline-artifact-card > .inline-artifact-card-header {
+.chat-stream .artifact-card > .artifact-card-header {
   border-top-left-radius: inherit;
   border-top-right-radius: inherit;
 }
@@ -762,15 +681,8 @@
 /* --------------------------------------------------------------------------
    10. 设置页与表单
    -------------------------------------------------------------------------- */
-[data-ui-region="settings"]
-:is(
-  .settings-field,
-  .config-input,
-  .title-input,
-  .cursor-model-search,
-  .user-message-editor-textarea,
-  .workspace-picker-btn
-) {
+[data-ui-field],
+[data-ui-region="settings"] .workspace-picker-btn {
   border-radius: var(--field-border-radius);
   border-color: var(--border-default);
   background: color-mix(in srgb, var(--surface-sunken) 92%, transparent);
@@ -780,26 +692,12 @@
     background-color var(--duration-fast) var(--ease-out);
 }
 
-[data-ui-region="settings"]
-  :is(
-    .settings-field,
-    .config-input,
-    .title-input,
-    .cursor-model-search,
-    .user-message-editor-textarea,
-    .workspace-picker-btn
-  ):hover {
+[data-ui-field]:hover:not(:disabled),
+[data-ui-region="settings"] .workspace-picker-btn:hover {
   border-color: var(--border-strong);
 }
 
-[data-ui-region="settings"]
-  :is(
-    .settings-field,
-    .config-input,
-    .title-input,
-    .cursor-model-search,
-    .user-message-editor-textarea
-  ):focus {
+[data-ui-field]:focus {
   border-color: var(--border-focused);
   background: var(--surface-sunken);
   box-shadow: 0 0 0 3px var(--accent-primary-glow);
@@ -810,7 +708,7 @@
 }
 
 [data-ui-region="settings"]
-  :is(.settings-nav-item, .settings-choice, .settings-choice-card, .theme-card) {
+  :is(.settings-nav-item, [data-ui-button][aria-pressed], .settings-choice-card, .theme-card) {
   transition:
     border-color var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out),
@@ -819,7 +717,10 @@
     transform var(--duration-fast) var(--ease-out);
 }
 
-[data-ui-region="settings"] :is(.settings-choice, .settings-choice-card, .theme-card):hover {
+[data-ui-region="settings"]
+  :is([data-ui-button][aria-pressed="false"], .settings-choice-card, .theme-card):hover:not(
+    :disabled
+  ) {
   border-color: var(--border-strong);
   background: color-mix(in srgb, var(--accent-primary) 5%, var(--surface-raised));
   transform: translateY(-1px);
@@ -828,7 +729,7 @@
 [data-ui-region="settings"]
   :is(
     .settings-nav-item.is-active,
-    .settings-choice.is-active,
+    [data-ui-button][aria-pressed="true"],
     .settings-choice-card.active,
     .theme-card.active
   ) {
@@ -846,7 +747,7 @@
    11. 按钮体系
    按钮可能分布在设置页、画布和弹窗，因此不强制绑定单一区域。
    -------------------------------------------------------------------------- */
-:is(.settings-secondary-btn, .secondary-btn) {
+[data-ui-button][data-variant="secondary"]:not([data-theme-emphasis]) {
   border-radius: var(--button-border-radius);
   transition:
     border-color var(--duration-fast) var(--ease-out),
@@ -855,20 +756,17 @@
     transform var(--duration-fast) var(--ease-out);
 }
 
-:is(.settings-secondary-btn, .secondary-btn):hover {
+[data-ui-button][data-variant="secondary"]:not([data-theme-emphasis]):not(
+  [aria-pressed="true"]
+):not([aria-selected="true"]):not([aria-current="page"]):hover:not(:disabled) {
   color: var(--accent-link-text);
   border-color: var(--border-focused);
   background: color-mix(in srgb, var(--accent-primary) 7%, transparent);
   transform: translateY(-1px);
 }
 
-:is(
-  .settings-primary-btn,
-  .sandbox-preflight-btn,
-  .btn-apply,
-  .message-action-btn--primary,
-  .cursor-model-add-btn
-) {
+[data-ui-button][data-variant="primary"],
+[data-ui-button][data-theme-emphasis="primary"] {
   border-color: transparent;
   border-radius: var(--button-border-radius);
   color: var(--text-on-accent);
@@ -883,13 +781,8 @@
     transform var(--duration-fast) var(--ease-out);
 }
 
-:is(
-  .settings-primary-btn,
-  .sandbox-preflight-btn,
-  .btn-apply,
-  .message-action-btn--primary,
-  .cursor-model-add-btn
-):not(:disabled):not([aria-disabled="true"]):hover {
+[data-ui-button][data-variant="primary"]:not(:disabled):hover,
+[data-ui-button][data-theme-emphasis="primary"]:not(:disabled):hover {
   color: var(--text-on-accent);
   border-color: transparent;
   background: var(--accent-action-hover-bg);
@@ -899,13 +792,8 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
-:is(
-  .settings-primary-btn,
-  .sandbox-preflight-btn,
-  .btn-apply,
-  .message-action-btn--primary,
-  .cursor-model-add-btn
-):not(:disabled):not([aria-disabled="true"]):active {
+[data-ui-button][data-variant="primary"]:not(:disabled):active,
+[data-ui-button][data-theme-emphasis="primary"]:not(:disabled):active {
   background: var(--accent-action-active-bg);
   transform: translateY(0) scale(0.98);
 }
@@ -913,7 +801,12 @@
 /* --------------------------------------------------------------------------
    12. 浮层、菜单、Toast 和弹窗
    -------------------------------------------------------------------------- */
-:is(.custom-context-menu, .slash-menu-popup, .floating-toast-alert, .model-dialog) {
+:is(
+  [data-ui-menu],
+  .slash-menu-popup,
+  .floating-toast-alert,
+  [data-ui-dialog]:not(.slideshow-lightbox-content)
+) {
   overflow: hidden;
   border-color: var(--border-strong);
   border-radius: var(--popover-border-radius);
@@ -925,11 +818,11 @@
   backdrop-filter: blur(22px) saturate(135%);
 }
 
-.model-dialog {
+[data-ui-dialog]:not(.slideshow-lightbox-content) {
   border-radius: var(--panel-border-radius);
 }
 
-:is(.model-tier-option, .slash-menu-item) {
+:is(.ui-select-option, .slash-menu-item) {
   border-radius: var(--control-radius-xs);
   transition:
     background-color var(--duration-fast) var(--ease-out),
@@ -937,16 +830,16 @@
     transform var(--duration-fast) var(--ease-out);
 }
 
-:is(.model-tier-option:hover, .model-tier-option.is-selected, .slash-menu-item:hover) {
+:is(.ui-select-option:hover, .ui-select-option.is-selected, .slash-menu-item:hover) {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
 }
 
-:is(.model-tier-option:hover, .slash-menu-item:hover) {
+:is(.ui-select-option:hover, .slash-menu-item:hover) {
   transform: translateX(2px);
 }
 
-.model-tier-option-check {
+.ui-select-option-check {
   color: var(--accent-link-text);
   filter: drop-shadow(0 0 5px var(--accent-primary-glow));
 }
@@ -969,7 +862,7 @@
 
   .chat-stream
     :is(
-      .inline-artifact-card,
+      .artifact-card,
       .approval-card,
       .patch-review-card,
       .resolved-card,
@@ -980,7 +873,7 @@
 
   .chat-stream
     :is(
-      .inline-artifact-card,
+      .artifact-card,
       .approval-card,
       .patch-review-card,
       .resolved-card,
@@ -1006,17 +899,12 @@
       .sidebar-rail-btn,
       .send-cta-btn,
       .suggestion-chip,
-      .settings-choice,
       .settings-choice-card,
       .theme-card,
-      .settings-secondary-btn,
-      .secondary-btn,
-      .settings-primary-btn,
-      .sandbox-preflight-btn,
-      .btn-apply,
-      .message-action-btn--primary,
-      .cursor-model-add-btn,
-      .model-tier-option,
+      [data-ui-button][data-variant="secondary"],
+      [data-ui-button][data-variant="primary"],
+      [data-ui-button][data-theme-emphasis="primary"],
+      .ui-select-option,
       .slash-menu-item
     ):is(:hover, :active) {
     transform: none;
@@ -1030,7 +918,7 @@
 
   .chat-stream
     :is(
-      .inline-artifact-card,
+      .artifact-card,
       .approval-card,
       .patch-review-card,
       .resolved-card,
@@ -1038,7 +926,7 @@
     )::before,
   .chat-stream
     :is(
-      .inline-artifact-card,
+      .artifact-card,
       .approval-card,
       .patch-review-card,
       .resolved-card,
@@ -1049,7 +937,7 @@
 
   .chat-stream
     :is(
-      .inline-artifact-card,
+      .artifact-card,
       .approval-card,
       .patch-review-card,
       .resolved-card,
@@ -1060,7 +948,7 @@
 
   .chat-stream
     :is(
-      .inline-artifact-card,
+      .artifact-card,
       .approval-card,
       .patch-review-card,
       .resolved-card,

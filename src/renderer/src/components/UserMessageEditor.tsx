@@ -1,5 +1,7 @@
 import type React from "react";
+import { Button } from "./Button";
 import { CHAT_WORKSPACE_COPY_ZH_CN as copy } from "./chat-workspace-copy";
+import { Textarea } from "./Field";
 
 export interface UserMessageEditorProps {
   value: string;
@@ -44,7 +46,7 @@ export const UserMessageEditor: React.FC<UserMessageEditorProps> = ({
         <span className="user-message-editor-title">{copy.editor.title}</span>
         <span className="user-message-editor-hint">{copy.editor.hint}</span>
       </div>
-      <textarea
+      <Textarea
         className="user-message-editor-textarea"
         value={value}
         onChange={(event) => {
@@ -62,17 +64,12 @@ export const UserMessageEditor: React.FC<UserMessageEditorProps> = ({
       <div className="user-message-editor-footer">
         <span className="user-message-editor-shortcut">{copy.editor.shortcut}</span>
         <div className="user-message-edit-actions">
-          <button type="button" onClick={onCancel} className="message-action-btn">
+          <Button size="sm" variant="quiet" onClick={onCancel}>
             {copy.editor.cancel}
-          </button>
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={!canSubmit}
-            className="message-action-btn message-action-btn--primary"
-          >
+          </Button>
+          <Button size="sm" onClick={onSubmit} disabled={!canSubmit} data-theme-emphasis="primary">
             {copy.editor.submit}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

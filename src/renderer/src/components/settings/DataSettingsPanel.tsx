@@ -1,5 +1,6 @@
 import { normalizeWorkspacePath } from "@shared/workspace";
 import React from "react";
+import { Button } from "../Button";
 import { FolderIcon } from "../Icons";
 import { LogManagementPanel } from "../LogManagementPanel";
 import { SettingsPanel, SettingsRow, SettingsSection } from "./SettingsPrimitives";
@@ -58,13 +59,7 @@ export function DataSettingsPanel({
               <span className="settings-path-text" title={localStoragePath}>
                 {localStoragePath || "尚未打开项目目录"}
               </span>
-              <button
-                type="button"
-                className="settings-secondary-btn"
-                onClick={() => void handleOpenWorkspace()}
-              >
-                打开目录
-              </button>
+              <Button onClick={() => void handleOpenWorkspace()}>打开目录</Button>
             </div>
           </SettingsRow>
           <SettingsRow label="应用数据">
@@ -73,14 +68,12 @@ export function DataSettingsPanel({
               <span className="settings-path-text" title={applicationDataPath}>
                 {applicationDataPath || "读取中…"}
               </span>
-              <button
-                type="button"
-                className="settings-secondary-btn"
+              <Button
                 disabled={!applicationDataPath}
                 onClick={() => void handleOpenApplicationData()}
               >
                 打开目录
-              </button>
+              </Button>
             </div>
           </SettingsRow>
           <p className="settings-hint">

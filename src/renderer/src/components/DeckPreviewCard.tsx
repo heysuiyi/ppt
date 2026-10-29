@@ -1,7 +1,9 @@
-import { utf8ToBase64 } from "@shared/base64";
 import type { Presentation } from "@shared/presentation";
 import type React from "react";
+import { ArtifactCard, CardActions, CardHeader } from "./ArtifactCard";
+import { Button } from "./Button";
 import { DownloadIcon, OpenPreviewIcon } from "./Icons";
+import { SlidePreviewSurface } from "./SlidePreviewSurface";
 
 interface DeckPreviewCardProps {
   presentation: Presentation;
@@ -21,34 +23,17 @@ export const DeckPreviewCard: React.FC<DeckPreviewCardProps> = ({
   const previewSlides = presentation.slides.slice(0, 6);
 
   return (
-    <div className="inline-artifact-card deck-preview-card">
-      <div className="inline-artifact-card-header">
-        <span className="inline-artifact-badge">演示文稿</span>
-        <span className="inline-artifact-title">{presentation.title || "演示文稿"}</span>
+    <ArtifactCard className="deck-preview-card">
+      <CardHeader badge="演示文稿" title={presentation.title || "演示文稿"}>
         <span className="deck-preview-count">
           {presentation.slides.length} 页{resolved === "confirmed" && " · 已导出"}
         </span>
-      </div>
+      </CardHeader>
 
       <div className="deck-preview-thumbnails">
         {previewSlides.map((slide) => (
           <div key={slide.id} className="deck-preview-thumb" title={slide.title}>
-            <div
-              className={`deck-preview-thumb-inner ${
-                slide.visualSource?.kind === "svg" ? "deck-preview-thumb-inner-svg" : ""
-              }`}
-              style={{ background: "#ffffff" }}
-            >
-              {slide.visualSource?.kind === "svg" ? (
-                <img
-                  src={`data:image/svg+xml;base64,${utf8ToBase64(slide.visualSource.markup)}`}
-                  alt={slide.title}
-                  style={{ width: "100%", height: "100%", objectFit: "fill", display: "block" }}
-                />
-              ) : (
-                <span className="deck-preview-thumb-non-svg">非 SVG</span>
-              )}
-            </div>
+            <SlidePreviewSurface slide={slide} compact className="deck-preview-thumb-inner" />
           </div>
         ))}
         {presentation.slides.length > previewSlides.length && (
@@ -58,20 +43,25 @@ export const DeckPreviewCard: React.FC<DeckPreviewCardProps> = ({
         )}
       </div>
 
-      <div className="inline-artifact-actions">
+      <CardActions>
         {onPreview && (
-          <button type="button" className="btn-secondary" onClick={onPreview}>
+          <Button variant="secondary" onClick={onPreview}>
             <OpenPreviewIcon size={13} />
             <span>预览 PPT</span>
-          </button>
+          </Button>
         )}
         {onExport && (
-          <button type="button" className="btn-apply" disabled={isExporting} onClick={onExport}>
+          <Button
+            variant="secondary"
+            data-theme-emphasis="primary"
+            disabled={isExporting}
+            onClick={onExport}
+          >
             <DownloadIcon size={13} />
             <span>{isExporting ? "导出中…" : "导出 PPT"}</span>
-          </button>
+          </Button>
         )}
-      </div>
-    </div>
+      </CardActions>
+    </ArtifactCard>
   );
 };

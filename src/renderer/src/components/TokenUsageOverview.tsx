@@ -8,6 +8,7 @@ import {
   type ModelPricingCurrency,
   resolveUsagePricing,
 } from "../modelPricing";
+import { Button, IconButton } from "./Button";
 import { RefreshIcon } from "./Icons";
 
 type UsageView = "tokens" | "cost" | "tasks";
@@ -15,6 +16,56 @@ type UsageView = "tokens" | "cost" | "tasks";
 interface TokenUsageOverviewProps {
   models: ManagedModel[];
   selectedModelId: string;
+}
+
+function UsageTabs<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  panelId,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  onChange: (value: T) => void;
+  panelId: string;
+}) {
+  return (
+    <div className="token-view-tabs" role="tablist" aria-label={label}>
+      {options.map((option, index) => (
+        <button
+          key={option.value}
+          type="button"
+          role="tab"
+          aria-selected={value === option.value}
+          aria-controls={panelId}
+          tabIndex={value === option.value ? 0 : -1}
+          onClick={() => onChange(option.value)}
+          onKeyDown={(event) => {
+            const next =
+              event.key === "ArrowRight"
+                ? (index + 1) % options.length
+                : event.key === "ArrowLeft"
+                  ? (index - 1 + options.length) % options.length
+                  : event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? options.length - 1
+                      : undefined;
+            if (next === undefined) return;
+            event.preventDefault();
+            onChange(options[next]!.value);
+            event.currentTarget.parentElement
+              ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+              [next]?.focus();
+          }}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 const emptyStats: TokenUsageStats = {
@@ -101,6 +152,7 @@ export const TokenUsageOverview: React.FC<TokenUsageOverviewProps> = ({
   selectedModelId,
 }) => {
   const [stats, setStats] = React.useState<TokenUsageStats>(emptyStats);
+  const trendPanelId = React.useId();
   const [view, setView] = React.useState<UsageView>("tokens");
   const [costCurrency, setCostCurrency] = React.useState<ModelPricingCurrency>(
     () =>
@@ -232,38 +284,30 @@ export const TokenUsageOverview: React.FC<TokenUsageOverviewProps> = ({
             <p>按实际模型响应记录，可切换业务与成本视角</p>
           </div>
           <div className="token-activity-actions">
-            <div className="token-view-tabs" role="tablist" aria-label="用量趋势指标">
-              {(["tokens", "cost", "tasks"] as const).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  role="tab"
-                  aria-selected={view === item}
-                  className={view === item ? "active" : ""}
-                  onClick={() => setView(item)}
-                >
-                  {{ tokens: "Token", cost: "预估费用", tasks: "任务数" }[item]}
-                </button>
-              ))}
-            </div>
+            <UsageTabs
+              label="用量趋势指标"
+              value={view}
+              onChange={setView}
+              panelId={trendPanelId}
+              options={[
+                { value: "tokens", label: "Token" },
+                { value: "cost", label: "预估费用" },
+                { value: "tasks", label: "任务数" },
+              ]}
+            />
             {view === "cost" && configuredCurrencies.length > 1 ? (
-              <div className="token-view-tabs" role="tablist" aria-label="费用币种">
-                {configuredCurrencies.map((currency) => (
-                  <button
-                    key={currency}
-                    type="button"
-                    role="tab"
-                    aria-selected={costCurrency === currency}
-                    className={costCurrency === currency ? "active" : ""}
-                    onClick={() => setCostCurrency(currency)}
-                  >
-                    {currency === "CNY" ? "人民币" : "美元"}
-                  </button>
-                ))}
-              </div>
+              <UsageTabs
+                label="费用币种"
+                value={costCurrency}
+                onChange={setCostCurrency}
+                panelId={trendPanelId}
+                options={configuredCurrencies.map((currency) => ({
+                  value: currency,
+                  label: currency === "CNY" ? "人民币" : "美元",
+                }))}
+              />
             ) : null}
-            <button
-              type="button"
+            <IconButton
               className="token-usage-refresh"
               onClick={() => void loadStats()}
               aria-label="刷新用量统计"
@@ -271,49 +315,55 @@ export const TokenUsageOverview: React.FC<TokenUsageOverviewProps> = ({
               disabled={loading}
             >
               <RefreshIcon size={14} />
-            </button>
+            </IconButton>
           </div>
         </div>
 
-        {error ? (
-          <div className="token-usage-state is-error">
-            <span>统计读取失败：{error}</span>
-            <button type="button" onClick={() => void loadStats()}>
-              重试
-            </button>
-          </div>
-        ) : (
-          <div
-            className={`token-trend-chart ${loading ? "is-loading" : ""}`}
-            role="img"
-            aria-label="最近 30 天用量柱状图"
-          >
-            {trendDays.map((day, index) => {
-              const value = trendValues[index];
-              const label =
-                view === "cost"
-                  ? formatCost(value, costCurrency)
-                  : view === "tokens"
-                    ? `${formatTokens(value)} Token`
-                    : `${value} 个任务`;
-              return (
-                <div className="token-trend-column" key={day.date} title={`${day.date} · ${label}`}>
-                  <span
-                    className="token-trend-bar"
-                    style={{
-                      height: `${trendMax > 0 ? Math.max(3, (value / trendMax) * 100) : 3}%`,
-                    }}
-                  />
-                  {(index === 0 || index === 29 || index % 7 === 1) && (
-                    <small>
-                      {Number(day.date.slice(5, 7))}/{Number(day.date.slice(8, 10))}
-                    </small>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div id={trendPanelId} role="tabpanel" aria-label="最近 30 天趋势">
+          {error ? (
+            <div className="token-usage-state is-error">
+              <span>统计读取失败：{error}</span>
+              <Button variant="quiet" size="sm" onClick={() => void loadStats()}>
+                重试
+              </Button>
+            </div>
+          ) : (
+            <div
+              className={`token-trend-chart ${loading ? "is-loading" : ""}`}
+              role="img"
+              aria-label="最近 30 天用量柱状图"
+            >
+              {trendDays.map((day, index) => {
+                const value = trendValues[index];
+                const label =
+                  view === "cost"
+                    ? formatCost(value, costCurrency)
+                    : view === "tokens"
+                      ? `${formatTokens(value)} Token`
+                      : `${value} 个任务`;
+                return (
+                  <div
+                    className="token-trend-column"
+                    key={day.date}
+                    title={`${day.date} · ${label}`}
+                  >
+                    <span
+                      className="token-trend-bar"
+                      style={{
+                        height: `${trendMax > 0 ? Math.max(3, (value / trendMax) * 100) : 3}%`,
+                      }}
+                    />
+                    {(index === 0 || index === 29 || index % 7 === 1) && (
+                      <small>
+                        {Number(day.date.slice(5, 7))}/{Number(day.date.slice(8, 10))}
+                      </small>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="token-model-breakdown settings-card">

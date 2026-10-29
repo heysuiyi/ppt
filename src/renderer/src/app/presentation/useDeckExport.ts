@@ -1,66 +1,50 @@
-import { formatPublicErrorMessage } from "@shared/agent-activity-display";
 import { hasUnverifiedCommercialAssets } from "@shared/asset-license";
-import { createOpenExportFolderHref } from "@shared/export-links";
 import type { Presentation } from "@shared/presentation";
-import { type Dispatch, type SetStateAction, useCallback, useState } from "react";
-import type { ChatMessage } from "../chatMessageRuntime";
+import { useCallback, useRef, useState } from "react";
 import { confirmSvgExportExpectation } from "./exportExpectations";
+
+export type DeckExportResult =
+  | { status: "saved"; path: string }
+  | { status: "cancelled" }
+  | { status: "failed"; error: unknown };
 
 interface UseDeckExportOptions {
   sessionId: string;
   presentation: Presentation | undefined;
-  setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>;
-  notify: (message: string) => void;
 }
 
-export function useDeckExport({
-  sessionId,
-  presentation,
-  setChatMessages,
-  notify,
-}: UseDeckExportOptions) {
+export function useDeckExport({ sessionId, presentation }: UseDeckExportOptions) {
   const [isExportingDeck, setIsExportingDeck] = useState(false);
+  const exportingRef = useRef(false);
 
-  const exportDeck = useCallback(async () => {
-    if (!sessionId || !presentation || isExportingDeck) return;
-    if (!confirmSvgExportExpectation(presentation)) return;
-    const needsApproval = hasUnverifiedCommercialAssets(presentation);
-    const allowUnverifiedAssets = needsApproval
-      ? window.confirm("演示文稿包含尚未核实商业授权的图片。是否明确批准本次导出？")
-      : false;
-    if (needsApproval && !allowUnverifiedAssets) return;
-    setIsExportingDeck(true);
-    try {
-      const savedPath = await window.desktopApi.exportPresentation(sessionId, {
-        allowUnverifiedAssets,
-      });
-      setChatMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: savedPath
-            ? `文件已保存。 [打开所在目录](${createOpenExportFolderHref(savedPath)})`
-            : "已取消导出。",
-        },
-      ]);
-      if (savedPath) notify(`已成功导出至: ${savedPath}`);
-    } catch (error) {
-      console.error("Export failed:", error);
-      const message = formatPublicErrorMessage(error, "导出时遇到问题，请重试。");
-      setChatMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: `导出失败：${message}`,
-        },
-      ]);
-      notify(`导出失败: ${message}`);
-    } finally {
-      setIsExportingDeck(false);
-    }
-  }, [isExportingDeck, notify, presentation, sessionId, setChatMessages]);
+  const exportDeck = useCallback(
+    async (onResult: (result: DeckExportResult) => void) => {
+      if (!sessionId || !presentation || exportingRef.current) return;
+      if (!confirmSvgExportExpectation(presentation)) return;
+      const needsApproval = hasUnverifiedCommercialAssets(presentation);
+      const allowUnverifiedAssets = needsApproval
+        ? window.confirm("演示文稿包含尚未核实商业授权的图片。是否明确批准本次导出？")
+        : false;
+      if (needsApproval && !allowUnverifiedAssets) return;
+      exportingRef.current = true;
+      setIsExportingDeck(true);
+      let result: DeckExportResult;
+      try {
+        const savedPath = await window.desktopApi.exportPresentation(sessionId, {
+          allowUnverifiedAssets,
+        });
+        result = savedPath ? { status: "saved", path: savedPath } : { status: "cancelled" };
+      } catch (error) {
+        console.error("Export failed:", error);
+        result = { status: "failed", error };
+      } finally {
+        exportingRef.current = false;
+        setIsExportingDeck(false);
+      }
+      onResult(result);
+    },
+    [presentation, sessionId],
+  );
 
   return { isExportingDeck, exportDeck };
 }

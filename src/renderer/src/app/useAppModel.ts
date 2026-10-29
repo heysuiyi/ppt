@@ -1,8 +1,10 @@
 import { DEFAULT_DESIGN_SYSTEM } from "@design-system";
+import { formatPublicErrorMessage } from "@shared/agent-activity-display";
 import {
   setDisplayCardStatus,
   useNotificationCardManager,
 } from "@shared/cards/display-card-managers";
+import { createOpenExportFolderHref } from "@shared/export-links";
 import { getWorkspaceLabel } from "@shared/workspace";
 import {
   type ComponentProps,
@@ -118,12 +120,38 @@ export function useAppModel(bootstrap: AppBootstrapSnapshot): AppModel {
     selectSession,
     deleteSession,
   } = sessionController;
-  const { isExportingDeck, exportDeck } = useDeckExport({
+  const { isExportingDeck, exportDeck: runDeckExport } = useDeckExport({
     sessionId: activeSessionId,
     presentation,
-    setChatMessages,
-    notify,
   });
+  const exportDeck = () =>
+    runDeckExport((result) => {
+      const content =
+        result.status === "saved"
+          ? `文件已保存。 [打开所在目录](${createOpenExportFolderHref(result.path)})`
+          : result.status === "cancelled"
+            ? "已取消导出。"
+            : `导出失败：${formatPublicErrorMessage(result.error, "导出时遇到问题，请重试。")}`;
+      setChatMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content,
+        },
+      ]);
+      if (result.status === "saved") notify(`已成功导出至: ${result.path}`);
+      if (result.status === "failed") {
+        notify(`导出失败: ${formatPublicErrorMessage(result.error, "导出时遇到问题，请重试。")}`);
+      }
+    });
+  const exportDeckFromMirror = () =>
+    runDeckExport((result) => {
+      if (result.status === "saved") notify(`已成功导出至: ${result.path}`);
+      if (result.status === "failed") {
+        notify(`导出失败：${formatPublicErrorMessage(result.error, "请稍后重试。")}`);
+      }
+    });
 
   const activity = useAgentActivityStream({
     activeSessionIdRef,
@@ -336,7 +364,8 @@ export function useAppModel(bootstrap: AppBootstrapSnapshot): AppModel {
               mirrorProps:
                 isMirrorVisible && presentation
                   ? {
-                      sessionId: activeSessionId,
+                      isExporting: isExportingDeck,
+                      onExport: () => void exportDeckFromMirror(),
                       presentation,
                       selectedSlideId,
                       onSelectSlide: setSelectedSlideId,
@@ -344,7 +373,6 @@ export function useAppModel(bootstrap: AppBootstrapSnapshot): AppModel {
                       highlightSlideId,
                       isExpanded: isMirrorExpanded,
                       onToggleExpand: toggleMirrorExpanded,
-                      triggerToast: notify,
                     }
                   : undefined,
               deckPreviewProps: {

@@ -11,9 +11,12 @@ import {
 } from "@shared/generation-settings-inputs";
 import React from "react";
 import { isModelEnabled, type ManagedModel, type ModelVendorConnection } from "../../modelCatalog";
+import { Button } from "../Button";
+import { Input } from "../Field";
 import { ModelManagement } from "../ModelManagement";
 import { Select } from "../Select";
-import { SettingsPanel, SettingsRow, SettingsSection } from "./SettingsPrimitives";
+import { RangeField, SettingsPanel, SettingsRow, SettingsSection } from "./SettingsPrimitives";
+import { useCommittedNumberDraft } from "./useCommittedNumberDraft";
 
 export function credentialStorageLabel(status: CredentialStorageStatus | null): string {
   if (!status) return "正在读取系统安全存储状态…";
@@ -191,7 +194,7 @@ export function WebSearchSettingsPanel({
         </SettingsRow>
         <SettingsRow label="Tavily API Key">
           <div className="settings-inline-actions">
-            <input
+            <Input
               className="settings-field"
               aria-label="Tavily API Key"
               type="password"
@@ -203,28 +206,25 @@ export function WebSearchSettingsPanel({
               }
               onChange={(event) => controller.setApiKeyDraft(event.target.value)}
             />
-            <button
-              type="button"
-              className="settings-primary-btn"
+            <Button
+              variant="primary"
               disabled={controller.pending}
               onClick={() => void controller.saveCredential()}
             >
               保存
-            </button>
+            </Button>
             {credentialConfigured ? (
-              <button
-                type="button"
-                className="settings-secondary-btn"
+              <Button
                 disabled={controller.pending}
                 onClick={() => void controller.clearCredential()}
               >
                 清除
-              </button>
+              </Button>
             ) : null}
           </div>
         </SettingsRow>
         <SettingsRow label="Search Endpoint">
-          <input
+          <Input
             className="settings-field"
             value={controller.endpointDraft}
             placeholder={DEFAULT_WEB_SEARCH_ENDPOINT}
@@ -233,12 +233,8 @@ export function WebSearchSettingsPanel({
           />
         </SettingsRow>
         <SettingsRow label="搜索超时">
-          <span className="settings-field-value">
-            {Math.round((preferences.webSearchTimeoutMs ?? 20_000) / 1000)} 秒
-          </span>
-          <input
-            className="settings-range"
-            type="range"
+          <RangeField
+            valueLabel={`${Math.round((preferences.webSearchTimeoutMs ?? 20_000) / 1000)} 秒`}
             min={5}
             max={120}
             step={5}
@@ -269,39 +265,28 @@ export function ModelRuntimeSettingsPanel({
   preferences: AgentGatewayPreferences;
   setPreferences: (value: AgentGatewayPreferences) => void;
 }) {
-  const [maxOutputTokensDraft, setMaxOutputTokensDraft] = React.useState(() =>
-    String(preferences.maxOutputTokens),
+  const {
+    draft: maxOutputTokensDraft,
+    setDraft: setMaxOutputTokensDraft,
+    commit: commitMaxOutputTokens,
+  } = useCommittedNumberDraft(
+    preferences.maxOutputTokens,
+    (maxOutputTokens) => setPreferences({ ...preferences, maxOutputTokens }),
+    normalizeOutputTokenDraft,
   );
-  React.useEffect(() => {
-    setMaxOutputTokensDraft(String(preferences.maxOutputTokens));
-  }, [preferences.maxOutputTokens]);
 
   const availableModels = models.filter(
     (model) =>
       isModelEnabled(model) &&
       (credentialStorageStatus === null || model.credentialConfigured === true),
   );
-  const commitMaxOutputTokens = () => {
-    const maxOutputTokens = normalizeOutputTokenDraft(
-      maxOutputTokensDraft,
-      preferences.maxOutputTokens,
-    );
-    setMaxOutputTokensDraft(String(maxOutputTokens));
-    if (maxOutputTokens !== preferences.maxOutputTokens) {
-      setPreferences({ ...preferences, maxOutputTokens });
-    }
-  };
 
   return (
     <SettingsPanel>
       <SettingsSection title="请求与回退" hint={`${availableModels.length} 个模型可用`}>
         <SettingsRow label="最长等待时间">
-          <span className="settings-field-value">
-            {Math.round(preferences.timeoutMs / 1000)} 秒
-          </span>
-          <input
-            className="settings-range"
-            type="range"
+          <RangeField
+            valueLabel={`${Math.round(preferences.timeoutMs / 1000)} 秒`}
             min={60}
             max={900}
             step={30}
@@ -315,7 +300,7 @@ export function ModelRuntimeSettingsPanel({
           />
         </SettingsRow>
         <SettingsRow label="单次输出长度上限">
-          <input
+          <Input
             className="settings-field"
             type="number"
             min={MIN_OUTPUT_TOKENS}

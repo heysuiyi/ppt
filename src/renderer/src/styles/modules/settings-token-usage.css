@@ -132,9 +132,7 @@
   justify-content: flex-end;
 }
 
-.token-view-tabs button,
-.token-usage-refresh,
-.token-usage-state button {
+.token-view-tabs button {
   border: 0;
   background: transparent;
   color: var(--text-muted);
@@ -153,31 +151,12 @@
 }
 
 .token-view-tabs button:hover,
-.token-view-tabs button.active {
+.token-view-tabs button[aria-selected="true"] {
   color: var(--text-primary);
 }
 
-.token-view-tabs button.active {
+.token-view-tabs button[aria-selected="true"] {
   background: var(--surface-sunken);
-}
-
-.token-usage-refresh {
-  min-width: var(--control-height-sm);
-  min-height: var(--control-height-sm);
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border-radius: var(--button-border-radius);
-}
-
-.token-usage-refresh:hover:not(:disabled) {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-
-.token-usage-refresh:disabled {
-  cursor: default;
-  opacity: 0.45;
 }
 
 .token-usage-refresh:disabled svg {
@@ -228,7 +207,8 @@
   top: calc(100% + 7px);
   left: 50%;
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
   white-space: nowrap;
   transform: translateX(-50%);
 }
@@ -317,9 +297,7 @@
 }
 
 .token-usage-state button {
-  min-height: var(--control-height-sm);
   margin-left: var(--control-gap);
-  color: var(--accent-link-text);
 }
 
 .token-usage-state.is-error {

@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
+import { useDeckExport } from "../src/renderer/src/app/presentation/useDeckExport";
 import { ArtifactCardHost } from "../src/renderer/src/cards/hosts/ArtifactCardHost";
 import { PPTMirror } from "../src/renderer/src/components/PPTMirror";
 import type { DisplayEvent } from "../src/shared/card-display-protocol";
@@ -53,15 +54,22 @@ function preview(index: number): SlidePreviewEvent {
 
 function MirrorHarness() {
   const [selectedSlideId, setSelectedSlideId] = useState("slide-1");
+  const { isExportingDeck, exportDeck } = useDeckExport({ sessionId: "session-1", presentation });
   return (
-    <PPTMirror
-      sessionId="session-1"
-      presentation={presentation}
-      selectedSlideId={selectedSlideId}
-      onSelectSlide={setSelectedSlideId}
-      onCloseMirror={() => undefined}
-      highlightSlideId={null}
-    />
+    <>
+      <button disabled={isExportingDeck} onClick={() => void exportDeck(() => undefined)}>
+        聊天导出
+      </button>
+      <PPTMirror
+        isExporting={isExportingDeck}
+        onExport={() => void exportDeck(() => undefined)}
+        presentation={presentation}
+        selectedSlideId={selectedSlideId}
+        onSelectSlide={setSelectedSlideId}
+        onCloseMirror={() => undefined}
+        highlightSlideId={null}
+      />
+    </>
   );
 }
 
@@ -168,6 +176,19 @@ describe("PPTMirror preview workspace", () => {
       expect.objectContaining({ id: "deck-1" }),
       expect.anything(),
     );
+  });
+
+  it("shares the export lock across preview and chat entrances", async () => {
+    const pending = Promise.withResolvers<null>();
+    exportPresentation.mockReturnValueOnce(pending.promise);
+    render(<MirrorHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "下载 PPT" }));
+    expect(screen.getByRole("button", { name: "下载 PPT" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "聊天导出" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "聊天导出" }));
+    expect(exportPresentation).toHaveBeenCalledTimes(1);
+    await act(async () => pending.resolve(null));
+    expect(screen.getByRole("button", { name: "下载 PPT" }).hasAttribute("disabled")).toBe(false);
   });
 
   it("does not render inspection previews in the chat artifact host", () => {

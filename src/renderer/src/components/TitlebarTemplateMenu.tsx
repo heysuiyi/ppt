@@ -1,6 +1,7 @@
 import React from "react";
 import { cx } from "../lib/cx";
-
+import { Button } from "./Button";
+import { Menu } from "./Menu";
 export interface TitlebarTemplateMenuProps {
   activeSessionId?: string;
   defaultTemplateId: string;
@@ -20,7 +21,7 @@ export function TitlebarTemplateMenu({
   onOpenTemplateSettings,
   notify,
 }: TitlebarTemplateMenuProps) {
-  const rootRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [libraryCount, setLibraryCount] = React.useState(0);
@@ -42,18 +43,6 @@ export function TitlebarTemplateMenu({
   React.useEffect(() => {
     if (!open) return;
     void refreshLibraryCount();
-    const onPointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
   }, [open, refreshLibraryCount]);
 
   const canSetDefault = Boolean(lastImportedId) || libraryCount > 0;
@@ -106,53 +95,52 @@ export function TitlebarTemplateMenu({
   };
 
   return (
-    <div ref={rootRef} className={cx("window-titlebar-template-menu", open && "is-open")}>
-      <button
-        type="button"
+    <div className={cx("window-titlebar-template-menu", open && "is-open")}>
+      <Button
+        ref={triggerRef}
+        variant="quiet"
+        size="sm"
         className="window-titlebar-menu-trigger"
         title="参考模板"
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={busy}
         onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
       >
         模板
-      </button>
-      {open ? (
-        <div className="window-titlebar-menu" role="menu" aria-label="参考模板菜单">
-          <button
-            type="button"
-            className="window-titlebar-menu-item"
-            role="menuitem"
-            disabled={busy}
-            onClick={() => void handleImport()}
-          >
-            导入参考模板…
-          </button>
-          <button
-            type="button"
-            className="window-titlebar-menu-item"
-            role="menuitem"
-            disabled={busy || !canSetDefault}
-            onClick={() => void handleSetDefault()}
-          >
-            设为新项目默认
-            {defaultTemplateId.startsWith("uploaded/") ? " ✓" : ""}
-          </button>
-          <button
-            type="button"
-            className="window-titlebar-menu-item"
-            role="menuitem"
-            disabled={busy}
-            onClick={() => {
-              setOpen(false);
-              onOpenTemplateSettings();
-            }}
-          >
-            打开模板设置
-          </button>
-        </div>
-      ) : null}
+      </Button>
+      <Menu
+        open={open}
+        onClose={() => setOpen(false)}
+        label="参考模板菜单"
+        anchorRef={triggerRef}
+        items={[
+          {
+            id: "import",
+            label: "导入参考模板…",
+            disabled: busy,
+            onSelect: () => void handleImport(),
+          },
+          {
+            id: "default",
+            label: `设为新项目默认${defaultTemplateId.startsWith("uploaded/") ? " ✓" : ""}`,
+            disabled: busy || !canSetDefault,
+            onSelect: () => void handleSetDefault(),
+          },
+          {
+            id: "settings",
+            label: "打开模板设置",
+            disabled: busy,
+            onSelect: onOpenTemplateSettings,
+          },
+        ]}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-/* Application shell — titlebar + sidebar share surface-base chrome */
+/* Application shell paints continuous chrome; only the work surface has its own fill. */
 
 .app-shell {
   --window-titlebar-height: 30px;
@@ -9,7 +9,7 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  background-color: var(--surface-canvas);
+  background-color: var(--surface-base);
   color: var(--text-primary);
 }
 
@@ -28,7 +28,7 @@
      covered by the isolated workspace layer. */
   position: relative;
   z-index: 5;
-  background: var(--surface-base);
+  background: transparent;
   color: var(--text-primary);
   font-size: var(--text-sm);
   line-height: 1;
@@ -37,20 +37,14 @@
   transition: var(--transition-panel);
 }
 
-.window-titlebar-sidebar-toggle {
+.window-titlebar [data-ui-button].window-titlebar-sidebar-toggle {
   width: 24px;
   height: 24px;
-  display: inline-grid;
-  place-items: center;
+  min-height: 0;
+  min-width: 0;
   flex: 0 0 auto;
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--control-radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: var(--transition-color);
 }
 
 .window-titlebar-sidebar-toggle .sidebar-toggle-direction {
@@ -63,12 +57,6 @@
   transform: rotate(0deg);
 }
 
-.window-titlebar-sidebar-toggle:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-subtle);
-  color: var(--text-primary);
-}
-
 .window-titlebar-leading {
   display: inline-flex;
   align-items: center;
@@ -78,81 +66,21 @@
   z-index: 2;
 }
 
-.window-titlebar-menu-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.window-titlebar [data-ui-button].window-titlebar-menu-trigger {
+  min-height: 0;
+  min-width: 0;
   height: 24px;
   flex: 0 0 auto;
   padding: 0 6px;
-  border: 0;
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--text-base);
-  font-weight: var(--type-label-weight);
   /* line-height:1 clips CJK ascent/descent asymmetrically and pushes the glyphs
      below the flex center; let the full line box drive the centering. */
   line-height: normal;
-  cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: var(--transition-color);
-}
-
-.window-titlebar-menu-trigger:hover,
-.window-titlebar-template-menu.is-open .window-titlebar-menu-trigger {
-  color: var(--text-primary);
-}
-
-.window-titlebar-menu-trigger:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .window-titlebar-template-menu {
   position: relative;
   -webkit-app-region: no-drag;
-}
-
-.window-titlebar-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  min-width: 188px;
-  padding: 4px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--popover-border-radius);
-  background: var(--surface-overlay);
-  box-shadow: var(--elevation-2);
-  z-index: var(--z-popover);
-  -webkit-app-region: no-drag;
-}
-
-.window-titlebar-menu-item {
-  display: block;
-  width: 100%;
-  padding: 8px 10px;
-  min-height: var(--control-height-sm);
-  border: 0;
-  border-radius: var(--control-radius-sm);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  font-weight: var(--type-label-weight);
-  line-height: var(--text-sm-lh);
-  overflow-wrap: anywhere;
-  text-align: left;
-  cursor: pointer;
-}
-
-.window-titlebar-menu-item:hover:not(:disabled) {
-  background: var(--surface-hover);
-}
-
-.window-titlebar-menu-item:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 /* Outer grid: sidebar chrome | resizer | floating main canvas */
@@ -164,7 +92,7 @@
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
-  background: var(--surface-base);
+  background: transparent;
   padding: 0 var(--chrome-inset) var(--chrome-inset) 0;
   transition: grid-template-columns var(--duration-base) var(--ease-out);
 }
@@ -179,7 +107,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--surface-base);
+  background: transparent;
 }
 
 .workbench-main-surface {

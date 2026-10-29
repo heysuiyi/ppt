@@ -1,5 +1,6 @@
 import type { SessionChatMessage } from "@shared/session";
 import type React from "react";
+import { Button } from "./Button";
 
 interface AgentRunTerminalNoticeProps {
   status: SessionChatMessage["runStatus"];
@@ -22,9 +23,9 @@ export const AgentRunTerminalNotice: React.FC<AgentRunTerminalNoticeProps> = ({
         {failed && error && <small>{error}</small>}
       </span>
       {onRetry && (
-        <button type="button" onClick={onRetry}>
+        <Button size="sm" variant="quiet" onClick={onRetry}>
           重试
-        </button>
+        </Button>
       )}
     </div>
   );

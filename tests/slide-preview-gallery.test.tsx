@@ -44,4 +44,27 @@ describe("SlidePreviewGallery", () => {
     expect(screen.getByRole("dialog", { name: "第 2 页 页面预览" })).not.toBeNull();
     expect(screen.getByText("2 / 4")).not.toBeNull();
   });
+
+  it("returns focus to the opening thumbnail after Escape", () => {
+    render(<SlidePreviewGallery previews={[preview(1), preview(2)]} />);
+    const opener = screen.getByRole("button", { name: "查看 第 2 页 大图" });
+    opener.focus();
+    fireEvent.click(opener);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("uses the injected live surface while retaining screenshot fallback", () => {
+    const { rerender } = render(
+      <SlidePreviewGallery previews={[preview(1)]} renderSlide={() => <div>实时幻灯片</div>} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "查看 第 1 页 大图" }));
+    expect(screen.getByText("实时幻灯片")).not.toBeNull();
+    expect(screen.queryByRole("img", { name: "第 1 页 页面预览" })).toBeNull();
+    rerender(<SlidePreviewGallery previews={[preview(1)]} renderSlide={() => null} />);
+    expect(screen.getByRole("img", { name: "第 1 页 页面预览" }).getAttribute("src")).toBe(
+      "data:image/png;base64,aGVsbG8=",
+    );
+  });
 });

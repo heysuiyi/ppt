@@ -5,7 +5,7 @@
   background-color: var(--surface-raised);
   height: 100%;
   overflow: hidden;
-  transition: background-color var(--transition-panel);
+  transition: var(--transition-panel);
 }
 
 .canvas-header {

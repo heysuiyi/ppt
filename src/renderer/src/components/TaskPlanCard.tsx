@@ -1,9 +1,10 @@
 import type { AgentTaskNode } from "@shared/agent-task-list";
 import type { TeamSessionProjection } from "@shared/team-session";
 import type React from "react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import { Button } from "./Button";
 import { ChevronDownIcon, ChevronRightIcon } from "./Icons";
-import { type FoldToken, useChatScroll } from "./useChatScroll";
+import { useChatFold } from "./useChatFold";
 
 function TaskStatusIcon({ task }: { task: AgentTaskNode }) {
   if (task.review.state === "requested")
@@ -53,20 +54,10 @@ export const TaskPlanCard: React.FC<TaskPlanCardProps> = ({
   onOpenTask,
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const chatScroll = useChatScroll();
-  const headerRef = useRef<HTMLButtonElement>(null);
-  const pendingFoldRef = useRef<FoldToken | null>(null);
-
-  useLayoutEffect(() => {
-    const pending = pendingFoldRef.current;
-    if (!pending) return;
-    pendingFoldRef.current = null;
-    chatScroll.commitFold(pending);
-  }, [chatScroll]);
+  const { anchorRef: headerRef, transactFold } = useChatFold<HTMLButtonElement>();
 
   const toggleExpanded = () => {
-    pendingFoldRef.current = chatScroll.beginFold(headerRef.current);
-    setExpanded((value) => !value);
+    transactFold(() => setExpanded((value) => !value));
   };
 
   const hasActive = tasks.some(
@@ -169,13 +160,9 @@ export const TaskPlanCard: React.FC<TaskPlanCardProps> = ({
                       <span className="task-plan-item-state">{taskState}</span>
                     </span>
                     {session && onOpenTask && (
-                      <button
-                        type="button"
-                        className="task-plan-item-open"
-                        onClick={() => onOpenTask(session.id)}
-                      >
+                      <Button variant="quiet" size="sm" onClick={() => onOpenTask(session.id)}>
                         详情
-                      </button>
+                      </Button>
                     )}
                   </li>
                 );

@@ -1,7 +1,8 @@
 import type { AgentExecutionStrategy } from "@shared/agent";
 import type { AgentStepLimits } from "@shared/agent-step-limits";
 import { Select } from "../Select";
-import { SettingsPanel, SettingsRow, SettingsSection } from "./SettingsPrimitives";
+import { Switch } from "../Switch";
+import { RangeField, SettingsPanel, SettingsRow, SettingsSection } from "./SettingsPrimitives";
 
 export function AgentBehaviorSettingsPanel({
   executionStrategy,
@@ -36,20 +37,15 @@ export function AgentBehaviorSettingsPanel({
 
       <SettingsSection title="单次步数上限">
         <SettingsRow label="启用步数上限">
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={limits.enabled}
-              onChange={(event) => setLimits({ ...limits, enabled: event.target.checked })}
-            />
-            <span className="toggle-slider" />
-          </label>
+          <Switch
+            label="启用步数上限"
+            checked={limits.enabled}
+            onChange={(event) => setLimits({ ...limits, enabled: event.target.checked })}
+          />
         </SettingsRow>
         <SettingsRow label="主 Agent 单次上限" muted={!limits.enabled}>
-          <span className="settings-field-value">{limits.mainMaxSteps} 次</span>
-          <input
-            className="settings-range"
-            type="range"
+          <RangeField
+            valueLabel={`${limits.mainMaxSteps} 次`}
             min="8"
             max="80"
             step="1"
@@ -64,10 +60,8 @@ export function AgentBehaviorSettingsPanel({
           />
         </SettingsRow>
         <SettingsRow label="子 Agent 单次上限" muted={!limits.enabled}>
-          <span className="settings-field-value">{limits.subMaxSteps} 次</span>
-          <input
-            className="settings-range"
-            type="range"
+          <RangeField
+            valueLabel={`${limits.subMaxSteps} 次`}
             min="4"
             max="40"
             step="1"

@@ -7,7 +7,13 @@
 @import "./styles/tokens/fonts.css";
 @import "./styles/tokens/settings-density.css";
 @import "./styles/components/controls.css";
+@import "./styles/components/button.css";
+@import "./styles/components/field.css";
 @import "./styles/components/select.css";
+@import "./styles/components/dialog.css";
+@import "./styles/components/menu.css";
+@import "./styles/components/artifact-card.css";
+@import "./styles/components/preview.css";
 @import "./styles/components/run-status.css";
 @import "./styles/components/loading-indicator.css";
 @import "./styles/components/resize-handle.css";
@@ -35,6 +41,5 @@
 @import "./styles/modules/settings-forms.css";
 @import "./styles/modules/unified-input.css";
 @import "./styles/modules/model-management.css";
-@import "./styles/modules/context-menu-thinking.css";
 @import "./styles/modules/project-files.css";
 @import "./styles/modules/ppt-job-status.css";

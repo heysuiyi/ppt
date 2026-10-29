@@ -7,6 +7,7 @@ import { InteractionCardHost } from "../cards/hosts/InteractionCardHost";
 import { ReviewCardHost } from "../cards/hosts/ReviewCardHost";
 import { AgentRunTerminalNotice } from "./AgentRunTerminalNotice";
 import { AgentRunTimeline } from "./AgentRunTimeline";
+import { IconButton } from "./Button";
 import { CHAT_WORKSPACE_COPY_ZH_CN as copy } from "./chat-workspace-copy";
 import type {
   ChatWorkspaceActions,
@@ -117,25 +118,21 @@ export function ChatMessageStream({
 
                 {editingMessageId !== message.id && (
                   <div className="user-message-actions">
-                    <button
-                      type="button"
-                      className="message-action-btn message-action-btn--icon"
+                    <IconButton
                       onClick={() => void copyMessage(message.content)}
                       title={copy.copyContent}
                       aria-label={copy.copyContent}
                     >
                       <CopyIcon size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      className="message-action-btn message-action-btn--icon"
+                    </IconButton>
+                    <IconButton
                       onClick={() => startEditing(message.id, message.content)}
                       disabled={run.busy}
                       title={copy.editAndRerun}
                       aria-label={copy.editAndRerun}
                     >
                       <Edit3Icon size={13} />
-                    </button>
+                    </IconButton>
                   </div>
                 )}
               </div>
@@ -200,15 +197,17 @@ export function ChatMessageStream({
       />
 
       {activeTasks.length > 0 && (
-        <TaskPlanCard
-          goal={planGoal}
-          tasks={activeTasks}
-          live={run.busy || hasActiveTaskPlan}
-          state={planState}
-          archive={planArchive}
-          sessions={teamSessions}
-          onOpenTask={onOpenTask}
-        />
+        <div className="card-stack">
+          <TaskPlanCard
+            goal={planGoal}
+            tasks={activeTasks}
+            live={run.busy || hasActiveTaskPlan}
+            state={planState}
+            archive={planArchive}
+            sessions={teamSessions}
+            onOpenTask={onOpenTask}
+          />
+        </div>
       )}
     </>
   );
