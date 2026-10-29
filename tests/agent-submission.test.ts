@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { acceptAgentRequest } from "../src/main/agent/submit-agent-request";
-import { AgentSettingsStore, resolveConfiguredModel } from "../src/main/agent-settings-store";
+import { createAgentConfiguration, type ExecutionPlan } from "../src/main/agent-configuration";
 import { FileSessionStore } from "../src/main/session-store";
 import { agentSettingsSchema } from "../src/shared/agent-settings";
 import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
@@ -35,6 +35,36 @@ const settings = agentSettingsSchema.parse({
   executionStrategy: "REQUEST_APPROVAL",
   defaultTemplateId: APPLICATION_DEFAULT_TEMPLATE_ID,
 });
+const plan: ExecutionPlan = {
+  model: {
+    configurationId: "configured-model",
+    vendorId: "vendor",
+    provider: "openai",
+    model: "remote-model",
+  },
+  services: { timeoutMs: 180_000, maxOutputTokens: 16_384 },
+  stepLimits: settings.stepLimits,
+  executionStrategy: settings.executionStrategy,
+  defaultTemplateId: settings.defaultTemplateId,
+};
+function configurationAt(applicationDataRoot: string) {
+  return createAgentConfiguration({
+    applicationDataRoot,
+    environment: {},
+    safeStorage: {
+      decryptString: (encrypted: Buffer) => encrypted.toString("utf8"),
+      encryptString: (plaintext: string) => Buffer.from(plaintext, "utf8"),
+      decryptStringAsync: async (encrypted: Buffer) => ({
+        result: encrypted.toString("utf8"),
+        shouldReEncrypt: false,
+      }),
+      encryptStringAsync: async (plaintext: string) => Buffer.from(plaintext, "utf8"),
+      isAsyncEncryptionAvailable: async () => true,
+      isEncryptionAvailable: () => true,
+      getSelectedStorageBackend: () => "unknown" as const,
+    },
+  });
+}
 const directories: string[] = [];
 const stores: FileSessionStore[] = [];
 async function fixture() {
@@ -83,38 +113,49 @@ describe("Main-owned Agent submission", () => {
 
   it("migrates once, persists settings and resolves model identity in Main", async () => {
     const { directory } = await fixture();
-    const path = join(directory, "settings.json");
-    const config = new AgentSettingsStore(path);
-    expect(await config.get()).toBeUndefined();
-    await config.save(settings, true);
+    const path = join(directory, "agent-settings.json");
+    const config = configurationAt(directory);
+    expect(await config.management.getSnapshot()).toBeUndefined();
+    await config.management.initialize(settings);
     const changed = { ...settings, stepLimits: { ...settings.stepLimits, mainMaxSteps: 9 } };
-    await config.save(changed);
-    expect(await new AgentSettingsStore(path).save(settings, true)).toEqual(changed);
-    expect(resolveConfiguredModel((await config.get())!, "configured-model")).toMatchObject({
+    await config.management.savePreferences({
+      gateway: changed.gateway,
+      stepLimits: changed.stepLimits,
+      executionStrategy: changed.executionStrategy,
+      defaultTemplateId: changed.defaultTemplateId,
+    });
+    expect((await configurationAt(directory).management.initialize(settings)).settings).toEqual(
+      changed,
+    );
+    expect((await config.runtime.loadExecutionPlan("configured-model")).model).toMatchObject({
       configurationId: "configured-model",
       vendorId: "vendor",
       model: "remote-model",
-      baseURL: "https://example.com/v1",
     });
     expect(await readFile(path, "utf8")).not.toContain("apiKey");
-    expect(() =>
-      config.save({ ...settings, vendors: [{ ...settings.vendors[0], apiKey: "secret" }] }),
-    ).toThrow();
+    await expect(
+      configurationAt(join(directory, "invalid")).management.initialize({
+        ...settings,
+        vendors: [{ ...settings.vendors[0], apiKey: "secret" }],
+      } as never),
+    ).rejects.toThrow();
   });
 
   it("rejects unknown or disabled model IDs before creating a session", async () => {
-    const { store } = await fixture();
-    await expect(
-      acceptAgentRequest(store, settings, request({ modelId: "missing" })),
-    ).rejects.toThrow("does not exist");
-    const disabled = structuredClone(settings);
-    disabled.vendors[0].enabled = false;
-    await expect(acceptAgentRequest(store, disabled, request())).rejects.toThrow("disabled");
+    const { store, directory } = await fixture();
+    const config = configurationAt(directory);
+    await config.management.initialize(settings);
+    await expect(config.runtime.loadExecutionPlan("missing")).rejects.toThrow("does not exist");
+    await config.management.saveVendor({
+      vendor: { ...settings.vendors[0], enabled: false },
+      credential: { type: "keep" },
+    });
+    await expect(config.runtime.loadExecutionPlan("configured-model")).rejects.toThrow("disabled");
     expect(store.getBootstrap().sessions).toHaveLength(0);
   });
 
   it("omits a disabled optional fallback while retaining the selected model", async () => {
-    const { store } = await fixture();
+    const { store, directory } = await fixture();
     const config = structuredClone(settings);
     config.vendors[0].models.push({
       ...config.vendors[0].models[0],
@@ -122,9 +163,13 @@ describe("Main-owned Agent submission", () => {
       enabled: false,
     });
     config.gateway.fallbackModelId = "fallback";
-    const admitted = await acceptAgentRequest(store, config, request());
-    expect(admitted.model.configurationId).toBe("configured-model");
-    expect(admitted.services.fallbackModel).toBeUndefined();
+    const configuration = configurationAt(directory);
+    await configuration.management.initialize(config);
+    const executionPlan = await configuration.runtime.loadExecutionPlan("configured-model");
+    const admitted = await acceptAgentRequest(store, executionPlan, request());
+    expect(executionPlan.model.configurationId).toBe("configured-model");
+    expect(executionPlan.services.fallbackModel).toBeUndefined();
+    expect(store.getSession(admitted.sessionId).messages).toHaveLength(2);
   });
 
   it("does not register a new session when its first admission transaction fails", async () => {
@@ -132,7 +177,7 @@ describe("Main-owned Agent submission", () => {
     vi.spyOn(store.conversationDatabase, "beginRun").mockImplementation(() => {
       throw new Error("write failed");
     });
-    await expect(acceptAgentRequest(store, settings, request())).rejects.toThrow("write failed");
+    await expect(acceptAgentRequest(store, plan, request())).rejects.toThrow("write failed");
     expect(store.getBootstrap().sessions).toEqual([]);
     expect(store.conversationDatabase.loadState().sessions).toEqual([]);
   });
@@ -140,17 +185,21 @@ describe("Main-owned Agent submission", () => {
   it("creates the session and accepts only one copy of its input and run", async () => {
     const { store } = await fixture();
     const command = request();
-    const admitted = await acceptAgentRequest(store, settings, command);
+    const beginRun = vi.spyOn(store.conversationDatabase, "beginRun");
+    const admitted = await acceptAgentRequest(store, plan, command);
     expect(admitted.history).toEqual([]);
-    expect(admitted.model.model).toBe("remote-model");
-    expect(admitted.services).not.toHaveProperty("fallbackModelId");
+    expect(beginRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: command.requestId,
+        provider: "openai",
+        model: "remote-model",
+      }),
+    );
     expect(store.getSession(admitted.sessionId).messages.map((item) => item.id)).toEqual([
       command.userMessageId,
       command.assistantMessageId,
     ]);
-    await expect(acceptAgentRequest(store, settings, command)).rejects.toThrow(
-      "already been accepted",
-    );
+    await expect(acceptAgentRequest(store, plan, command)).rejects.toThrow("already been accepted");
     expect(store.getBootstrap().sessions).toHaveLength(1);
     expect(store.conversationDatabase.interruptRunningRuns()).toContain(command.requestId);
   });
@@ -165,7 +214,7 @@ describe("Main-owned Agent submission", () => {
       original(input);
       throw new Error("disk failed");
     });
-    await expect(acceptAgentRequest(store, settings, command)).rejects.toThrow("disk failed");
+    await expect(acceptAgentRequest(store, plan, command)).rejects.toThrow("disk failed");
     expect(store.getSession(sessionId).messages).toEqual([]);
     expect(store.conversationDatabase.loadState().sessions[0].messages).toEqual([]);
     expect(store.conversationDatabase.hasRun(command.requestId)).toBe(false);
@@ -174,7 +223,7 @@ describe("Main-owned Agent submission", () => {
   it("resumes only the current durable question and rejects stale answers", async () => {
     const { store } = await fixture();
     const first = request();
-    const admitted = await acceptAgentRequest(store, settings, first);
+    const admitted = await acceptAgentRequest(store, plan, first);
     store.conversationDatabase.storage.serviceThreads.save(first.requestId, {
       version: 1,
       threadId: first.requestId,
@@ -193,19 +242,19 @@ describe("Main-owned Agent submission", () => {
       action: { type: "answer", questionRunId: first.requestId, displayContent: "管理层" },
       prompt: "面向管理层",
     });
-    const next = await acceptAgentRequest(store, settings, answer);
+    const next = await acceptAgentRequest(store, plan, answer);
     expect(next.threadId).toBe(first.requestId);
     expect(store.getSession(admitted.sessionId).messages.at(-2)?.content).toBe("管理层");
     expect(store.getSession(admitted.sessionId).messages[1].runStatus).toBe("completed");
     await expect(
-      acceptAgentRequest(store, settings, { ...answer, requestId: crypto.randomUUID() }),
+      acceptAgentRequest(store, plan, { ...answer, requestId: crypto.randomUUID() }),
     ).rejects.toThrow("no longer awaiting");
   });
 
   it("branches an edit in Main without resuming the old waiting Query", async () => {
     const { store } = await fixture();
     const first = request();
-    const admitted = await acceptAgentRequest(store, settings, first);
+    const admitted = await acceptAgentRequest(store, plan, first);
     store.conversationDatabase.storage.serviceThreads.save(first.requestId, {
       version: 1,
       threadId: first.requestId,
@@ -219,7 +268,7 @@ describe("Main-owned Agent submission", () => {
       action: { type: "edit", messageId: first.userMessageId },
       prompt: "修改后的目标",
     });
-    const next = await acceptAgentRequest(store, settings, edit);
+    const next = await acceptAgentRequest(store, plan, edit);
     expect(next.threadId).toBeUndefined();
     expect(next.history).toEqual([]);
     expect(store.getSession(admitted.sessionId).messages.map((item) => item.id)).toEqual([

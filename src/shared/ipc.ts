@@ -1,4 +1,11 @@
 import { z } from "zod";
+import type {
+  AgentConfigurationSnapshot,
+  AgentPreferences,
+  DiscoverAgentModelsRequest,
+  SaveAgentVendorRequest,
+  UpdateSearchCredentialRequest,
+} from "./agent-configuration";
 import type { AgentQuestion } from "./agent-question";
 import type { AgentSettings } from "./agent-settings";
 import type { AgentTaskNode } from "./agent-task-list";
@@ -7,13 +14,6 @@ import type {
   DisplayEvent,
   PersistedDisplayCard,
 } from "./card-display-protocol";
-import type {
-  CredentialStatusRequest,
-  CredentialStatusSnapshot,
-  DeleteModelCredentialRequest,
-  SetModelCredentialsRequest,
-  SetWebSearchCredentialRequest,
-} from "./credentials";
 import type {
   AppLogEntry,
   AppLogLevel,
@@ -24,7 +24,7 @@ import type {
 import type { ExportPresentationOptions } from "./ppt-export";
 import type { Presentation } from "./presentation";
 import type { PptJobProjection } from "./presentation-lifecycle";
-import type { ListRemoteModelsRequest, ListRemoteModelsResult } from "./remote-models";
+import type { ListRemoteModelsResult } from "./remote-models";
 import type { ProjectArtifact, SessionBootstrap, SessionChatMessage } from "./session";
 import type { TeammateProgressEvent } from "./teammate-progress";
 import type { TokenUsageStats } from "./token-usage";
@@ -310,12 +310,15 @@ export interface DesktopApi {
   readUiThemeCss(themeId: string): Promise<string | null>;
   openUiThemesDirectory(): Promise<boolean>;
   reportRendererLog(report: RendererLogReport): void;
-  getCredentialStatus(request: CredentialStatusRequest): Promise<CredentialStatusSnapshot>;
-  setModelCredentials(request: SetModelCredentialsRequest): Promise<void>;
-  deleteModelCredential(request: DeleteModelCredentialRequest): Promise<void>;
-  setWebSearchCredential(request: SetWebSearchCredentialRequest): Promise<void>;
-  deleteWebSearchCredential(): Promise<void>;
-  listRemoteModels(request: ListRemoteModelsRequest): Promise<ListRemoteModelsResult>;
+  getAgentConfiguration(): Promise<AgentConfigurationSnapshot | undefined>;
+  initializeAgentConfiguration(legacy?: AgentSettings): Promise<AgentConfigurationSnapshot>;
+  saveAgentVendor(request: SaveAgentVendorRequest): Promise<AgentConfigurationSnapshot>;
+  deleteAgentVendor(vendorId: string): Promise<AgentConfigurationSnapshot>;
+  saveAgentPreferences(preferences: AgentPreferences): Promise<AgentConfigurationSnapshot>;
+  updateAgentSearchCredential(
+    request: UpdateSearchCredentialRequest,
+  ): Promise<AgentConfigurationSnapshot>;
+  listRemoteModels(request: DiscoverAgentModelsRequest): Promise<ListRemoteModelsResult>;
   createSession(options?: CreateSessionOptions): Promise<SessionBootstrap>;
   openWorkspace(rootPath: string): Promise<SessionBootstrap>;
   selectSession(sessionId: string): Promise<SessionBootstrap>;
@@ -344,9 +347,6 @@ export interface DesktopApi {
   getPptJob(sessionId: string): Promise<PptJobProjection | undefined>;
   onPptJobChanged(listener: (projection: PptJobProjection) => void): () => void;
   getPresentation(): Promise<Presentation>;
-  getAgentSettings(): Promise<AgentSettings | undefined>;
-  saveAgentSettings(settings: AgentSettings): Promise<AgentSettings>;
-  migrateAgentSettings(settings: AgentSettings): Promise<AgentSettings>;
   submitAgentRun(request: SubmitAgentRequest): Promise<AgentRunResult>;
   onAgentRunAccepted(listener: (event: AgentRunAccepted) => void): () => void;
   onAgentStream(listener: (event: AgentStreamEvent) => void): () => void;

@@ -15,7 +15,7 @@ import {
 import type { AppTopbar } from "./AppTopbar";
 import { useAgentActivityStream } from "./agent/useAgentActivityStream";
 import { useAgentRunController } from "./agent/useAgentRunController";
-import { loadAppBootstrapSnapshot } from "./appBootstrap";
+import type { AppBootstrapSnapshot } from "./appBootstrap";
 import type { AppBootState } from "./appViewState";
 import { useDisplayEventActions } from "./cards/useDisplayEventActions";
 import { useDeckExport } from "./presentation/useDeckExport";
@@ -43,8 +43,7 @@ type AppModel = {
     | { area: "settings"; props: ComponentProps<typeof SettingsView> };
 };
 
-export function useAppModel(): AppModel {
-  const [bootstrap] = useState(loadAppBootstrapSnapshot);
+export function useAppModel(bootstrap: AppBootstrapSnapshot): AppModel {
   const { message: toastMessage, notify } = useNotificationCenter();
   const credentialReentryNoticeShownRef = useRef(false);
   useEffect(() => {

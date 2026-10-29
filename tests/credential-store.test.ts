@@ -6,12 +6,12 @@ import {
   CredentialStore,
   CredentialStoreError,
   type SafeStorageAdapter,
-} from "../src/main/credential-store";
+} from "../src/main/agent-configuration/internal/credential-store";
 import type {
-  CredentialStorageBackend,
   ModelCredentialBinding,
   WebSearchCredentialBinding,
-} from "../src/shared/credentials";
+} from "../src/main/agent-configuration/internal/credential-types";
+import type { CredentialStorageBackend } from "../src/shared/credentials";
 
 const temporaryDirectories: string[] = [];
 
@@ -293,7 +293,7 @@ describe("CredentialStore", () => {
     safeStorage.backend = "basic_text";
     const { store } = await createStore(safeStorage);
 
-    await expect(store.getStorageStatus()).resolves.toEqual({
+    expect((await store.getStatus()).storage).toEqual({
       state: "degraded",
       backend: "basic_text",
       warning: "linux-basic-text",
@@ -312,7 +312,7 @@ describe("CredentialStore", () => {
     safeStorage.syncAvailable = false;
     const { store } = await createStore(safeStorage);
 
-    await expect(store.getStorageStatus()).resolves.toEqual({
+    expect((await store.getStatus()).storage).toEqual({
       state: "unavailable",
       backend: "unknown",
       warning: "safe-storage-unavailable",

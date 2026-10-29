@@ -1,13 +1,18 @@
-import type { AgentSettings } from "@shared/agent-settings";
+import type { AgentConfigurationSnapshot, AgentPreferences } from "@shared/agent-configuration";
 
 let pendingSave: Promise<unknown> = Promise.resolve();
 
-// Settings writes start when settings change, never as an extra submit-time IPC.
-export function saveExecutionSettings(settings: AgentSettings): Promise<unknown> {
-  pendingSave = pendingSave
-    .catch(() => undefined)
-    .then(() => window.desktopApi.saveAgentSettings(settings));
-  return pendingSave;
+// Queue preferences and catalog mutations before a run can use the committed configuration.
+export function persistAgentConfiguration<T>(save: () => Promise<T>): Promise<T> {
+  const result = pendingSave.catch(() => undefined).then(save);
+  pendingSave = result;
+  return result;
+}
+
+export function saveExecutionPreferences(
+  preferences: AgentPreferences,
+): Promise<AgentConfigurationSnapshot> {
+  return persistAgentConfiguration(() => window.desktopApi.saveAgentPreferences(preferences));
 }
 
 export async function waitForExecutionSettings(): Promise<void> {

@@ -100,15 +100,6 @@ export class AgentGateway implements AgentModelGateway {
     this.runtimeSettings.clearPrimary();
   }
 
-  applyGatewayConfig(gatewayConfig: AgentGatewayConfig): void {
-    this.gatewayConfig = resolveAgentGatewayConfig(gatewayConfig);
-    this.runtimeSettings.registerFallback(this.gatewayConfig.fallbackModel);
-  }
-
-  applySearchConfig(searchConfig: AgentSearchConfig): void {
-    this.searchConfig = resolveAgentSearchConfig(searchConfig);
-  }
-
   getGatewayConfig(): AgentGatewayConfig {
     return this.gatewayConfig;
   }
@@ -118,12 +109,7 @@ export class AgentGateway implements AgentModelGateway {
   }
 
   private resolveConfig(selection?: AgentModelSelection): DriverResolvedConfig {
-    return resolveAgentModelConfig(
-      selection,
-      this.runtimeSettings,
-      process.env,
-      this.gatewayConfig,
-    );
+    return resolveAgentModelConfig(selection, this.runtimeSettings, this.gatewayConfig);
   }
 
   /** One complete model round-trip through the unified call-path driver. */
@@ -210,16 +196,15 @@ export class AgentGateway implements AgentModelGateway {
           callPath: config?.callPath ?? "unknown",
           startedAt: startedAtDate,
           durationMs: Date.now() - startedAt,
-          request:
-            preparedRequest
-              ? buildGatewayIoLogRequest(preparedRequest)
-              : {
-                  messages: [],
-                  maxOutputTokens: config?.maxOutputTokens ?? 0,
-                  systemPromptLength: 0,
-                  messageCount: 0,
-                  toolNames: [],
-                },
+          request: preparedRequest
+            ? buildGatewayIoLogRequest(preparedRequest)
+            : {
+                messages: [],
+                maxOutputTokens: config?.maxOutputTokens ?? 0,
+                systemPromptLength: 0,
+                messageCount: 0,
+                toolNames: [],
+              },
           error: normalized,
         }),
       );

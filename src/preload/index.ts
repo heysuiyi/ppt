@@ -29,13 +29,18 @@ const api: DesktopApi = {
   openUiThemesDirectory: () => ipcRenderer.invoke("ui-themes:open-directory"),
   reportRendererLog: (report) => ipcRenderer.send("logs:renderer-report", report),
 
-  // 凭据只能写入 Main 的系统安全存储；Renderer 没有读取明文密钥的接口。
-  getCredentialStatus: (request) => ipcRenderer.invoke("credentials:get-status", request),
-  setModelCredentials: (request) => ipcRenderer.invoke("credentials:set-models", request),
-  deleteModelCredential: (request) => ipcRenderer.invoke("credentials:delete-model", request),
-  setWebSearchCredential: (request) => ipcRenderer.invoke("credentials:set-web-search", request),
-  deleteWebSearchCredential: () => ipcRenderer.invoke("credentials:delete-web-search"),
-  listRemoteModels: (request) => ipcRenderer.invoke("models:list-remote", request),
+  getAgentConfiguration: () => ipcRenderer.invoke("agent-configuration:get"),
+  initializeAgentConfiguration: (legacy) =>
+    ipcRenderer.invoke("agent-configuration:initialize", legacy),
+  saveAgentVendor: (request) => ipcRenderer.invoke("agent-configuration:save-vendor", request),
+  deleteAgentVendor: (vendorId) =>
+    ipcRenderer.invoke("agent-configuration:delete-vendor", vendorId),
+  saveAgentPreferences: (preferences) =>
+    ipcRenderer.invoke("agent-configuration:save-preferences", preferences),
+  updateAgentSearchCredential: (request) =>
+    ipcRenderer.invoke("agent-configuration:update-search-credential", request),
+  listRemoteModels: (request) =>
+    ipcRenderer.invoke("agent-configuration:list-remote-models", request),
 
   // 项目产物
   listProjectArtifacts: (sessionId) => ipcRenderer.invoke("project:list-artifacts", sessionId),
@@ -70,9 +75,6 @@ const api: DesktopApi = {
   openExportFolder: (filePath) => ipcRenderer.invoke("shell:open-export-folder", filePath),
 
   // Agent 运行与交互
-  getAgentSettings: () => ipcRenderer.invoke("agent-settings:get"),
-  saveAgentSettings: (settings) => ipcRenderer.invoke("agent-settings:save", settings),
-  migrateAgentSettings: (settings) => ipcRenderer.invoke("agent-settings:migrate", settings),
   submitAgentRun: (request) => ipcRenderer.invoke("agent:submit", request),
   onAgentRunAccepted: (listener) => {
     const handler = (

@@ -15,7 +15,3 @@ export function loadAgentStepLimits(): AgentStepLimits {
     return { ...DEFAULT_AGENT_STEP_LIMITS };
   }
 }
-
-export function saveAgentStepLimits(limits: AgentStepLimits): void {
-  window.localStorage.setItem(AGENT_STEP_LIMITS_STORAGE_KEY, JSON.stringify(limits));
-}

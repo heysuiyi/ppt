@@ -227,4 +227,79 @@ describe("ModelManagement vendor onboarding", () => {
     expect(apiKey).toBe("replacement-secret");
     expect(savedVendor).not.toHaveProperty("apiKey");
   });
+
+  it("discovers an unchanged saved vendor without sending a connection binding", async () => {
+    const listRemoteModels = vi.fn().mockResolvedValue({ models: [] });
+    Object.defineProperty(window, "desktopApi", {
+      configurable: true,
+      value: { listRemoteModels },
+    });
+    const vendor = deepseekVendor();
+    render(
+      <ModelManagement
+        vendors={[vendor]}
+        models={flattenVendors([vendor])}
+        selectedModelId="deepseek-v4-flash"
+        onSelectModel={vi.fn()}
+        onSaveVendor={vi.fn().mockResolvedValue(true)}
+        onDeleteVendor={vi.fn().mockResolvedValue(true)}
+        onDeleteModel={vi.fn().mockResolvedValue(true)}
+        onSetVendorEnabled={vi.fn().mockResolvedValue(true)}
+        onSetModelEnabled={vi.fn().mockResolvedValue(true)}
+        triggerToast={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "编辑厂商 DeepSeek" }));
+    fireEvent.click(screen.getByRole("button", { name: "获取模型列表" }));
+    await waitFor(() =>
+      expect(listRemoteModels).toHaveBeenCalledExactlyOnceWith({
+        type: "saved-vendor",
+        vendorId: "deepseek",
+      }),
+    );
+  });
+
+  it("requires a draft key for a changed address instead of borrowing the saved key", async () => {
+    const listRemoteModels = vi.fn().mockResolvedValue({ models: [] });
+    Object.defineProperty(window, "desktopApi", {
+      configurable: true,
+      value: { listRemoteModels },
+    });
+    const vendor = deepseekVendor();
+    const triggerToast = vi.fn();
+    render(
+      <ModelManagement
+        vendors={[vendor]}
+        models={flattenVendors([vendor])}
+        selectedModelId="deepseek-v4-flash"
+        onSelectModel={vi.fn()}
+        onSaveVendor={vi.fn().mockResolvedValue(true)}
+        onDeleteVendor={vi.fn().mockResolvedValue(true)}
+        onDeleteModel={vi.fn().mockResolvedValue(true)}
+        onSetVendorEnabled={vi.fn().mockResolvedValue(true)}
+        onSetModelEnabled={vi.fn().mockResolvedValue(true)}
+        triggerToast={triggerToast}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "编辑厂商 DeepSeek" }));
+    const dialog = screen.getByRole("dialog", { name: "编辑厂商" });
+    fireEvent.change(within(dialog).getByLabelText("Base URL"), {
+      target: { value: "https://other.example.com/v1" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "获取模型列表" }));
+    expect(listRemoteModels).not.toHaveBeenCalled();
+    expect(triggerToast).toHaveBeenCalledWith(expect.stringContaining("连接地址变更"));
+    fireEvent.change(within(dialog).getByLabelText("API Key"), {
+      target: { value: "draft-secret" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "获取模型列表" }));
+    await waitFor(() =>
+      expect(listRemoteModels).toHaveBeenCalledExactlyOnceWith({
+        type: "draft",
+        provider: "anthropic",
+        baseURL: "https://other.example.com/v1",
+        apiKey: "draft-secret",
+      }),
+    );
+  });
 });

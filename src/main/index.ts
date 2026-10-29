@@ -8,11 +8,6 @@ import type { PersistedDisplayCard } from "@shared/card-display-protocol";
 import { CommandBus } from "@shared/commands";
 import type { ConversationEventKind } from "@shared/conversation-events";
 import {
-  deleteModelCredentialRequestSchema,
-  setModelCredentialsRequestSchema,
-  setWebSearchCredentialRequestSchema,
-} from "@shared/credentials";
-import {
   type AgentRunResult,
   type AgentStreamEvent,
   type CreateSessionOptions,
@@ -51,7 +46,6 @@ import {
 import { DeckExportService } from "../ppt/core/deck-export-service";
 import { toResultDisplayEvents, toStreamDisplayEvent } from "./agent/display/display-event-adapter";
 import { AgentGateway } from "./agent/gateway";
-import { ListRemoteModelsError, listRemoteModels } from "./agent/gateway/list-remote-models";
 import {
   clearLogFiles,
   createModuleLogger,
@@ -74,14 +68,8 @@ import {
 import { acceptAgentRequest } from "./agent/submit-agent-request";
 import { formatMailboxMessagesForHistory, MessageBus } from "./agent/teammate/message-bus";
 import { TeammateManager } from "./agent/teammate/spawn-teammate";
-import { AgentSettingsStore } from "./agent-settings-store";
+import { createAgentConfiguration, registerAgentConfigurationIpc } from "./agent-configuration";
 import { configureApplicationDataRoot, getApplicationDataRoot } from "./application-data";
-import {
-  getCredentialStatusWithEnvironment,
-  hydrateAgentModelSettings,
-  hydrateAgentRunServices,
-} from "./credential-runtime";
-import { CredentialStore } from "./credential-store";
 import { recoverInterruptedExport } from "./deck/export-recovery";
 import { createPptRuntime, createPptToolRegistry } from "./plugins/ppt";
 import { slideThumbnailService } from "./plugins/ppt/adapters/electron-thumbnail-service";
@@ -412,10 +400,7 @@ app.whenReady().then(async () => {
   const sessionActiveRuns = new Map<string, string>(); // sessionId -> runId
   const activeRuns = new Map<string, AbortController>(); // runId -> AbortController
   const trustedRendererWebContentsIds = new Set<number>();
-  const credentialStore = new CredentialStore({ applicationDataRoot, safeStorage });
-  const agentSettingsStore = new AgentSettingsStore(
-    join(applicationDataRoot, "agent-settings.json"),
-  );
+  const agentConfiguration = createAgentConfiguration({ applicationDataRoot, safeStorage });
   let activeSessionId = sessionStore.getBootstrap().activeSession?.session.id ?? "";
 
   const ensureRuntime = async (snapshot: SessionSnapshot): Promise<SessionRuntime> => {
@@ -608,18 +593,9 @@ app.whenReady().then(async () => {
     });
   };
 
-  ipcMain.handle("agent-settings:get", (event) => {
-    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
-    return agentSettingsStore.get();
-  });
-  ipcMain.handle("agent-settings:save", (event, settings: unknown) => {
-    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
-    return agentSettingsStore.save(settings);
-  });
-  ipcMain.handle("agent-settings:migrate", (event, settings: unknown) => {
-    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
-    return agentSettingsStore.save(settings, true);
-  });
+  registerAgentConfigurationIpc(ipcMain, agentConfiguration.management, (event) =>
+    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds),
+  );
 
   ipcMain.handle("session:get-state", () => sessionStore.getBootstrap());
   ipcMain.handle("token-usage:get-stats", () => tokenUsageStore.getStats());
@@ -653,39 +629,6 @@ app.whenReady().then(async () => {
       return false;
     }
     return true;
-  });
-  ipcMain.handle("credentials:get-status", async (event, request: unknown) => {
-    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
-    return getCredentialStatusWithEnvironment(credentialStore, request);
-  });
-  ipcMain.handle("credentials:set-models", async (event, request: unknown) => {
-    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
-    await credentialStore.setModelCredentials(setModelCredentialsRequestSchema.parse(request));
-  });
-  ipcMain.handle("credentials:delete-model", async (event, request: unknown) => {
-    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
-    await credentialStore.deleteModelCredential(deleteModelCredentialRequestSchema.parse(request));
-  });
-  ipcMain.handle("credentials:set-web-search", async (event, request: unknown) => {
-    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
-    await credentialStore.setWebSearchCredential(
-      setWebSearchCredentialRequestSchema.parse(request),
-    );
-  });
-  ipcMain.handle("credentials:delete-web-search", async (event) => {
-    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
-    await credentialStore.deleteWebSearchCredential();
-  });
-  ipcMain.handle("models:list-remote", async (event, request: unknown) => {
-    assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
-    try {
-      return await listRemoteModels(credentialStore, request);
-    } catch (error) {
-      if (error instanceof ListRemoteModelsError) {
-        throw new Error(error.message);
-      }
-      throw error;
-    }
   });
   ipcMain.handle("ui-themes:list", () => listUiThemes());
   ipcMain.handle("ui-themes:read", (_event, themeId: unknown) => {
@@ -1226,10 +1169,9 @@ app.whenReady().then(async () => {
     let sessionId: string | undefined;
     let accepted = false;
     try {
-      const settings = await agentSettingsStore.get();
-      if (!settings) throw new Error("Execution settings have not been initialized.");
+      const plan = await agentConfiguration.runtime.loadExecutionPlan(request.modelId);
       controller.signal.throwIfAborted();
-      const admission = await acceptAgentRequest(sessionStore, settings, request);
+      const admission = await acceptAgentRequest(sessionStore, plan, request);
       sessionId = admission.sessionId;
       accepted = true;
       activeSessionId = sessionId;
@@ -1259,11 +1201,14 @@ app.whenReady().then(async () => {
             });
           controller.signal.throwIfAborted();
           const runtime = await getRuntimeForSession(admission.sessionId);
-          const primary = await hydrateAgentModelSettings(credentialStore, admission.model);
-          const services = await hydrateAgentRunServices(credentialStore, admission.services);
+          const configuration = await agentConfiguration.runtime.resolveRuntime(plan);
           controller.signal.throwIfAborted();
           agentGateway.clearPrimarySettings();
-          const selection = agentGateway.configure(primary, services.gateway, services.search);
+          const selection = agentGateway.configure(
+            configuration.primary,
+            configuration.gateway,
+            configuration.search,
+          );
           if (admission.threadId) {
             const restored = await runtime.agentService.restoreDurableThread(admission.threadId);
             if (!restored) throw new Error("The conversation can no longer be resumed.");

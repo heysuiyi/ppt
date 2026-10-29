@@ -3,7 +3,6 @@ import {
   type AgentGatewayConfig,
   DEFAULT_AGENT_GATEWAY_CONFIG,
 } from "@shared/agent-gateway-config";
-import { resolveEnvironmentModelApiKey } from "../../environment-credential-policy";
 import { AgentGatewayError } from "./errors";
 import type { ResolvedAgentModelConfig } from "./types";
 
@@ -15,11 +14,6 @@ export interface DriverResolvedConfig extends ResolvedAgentModelConfig {
   callPath: AgentCallPath;
 }
 
-export const DEFAULT_AGENT_MODELS: Record<AgentProvider, string> = {
-  openai: "gpt-5.5",
-  anthropic: "claude-sonnet-4-6",
-};
-
 export const DEFAULT_AGENT_TIMEOUT_MS = DEFAULT_AGENT_GATEWAY_CONFIG.timeoutMs;
 export const DEFAULT_AGENT_MAX_OUTPUT_TOKENS = DEFAULT_AGENT_GATEWAY_CONFIG.maxOutputTokens;
 
@@ -28,6 +22,7 @@ export const DEFAULT_AGENT_MAX_OUTPUT_TOKENS = DEFAULT_AGENT_GATEWAY_CONFIG.maxO
  * letting a same-provider fallback replace the active provider default.
  */
 export class AgentModelSettingsRegistry {
+  private activePrimary?: AgentModelSettings;
   private readonly providerDefaults = new Map<AgentProvider, AgentModelSettings>();
   private readonly primaryByConfigurationId = new Map<string, AgentModelSettings>();
   private readonly fallbackByConfigurationId = new Map<string, AgentModelSettings>();
@@ -38,6 +33,7 @@ export class AgentModelSettingsRegistry {
 
   registerPrimary(settings: AgentModelSettings): void {
     const registered = { ...settings };
+    this.activePrimary = registered;
     this.providerDefaults.set(settings.provider, registered);
     if (settings.configurationId) {
       this.primaryByConfigurationId.set(settings.configurationId, registered);
@@ -45,6 +41,7 @@ export class AgentModelSettingsRegistry {
   }
 
   clearPrimary(): void {
+    this.activePrimary = undefined;
     this.providerDefaults.clear();
     this.primaryByConfigurationId.clear();
   }
@@ -66,6 +63,10 @@ export class AgentModelSettingsRegistry {
       this.fallbackByProviderModel.set(settings.provider, providerModels);
     }
     providerModels.set(settings.model, registered);
+  }
+
+  getActivePrimary(): AgentModelSettings | undefined {
+    return this.activePrimary;
   }
 
   resolve(
@@ -102,33 +103,10 @@ export class AgentModelSettingsRegistry {
   }
 }
 
-function positiveInteger(value: string | undefined, fallback: number, name: string): number {
-  if (!value) return fallback;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new AgentGatewayError(`${name} must be a positive integer.`, "configuration");
-  }
-  return parsed;
-}
-
-function inferProvider(env: NodeJS.ProcessEnv): AgentProvider {
-  const configured = env.AGENT_PROVIDER?.trim().toLowerCase();
-  if (configured === "openai" || configured === "anthropic") return configured;
-  if (configured) {
-    throw new AgentGatewayError(
-      `Unsupported AGENT_PROVIDER: ${configured}. Expected openai or anthropic.`,
-      "configuration",
-    );
-  }
-  return env.ANTHROPIC_API_KEY && !env.OPENAI_API_KEY ? "anthropic" : "openai";
-}
-
 function resolveCallPath(
   provider: AgentProvider,
   baseURL: string | undefined,
   runtimeMode: AgentModelSettings["openaiApiMode"],
-  env: NodeJS.ProcessEnv,
-  allowEnvironmentMode = true,
 ): AgentCallPath {
   if (provider === "anthropic") return "anthropic";
 
@@ -142,16 +120,6 @@ function resolveCallPath(
     );
   }
 
-  const configured = allowEnvironmentMode ? env.OPENAI_API_MODE?.trim().toLowerCase() : undefined;
-  if (configured === "chat-completions") return "chat";
-  if (configured === "responses") return "responses";
-  if (configured) {
-    throw new AgentGatewayError(
-      `Unsupported OPENAI_API_MODE: ${configured}. Expected responses or chat-completions.`,
-      "configuration",
-      "openai",
-    );
-  }
   return baseURL ? "chat" : "responses";
 }
 
@@ -171,48 +139,30 @@ function isSameModelSelection(
 export function resolveFallbackModelSelection(
   current: AgentModelSelection | undefined,
   gatewayConfig?: AgentGatewayConfig,
-  env: NodeJS.ProcessEnv = process.env,
 ): AgentModelSelection | undefined {
   const configured = gatewayConfig?.fallbackModel;
-  if (configured) {
-    if (isSameModelSelection(current, configured)) {
-      return undefined;
-    }
-    return {
-      ...(configured.configurationId ? { configurationId: configured.configurationId } : {}),
-      ...(configured.vendorId ? { vendorId: configured.vendorId } : {}),
-      provider: configured.provider,
-      model: configured.model,
-      ...(configured.supports1MContext ? { supports1MContext: true } : {}),
-    };
-  }
-
-  const fallbackProvider = env.AGENT_FALLBACK_PROVIDER?.trim().toLowerCase();
-  const fallbackModel = env.AGENT_FALLBACK_MODEL?.trim();
-  if (fallbackProvider !== "openai" && fallbackProvider !== "anthropic") {
-    return undefined;
-  }
-  if (!fallbackModel) return undefined;
-  if (current?.provider === fallbackProvider && current.model === fallbackModel) {
-    return undefined;
-  }
-  return { provider: fallbackProvider, model: fallbackModel };
+  if (!configured || isSameModelSelection(current, configured)) return undefined;
+  return {
+    ...(configured.configurationId ? { configurationId: configured.configurationId } : {}),
+    ...(configured.vendorId ? { vendorId: configured.vendorId } : {}),
+    provider: configured.provider,
+    model: configured.model,
+    ...(configured.supports1MContext ? { supports1MContext: true } : {}),
+  };
 }
 
 export function resolveAgentModelConfig(
   selection: AgentModelSelection | undefined,
   runtimeSettings: AgentModelSettingsRegistry,
-  env: NodeJS.ProcessEnv = process.env,
   gatewayConfig?: AgentGatewayConfig,
 ): DriverResolvedConfig {
-  const provider = selection?.provider ?? inferProvider(env);
-  const runtime = runtimeSettings.resolve(selection, provider);
-  const runtimeApiKey = runtime?.apiKey?.trim();
-  const requestedBaseURL = runtime ? runtime.baseURL : selection?.baseURL;
-  const environmentApiKey = runtimeApiKey
-    ? undefined
-    : resolveEnvironmentModelApiKey(provider, requestedBaseURL, env);
-  const apiKey = runtimeApiKey ?? environmentApiKey;
+  const selected = selection ?? runtimeSettings.getActivePrimary();
+  if (!selected) {
+    throw new AgentGatewayError("No runtime model configured.", "configuration");
+  }
+  const { provider, model } = selected;
+  const runtime = runtimeSettings.resolve(selected, provider);
+  const apiKey = runtime?.apiKey?.trim();
 
   if (!apiKey) {
     throw new AgentGatewayError(
@@ -222,16 +172,7 @@ export function resolveAgentModelConfig(
     );
   }
 
-  const providerModel = provider === "openai" ? env.OPENAI_MODEL : env.ANTHROPIC_MODEL;
-  const model =
-    selection?.model ||
-    runtime?.model ||
-    env.AGENT_MODEL ||
-    providerModel ||
-    DEFAULT_AGENT_MODELS[provider];
-  const environmentBaseURL = provider === "openai" ? env.OPENAI_BASE_URL : env.ANTHROPIC_BASE_URL;
-  const usesRuntimeCredential = Boolean(runtimeApiKey);
-  const baseURL = requestedBaseURL ?? (usesRuntimeCredential ? undefined : environmentBaseURL);
+  const baseURL = runtime?.baseURL;
 
   return {
     ...((selection?.configurationId ?? runtime?.configurationId)
@@ -244,22 +185,8 @@ export function resolveAgentModelConfig(
     model,
     apiKey,
     baseURL,
-    callPath: resolveCallPath(
-      provider,
-      baseURL,
-      runtime?.openaiApiMode,
-      env,
-      !usesRuntimeCredential,
-    ),
-    timeoutMs:
-      gatewayConfig?.timeoutMs ??
-      positiveInteger(env.AGENT_TIMEOUT_MS, DEFAULT_AGENT_TIMEOUT_MS, "AGENT_TIMEOUT_MS"),
-    maxOutputTokens:
-      gatewayConfig?.maxOutputTokens ??
-      positiveInteger(
-        env.AGENT_MAX_OUTPUT_TOKENS,
-        DEFAULT_AGENT_MAX_OUTPUT_TOKENS,
-        "AGENT_MAX_OUTPUT_TOKENS",
-      ),
+    callPath: resolveCallPath(provider, baseURL, runtime?.openaiApiMode),
+    timeoutMs: gatewayConfig?.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS,
+    maxOutputTokens: gatewayConfig?.maxOutputTokens ?? DEFAULT_AGENT_MAX_OUTPUT_TOKENS,
   };
 }

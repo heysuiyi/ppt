@@ -11,10 +11,10 @@ installUiTypographyDefaults();
 
 const root = createRoot(document.getElementById("root")!);
 initializeAgentSettings()
-  .then(() => {
+  .then((bootstrap) => {
     root.render(
       <StrictMode>
-        <App />
+        <App bootstrap={bootstrap} />
       </StrictMode>,
     );
   })

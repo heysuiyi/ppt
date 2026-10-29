@@ -2,18 +2,21 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { z } from "zod";
 import {
   CREDENTIAL_STORE_FILE_NAME,
-  type CredentialStatusRequest,
   type CredentialStatusSnapshot,
   type CredentialStorageBackend,
   type CredentialStorageStatus,
   credentialApiKeySchema,
+  LEGACY_CREDENTIAL_STORE_FILE_NAME,
+} from "@shared/credentials";
+import { z } from "zod";
+import { readJsonFile, writeTextFileAtomic } from "../../agent/persistence/atomic-json-file";
+import {
+  type CredentialStatusRequest,
   credentialStatusRequestSchema,
   type DeleteModelCredentialRequest,
   deleteModelCredentialRequestSchema,
-  LEGACY_CREDENTIAL_STORE_FILE_NAME,
   type ModelCredentialBinding,
   modelCredentialBindingSchema,
   normalizeModelCredentialBinding,
@@ -24,8 +27,7 @@ import {
   setWebSearchCredentialRequestSchema,
   type WebSearchCredentialBinding,
   webSearchCredentialBindingSchema,
-} from "../shared/credentials";
-import { readJsonFile, writeTextFileAtomic } from "./agent/persistence/atomic-json-file";
+} from "./credential-types";
 
 const MODEL_CREDENTIAL_REF_PREFIX = "vendor:";
 const WEB_SEARCH_CREDENTIAL_REF = "web-search:tavily";
@@ -152,10 +154,6 @@ export class CredentialStore {
     this.now = options.now ?? (() => new Date());
   }
 
-  async getStorageStatus(): Promise<CredentialStorageStatus> {
-    return await this.exclusive(async () => (await this.inspectStorage()).status);
-  }
-
   async getStatus(input: CredentialStatusRequest = {}): Promise<CredentialStatusSnapshot> {
     return await this.exclusive(async () => {
       const request = this.parseStatusRequest(input);
@@ -216,7 +214,7 @@ export class CredentialStore {
     });
   }
 
-  async deleteModelCredential(input: DeleteModelCredentialRequest | string): Promise<void> {
+  async deleteModelCredential(input: DeleteModelCredentialRequest): Promise<void> {
     await this.exclusive(async () => {
       const request = this.parseDeleteModelCredentialRequest(input);
       const state = await this.readState();
@@ -568,10 +566,9 @@ export class CredentialStore {
   }
 
   private parseDeleteModelCredentialRequest(input: unknown): DeleteModelCredentialRequest {
-    const request = typeof input === "string" ? { vendorId: input } : input;
     return this.parseInput(
       deleteModelCredentialRequestSchema,
-      request,
+      input,
       "The model credential deletion request is invalid.",
     );
   }

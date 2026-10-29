@@ -1,80 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
-  agentRunServicesWireSchema,
-  DEFAULT_AGENT_GATEWAY_CONFIG,
   resolveAgentGatewayConfig,
   resolveAgentGatewayPreferences,
   resolveAgentSearchConfig,
-  splitAgentRunServicesConfig,
 } from "../src/shared/agent-gateway-config";
 
-describe("agent-gateway-config", () => {
-  it("applies defaults", () => {
-    expect(resolveAgentGatewayPreferences()).toEqual(DEFAULT_AGENT_GATEWAY_CONFIG);
-    expect(resolveAgentGatewayConfig()).toEqual(DEFAULT_AGENT_GATEWAY_CONFIG);
+describe("agent runtime parameter validation", () => {
+  it.each([0, -1, 1.5, Number.NaN])("rejects invalid timeout %s", (timeoutMs) => {
+    expect(() => resolveAgentGatewayConfig({ timeoutMs })).toThrow();
+    expect(() => resolveAgentGatewayPreferences({ timeoutMs })).toThrow();
   });
 
-  it("accepts fallback model settings for main process", () => {
-    const config = resolveAgentGatewayConfig({
-      timeoutMs: 300_000,
-      maxOutputTokens: 8192,
-      fallbackModel: {
-        provider: "anthropic",
-        model: "claude-sonnet-4-6",
-        apiKey: "secret",
-      },
-    });
-    expect(config.timeoutMs).toBe(300_000);
-    expect(config.fallbackModel?.provider).toBe("anthropic");
+  it.each([0, -1, 1.5])("rejects invalid output limit %s", (maxOutputTokens) => {
+    expect(() => resolveAgentGatewayConfig({ maxOutputTokens })).toThrow();
   });
 
-  it("resolves optional Tavily search settings separately from the gateway", () => {
-    const search = resolveAgentSearchConfig({
-      webSearchApiKey: "tvly-secret",
-      webSearchEndpoint: "https://api.tavily.com/search",
-      webSearchTimeoutMs: 20_000,
-    });
-    expect(search.webSearchApiKey).toBe("tvly-secret");
-    expect(search.webSearchEndpoint).toBe("https://api.tavily.com/search");
-    expect(search.webSearchTimeoutMs).toBe(20_000);
-  });
-
-  it("splits a secret-free run-services payload into gateway and search configs", () => {
-    const { gateway, search } = splitAgentRunServicesConfig({
-      timeoutMs: 300_000,
-      maxOutputTokens: 8192,
-      webSearchEndpoint: "https://api.tavily.com/search",
-      webSearchTimeoutMs: 20_000,
-    });
-    expect(gateway).toEqual({
-      timeoutMs: 300_000,
-      maxOutputTokens: 8192,
-    });
-    expect(search).toEqual({
-      webSearchEndpoint: "https://api.tavily.com/search",
-      webSearchTimeoutMs: 20_000,
-    });
-    expect(gateway).not.toHaveProperty("webSearchApiKey");
-  });
-
-  it("rejects credentials at the Renderer run-services boundary", () => {
+  it("rejects a malformed fallback model rather than deferring invalid identity to a driver", () => {
     expect(() =>
-      agentRunServicesWireSchema.parse({
-        timeoutMs: 300_000,
-        maxOutputTokens: 8192,
-        webSearchApiKey: "tvly-must-not-cross-ipc",
+      resolveAgentGatewayConfig({
+        fallbackModel: { provider: "openai", model: " " },
       }),
     ).toThrow();
-    expect(() =>
-      agentRunServicesWireSchema.parse({
-        timeoutMs: 300_000,
-        maxOutputTokens: 8192,
-        fallbackModel: {
-          provider: "openai",
-          model: "gpt-5.5",
-          apiKey: "sk-must-not-cross-ipc",
-        },
-      }),
-    ).toThrow();
+  });
+
+  it("rejects a non-positive search timeout", () => {
+    expect(() => resolveAgentSearchConfig({ webSearchTimeoutMs: 0 })).toThrow();
   });
 });

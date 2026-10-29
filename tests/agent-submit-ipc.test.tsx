@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRunAccepted, AgentStreamEvent, SubmitAgentRequest } from "../src/shared/ipc";
 
+// Reload the modules under test to isolate their pending-save queue between test cases.
 afterEach(() => vi.resetModules());
 
 describe("Renderer submit boundary", () => {
@@ -59,7 +60,7 @@ describe("Renderer submit boundary", () => {
   });
 
   it("does not submit using stale settings after a failed settings save", async () => {
-    const { saveExecutionSettings } = await import(
+    const { saveExecutionPreferences } = await import(
       "../src/renderer/src/app/agentSettingsPersistence"
     );
     const { executeAgentRun } = await import("../src/renderer/src/app/agent/agentRunExecution");
@@ -68,19 +69,18 @@ describe("Renderer submit boundary", () => {
       configurable: true,
       value: {
         submitAgentRun: submit,
-        saveAgentSettings: vi.fn().mockRejectedValue(new Error("settings write failed")),
+        saveAgentPreferences: vi.fn().mockRejectedValue(new Error("settings write failed")),
       },
     });
-    const { agentSettingsSchema } = await import("../src/shared/agent-settings");
+    const { agentPreferencesSchema } = await import("../src/shared/agent-configuration");
     const { DEFAULT_AGENT_STEP_LIMITS } = await import("../src/shared/agent-step-limits");
-    const settings = agentSettingsSchema.parse({
-      vendors: [],
+    const preferences = agentPreferencesSchema.parse({
       gateway: {},
       stepLimits: DEFAULT_AGENT_STEP_LIMITS,
       executionStrategy: "AUTO",
       defaultTemplateId: "test",
     });
-    await expect(saveExecutionSettings(settings)).rejects.toThrow("settings write failed");
+    await expect(saveExecutionPreferences(preferences)).rejects.toThrow("settings write failed");
     const request: SubmitAgentRequest = {
       requestId: crypto.randomUUID(),
       userMessageId: crypto.randomUUID(),

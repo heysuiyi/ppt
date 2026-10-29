@@ -656,44 +656,62 @@ describe("callModelWithRecovery", () => {
     ).rejects.toThrow("remained truncated");
   });
 
-  it("uses the query fallback model after consecutive overloads", async () => {
-    vi.useFakeTimers();
-    const queryModel = vi
-      .fn()
-      .mockRejectedValueOnce(
-        normalizeProviderError("openai", Object.assign(new Error("overloaded"), { status: 529 })),
-      )
-      .mockRejectedValueOnce(
-        normalizeProviderError("openai", Object.assign(new Error("overloaded"), { status: 529 })),
-      )
-      .mockResolvedValueOnce({
-        provider: "anthropic",
+  it.each(["query", "gateway"] as const)(
+    "uses the %s fallback model after consecutive overloads",
+    async (source) => {
+      vi.useFakeTimers();
+      const queryModel = vi
+        .fn()
+        .mockRejectedValueOnce(
+          normalizeProviderError("openai", Object.assign(new Error("overloaded"), { status: 529 })),
+        )
+        .mockRejectedValueOnce(
+          normalizeProviderError("openai", Object.assign(new Error("overloaded"), { status: 529 })),
+        )
+        .mockResolvedValueOnce({
+          provider: "anthropic",
+          model: "fallback",
+          content: textContent("ok"),
+        });
+      const fallback = {
+        configurationId: "fallback-config",
+        vendorId: "fallback-vendor",
+        provider: "anthropic" as const,
         model: "fallback",
-        content: textContent("ok"),
+      };
+      const gateway: AgentModelGateway = {
+        queryModel,
+        ...(source === "gateway"
+          ? {
+              getGatewayConfig: () => ({
+                timeoutMs: 180_000,
+                maxOutputTokens: 16_384,
+                fallbackModel: { ...fallback, apiKey: "runtime-fallback-key" },
+              }),
+            }
+          : {}),
+        async *queryModelStream() {
+          yield { type: "complete" as const, content: [] };
+        },
+      };
+
+      const promise = callModelWithRecovery({
+        gateway,
+        systemPrompt: "system",
+        promptPayload: { transcript: [] },
+        model: { provider: "openai", model: "primary" },
+        ...(source === "query" ? { fallbackModel: fallback } : {}),
       });
-    const gateway: AgentModelGateway = {
-      queryModel,
-      async *queryModelStream() {
-        yield { type: "complete" as const, content: [] };
-      },
-    };
+      await vi.runAllTimersAsync();
+      const result = await promise;
 
-    const promise = callModelWithRecovery({
-      gateway,
-      systemPrompt: "system",
-      promptPayload: { transcript: [] },
-      model: { provider: "openai", model: "primary" },
-      fallbackModel: { provider: "anthropic", model: "fallback" },
-    });
-    await vi.runAllTimersAsync();
-    const result = await promise;
-
-    expect(queryModel.mock.calls.map((call) => call[1])).toEqual([
-      { provider: "openai", model: "primary" },
-      { provider: "openai", model: "primary" },
-      { provider: "anthropic", model: "fallback" },
-    ]);
-    expect(result.modelUsed).toEqual({ provider: "anthropic", model: "fallback" });
-    vi.useRealTimers();
-  });
+      expect(queryModel.mock.calls.map((call) => call[1])).toEqual([
+        { provider: "openai", model: "primary" },
+        { provider: "openai", model: "primary" },
+        fallback,
+      ]);
+      expect(result.modelUsed).toEqual(fallback);
+      vi.useRealTimers();
+    },
+  );
 });

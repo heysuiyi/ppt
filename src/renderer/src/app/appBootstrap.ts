@@ -1,8 +1,9 @@
 import type { DesignSystemV2 } from "@design-system";
 import type { AgentExecutionStrategy } from "@shared/agent";
+import type { AgentConfigurationSnapshot } from "@shared/agent-configuration";
 import type { AgentGatewayPreferences } from "@shared/agent-gateway-config";
-import type { AgentSettings } from "@shared/agent-settings";
 import type { AgentStepLimits } from "@shared/agent-step-limits";
+import type { CredentialStatusSnapshot } from "@shared/credentials";
 import { APPLICATION_DEFAULT_TEMPLATE_ID } from "@shared/template-protocol";
 import {
   AGENT_GATEWAY_CONFIG_STORAGE_KEY,
@@ -10,7 +11,10 @@ import {
   loadAgentGatewayPreferences,
 } from "../agentGatewayConfig";
 import { AGENT_STEP_LIMITS_STORAGE_KEY, loadAgentStepLimits } from "../agentStepLimits";
-import { consumeCredentialReentryNotice } from "../credentialMigration";
+import {
+  CREDENTIAL_REENTRY_NOTICE_STORAGE_KEY,
+  consumeCredentialReentryNotice,
+} from "../credentialMigration";
 import {
   flattenVendors,
   LEGACY_MODEL_STORAGE_KEY,
@@ -61,6 +65,7 @@ export interface AppBootstrapSnapshot {
   agentStepLimits: AgentStepLimits;
   agentGatewayPreferences: AgentGatewayPreferences;
   credentialReentryRequired: boolean;
+  credentials?: CredentialStatusSnapshot;
 }
 
 function getBrowserStorage(): Storage | undefined {
@@ -157,10 +162,7 @@ export function loadPersistedUiSettings(): Partial<PersistedUiSettings> {
     const parsed = JSON.parse(v1) as Record<string, unknown>;
     if (!parsed || typeof parsed !== "object") return {};
 
-    const migrated = migrateLegacySettings(parsed);
-    writeStorageItem(UI_SETTINGS_STORAGE_KEY, JSON.stringify(migrated));
-    removeStorageItem(LEGACY_UI_SETTINGS_STORAGE_KEY);
-    return migrated;
+    return migrateLegacySettings(parsed);
   } catch {
     return {};
   }
@@ -184,23 +186,24 @@ export function resolveInitialColorScheme(settings: Partial<PersistedUiSettings>
   return "dark";
 }
 
-let mainSettings: AgentSettings | undefined;
-let migrationCredentialNotice = false;
-
-export async function initializeAgentSettings(): Promise<void> {
-  mainSettings = await window.desktopApi.getAgentSettings();
-  if (!mainSettings) {
-    const legacy = loadAppBootstrapSnapshot();
-    migrationCredentialNotice = legacy.credentialReentryRequired;
-    mainSettings = await window.desktopApi.migrateAgentSettings({
+export async function initializeAgentSettings(): Promise<AppBootstrapSnapshot> {
+  const existing = await window.desktopApi.getAgentConfiguration();
+  // Audit every browser source, even when Main already owns the settings.
+  const legacy = loadAppBootstrapSnapshot();
+  const configuration =
+    existing ??
+    (await window.desktopApi.initializeAgentConfiguration({
       vendors: legacy.vendors.map(({ credentialConfigured: _status, ...vendor }) => vendor),
       gateway: legacy.agentGatewayPreferences,
       stepLimits: legacy.agentStepLimits,
       executionStrategy: legacy.persistedUiSettings.executionStrategy ?? "REQUEST_APPROVAL",
       defaultTemplateId:
         legacy.persistedUiSettings.defaultTemplateId ?? APPLICATION_DEFAULT_TEMPLATE_ID,
-    });
-  }
+    }));
+  const bootstrap = loadAppBootstrapSnapshot(configuration);
+  bootstrap.credentialReentryRequired ||= legacy.credentialReentryRequired;
+
+  // Keep migration inputs and the warning retryable until Main has persisted successfully.
   for (const key of [
     MODEL_STORAGE_KEY,
     LEGACY_MODEL_STORAGE_KEY,
@@ -209,25 +212,36 @@ export async function initializeAgentSettings(): Promise<void> {
     LEGACY_AGENT_GATEWAY_CONFIG_STORAGE_KEY,
     AGENT_STEP_LIMITS_STORAGE_KEY,
   ]) {
-    window.localStorage.removeItem(key);
+    removeStorageItem(key);
   }
+  if (
+    !readStorageItem(UI_SETTINGS_STORAGE_KEY) &&
+    readStorageItem(LEGACY_UI_SETTINGS_STORAGE_KEY)
+  ) {
+    writeStorageItem(UI_SETTINGS_STORAGE_KEY, JSON.stringify(legacy.persistedUiSettings));
+    removeStorageItem(LEGACY_UI_SETTINGS_STORAGE_KEY);
+  }
+  consumeCredentialReentryNotice();
+  return bootstrap;
 }
 
-export function loadAppBootstrapSnapshot(): AppBootstrapSnapshot {
+export function loadAppBootstrapSnapshot(
+  configuration?: AgentConfigurationSnapshot,
+): AppBootstrapSnapshot {
   const persistedUiSettings = loadPersistedUiSettings();
   const initialColorScheme = resolveInitialColorScheme(persistedUiSettings);
-  const vendors = mainSettings?.vendors ?? loadManagedVendors();
+  const settings = configuration?.settings;
+  const vendors = settings?.vendors ?? loadManagedVendors();
   const models = flattenVendors(vendors);
-
-  const agentGatewayPreferences = mainSettings?.gateway ?? loadAgentGatewayPreferences();
+  const agentGatewayPreferences = settings?.gateway ?? loadAgentGatewayPreferences();
 
   return {
     persistedUiSettings: {
       ...persistedUiSettings,
-      ...(mainSettings
+      ...(settings
         ? {
-            executionStrategy: mainSettings.executionStrategy,
-            defaultTemplateId: mainSettings.defaultTemplateId,
+            executionStrategy: settings.executionStrategy,
+            defaultTemplateId: settings.defaultTemplateId,
           }
         : {}),
     },
@@ -236,14 +250,9 @@ export function loadAppBootstrapSnapshot(): AppBootstrapSnapshot {
     vendors,
     models,
     selectedModelId: readStorageItem(SELECTED_MODEL_STORAGE_KEY) ?? models[0]?.id ?? "",
-    agentStepLimits: mainSettings?.stepLimits ?? loadAgentStepLimits(),
+    agentStepLimits: settings?.stepLimits ?? loadAgentStepLimits(),
     agentGatewayPreferences,
-    credentialReentryRequired: takeCredentialNotice(),
+    credentials: configuration?.credentials,
+    credentialReentryRequired: readStorageItem(CREDENTIAL_REENTRY_NOTICE_STORAGE_KEY) === "1",
   };
-}
-
-function takeCredentialNotice(): boolean {
-  const notice = consumeCredentialReentryNotice() || migrationCredentialNotice;
-  migrationCredentialNotice = false;
-  return notice;
 }

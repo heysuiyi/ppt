@@ -1,11 +1,12 @@
 import { AppTopbar } from "./app/AppTopbar";
+import type { AppBootstrapSnapshot } from "./app/appBootstrap";
 import { SettingsView } from "./app/SettingsView";
 import { useAppModel } from "./app/useAppModel";
 import { NotificationViewport } from "./app/useNotificationCenter";
 import { WorkspaceView } from "./app/WorkspaceView";
 
-export function App() {
-  const { boot, shell, topbar, content } = useAppModel();
+export function App({ bootstrap }: { bootstrap: AppBootstrapSnapshot }) {
+  const { boot, shell, topbar, content } = useAppModel(bootstrap);
 
   if (boot.status === "error") {
     return (

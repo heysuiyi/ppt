@@ -257,16 +257,24 @@ describe("AgentGateway", () => {
         },
       },
     );
-    gateway.applyGatewayConfig({
-      timeoutMs: 180_000,
-      maxOutputTokens: 16_384,
-      fallbackModel: {
-        configurationId: "new-fallback",
+    gateway.configure(
+      {
+        configurationId: "primary-openai",
         provider: "openai",
-        model: "new-model",
-        apiKey: "new-key",
+        model: "primary-model",
+        apiKey: "primary-key",
       },
-    });
+      {
+        timeoutMs: 180_000,
+        maxOutputTokens: 16_384,
+        fallbackModel: {
+          configurationId: "new-fallback",
+          provider: "openai",
+          model: "new-model",
+          apiKey: "new-key",
+        },
+      },
+    );
 
     await expect(
       gateway.queryModel(
@@ -291,7 +299,15 @@ describe("AgentGateway", () => {
       expect.anything(),
     );
 
-    gateway.applyGatewayConfig({ timeoutMs: 180_000, maxOutputTokens: 16_384 });
+    gateway.configure(
+      {
+        configurationId: "primary-openai",
+        provider: "openai",
+        model: "primary-model",
+        apiKey: "primary-key",
+      },
+      { timeoutMs: 180_000, maxOutputTokens: 16_384 },
+    );
 
     await expect(
       gateway.queryModel(

@@ -77,6 +77,26 @@
   },
   "overrides": [
     {
+      "includes": ["src/**", "!src/main/agent-configuration/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/agent-configuration/**", "@main/agent-configuration/**"],
+                    "message": "Import the public agent-configuration entry point, not its implementation."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["tests/**", "**/*.test.ts", "**/*.test.tsx"],
       "linter": {
         "rules": {

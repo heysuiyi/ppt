@@ -1,4 +1,4 @@
-import type { AgentModelSelection, AgentProvider } from "@shared/agent";
+import type { AgentProvider } from "@shared/agent";
 import type {
   ModelCatalogEntry,
   ModelTokenPricing,
@@ -34,9 +34,6 @@ export interface ManagedModel {
   pricing?: ModelTokenPricing | null;
 }
 
-export type ModelVendorId = VendorKind;
-export type PresetModelVendorId = PresetVendorKind;
-
 export interface ModelVendorPreset {
   id: PresetVendorKind;
   label: string;
@@ -54,7 +51,6 @@ export interface ModelVendorDraft {
   label: string;
   protocol: AgentProvider;
   baseURL: string;
-  apiKey: string;
   enabled: boolean;
   models: ModelCatalogEntry[];
   isNew: boolean;
@@ -181,24 +177,6 @@ export const MODEL_VENDOR_PRESETS: readonly ModelVendorPreset[] = [
   },
 ] as const;
 
-/** @deprecated Prefer MODEL_VENDOR_PRESETS; retained for tests that inspect preset model ids. */
-export const MODEL_VENDOR_MODELS: ManagedModel[] = MODEL_VENDOR_PRESETS.flatMap((preset) =>
-  preset.models.map((model) => ({
-    id: model.id,
-    vendorId: preset.id,
-    vendorKind: preset.id,
-    vendorLabel: preset.label,
-    name: model.name,
-    provider: preset.defaultProvider,
-    model: model.model,
-    baseURL: preset.baseURLs[preset.defaultProvider] ?? "",
-    openaiApiMode: model.openaiApiMode,
-    ...(model.supports1MContext === true ? { supports1MContext: true } : {}),
-    enabled: true,
-    pricing: model.pricing,
-  })),
-);
-
 export const MODEL_STORAGE_KEY = "agent-ppt.models.v3";
 export const LEGACY_MODEL_STORAGE_KEY_V2 = "agent-ppt.models.v2";
 export const LEGACY_MODEL_STORAGE_KEY = "agent-ppt.models.v1";
@@ -246,7 +224,6 @@ export function buildVendorDraftFromPreset(
       label: existing.label,
       protocol: existing.protocol,
       baseURL: existing.baseURL,
-      apiKey: "",
       enabled: existing.enabled,
       models: existing.models.map((model) => ({ ...model })),
       isNew: false,
@@ -258,7 +235,6 @@ export function buildVendorDraftFromPreset(
     label: preset.label,
     protocol: preset.defaultProvider,
     baseURL: preset.baseURLs[preset.defaultProvider] ?? "",
-    apiKey: "",
     enabled: true,
     models: preset.models.map((model) => ({
       ...model,
@@ -277,7 +253,6 @@ export function buildCustomVendorDraft(existing?: ModelVendorConnection): ModelV
       label: existing.label,
       protocol: existing.protocol,
       baseURL: existing.baseURL,
-      apiKey: "",
       enabled: existing.enabled,
       models: existing.models.map((model) => ({ ...model })),
       isNew: false,
@@ -290,35 +265,10 @@ export function buildCustomVendorDraft(existing?: ModelVendorConnection): ModelV
     label: "自定义兼容服务",
     protocol: "openai",
     baseURL: "",
-    apiKey: "",
     enabled: true,
     models: [],
     isNew: true,
   };
-}
-
-export function buildModelVendorDraft(
-  vendorId: ModelVendorId,
-  existingModels: readonly ManagedModel[],
-  customModelId = `custom-${crypto.randomUUID()}`,
-): ModelVendorDraft {
-  if (vendorId === "custom") {
-    const draft = buildCustomVendorDraft();
-    draft.models = [
-      {
-        id: customModelId,
-        name: "自定义模型",
-        model: "",
-        openaiApiMode: "chat-completions",
-        supports1MContext: false,
-        enabled: true,
-        pricing: null,
-      },
-    ];
-    return draft;
-  }
-  const existingVendor = groupModelsIntoVendors(existingModels).find((v) => v.kind === vendorId);
-  return buildVendorDraftFromPreset(vendorId, existingVendor);
 }
 
 export function changeModelVendorDraftProtocol(
@@ -365,13 +315,7 @@ export function materializeVendorDraft(draft: ModelVendorDraft): ModelVendorConn
           }
         : model.pricing,
     })),
-    credentialConfigured: true,
   };
-}
-
-/** @deprecated Use materializeVendorDraft */
-export function materializeModelVendorDraft(draft: ModelVendorDraft): ManagedModel[] {
-  return flattenVendors([materializeVendorDraft(draft)]);
 }
 
 export function createCatalogEntriesFromRemoteIds(
@@ -392,29 +336,6 @@ export function createCatalogEntriesFromRemoteIds(
       pricing: null,
     };
   });
-}
-
-/** @deprecated Use createCatalogEntriesFromRemoteIds */
-export function createManagedModelsFromRemoteIds(
-  remoteModels: ReadonlyArray<{ id: string; displayName?: string }>,
-  draft: Pick<ModelVendorDraft, "protocol" | "baseURL">,
-  createId: () => string = () => `custom-${crypto.randomUUID()}`,
-): ManagedModel[] {
-  const baseURL = draft.baseURL.trim().replace(/\/+$/, "");
-  return createCatalogEntriesFromRemoteIds(remoteModels, draft.protocol, createId).map((entry) => ({
-    id: entry.id,
-    vendorId: "custom",
-    vendorKind: "custom" as const,
-    vendorLabel: "自定义兼容服务",
-    name: entry.name,
-    provider: draft.protocol,
-    model: entry.model,
-    baseURL,
-    openaiApiMode: entry.openaiApiMode,
-    supports1MContext: false,
-    enabled: true,
-    pricing: null,
-  }));
 }
 
 interface LegacyUsdPricing {
@@ -592,7 +513,9 @@ function normalizeLegacyFlatModels(value: unknown, legacyV1: boolean): LegacyFla
       return [];
     const apiKey = typeof item.apiKey === "string" ? item.apiKey.trim() : "";
     if (apiKey) foundSecret = true;
-    const bundled = MODEL_VENDOR_MODELS.find((model) => model.id === item.id);
+    const bundled = MODEL_VENDOR_PRESETS.find((preset) =>
+      preset.models.some((model) => model.id === item.id),
+    )?.models.find((model) => model.id === item.id);
     if (legacyV1 && bundled && !apiKey) return [];
     const storedPricing = normalizeModelTokenPricing(item.pricing);
     return [
@@ -613,29 +536,13 @@ function normalizeLegacyFlatModels(value: unknown, legacyV1: boolean): LegacyFla
   return models;
 }
 
-export function groupModelsIntoVendors(
-  models: readonly LegacyFlatModel[] | readonly ManagedModel[],
-): ModelVendorConnection[] {
+function groupModelsIntoVendors(models: readonly LegacyFlatModel[]): ModelVendorConnection[] {
   const vendorsByKey = new Map<string, ModelVendorConnection>();
 
   for (const model of models) {
-    const vendorId =
-      "vendorId" in model && typeof model.vendorId === "string"
-        ? model.vendorId
-        : (() => {
-            const kind = inferVendorKind(model.provider, model.baseURL, model.id);
-            return kind === "custom" ? `custom-${model.id}` : kind;
-          })();
-    const kind: VendorKind =
-      "vendorKind" in model && model.vendorKind
-        ? model.vendorKind
-        : vendorId.startsWith("custom-")
-          ? "custom"
-          : (vendorId as PresetVendorKind);
-    const label =
-      "vendorLabel" in model && model.vendorLabel
-        ? model.vendorLabel
-        : (getModelVendorPreset(kind)?.label ?? "自定义兼容服务");
+    const kind = inferVendorKind(model.provider, model.baseURL, model.id);
+    const vendorId = kind === "custom" ? `custom-${model.id}` : kind;
+    const label = getModelVendorPreset(kind)?.label ?? "自定义兼容服务";
 
     let vendor = vendorsByKey.get(vendorId);
     if (!vendor) {
@@ -665,18 +572,19 @@ export function groupModelsIntoVendors(
   return [...vendorsByKey.values()];
 }
 
+function containsLegacySecret(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some(containsLegacySecret);
+  const record = value as Record<string, unknown>;
+  return (
+    (typeof record.apiKey === "string" && Boolean(record.apiKey.trim())) ||
+    Object.values(record).some(containsLegacySecret)
+  );
+}
+
 function parseLegacyModelStorage(raw: string): unknown {
   const value = JSON.parse(raw) as unknown;
-  if (
-    Array.isArray(value) &&
-    value.some((candidate) => {
-      if (!candidate || typeof candidate !== "object") return false;
-      const apiKey = (candidate as { apiKey?: unknown }).apiKey;
-      return typeof apiKey === "string" && Boolean(apiKey.trim());
-    })
-  ) {
-    markCredentialReentryRequired();
-  }
+  if (containsLegacySecret(value)) markCredentialReentryRequired();
   return value;
 }
 
@@ -688,62 +596,17 @@ function auditLegacyModelStorage(raw: string): void {
   }
 }
 
-export function serializeManagedVendors(vendors: readonly ModelVendorConnection[]): string {
-  return JSON.stringify({
-    version: 3,
-    vendors: vendors.map((vendor) => ({
-      id: vendor.id,
-      kind: vendor.kind,
-      label: vendor.label,
-      protocol: vendor.protocol,
-      baseURL: vendor.baseURL,
-      enabled: vendor.enabled,
-      models: vendor.models.map((model) => ({
-        id: model.id,
-        name: model.name,
-        model: model.model,
-        openaiApiMode: model.openaiApiMode,
-        ...(model.supports1MContext === undefined
-          ? {}
-          : { supports1MContext: model.supports1MContext }),
-        enabled: model.enabled,
-        ...(model.pricing === undefined ? {} : { pricing: model.pricing }),
-      })),
-    })),
-  });
-}
-
-export function saveManagedVendors(vendors: readonly ModelVendorConnection[]): void {
-  window.localStorage.setItem(MODEL_STORAGE_KEY, serializeManagedVendors(vendors));
-}
-
-/** Persist flattened models by regrouping into vendors (compat for callers still saving flats). */
-export function saveManagedModels(models: readonly ManagedModel[]): void {
-  saveManagedVendors(groupModelsIntoVendors(models));
-}
-
-export function serializeManagedModels(models: readonly ManagedModel[]): string {
-  return serializeManagedVendors(groupModelsIntoVendors(models));
-}
-
 export function loadManagedVendors(): ModelVendorConnection[] {
   try {
     const storedV3 = window.localStorage.getItem(MODEL_STORAGE_KEY);
     const storedV2 = window.localStorage.getItem(LEGACY_MODEL_STORAGE_KEY_V2);
     const legacyV1 = window.localStorage.getItem(LEGACY_MODEL_STORAGE_KEY);
 
-    if (legacyV1 !== null) {
-      window.localStorage.removeItem(LEGACY_MODEL_STORAGE_KEY);
-    }
-    if (storedV2 !== null) {
-      window.localStorage.removeItem(LEGACY_MODEL_STORAGE_KEY_V2);
-    }
-
     if (storedV3 !== null) {
+      auditLegacyModelStorage(storedV3);
       if (legacyV1 !== null) auditLegacyModelStorage(legacyV1);
       if (storedV2 !== null) auditLegacyModelStorage(storedV2);
       const vendors = normalizeStoredVendors(JSON.parse(storedV3));
-      saveManagedVendors(vendors);
       return vendors;
     }
 
@@ -752,7 +615,6 @@ export function loadManagedVendors(): ModelVendorConnection[] {
       const flat = normalizeLegacyFlatModels(JSON.parse(storedV2), false);
       markCredentialReentryRequired();
       const vendors = groupModelsIntoVendors(flat);
-      saveManagedVendors(vendors);
       return vendors;
     }
 
@@ -760,23 +622,11 @@ export function loadManagedVendors(): ModelVendorConnection[] {
     const flat = normalizeLegacyFlatModels(parseLegacyModelStorage(legacyV1), true);
     markCredentialReentryRequired();
     const vendors = groupModelsIntoVendors(flat);
-    saveManagedVendors(vendors);
     return vendors;
   } catch {
-    try {
-      window.localStorage.removeItem(MODEL_STORAGE_KEY);
-      window.localStorage.removeItem(LEGACY_MODEL_STORAGE_KEY_V2);
-      window.localStorage.removeItem(LEGACY_MODEL_STORAGE_KEY);
-    } catch {
-      /* Storage may be unavailable. */
-    }
     markCredentialReentryRequired();
     return [];
   }
-}
-
-export function loadManagedModels(): ManagedModel[] {
-  return flattenVendors(loadManagedVendors());
 }
 
 export function isModelEnabled(model: ManagedModel): boolean {
@@ -785,26 +635,6 @@ export function isModelEnabled(model: ManagedModel): boolean {
 
 export function isVendorEnabled(vendor: ModelVendorConnection): boolean {
   return vendor.enabled !== false;
-}
-
-export function toAgentModelSelection(model: ManagedModel): AgentModelSelection {
-  return {
-    configurationId: model.id,
-    vendorId: model.vendorId,
-    provider: model.provider,
-    model: model.model.trim(),
-    baseURL: model.baseURL.trim() || undefined,
-    openaiApiMode: model.provider === "openai" ? model.openaiApiMode : undefined,
-    supports1MContext: model.supports1MContext === true,
-  };
-}
-
-export function vendorCredentialBinding(vendor: ModelVendorConnection) {
-  return {
-    vendorId: vendor.id,
-    provider: vendor.protocol,
-    ...(vendor.baseURL.trim() ? { baseURL: vendor.baseURL.trim() } : {}),
-  };
 }
 
 export function countUsableModels(models: readonly ManagedModel[]): number {

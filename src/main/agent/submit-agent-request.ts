@@ -1,25 +1,17 @@
-import type { AgentSettings } from "@shared/agent-settings";
 import type { SubmitAgentRequest } from "@shared/ipc";
 import { createSessionTitleFromPrompt, type SessionChatMessage } from "@shared/session";
 import { toAgentMessageHistory } from "@shared/session-recovery";
-import { resolveConfiguredModel } from "../agent-settings-store";
+import type { ExecutionPlan } from "../agent-configuration";
 import type { FileSessionStore } from "../session-store";
 import type { DurableServiceThread } from "./persistence/durable-service-store";
 
 /** Called under Main's foreground-run reservation. No Renderer state is consulted. */
 export async function acceptAgentRequest(
   store: FileSessionStore,
-  settings: AgentSettings,
+  plan: ExecutionPlan,
   request: SubmitAgentRequest,
 ) {
-  const model = resolveConfiguredModel(settings, request.modelId);
-  const fallbackId = settings.gateway.fallbackModelId;
-  const fallbackEnabled = settings.vendors.some(
-    (vendor) =>
-      vendor.enabled && vendor.models.some((model) => model.id === fallbackId && model.enabled),
-  );
-  const fallbackModel =
-    fallbackId && fallbackEnabled ? resolveConfiguredModel(settings, fallbackId) : undefined;
+  const { model } = plan;
   if (store.conversationDatabase.hasRun(request.requestId)) {
     throw new Error("This request has already been accepted.");
   }
@@ -37,7 +29,7 @@ export async function acceptAgentRequest(
       ? await store.prepareSession({
           rootPath: request.target.rootPath,
           title: createSessionTitleFromPrompt(request.prompt),
-          defaultTemplateId: settings.defaultTemplateId,
+          defaultTemplateId: plan.defaultTemplateId,
         })
       : undefined;
   const sessionId =
@@ -75,7 +67,6 @@ export async function acceptAgentRequest(
     if (durable?.status === "active" || durable?.status === "waiting_user")
       threadId = durable.threadId;
   }
-  const { fallbackModelId: _fallbackId, ...gateway } = settings.gateway;
   const history = toAgentMessageHistory(messages);
   if (threadId && durable?.status === "waiting_user") {
     messages = messages.map((message) =>
@@ -123,10 +114,8 @@ export async function acceptAgentRequest(
     sessionId,
     threadId,
     history,
-    model,
-    services: { ...gateway, fallbackModel },
-    stepLimits: settings.stepLimits,
-    executionStrategy: request.executionStrategy ?? settings.executionStrategy,
+    stepLimits: plan.stepLimits,
+    executionStrategy: request.executionStrategy ?? plan.executionStrategy,
     bootstrap: { ...store.getBootstrap(), activeSession: store.getSession(sessionId) },
   };
 }

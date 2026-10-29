@@ -160,7 +160,7 @@ npm.cmd run dev
 
 启动后，在桌面应用里打开 **Settings -> 模型**，配置模型供应商、API Key、端点、超时、输出上限和 fallback 模型。
 
-模型与搜索 API Key 由 Main 进程托管，并由 Electron `safeStorage` 的正常后端加密后保存在应用数据目录。Renderer 的持久化设置、`localStorage` 和 Agent run IPC 不含 Secret；Renderer 只在录入时短暂持有 Key，并通过只写的凭据 IPC 交给 Main，不能再读取明文。Linux 的 `basic_text` 后端仍可使用，但会明确标记为 `degraded`。旧版 v1 `localStorage` 中的明文 Key 不会自动导入；升级后需要重新录入，并建议轮换旧 Key。开发环境仍支持 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 和 `TAVILY_API_KEY` fallback；环境 Key 只会发送到官方端点，或与对应 `OPENAI_BASE_URL`、`ANTHROPIC_BASE_URL`、`TAVILY_SEARCH_ENDPOINT` 明确绑定的端点。携带凭据的远程端点必须使用 HTTPS，只有 loopback 开发服务可使用 HTTP。开发诊断和 CI 覆盖项可以参考 [.env.example](./.env.example)。
+模型与搜索 API Key 由 Main 的 `agent-configuration` 模块托管，并由 Electron `safeStorage` 的正常后端加密后保存在应用数据目录。Renderer 的持久化设置、`localStorage` 和 Agent run IPC 不含 Secret；Renderer 只在录入时短暂持有 Key，通过配置管理命令明确执行保留、替换或清除操作，不能读取已保存的明文。Linux 的 `basic_text` 后端仍可使用，但会明确标记为 `degraded`。旧版 v1 `localStorage` 中的明文 Key 不会自动导入；升级后需要重新录入，并建议轮换旧 Key。开发环境仍支持 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 和 `TAVILY_API_KEY` fallback；环境 Key 只会发送到官方端点，或与对应 `OPENAI_BASE_URL`、`ANTHROPIC_BASE_URL`、`TAVILY_SEARCH_ENDPOINT` 明确绑定的端点。携带凭据的远程端点必须使用 HTTPS，只有 loopback 开发服务可使用 HTTP。开发诊断和 CI 覆盖项可以参考 [.env.example](./.env.example)。
 
 如需让 Agent 联网调研，请在 **Settings -> 搜索与联网** 填写 Tavily API Key。开发环境也可设置 `TAVILY_API_KEY`；搜索结果会以标题、URL 和摘要返回给主 Agent 及任务图 teammate。
 
@@ -220,6 +220,11 @@ PPTX exporter (hybrid: SVG background + editable text)
   - 布局由容器分配空间：根节点限定窗口高度，主体通过 Flex/Grid 伸展；栏宽由 `useWorkbenchLayout` 的 CSS 变量统一控制，并通过 `ResizeObserver` 按实际容器尺寸适配。内部面板独立滚动，局部响应式使用容器查询；窗口缩小时不会覆盖用户保存的预览宽度。SVG 预览保持 16:9，作者坐标仍为 1280×720。
   - 面板尺寸拖拽统一使用 `src/renderer/src/components/ResizeHandle.tsx`：受控 `value/min/max/onValueChange`，`axis` 选择左右或上下拖动，`direction` 决定增减方向。组件统一管理 idle/hover/dragging/disabled、指针捕获、全局光标和清理；支持方向键（10px）、Home/End。取消保留最后尺寸，禁用、失焦、失去捕获、卸载或边界变化时结束拖拽；尺寸约束和持久化仍由布局层负责。
 - `src/main/agent/`：Agent runtime、工具注册、模型网关、审批门禁、子任务
+- `src/main/agent-configuration/`：通过 `createAgentConfiguration()` 提供 `management` 和 `runtime` 两套操作，不公开 Store、凭据绑定或解密接口。
+  - Renderer 只使用管理 IPC：读取无密钥快照、初始化、保存/删除厂商、保存执行偏好、修改搜索凭据、发现远程模型。厂商保存完成后才发布已提交状态；历史浏览器配置只读迁移，Main 初始化成功后清理。
+  - 运行请求只按 `modelId` 选模：`loadExecutionPlan(modelId)` 固化本次模型和执行偏好，受理后 `resolveRuntime(plan)` 读取匹配凭据并应用环境回退；网关和搜索服务不再自行读取环境配置。缺失的可选搜索/备用密钥不提前阻塞主模型。
+  - 已保存连接的模型发现仅接收 `vendorId`，地址与密钥由 Main 决定；连接草稿必须提供临时 Key。修改协议或地址不会将旧 Key 重新绑定到新连接。
+  - 保留 `agent-settings.json`、`credentials.v2.json` 及原有迁移和凭据锁；整项管理操作串行协调，但不承诺两个文件之间的原子事务。模块外只能导入公共入口。
 - `src/design-system/`：DesignSystemV2 schema、预设与解析
 - `src/shared/`：演示文稿模型、命令模型、会话与 IPC 类型
 - `src/main/project/`：本地项目沙箱、产物读写、diff 和依赖状态

@@ -1,4 +1,5 @@
-import { modelCredentialBindingFromSelection, normalizeCredentialUrl } from "@shared/credentials";
+import type { DiscoverAgentModelsRequest } from "@shared/agent-configuration";
+import { normalizeCredentialUrl } from "@shared/credentials";
 import type { RemoteModelInfo } from "@shared/remote-models";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -15,7 +16,6 @@ import {
   type ModelVendorDraft,
   materializeVendorDraft,
   type PresetVendorKind,
-  toAgentModelSelection,
   type VendorKind,
 } from "../modelCatalog";
 import { Edit3Icon, PlusIcon, RefreshIcon, TrashIcon } from "./Icons";
@@ -262,42 +262,26 @@ export function ModelManagement({
 
   const fetchRemoteModels = async () => {
     if (!draft) return;
-    const apiKey = dialogApiKey.trim();
-    if (!apiKey && !vendors.find((vendor) => vendor.id === draft.id)?.credentialConfigured) {
-      triggerToast("请先填写 API Key");
-      return;
-    }
     if (!draft.baseURL.trim() || !validHttpURL(draft.baseURL)) {
       triggerToast("请填写有效的 Base URL");
       return;
     }
+    const apiKey = dialogApiKey.trim();
+    const existing = vendors.find((vendor) => vendor.id === draft.id);
+    const canUseSavedCredential =
+      existing?.credentialConfigured === true &&
+      existing.protocol === draft.protocol &&
+      validHttpURL(existing.baseURL) &&
+      normalizeCredentialUrl(existing.baseURL) === normalizeCredentialUrl(draft.baseURL);
+    if (!apiKey && !canUseSavedCredential) {
+      triggerToast("请先填写 API Key；连接地址变更后不能使用已保存的 Key");
+      return;
+    }
     setRemotePending(true);
     try {
-      const existing = vendors.find((vendor) => vendor.id === draft.id);
-      const request = {
-        provider: draft.protocol,
-        baseURL: draft.baseURL.trim(),
-        ...(apiKey
-          ? { apiKey }
-          : existing
-            ? {
-                credentialBinding: modelCredentialBindingFromSelection(
-                  toAgentModelSelection({
-                    id: existing.models[0]?.id ?? existing.id,
-                    vendorId: existing.id,
-                    vendorKind: existing.kind,
-                    vendorLabel: existing.label,
-                    name: existing.label,
-                    provider: existing.protocol,
-                    model: existing.models[0]?.model ?? "placeholder",
-                    baseURL: existing.baseURL,
-                    openaiApiMode: existing.models[0]?.openaiApiMode ?? "responses",
-                    credentialConfigured: existing.credentialConfigured,
-                  }),
-                ),
-              }
-            : {}),
-      };
+      const request: DiscoverAgentModelsRequest = apiKey
+        ? { type: "draft", provider: draft.protocol, baseURL: draft.baseURL.trim(), apiKey }
+        : { type: "saved-vendor", vendorId: draft.id };
       const result = await window.desktopApi.listRemoteModels(request);
       setRemoteModels(result.models);
       setRemoteSelectedIds(draft.models.map((model) => model.model));
