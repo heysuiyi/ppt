@@ -39,8 +39,8 @@ block loses the cascade and its colors silently do nothing.
 \`\`\`css
 :root[data-skin][data-color-scheme="dark"] {
   --surface-canvas: #0f1419;
-  --surface-base: #151b22;
-  --surface-raised: #1b222c;
+  --surface-base: #1b222c;
+  --surface-raised: #151b22;
   --surface-sunken: #212a35;
   --surface-overlay: #27313d;
   --text-primary: #f3f6fa;
@@ -105,8 +105,8 @@ const EXAMPLE_THEME_CSS = `/*
 
 :root[data-skin][data-color-scheme="dark"] {
   --surface-canvas: #0f1419;
-  --surface-base: #151b22;
-  --surface-raised: #1b222c;
+  --surface-base: #1b222c;
+  --surface-raised: #151b22;
   --surface-sunken: #212a35;
   --surface-overlay: #27313d;
   --surface-hover: rgba(255, 255, 255, 0.06);
