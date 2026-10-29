@@ -121,7 +121,7 @@
 }
 
 .token-activity-actions,
-.token-view-tabs {
+.token-currency-filter {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -130,33 +130,6 @@
 .token-activity-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-
-.token-view-tabs button {
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  font-weight: var(--type-label-weight);
-  line-height: var(--text-sm-lh);
-  cursor: pointer;
-  transition: var(--transition-color);
-}
-
-.token-view-tabs button {
-  min-height: var(--control-height-sm);
-  padding: 4px 6px;
-  border-radius: var(--button-border-radius);
-}
-
-.token-view-tabs button:hover,
-.token-view-tabs button[aria-selected="true"] {
-  color: var(--text-primary);
-}
-
-.token-view-tabs button[aria-selected="true"] {
-  background: var(--surface-sunken);
 }
 
 .token-usage-refresh:disabled svg {

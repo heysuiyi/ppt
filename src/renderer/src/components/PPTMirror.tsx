@@ -20,6 +20,7 @@ import {
 import { PreviewNavigation } from "./PreviewNavigation";
 import { SlidePreviewGallery } from "./SlidePreviewGallery";
 import { SlidePreviewSurface } from "./SlidePreviewSurface";
+import { Tabs, TabsList, TabsPanel } from "./Tabs";
 
 interface PPTMirrorProps {
   isExporting: boolean;
@@ -65,10 +66,22 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
     [artifactCards],
   );
   const inspectionBatchKey = getSlidePreviewBatchKey(inspectionPreviews);
-  const [activeView, setActiveView] = useState<"slides" | "inspection">(() =>
-    inspectionPreviews.length > 0 ? "inspection" : "slides",
-  );
-  const surfacedInspectionBatchRef = useRef<string | undefined>(inspectionBatchKey);
+  const [viewState, setViewState] = useState<{
+    batchKey: string | undefined;
+    view: "slides" | "inspection";
+  }>(() => ({
+    batchKey: inspectionBatchKey,
+    view: inspectionPreviews.length > 0 ? "inspection" : "slides",
+  }));
+  const activeView =
+    viewState.batchKey === inspectionBatchKey
+      ? viewState.view
+      : inspectionPreviews.length > 0
+        ? "inspection"
+        : "slides";
+  if (viewState.batchKey !== inspectionBatchKey) {
+    setViewState({ batchKey: inspectionBatchKey, view: activeView });
+  }
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const slides = presentation.slides;
@@ -92,18 +105,6 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
   const reviewedSlideCount = slides.filter((slide) => reviewedSlideIds.has(slide.id)).length;
   const selectedSlideIndex = slides.findIndex((slide) => slide.id === selectedSlideId);
   const selectedSlide = slides[selectedSlideIndex >= 0 ? selectedSlideIndex : 0];
-
-  useEffect(() => {
-    if (!inspectionBatchKey || inspectionBatchKey === surfacedInspectionBatchRef.current) return;
-    surfacedInspectionBatchRef.current = inspectionBatchKey;
-    setActiveView("inspection");
-  }, [inspectionBatchKey]);
-
-  useEffect(() => {
-    if (activeView === "inspection" && inspectionPreviews.length === 0) {
-      setActiveView("slides");
-    }
-  }, [activeView, inspectionPreviews.length]);
 
   // 当外部选中/高亮变化时，平滑滚动至可视区域
   useEffect(() => {
@@ -196,175 +197,175 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
         </div>
       </div>
 
-      <div className="mirror-workbench-toolbar">
-        <div className="mirror-view-tabs" role="tablist" aria-label="预览内容">
-          <button
-            type="button"
-            role="tab"
-            id="mirror-slides-tab"
-            aria-controls="mirror-preview-content"
-            aria-selected={activeView === "slides"}
-            className={activeView === "slides" ? "is-active" : ""}
-            onClick={() => setActiveView("slides")}
-          >
-            <LayoutIcon size={14} />
-            <span>幻灯片</span>
-            <b>{slides.length}</b>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="mirror-inspection-tab"
-            aria-controls="mirror-preview-content"
-            aria-selected={activeView === "inspection"}
-            className={activeView === "inspection" ? "is-active" : ""}
-            onClick={() => setActiveView("inspection")}
-            disabled={inspectionPreviews.length === 0}
-          >
-            <CheckIcon size={14} />
-            <span>检查结果</span>
-            <b>{inspectionPreviews.length}</b>
-          </button>
-        </div>
+      <Tabs<"slides" | "inspection">
+        value={activeView}
+        onValueChange={(view) => setViewState({ batchKey: inspectionBatchKey, view })}
+        items={[
+          {
+            value: "slides",
+            label: (
+              <>
+                <LayoutIcon size={14} />
+                <span>幻灯片</span>
+                <b>{slides.length}</b>
+              </>
+            ),
+          },
+          {
+            value: "inspection",
+            disabled: inspectionPreviews.length === 0,
+            label: (
+              <>
+                <CheckIcon size={14} />
+                <span>检查结果</span>
+                <b>{inspectionPreviews.length}</b>
+              </>
+            ),
+          },
+        ]}
+      >
+        <div className="mirror-workbench-toolbar">
+          <TabsList label="预览内容" variant="inset" className="mirror-view-tabs" />
 
-        {activeView === "slides" ? (
-          <div className="mirror-view-summary">
-            <div className="mirror-view-summary-copy">
-              <strong title={selectedSlide?.title}>{selectedSlide?.title ?? "暂无页面"}</strong>
-              <span>
-                {slides.length > 0
-                  ? `第 ${Math.max(0, selectedSlideIndex) + 1} 页 / 共 ${slides.length} 页`
-                  : "等待生成演示文稿"}
-              </span>
-            </div>
-            <PreviewNavigation
-              index={selectedSlideIndex}
-              count={slides.length}
-              onNavigate={selectRelativeSlide}
-            />
-          </div>
-        ) : (
-          <div className="mirror-view-summary mirror-inspection-summary">
-            <div className="mirror-view-summary-copy">
-              <strong>本轮页面检查</strong>
-              <span>
-                {slides.length > 0
-                  ? `覆盖 ${reviewedSlideCount} / ${slides.length} 页`
-                  : `${inspectionPreviews.length} 页`}
-              </span>
-            </div>
-            <div
-              className="mirror-inspection-progress"
-              role="progressbar"
-              aria-label="页面检查覆盖率"
-              aria-valuemin={0}
-              aria-valuemax={Math.max(1, slides.length)}
-              aria-valuenow={reviewedSlideCount}
-            >
-              <span
-                style={{
-                  width: `${
-                    slides.length > 0
-                      ? Math.min(100, (reviewedSlideCount / slides.length) * 100)
-                      : 0
-                  }%`,
-                }}
+          {activeView === "slides" ? (
+            <div className="mirror-view-summary">
+              <div className="mirror-view-summary-copy">
+                <strong title={selectedSlide?.title}>{selectedSlide?.title ?? "暂无页面"}</strong>
+                <span>
+                  {slides.length > 0
+                    ? `第 ${Math.max(0, selectedSlideIndex) + 1} 页 / 共 ${slides.length} 页`
+                    : "等待生成演示文稿"}
+                </span>
+              </div>
+              <PreviewNavigation
+                index={selectedSlideIndex}
+                count={slides.length}
+                onNavigate={selectRelativeSlide}
               />
             </div>
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="mirror-view-summary mirror-inspection-summary">
+              <div className="mirror-view-summary-copy">
+                <strong>本轮页面检查</strong>
+                <span>
+                  {slides.length > 0
+                    ? `覆盖 ${reviewedSlideCount} / ${slides.length} 页`
+                    : `${inspectionPreviews.length} 页`}
+                </span>
+              </div>
+              <div
+                className="mirror-inspection-progress"
+                role="progressbar"
+                aria-label="页面检查覆盖率"
+                aria-valuemin={0}
+                aria-valuemax={Math.max(1, slides.length)}
+                aria-valuenow={reviewedSlideCount}
+              >
+                <span
+                  style={{
+                    width: `${
+                      slides.length > 0
+                        ? Math.min(100, (reviewedSlideCount / slides.length) * 100)
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
 
-      {/* 幻灯片导航与页面检查共用右侧工作台 */}
-      <div
-        id="mirror-preview-content"
-        className={`sections-container flex-1 overflow-y-auto mirror-workbench-content mirror-workbench-content--${activeView}`}
-        ref={scrollContainerRef}
-        role="tabpanel"
-        aria-labelledby={activeView === "slides" ? "mirror-slides-tab" : "mirror-inspection-tab"}
-      >
-        {activeView === "inspection" ? (
-          <SlidePreviewGallery
-            previews={orderedInspectionPreviews}
-            selectedSlideId={selectedSlideId}
-            onSelectSlide={selectInspectedSlide}
-            renderSlide={renderInspectedSlide}
-            variant="panel"
-          />
-        ) : (
-          <div className="mirror-slides-workspace">
-            {selectedSlide ? (
-              <section className="mirror-focus-preview" aria-label="当前页面预览">
-                <div className="mirror-focus-preview-label">
-                  <span>当前页面</span>
-                  <span>
-                    {Math.max(0, selectedSlideIndex) + 1} / {slides.length}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="mirror-focus-canvas"
-                  onClick={handleFullscreenOpen}
-                  aria-label={`放大查看第 ${Math.max(0, selectedSlideIndex) + 1} 页：${selectedSlide.title}`}
-                >
-                  <SlidePreviewSurface
-                    slide={selectedSlide}
-                    className="mirror-slide-frame mirror-focus-frame"
-                  />
-                  <span className="mirror-focus-canvas-action">点击放大查看</span>
-                </button>
-              </section>
-            ) : null}
-
-            <div className="mirror-slide-list" aria-label="幻灯片导航">
-              {slides.map((slide, index) => {
-                const isSelected = selectedSlideId === slide.id;
-                const isHighlighted = highlightSlideId === slide.id;
-
-                return (
+        {/* 幻灯片导航与页面检查共用右侧工作台 */}
+        <div
+          className={`sections-container flex-1 overflow-y-auto mirror-workbench-content mirror-workbench-content--${activeView}`}
+          ref={scrollContainerRef}
+        >
+          <TabsPanel value="inspection">
+            <SlidePreviewGallery
+              previews={orderedInspectionPreviews}
+              selectedSlideId={selectedSlideId}
+              onSelectSlide={selectInspectedSlide}
+              renderSlide={renderInspectedSlide}
+              variant="panel"
+            />
+          </TabsPanel>
+          <TabsPanel value="slides">
+            <div className="mirror-slides-workspace">
+              {selectedSlide ? (
+                <section className="mirror-focus-preview" aria-label="当前页面预览">
+                  <div className="mirror-focus-preview-label">
+                    <span>当前页面</span>
+                    <span>
+                      {Math.max(0, selectedSlideIndex) + 1} / {slides.length}
+                    </span>
+                  </div>
                   <button
                     type="button"
-                    key={slide.id}
-                    ref={(element) => {
-                      cardRefs.current[slide.id] = element;
-                    }}
-                    className={`mirror-slide-card-container ${
-                      isSelected ? "selected" : ""
-                    } ${isHighlighted ? "highlighted-pulse" : ""}`}
-                    onClick={() => onSelectSlide(slide.id)}
-                    aria-label={`选择第 ${index + 1} 页：${slide.title}`}
-                    aria-current={isSelected ? "page" : undefined}
+                    className="mirror-focus-canvas"
+                    onClick={handleFullscreenOpen}
+                    aria-label={`放大查看第 ${Math.max(0, selectedSlideIndex) + 1} 页：${selectedSlide.title}`}
                   >
                     <SlidePreviewSurface
-                      slide={slide}
-                      compact
-                      className="mirror-slide-frame mirror-slide-wrapper"
+                      slide={selectedSlide}
+                      className="mirror-slide-frame mirror-focus-frame"
                     />
-                    <span className="mirror-card-meta">
-                      <span className="mirror-card-identity">
-                        <span className="slide-number">
-                          {(index + 1).toString().padStart(2, "0")}
-                        </span>
-                        <span className="mirror-card-title" title={slide.title}>
-                          {slide.title}
-                        </span>
-                      </span>
-                      {isSelected && <span className="selected-tag">已选中</span>}
-                    </span>
+                    <span className="mirror-focus-canvas-action">点击放大查看</span>
                   </button>
-                );
-              })}
-            </div>
+                </section>
+              ) : null}
 
-            {slides.length === 0 && (
-              <div className="mirror-empty-state">
-                <p className="mirror-empty-title">还没有幻灯片</p>
-                <p className="mirror-empty-hint">在下方对话框描述你的需求，AI 会帮你生成第一页。</p>
+              <div className="mirror-slide-list" aria-label="幻灯片导航">
+                {slides.map((slide, index) => {
+                  const isSelected = selectedSlideId === slide.id;
+                  const isHighlighted = highlightSlideId === slide.id;
+
+                  return (
+                    <button
+                      type="button"
+                      key={slide.id}
+                      ref={(element) => {
+                        cardRefs.current[slide.id] = element;
+                      }}
+                      className={`mirror-slide-card-container ${
+                        isSelected ? "selected" : ""
+                      } ${isHighlighted ? "highlighted-pulse" : ""}`}
+                      onClick={() => onSelectSlide(slide.id)}
+                      aria-label={`选择第 ${index + 1} 页：${slide.title}`}
+                      aria-current={isSelected ? "page" : undefined}
+                    >
+                      <SlidePreviewSurface
+                        slide={slide}
+                        compact
+                        className="mirror-slide-frame mirror-slide-wrapper"
+                      />
+                      <span className="mirror-card-meta">
+                        <span className="mirror-card-identity">
+                          <span className="slide-number">
+                            {(index + 1).toString().padStart(2, "0")}
+                          </span>
+                          <span className="mirror-card-title" title={slide.title}>
+                            {slide.title}
+                          </span>
+                        </span>
+                        {isSelected && <span className="selected-tag">已选中</span>}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            )}
-          </div>
-        )}
-      </div>
+
+              {slides.length === 0 && (
+                <div className="mirror-empty-state">
+                  <p className="mirror-empty-title">还没有幻灯片</p>
+                  <p className="mirror-empty-hint">
+                    在下方对话框描述你的需求，AI 会帮你生成第一页。
+                  </p>
+                </div>
+              )}
+            </div>
+          </TabsPanel>
+        </div>
+      </Tabs>
 
       <Dialog
         open={isFullscreen}

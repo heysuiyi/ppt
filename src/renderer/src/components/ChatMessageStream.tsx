@@ -16,7 +16,7 @@ import type {
   ChatWorkspaceSession,
 } from "./chat-workspace-types";
 import { CopyIcon, Edit3Icon } from "./Icons";
-import { MessageMarkdown } from "./MessageMarkdown";
+import { MarkdownView } from "./markdown/MarkdownView";
 import { TaskPlanCard } from "./TaskPlanCard";
 import { FocusedTeamSession } from "./TeamSessionViews";
 import { UserMessageEditor } from "./UserMessageEditor";
@@ -112,7 +112,11 @@ export function ChatMessageStream({
                       onSubmit={() => saveEditing(message.id)}
                     />
                   ) : (
-                    <MessageMarkdown content={message.content} className="user-message-text" />
+                    <MarkdownView
+                      documentId={message.id}
+                      content={message.content}
+                      className="user-message-text"
+                    />
                   )}
                 </div>
 
@@ -239,6 +243,7 @@ function AssistantMessageContent({
   if (message.runId) {
     return (
       <AgentRunTimeline
+        documentId={message.id}
         items={trace}
         content={message.content}
         live={useLiveTrace}
@@ -248,6 +253,10 @@ function AssistantMessageContent({
     );
   }
   return message.content ? (
-    <MessageMarkdown content={message.content} className="assistant-response" />
+    <MarkdownView
+      documentId={message.id}
+      content={message.content}
+      className="assistant-response"
+    />
   ) : null;
 }

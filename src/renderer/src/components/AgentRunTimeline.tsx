@@ -7,11 +7,13 @@ import {
 import type { AgentTaskNode } from "@shared/agent-task-list";
 import { buildProcessTraceRows } from "@shared/process-trace-rows";
 import type React from "react";
+import { useRef } from "react";
 import { ProcessTraceItem } from "./ProcessTraceItem";
 import { ProcessTracePanel } from "./ProcessTracePanel";
-import { TypewriterMarkdown } from "./TypewriterMarkdown";
+import { MarkdownView } from "./markdown/MarkdownView";
 
 interface AgentRunTimelineProps {
+  documentId: string;
   items: AgentActivityItem[];
   content: string;
   live?: boolean;
@@ -21,16 +23,31 @@ interface AgentRunTimelineProps {
 }
 
 export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({
+  documentId,
   items,
   content,
   live = false,
   durationMs,
   teamGraphTasks = [],
 }) => {
+  const liveOriginRef = useRef({ documentId, live });
+  if (liveOriginRef.current.documentId !== documentId) {
+    liveOriginRef.current = { documentId, live };
+  } else if (live) {
+    liveOriginRef.current.live = true;
+  }
+  const markdownMode = liveOriginRef.current.live ? "live" : "static";
+
   if (items.length === 0) {
     return content ? (
       <div className="agent-run-timeline">
-        <TypewriterMarkdown content={content} active={live} className="assistant-response" />
+        <MarkdownView
+          documentId={documentId}
+          content={content}
+          mode={markdownMode}
+          streaming={live}
+          className="assistant-response"
+        />
       </div>
     ) : null;
   }
@@ -56,9 +73,11 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({
               data-run-block-id={item.id}
               data-run-block-kind="response"
             >
-              <TypewriterMarkdown
+              <MarkdownView
+                documentId={`${documentId}:${item.id}`}
                 content={getResponseBlockContent(item, content)}
-                active={live && Boolean(item.streaming)}
+                mode={markdownMode}
+                streaming={live && Boolean(item.streaming)}
                 className="assistant-response"
               />
             </div>

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ChatWorkspace,
   type ChatWorkspaceProps,
@@ -12,9 +12,17 @@ import {
   setDisplayCardStatus,
 } from "../src/shared/cards/display-card-managers";
 
+beforeEach(() => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => Object.assign(new EventTarget(), { matches: false })),
+  );
+});
+
 afterEach(() => {
   cleanup();
   clearAllDisplayCardManagers();
+  vi.unstubAllGlobals();
 });
 
 function workspaceProps(isNewChat: boolean): ChatWorkspaceProps {

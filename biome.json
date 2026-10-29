@@ -97,6 +97,31 @@
       }
     },
     {
+      "includes": [
+        "src/renderer/src/components/Button.tsx",
+        "src/renderer/src/components/Field.tsx",
+        "src/renderer/src/components/Switch.tsx",
+        "src/renderer/src/components/Select.tsx",
+        "src/renderer/src/components/Menu.tsx",
+        "src/renderer/src/components/Dialog.tsx",
+        "src/renderer/src/components/Tabs.tsx",
+        "src/renderer/src/components/PreviewNavigation.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noPositiveTabindex": "error",
+            "useAriaActivedescendantWithTabindex": "error",
+            "useAriaPropsForRole": "error",
+            "useButtonType": "error",
+            "useValidAriaProps": "error",
+            "useValidAriaRole": "error",
+            "useValidAriaValues": "error"
+          }
+        }
+      }
+    },
+    {
       "includes": ["tests/**", "**/*.test.ts", "**/*.test.tsx"],
       "linter": {
         "rules": {

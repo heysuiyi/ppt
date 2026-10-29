@@ -17,7 +17,7 @@ Research: [工作台 Token 体系调研与新版建议](./token-system-review.md
 | Studio recipe | `tokens/skins/studio.css` | Explicit dark/light palette; no legacy accent/shape switches |
 | Fonts | `tokens/fonts.css` | System UI stacks, mono and retained presentation font resources |
 | Settings layout | `tokens/settings-density.css` | Settings typography, row minimum, page padding, label/content widths; not a global density mode |
-| Components | `components/` | Button, field, Switch, Select, Menu, Dialog, artifact and preview recipes; loading, run status and resize affordances |
+| Components | `components/` | Button, field, Switch, Select, Tabs, Menu, Dialog, artifact and preview recipes; loading, run status and resize affordances |
 | Regions | `modules/` | Area layout and consumer-specific recipes |
 | Catnip | `themes/catnip.css` | Both palettes, shape identity and private decoration |
 
@@ -28,13 +28,15 @@ Modules consume semantic, geometry and typography roles. Component-only geometry
 - `Button` / `IconButton` own native button behavior and primary/secondary/quiet/danger recipes; `type` defaults to `button`. Regions own placement and width, not another copy of hover/disabled/selected styles. `aria-pressed`, `aria-selected` and `aria-current="page"` preserve selection independently of hover.
 - `Input` / `Textarea` own field chrome and forward native props/ref. `Switch` keeps the native checkbox and shared switch recipe. Numeric parsing and persistence stay with consumers; `useCommittedNumberDraft` shares only draft synchronization and commit lifecycle.
 - `SettingsRow` labels recognized controls using their actual IDs; composite controls receive a labelled group. `SettingsChoiceGroup` represents pressed choices, while usage tabs retain tab semantics. `RangeField` owns value output plus slider structure; consumers choose immediate or end-of-interaction persistence.
+- `Tabs` is a controlled, DOM-free provider; `TabsList` owns horizontal automatic activation, disabled-item skipping, Home/End and roving tabindex. `TabsPanel` retains a hidden association wrapper while mounting only active content. IDs are unique per instance. External value changes do not move focus; removal/disable recovery is limited to focus that belonged to the list. Mirror inspection-batch selection remains a consumer policy.
+- Trend metrics use Tabs; currency is an independent labelled group of pressed Buttons, not another tablist controlling the trend panel. `components/tabs.css` owns plain/inset recipes. Regions retain placement, counts and icons rather than another copy of tab states.
 - `Select` is the shared single-choice implementation, including the compact Composer model selector. `Menu` serves action menus; slash completion remains a listbox attached to the Composer input. They share viewport positioning and overlay ownership, not business selection semantics.
-- `Dialog` owns modal lifecycle, dynamic focus boundaries, background inertness, scroll locking and focus return. Only the top layer handles Escape. Select/Menu portals mount inside their owning dialog; regions supply panel dimensions and optional keyboard actions. The attached permission gate is an inline region, not a modal.
+- `Dialog` owns modal lifecycle, dynamic focus boundaries, background inertness, scroll locking and focus return. Only the top layer handles Escape. Select/Menu portals mount inside their owning dialog; nested modals make siblings along their ancestor path inert. Route unmount restores surviving openers and prior background state. An empty dialog focuses its named panel rather than its backdrop. The attached permission gate is an inline region, not a modal.
 - `ArtifactCard`, `CardHeader` and `CardActions` own artifact structure. Parent `.card-stack` owns separation, including Catnip decoration clearance. Approval and patch state machines remain independent.
 - `SlidePreviewSurface` owns SVG image/placeholder rendering; preview navigation is shared. PNG inspection screenshots keep their cover behavior. Slide paper, author colors and viewport sizing remain content/layout facts.
 - Presentation export has one application-layer action and busy state. Chat messages and mirror notifications are separate result consumers; neither the Button nor preview surface owns export IPC.
 
-Built-in themes target `[data-ui-button][data-variant]`, `[data-ui-field]`, `[data-ui-switch]`, `[data-ui-menu]` and `[data-ui-dialog]`. `[data-theme-emphasis="primary"]` explicitly preserves Catnip emphasis for actions that remain neutral in Studio. It does not change business meaning. Fullscreen slideshow panels are excluded from Catnip dialog chrome.
+Built-in themes target `[data-ui-button][data-variant]`, `[data-ui-field]`, `[data-ui-switch]`, `[data-ui-tabs][data-variant]`, `[data-ui-tab]`, `[data-ui-menu]` and `[data-ui-dialog]`. `[data-theme-emphasis="primary"]` explicitly preserves Catnip emphasis for actions that remain neutral in Studio. It does not change business meaning. Fullscreen slideshow panels are excluded from Catnip dialog chrome.
 
 ## Theme runtime and cascade
 
@@ -79,7 +81,7 @@ Native caption buttons/background follow the existing main-process light/dark re
 | `--danger/success/warning` + glow/border | Status text/icons and subtle state treatment, not arbitrary solid fills with white text. |
 | `--elevation-1/2/3`, `--modal-backdrop` | Depth and scrim; do not use unregistered shadow/surface synonyms. |
 | `--scrollbar-thumb-color/hover-color` | Shared scrollbar appearance; no local hard-coded black/white theme branches. |
-| `--field/button/card/panel/popover-border-radius` | Shape by role. `--workbench-border-radius` owns the workbench outer surface. |
+| `--field/button/card/panel/popover-border-radius` | Shape by role. `--workbench-border-radius` controls only the workbench top-left corner; the other outer corners are square. |
 | `--control-radius-xs/sm/md/lg/xl/pill` | Existing size-family consumers; direct base-radius mapping, no global scale multiplication. |
 | `--space-1/2/3/4/5/6/8` | Stable 4/8/12/16/20/24/32px scale. Structure values such as 0, auto and percentages do not need tokens. |
 | `--control-height-sm/md` | 28/32px minimum, not fixed text clipping heights. |
@@ -101,6 +103,14 @@ Do not introduce a global density multiplier. Studio field/button/card/panel/pop
 - Reduced motion disables nonessential transitions and decoration through the owning recipe while preserving understandable state. Prefer property-specific transitions; never `transition: all`.
 - Do not force `-webkit-font-smoothing` to simulate thinner dark text. Actual platform fonts and CJK fallbacks need actual rendering checks.
 
+### Targeted static checks and verification
+
+`biome.json` explicitly enables button-type, valid ARIA role/property/value, required role-property, active-descendant focusability and nonpositive-tabindex checks for the shared Button/Field/Switch/Select/Menu/Dialog/Tabs/PreviewNavigation implementations. The general renderer a11y recommendation set is not enabled wholesale. CI already runs `npm run lint`; these checks use that existing entry, not a second scanner.
+
+These rules do not prove accessible names, contrast, keyboard lifecycle or correct panel associations. Behavior regressions cover tab navigation, disabled/removed options, external updates, instance isolation, nested Escape, route unmount, dynamic focus boundaries and menu reflow. Browser smoke exercised actual Mirror and usage components, cross-region focus retention, nested inert/scroll restoration, and Studio/Catnip dark/light at 20px base type. Chromium forced-colors emulation showed a visible 2px keyboard outline on a tab; this is not an OS high-contrast or screen-reader certification.
+
+CSS raw-token/legacy-class scanning and repository-wide formatting normalization are not silently added here. Dynamic coordinates, percentages, local content geometry and SVG paper colors remain valid exceptions to generic style migration.
+
 ## Content and layout boundaries
 
 PPT white paper, SVG author colors, template palette swatches, aspect ratios, progress percentages and measured positions remain content/behavior facts. Preview modal headers, toolbars, close controls and canvas around the paper are workbench UI and must follow the theme. Do not filter or recolor slide content.
@@ -118,6 +128,8 @@ The example theme follows the same dark chrome/work-area direction: `--surface-b
 The workbench outer edge is tonal rather than stroked. Studio separators use 2.5% / 5.5% neutral alpha; stronger functional boundaries remain separate. Sidebar selection locally uses a 6% primary-text state layer and neutral text instead of an accent outline. Native Studio caption backgrounds match chrome.
 
 Background ownership is shared, not per-column: `.app-shell` alone paints `--surface-base` across the window. Titlebar, workspace grid and sidebar slot are transparent; `.left-panel` also stays transparent. `.rounded-canvas` independently paints opaque `--surface-raised`, including its settings/chat descendants. `--surface-canvas` remains the body/first-paint fallback. A theme should override these tokens, not replace region backgrounds with transparent gradients.
+
+The work surface meets the shell's right and bottom edges: `.workspace-container` has no outer padding and `.rounded-canvas` owns `border-radius: var(--workbench-border-radius) 0 0 0`. Do not reintroduce a uniform radius on `.workbench-main-surface`; workspace and settings must share this recipe. Interior spacing, titlebar height and sidebar resize geometry remain unchanged. Runtime geometry checks found zero right/bottom gaps in all Studio/Catnip/example dark/light settings screens and in the conversation with the sidebar expanded/collapsed; the Studio light conversation was visually inspected.
 
 Settings functional cards use mode-specific tonal hierarchy: light mode retains the equal mix of `--surface-raised` and `--surface-overlay`; dark mode shades `--surface-raised` with 20% black so functional blocks are darker than their backdrop. Do not reuse window chrome (`--surface-base`) here: custom palettes can reverse the intended direction. This section recipe does not set shell/work-area palette values.
 

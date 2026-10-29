@@ -251,8 +251,7 @@
   }
 }
 
-.typewriter-markdown--active::after {
-  content: "";
+.markdown-ink-caret {
   display: inline-block;
   width: 2px;
   height: 1em;
@@ -260,11 +259,7 @@
   border-radius: 1px;
   background: var(--accent-primary);
   vertical-align: -0.12em;
-  animation: typewriter-caret var(--duration-loading-inner) steps(1, end) infinite;
-}
-
-.typewriter-markdown--active > p:last-child {
-  display: inline;
+  animation: markdown-ink-caret var(--duration-loading-inner) steps(1, end) infinite;
 }
 
 .visually-hidden {
@@ -279,7 +274,7 @@
   border: 0;
 }
 
-@keyframes typewriter-caret {
+@keyframes markdown-ink-caret {
   0%,
   46% {
     opacity: 1;
@@ -370,7 +365,7 @@
   .run-status-pulse i,
   .process-trace-row-status--running i,
   .reasoning-cursor,
-  .typewriter-markdown--active::after {
+  .markdown-ink-caret {
     animation: none;
   }
 

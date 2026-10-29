@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dialog } from "../src/renderer/src/components/Dialog";
@@ -93,6 +93,198 @@ describe("overlay ownership", () => {
     fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
     expect(document.activeElement).toBe(last);
   });
+
+  it.each([false, true])(
+    "restores background state and the surviving opener when navigation unmounts dialogs (nested: %s)",
+    async (nested) => {
+      function NavigationHarness({ settings }: { settings: boolean }) {
+        const [open, setOpen] = useState(false);
+        const [childOpen, setChildOpen] = useState(false);
+        return (
+          <>
+            <button
+              onClick={(event) => {
+                event.currentTarget.focus();
+                setOpen(true);
+              }}
+            >
+              Open settings route
+            </button>
+            {settings && (
+              <Dialog open={open} onClose={() => setOpen(false)} label="Route settings">
+                <button
+                  onClick={(event) => {
+                    event.currentTarget.focus();
+                    setChildOpen(true);
+                  }}
+                >
+                  Open nested settings
+                </button>
+                <Dialog
+                  open={childOpen}
+                  onClose={() => setChildOpen(false)}
+                  label="Nested route settings"
+                >
+                  <input aria-label="Nested setting" />
+                </Dialog>
+              </Dialog>
+            )}
+          </>
+        );
+      }
+      const originalOverflow = document.body.style.overflow;
+      const alreadyInert = document.createElement("aside");
+      alreadyInert.inert = true;
+      document.body.append(alreadyInert);
+      document.body.style.overflow = "scroll";
+      const view = render(<NavigationHarness settings />);
+      const addedBackground = document.createElement("aside");
+      try {
+        const opener = screen.getByRole("button", { name: "Open settings route" });
+        fireEvent.click(opener);
+        if (nested) {
+          fireEvent.click(screen.getByRole("button", { name: "Open nested settings" }));
+          expect(document.activeElement).toBe(
+            screen.getByRole("textbox", { name: "Nested setting" }),
+          );
+        }
+        await act(async () => {
+          document.body.append(addedBackground);
+        });
+        expect(addedBackground.inert).toBe(true);
+        expect(document.body.style.overflow).toBe("hidden");
+        view.rerender(<NavigationHarness settings={false} />);
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(view.container.inert).toBeFalsy();
+        expect(addedBackground.inert).toBeFalsy();
+        expect(alreadyInert.inert).toBe(true);
+        expect(document.body.style.overflow).toBe("scroll");
+        expect(document.activeElement).toBe(opener);
+      } finally {
+        view.unmount();
+        alreadyInert.remove();
+        addedBackground.remove();
+        document.body.style.overflow = originalOverflow;
+      }
+    },
+  );
+
+  it("returns keyboard ownership to the lower dialog only after its child layers close", () => {
+    const lowerKey = vi.fn();
+    const upperKey = vi.fn();
+    function NestedHarness() {
+      const [open, setOpen] = useState(false);
+      const [upperOpen, setUpperOpen] = useState(false);
+      return (
+        <>
+          <button
+            onClick={(event) => {
+              event.currentTarget.focus();
+              setOpen(true);
+            }}
+          >
+            Open lower dialog
+          </button>
+          <Dialog open={open} onClose={() => setOpen(false)} label="Lower" onKeyDown={lowerKey}>
+            <button
+              onClick={(event) => {
+                event.currentTarget.focus();
+                setUpperOpen(true);
+              }}
+            >
+              Open upper dialog
+            </button>
+            <Dialog
+              open={upperOpen}
+              onClose={() => setUpperOpen(false)}
+              label="Upper"
+              onKeyDown={upperKey}
+            >
+              <Select
+                ariaLabel="Upper model"
+                value="a"
+                onChange={() => {}}
+                options={[
+                  { value: "a", label: "Alpha" },
+                  { value: "b", label: "Bravo" },
+                ]}
+              />
+            </Dialog>
+          </Dialog>
+        </>
+      );
+    }
+    const { container } = render(<NestedHarness />);
+    const opener = screen.getByRole("button", { name: "Open lower dialog" });
+    fireEvent.click(opener);
+    const upperOpener = screen.getByRole("button", { name: "Open upper dialog" });
+    fireEvent.click(upperOpener);
+    expect(upperOpener.inert).toBe(true);
+    const select = screen.getByRole("combobox", { name: "Upper model" });
+    fireEvent.click(select);
+    fireEvent.keyDown(select, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Upper" })).toBeTruthy();
+    expect(upperOpener.inert).toBe(true);
+    expect(document.activeElement).toBe(select);
+    fireEvent.keyDown(select, { key: "F2" });
+    expect(upperKey).toHaveBeenCalledTimes(1);
+    expect(lowerKey).not.toHaveBeenCalled();
+    fireEvent.keyDown(select, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Upper" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Lower" })).toBeTruthy();
+    expect(document.activeElement).toBe(upperOpener);
+    expect(upperOpener.inert).toBeFalsy();
+    expect(container.inert).toBe(true);
+    expect(document.body.style.overflow).toBe("hidden");
+    fireEvent.keyDown(upperOpener, { key: "F2" });
+    expect(lowerKey).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(upperOpener, { key: "Escape" });
+    expect(document.activeElement).toBe(opener);
+    expect(container.inert).toBeFalsy();
+  });
+
+  it("updates both Tab boundaries when fields are disabled or removed and traps an empty dialog", () => {
+    function Fields({
+      disabled,
+      removed,
+      empty,
+    }: {
+      disabled: boolean;
+      removed: boolean;
+      empty: boolean;
+    }) {
+      return (
+        <Dialog open onClose={() => {}} label="Dynamic fields">
+          {!empty && (
+            <>
+              <button>First field</button>
+              <input aria-label="Middle field" />
+              {!removed && <input aria-label="Last field" disabled={disabled} />}
+            </>
+          )}
+        </Dialog>
+      );
+    }
+    const view = render(<Fields disabled={false} removed={false} empty={false} />);
+    const first = screen.getByRole("button", { name: "First field" });
+    const middle = screen.getByRole("textbox", { name: "Middle field" });
+    screen.getByRole("textbox", { name: "Last field" }).focus();
+    view.rerender(<Fields disabled removed={false} empty={false} />);
+    first.focus();
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(middle);
+    view.rerender(<Fields disabled={false} removed empty={false} />);
+    middle.focus();
+    fireEvent.keyDown(middle, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+    view.rerender(<Fields disabled={false} removed empty />);
+    const dialog = screen.getByRole("dialog", { name: "Dynamic fields" });
+    fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+    expect(document.activeElement).toBe(dialog);
+    fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(dialog);
+  });
 });
 
 function MenuHarness({ x, y, onDelete }: { x: number; y: number; onDelete: () => void }) {
@@ -155,5 +347,80 @@ describe("action menus", () => {
     expect(screen.queryByRole("menu")).toBeNull();
     expect(onDelete).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(session);
+  });
+
+  it("repositions an anchored Select after ancestor scrolling and viewport resizing", () => {
+    render(
+      <div>
+        <Select
+          ariaLabel="Positioned model"
+          value="a"
+          onChange={() => {}}
+          options={[{ value: "a", label: "Alpha" }]}
+        />
+      </div>,
+    );
+    const trigger = screen.getByRole("combobox", { name: "Positioned model" });
+    let rect = new DOMRect(100, 100, 200, 30);
+    vi.spyOn(trigger, "getBoundingClientRect").mockImplementation(() => rect);
+    fireEvent.click(trigger);
+    const listbox = screen.getByRole("listbox");
+    const initialTop = Number.parseFloat(listbox.style.top);
+    rect = new DOMRect(560, 500, 200, 30);
+    fireEvent.scroll(trigger.parentElement!);
+    expect(Number.parseFloat(listbox.style.left)).toBe(560);
+    expect(Number.parseFloat(listbox.style.top)).not.toBe(initialTop);
+    expect(Number.parseFloat(listbox.style.top) + 122).toBeLessThanOrEqual(rect.top - 4);
+    vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(320);
+    vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(400);
+    rect = new DOMRect(280, 350, 200, 30);
+    fireEvent.resize(window);
+    expect(Number.parseFloat(listbox.style.left)).toBeGreaterThanOrEqual(8);
+    expect(
+      Number.parseFloat(listbox.style.left) + Number.parseFloat(listbox.style.width),
+    ).toBeLessThanOrEqual(312);
+    expect(
+      Number.parseFloat(listbox.style.top) +
+        Math.min(122, Number.parseFloat(listbox.style.maxHeight)),
+    ).toBeLessThanOrEqual(rect.top - 4);
+  });
+
+  it("moves growing menu content above its anchor without a resize or scroll event", async () => {
+    let contentHeight = 120;
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => contentHeight);
+    const item = (index: number) => ({
+      id: `action-${index}`,
+      label: `Action ${index}`,
+      onSelect: () => {},
+    });
+    const view = render(
+      <Menu
+        open
+        label="Growing actions"
+        onClose={() => {}}
+        point={{ x: 100, y: 400 }}
+        items={[item(0)]}
+      />,
+    );
+    const menu = screen.getByRole("menu", { name: "Growing actions" });
+    expect(Number.parseFloat(menu.style.top)).toBeGreaterThan(400);
+    contentHeight = 260;
+    await act(async () => {
+      view.rerender(
+        <Menu
+          open
+          label="Growing actions"
+          onClose={() => {}}
+          point={{ x: 100, y: 400 }}
+          items={Array.from({ length: 12 }, (_, index) => item(index))}
+        />,
+      );
+    });
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(12);
+    expect(Number.parseFloat(menu.style.top)).toBeGreaterThanOrEqual(8);
+    expect(
+      Number.parseFloat(menu.style.top) +
+        Math.min(contentHeight + 2, Number.parseFloat(menu.style.maxHeight)),
+    ).toBeLessThanOrEqual(396);
   });
 });

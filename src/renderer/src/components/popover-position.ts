@@ -74,11 +74,20 @@ export function usePopoverPosition(
     };
     reposition();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
-    if (menu.current) observer?.observe(menu.current);
+    const contentObserver = new MutationObserver(reposition);
+    if (menu.current) {
+      observer?.observe(menu.current);
+      contentObserver.observe(menu.current, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
     window.addEventListener("resize", reposition);
     window.addEventListener("scroll", reposition, true);
     return () => {
       observer?.disconnect();
+      contentObserver.disconnect();
       window.removeEventListener("resize", reposition);
       window.removeEventListener("scroll", reposition, true);
     };

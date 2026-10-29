@@ -126,6 +126,8 @@ Each agent run creates an independent proposal card. If one conversation thread 
 - Switch between Agent Workspace, Project Files, and session search in the left panel
 - Review briefs, outlines, combined content/visual proposals, and tool approval cards in the chat stream
 - Inspect task plans, stage progress, tool calls, and sub-agent traces
+- Read Markdown replies with tables, task lists, references, and footnotes; new replies appear progressively with a subtle ink-clearing effect, while history appears immediately and received text finishes displaying after streaming ends
+- Respect system reduced-motion preferences and pause progressive display in background tabs; text stays selectable, export links open the corresponding folder, and finishing visual effects do not keep the Agent busy
 - Use the right-side PPT mirror to select slides, present, export, or go fullscreen
 - Configure models (OpenAI / Anthropic-compatible endpoints), runtime limits, and CommitGate approval policy in Settings
 - Set a Tavily API key under **Settings -> 搜索与联网** for optional web research

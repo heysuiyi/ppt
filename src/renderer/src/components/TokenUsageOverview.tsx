@@ -10,6 +10,7 @@ import {
 } from "../modelPricing";
 import { Button, IconButton } from "./Button";
 import { RefreshIcon } from "./Icons";
+import { Tabs, TabsList, TabsPanel } from "./Tabs";
 
 type UsageView = "tokens" | "cost" | "tasks";
 
@@ -18,55 +19,11 @@ interface TokenUsageOverviewProps {
   selectedModelId: string;
 }
 
-function UsageTabs<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  panelId,
-}: {
-  label: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange: (value: T) => void;
-  panelId: string;
-}) {
-  return (
-    <div className="token-view-tabs" role="tablist" aria-label={label}>
-      {options.map((option, index) => (
-        <button
-          key={option.value}
-          type="button"
-          role="tab"
-          aria-selected={value === option.value}
-          aria-controls={panelId}
-          tabIndex={value === option.value ? 0 : -1}
-          onClick={() => onChange(option.value)}
-          onKeyDown={(event) => {
-            const next =
-              event.key === "ArrowRight"
-                ? (index + 1) % options.length
-                : event.key === "ArrowLeft"
-                  ? (index - 1 + options.length) % options.length
-                  : event.key === "Home"
-                    ? 0
-                    : event.key === "End"
-                      ? options.length - 1
-                      : undefined;
-            if (next === undefined) return;
-            event.preventDefault();
-            onChange(options[next]!.value);
-            event.currentTarget.parentElement
-              ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-              [next]?.focus();
-          }}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+const USAGE_VIEWS: readonly { value: UsageView; label: string }[] = [
+  { value: "tokens", label: "Token" },
+  { value: "cost", label: "预估费用" },
+  { value: "tasks", label: "任务数" },
+];
 
 const emptyStats: TokenUsageStats = {
   totalTokens: 0,
@@ -152,7 +109,6 @@ export const TokenUsageOverview: React.FC<TokenUsageOverviewProps> = ({
   selectedModelId,
 }) => {
   const [stats, setStats] = React.useState<TokenUsageStats>(emptyStats);
-  const trendPanelId = React.useId();
   const [view, setView] = React.useState<UsageView>("tokens");
   const [costCurrency, setCostCurrency] = React.useState<ModelPricingCurrency>(
     () =>
@@ -254,6 +210,45 @@ export const TokenUsageOverview: React.FC<TokenUsageOverviewProps> = ({
     },
   ];
 
+  const trendContent = error ? (
+    <div className="token-usage-state is-error">
+      <span>统计读取失败：{error}</span>
+      <Button variant="quiet" size="sm" onClick={() => void loadStats()}>
+        重试
+      </Button>
+    </div>
+  ) : (
+    <div
+      className={`token-trend-chart ${loading ? "is-loading" : ""}`}
+      role="img"
+      aria-label="最近 30 天用量柱状图"
+    >
+      {trendDays.map((day, index) => {
+        const value = trendValues[index];
+        const label =
+          view === "cost"
+            ? formatCost(value, costCurrency)
+            : view === "tokens"
+              ? `${formatTokens(value)} Token`
+              : `${value} 个任务`;
+        return (
+          <div className="token-trend-column" key={day.date} title={`${day.date} · ${label}`}>
+            <span
+              className="token-trend-bar"
+              style={{
+                height: `${trendMax > 0 ? Math.max(3, (value / trendMax) * 100) : 3}%`,
+              }}
+            />
+            {(index === 0 || index === 29 || index % 7 === 1) && (
+              <small>
+                {Number(day.date.slice(5, 7))}/{Number(day.date.slice(8, 10))}
+              </small>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
   return (
     <div className="token-usage-shell">
       <section className="token-current-model" aria-label="当前主模型">
@@ -278,92 +273,46 @@ export const TokenUsageOverview: React.FC<TokenUsageOverviewProps> = ({
       </section>
 
       <section className="token-activity-card settings-card">
-        <div className="token-activity-header">
-          <div>
-            <h3>最近 30 天趋势</h3>
-            <p>按实际模型响应记录，可切换业务与成本视角</p>
+        <Tabs value={view} onValueChange={setView} items={USAGE_VIEWS}>
+          <div className="token-activity-header">
+            <div>
+              <h3>最近 30 天趋势</h3>
+              <p>按实际模型响应记录，可切换业务与成本视角</p>
+            </div>
+            <div className="token-activity-actions">
+              <TabsList label="用量趋势指标" variant="plain" />
+              {view === "cost" && configuredCurrencies.length > 1 ? (
+                <div className="token-currency-filter" role="group" aria-label="费用币种">
+                  {configuredCurrencies.map((currency) => (
+                    <Button
+                      key={currency}
+                      size="sm"
+                      aria-pressed={costCurrency === currency}
+                      onClick={() => setCostCurrency(currency)}
+                    >
+                      {currency === "CNY" ? "人民币" : "美元"}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
+              <IconButton
+                className="token-usage-refresh"
+                onClick={() => void loadStats()}
+                aria-label="刷新用量统计"
+                title="刷新"
+                disabled={loading}
+              >
+                <RefreshIcon size={14} />
+              </IconButton>
+            </div>
           </div>
-          <div className="token-activity-actions">
-            <UsageTabs
-              label="用量趋势指标"
-              value={view}
-              onChange={setView}
-              panelId={trendPanelId}
-              options={[
-                { value: "tokens", label: "Token" },
-                { value: "cost", label: "预估费用" },
-                { value: "tasks", label: "任务数" },
-              ]}
-            />
-            {view === "cost" && configuredCurrencies.length > 1 ? (
-              <UsageTabs
-                label="费用币种"
-                value={costCurrency}
-                onChange={setCostCurrency}
-                panelId={trendPanelId}
-                options={configuredCurrencies.map((currency) => ({
-                  value: currency,
-                  label: currency === "CNY" ? "人民币" : "美元",
-                }))}
-              />
-            ) : null}
-            <IconButton
-              className="token-usage-refresh"
-              onClick={() => void loadStats()}
-              aria-label="刷新用量统计"
-              title="刷新"
-              disabled={loading}
-            >
-              <RefreshIcon size={14} />
-            </IconButton>
-          </div>
-        </div>
 
-        <div id={trendPanelId} role="tabpanel" aria-label="最近 30 天趋势">
-          {error ? (
-            <div className="token-usage-state is-error">
-              <span>统计读取失败：{error}</span>
-              <Button variant="quiet" size="sm" onClick={() => void loadStats()}>
-                重试
-              </Button>
-            </div>
-          ) : (
-            <div
-              className={`token-trend-chart ${loading ? "is-loading" : ""}`}
-              role="img"
-              aria-label="最近 30 天用量柱状图"
-            >
-              {trendDays.map((day, index) => {
-                const value = trendValues[index];
-                const label =
-                  view === "cost"
-                    ? formatCost(value, costCurrency)
-                    : view === "tokens"
-                      ? `${formatTokens(value)} Token`
-                      : `${value} 个任务`;
-                return (
-                  <div
-                    className="token-trend-column"
-                    key={day.date}
-                    title={`${day.date} · ${label}`}
-                  >
-                    <span
-                      className="token-trend-bar"
-                      style={{
-                        height: `${trendMax > 0 ? Math.max(3, (value / trendMax) * 100) : 3}%`,
-                      }}
-                    />
-                    {(index === 0 || index === 29 || index % 7 === 1) && (
-                      <small>
-                        {Number(day.date.slice(5, 7))}/{Number(day.date.slice(8, 10))}
-                      </small>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          {USAGE_VIEWS.map((option) => (
+            <TabsPanel key={option.value} value={option.value}>
+              {trendContent}
+            </TabsPanel>
+          ))}
+        </Tabs>
       </section>
 
       <section className="token-model-breakdown settings-card">

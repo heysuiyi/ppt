@@ -57,6 +57,7 @@ function MirrorHarness() {
   const { isExportingDeck, exportDeck } = useDeckExport({ sessionId: "session-1", presentation });
   return (
     <>
+      <input aria-label="聊天输入" />
       <button disabled={isExportingDeck} onClick={() => void exportDeck(() => undefined)}>
         聊天导出
       </button>
@@ -121,6 +122,101 @@ describe("PPTMirror preview workspace", () => {
     expect(
       screen.getByRole("button", { name: "选择第 2 页：核心结论" }).getAttribute("aria-current"),
     ).toBe("page");
+  });
+
+  it("surfaces new inspection batches without stealing chat focus or resurfacing the same batch", () => {
+    clearAllDisplayCardManagers();
+    render(<MirrorHarness />);
+    const slidesTab = screen.getByRole("tab", { name: /幻灯片\s*2/ });
+    const inspectionTab = screen.getByRole("tab", { name: /检查结果\s*0/ });
+    expect(slidesTab.getAttribute("aria-selected")).toBe("true");
+    expect((inspectionTab as HTMLButtonElement).disabled).toBe(true);
+    const chatInput = screen.getByRole("textbox", { name: "聊天输入" });
+    act(() => chatInput.focus());
+
+    act(() => ingestDisplayEvent(preview(1)));
+    expect(document.activeElement).toBe(chatInput);
+    expect(screen.getByRole("tab", { name: /检查结果\s*1/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "查看 封面 大图" })).not.toBeNull();
+    fireEvent.click(slidesTab);
+    act(() => chatInput.focus());
+    act(() => ingestDisplayEvent({ ...preview(1), eventId: "preview-1-recheck" }));
+    expect(slidesTab.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(chatInput);
+
+    act(() =>
+      ingestDisplayEvent({
+        ...preview(2),
+        eventId: "preview-next-run",
+        scope: { sessionId: "session-1", runId: "run-2" },
+      }),
+    );
+    expect(document.activeElement).toBe(chatInput);
+    expect(screen.getByRole("tab", { name: /检查结果\s*1/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "查看 核心结论 大图" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "查看 封面 大图" })).toBeNull();
+  });
+
+  it("returns to slides when inspections clear and keeps focus local only when necessary", () => {
+    render(<MirrorHarness />);
+    const inspectionTab = screen.getByRole("tab", { name: /检查结果\s*2/ });
+    act(() => inspectionTab.focus());
+    act(() => clearAllDisplayCardManagers());
+    const slidesTab = screen.getByRole("tab", { name: /幻灯片\s*2/ });
+    expect(slidesTab.getAttribute("aria-selected")).toBe("true");
+    expect(slidesTab.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(slidesTab);
+    expect(screen.getByRole("tab", { name: /检查结果\s*0/ }).tabIndex).toBe(-1);
+    expect(screen.getByRole("button", { name: "选择第 1 页：封面" })).not.toBeNull();
+    fireEvent.keyDown(slidesTab, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(slidesTab);
+    expect(slidesTab.getAttribute("aria-selected")).toBe("true");
+
+    const chatInput = screen.getByRole("textbox", { name: "聊天输入" });
+    act(() => chatInput.focus());
+    act(() => ingestDisplayEvent(preview(1)));
+    expect(screen.getByRole("tab", { name: /检查结果\s*1/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    act(() => clearAllDisplayCardManagers());
+    expect(document.activeElement).toBe(chatInput);
+    expect(slidesTab.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("switches panels with the keyboard while preserving the outer scroll viewport", () => {
+    render(<MirrorHarness />);
+    const slidesTab = screen.getByRole("tab", { name: /幻灯片\s*2/ });
+    const inspectionTab = screen.getByRole("tab", { name: /检查结果\s*2/ });
+    const inspectionPanel = screen.getByRole("tabpanel");
+    const viewport = inspectionPanel.parentElement!;
+    viewport.scrollTop = 72;
+    expect(inspectionPanel.id).toBe(inspectionTab.getAttribute("aria-controls"));
+    expect(inspectionPanel.getAttribute("aria-labelledby")).toBe(inspectionTab.id);
+    act(() => inspectionTab.focus());
+    fireEvent.keyDown(inspectionTab, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(slidesTab);
+    expect(slidesTab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("button", { name: "选择第 1 页：封面" })).not.toBeNull();
+    const slidesPanel = screen.getByRole("tabpanel");
+    expect(slidesPanel.id).toBe(slidesTab.getAttribute("aria-controls"));
+    expect(slidesPanel.parentElement).toBe(viewport);
+    expect(viewport.scrollTop).toBe(72);
+    expect(inspectionPanel.hidden).toBe(true);
+    expect(inspectionPanel.childNodes.length).toBe(0);
+
+    fireEvent.keyDown(slidesTab, { key: "End" });
+    expect(document.activeElement).toBe(inspectionTab);
+    expect(screen.getByRole("tabpanel")).toBe(inspectionPanel);
+    expect(inspectionPanel.parentElement).toBe(viewport);
+    fireEvent.keyDown(inspectionTab, { key: "Home" });
+    expect(document.activeElement).toBe(slidesTab);
+    fireEvent.keyDown(slidesTab, { key: "ArrowLeft" });
+    expect(document.activeElement).toBe(inspectionTab);
+    expect(inspectionTab.getAttribute("aria-selected")).toBe("true");
   });
 
   it("fits slideshow width to the available container and disconnects on close", () => {

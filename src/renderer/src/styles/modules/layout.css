@@ -83,7 +83,7 @@
   -webkit-app-region: no-drag;
 }
 
-/* Outer grid: sidebar chrome | resizer | floating main canvas */
+/* Outer grid: sidebar chrome | resizer | main canvas flush with right/bottom edges */
 .workspace-container {
   display: grid;
   grid-template-columns: var(--primary-sidebar-width, 280px) 6px minmax(0, 1fr);
@@ -93,7 +93,7 @@
   min-height: 0;
   overflow: hidden;
   background: transparent;
-  padding: 0 var(--chrome-inset) var(--chrome-inset) 0;
+  padding: 0;
   transition: grid-template-columns var(--duration-base) var(--ease-out);
 }
 
@@ -115,7 +115,6 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-radius: var(--workbench-border-radius);
 }
 
 .panel-resizer-placeholder {

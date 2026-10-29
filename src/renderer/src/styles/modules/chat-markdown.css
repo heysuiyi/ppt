@@ -1,5 +1,18 @@
 /* Markdown rendering inside chat messages — single typography source of truth */
 
+.markdown-view {
+  min-width: 0;
+}
+
+/* The caret is React-owned, outside the renderer's native-owned host. */
+.markdown-view--active > .markdown-view-host {
+  display: inline;
+}
+
+.markdown-view--active > .markdown-view-host > p:last-child {
+  display: inline;
+}
+
 /*
  * CJK chat prose: keep regular (400) weight. On Windows, YaHei UI has no
  * Semibold face — font-weight 600 resolves to Bold (700) for CJK, which at

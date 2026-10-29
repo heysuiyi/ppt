@@ -34,7 +34,7 @@ describe("agent run presentation", () => {
       busy: boolean;
     }) => (
       <div data-testid="surface">
-        <AgentRunTimeline items={items} content={content} live={busy} />
+        <AgentRunTimeline documentId="test-run" items={items} content={content} live={busy} />
       </div>
     );
 
@@ -135,7 +135,7 @@ describe("agent run presentation", () => {
       },
     ];
 
-    render(<AgentRunTimeline items={items} content="完成了。" live={false} durationMs={12_400} />);
+    render(<AgentRunTimeline documentId="test-run" items={items} content="完成了。" live={false} durationMs={12_400} />);
 
     expect(screen.getByText("已工作 12 秒")).not.toBeNull();
   });
@@ -173,6 +173,7 @@ describe("agent run presentation", () => {
     render(
       <div data-testid="surface">
         <AgentRunTimeline
+          documentId="test-run"
           content=""
           live
           items={[
@@ -233,11 +234,12 @@ describe("agent run presentation", () => {
       },
     ];
 
-    const view = render(<AgentRunTimeline content="" live items={tools} />);
+    const view = render(<AgentRunTimeline documentId="test-run" content="" live items={tools} />);
     expect(document.querySelector('[data-run-block-id="tool-1"]')).not.toBeNull();
 
     view.rerender(
       <AgentRunTimeline
+        documentId="test-run"
         content="本轮已完成：已写入设计规格与页面计划。"
         live
         items={[
@@ -286,10 +288,10 @@ describe("agent run presentation", () => {
       },
     ];
 
-    const view = render(<AgentRunTimeline content="" live items={tools} />);
+    const view = render(<AgentRunTimeline documentId="test-run" content="" live items={tools} />);
     expect(document.querySelector('[data-run-block-id="tool-1"]')).not.toBeNull();
 
-    view.rerender(<AgentRunTimeline content="" live={false} items={tools} />);
+    view.rerender(<AgentRunTimeline documentId="test-run" content="" live={false} items={tools} />);
 
     expect(screen.getByRole("button", { name: "展开执行过程" })).not.toBeNull();
     expect(document.querySelector('[data-run-block-id="tool-1"]')).toBeNull();
@@ -323,7 +325,7 @@ describe("agent run presentation", () => {
       },
     ];
 
-    const view = render(<AgentRunTimeline content="" live items={completedTools} />);
+    const view = render(<AgentRunTimeline documentId="test-run" content="" live items={completedTools} />);
     expect(document.querySelector('[data-run-block-id="preview-1"]')).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "收起执行过程" }));
@@ -332,6 +334,7 @@ describe("agent run presentation", () => {
 
     view.rerender(
       <AgentRunTimeline
+        documentId="test-run"
         content="任务总结：导出已提交审批。"
         live={false}
         items={[
@@ -352,6 +355,7 @@ describe("agent run presentation", () => {
   it("groups thought into the following tool batch panel", () => {
     render(
       <AgentRunTimeline
+        documentId="test-run"
         content=""
         live
         items={[
@@ -515,6 +519,7 @@ describe("agent run presentation", () => {
   it("collapses adjacent completed tools into one disclosure", () => {
     render(
       <AgentRunTimeline
+        documentId="test-run"
         content=""
         items={[
           {
@@ -562,6 +567,7 @@ describe("agent run presentation", () => {
 
     render(
       <AgentRunTimeline
+        documentId="test-run"
         content=""
         live
         teamGraphTasks={[graphTask]}

@@ -19,7 +19,11 @@ interface Layer {
   tab?: () => void;
 }
 
-const layers: Layer[] = [];
+interface RegisteredLayer extends Layer {
+  previousFocus: HTMLElement | null;
+}
+
+const layers: RegisteredLayer[] = [];
 const inertElements = new Map<HTMLElement, boolean>();
 let observer: MutationObserver | null = null;
 let previousOverflow = "";
@@ -46,9 +50,13 @@ function focusable(root: HTMLElement): HTMLElement[] {
   );
 }
 
+function fallbackFocus(root: HTMLElement): HTMLElement {
+  return root.querySelector<HTMLElement>('[role="dialog"]') ?? root;
+}
+
 function focusFirst(layer: Layer) {
   const root = layer.root();
-  if (root) (focusable(root)[0] ?? root).focus();
+  if (root) (focusable(root)[0] ?? fallbackFocus(root)).focus();
 }
 
 function syncInert() {
@@ -57,10 +65,14 @@ function syncInert() {
   for (const [element, inert] of inertElements) element.inert = inert;
   inertElements.clear();
   if (!root) return;
-  for (const element of document.body.children) {
-    if (!(element instanceof HTMLElement) || element.contains(root)) continue;
-    inertElements.set(element, element.inert);
-    element.inert = true;
+  let current: HTMLElement = root;
+  while (current !== document.body && current.parentElement) {
+    for (const element of current.parentElement.children) {
+      if (!(element instanceof HTMLElement) || element === current) continue;
+      inertElements.set(element, element.inert);
+      element.inert = true;
+    }
+    current = current.parentElement;
   }
 }
 
@@ -85,7 +97,10 @@ function onKeyDown(event: KeyboardEvent) {
       (event.shiftKey ? index <= 0 : index < 0 || index === items.length - 1)
     ) {
       event.preventDefault();
-      (event.shiftKey ? (items.at(-1) ?? root) : (items[0] ?? root)).focus();
+      (event.shiftKey
+        ? (items.at(-1) ?? fallbackFocus(root))
+        : (items[0] ?? fallbackFocus(root))
+      ).focus();
     }
     return;
   }
@@ -108,7 +123,7 @@ function start() {
   document.addEventListener("pointerdown", onPointerDown, true);
   document.addEventListener("focusin", onFocusIn, true);
   observer = new MutationObserver(syncInert);
-  observer.observe(document.body, { childList: true });
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 function stop() {
@@ -127,7 +142,8 @@ export function useOverlayLayer(open: boolean, options: Layer) {
     if (!open) return;
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const layer: Layer = {
+    const layer: RegisteredLayer = {
+      previousFocus,
       depth: latest.current.depth,
       modal: latest.current.modal,
       root: () => latest.current.root(),
@@ -147,21 +163,27 @@ export function useOverlayLayer(open: boolean, options: Layer) {
     }
     layers.push(layer);
     syncInert();
+    const root = layer.root();
     if (layer.modal) focusFirst(layer);
     return () => {
       const index = layers.indexOf(layer);
       if (index >= 0) layers.splice(index, 1);
+      for (const remaining of layers) {
+        if (remaining.previousFocus && root?.contains(remaining.previousFocus))
+          remaining.previousFocus = layer.previousFocus;
+      }
       layerRef.current = null;
       syncInert();
       if (layer.modal && !topModal()) document.body.style.overflow = previousOverflow;
       if (layers.length === 0) stop();
       const active = document.activeElement;
       if (
-        previousFocus?.isConnected &&
-        !previousFocus.closest("[inert]") &&
-        (active === document.body || (active instanceof Node && contains(layer, active)))
+        layer.previousFocus?.isConnected &&
+        !layer.previousFocus.closest("[inert]") &&
+        (active === document.body ||
+          (active instanceof Node && (root?.contains(active) || contains(layer, active))))
       )
-        previousFocus.focus();
+        layer.previousFocus.focus();
     };
   }, [open]);
   return () => topLayer() === layerRef.current;

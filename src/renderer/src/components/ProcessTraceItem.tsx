@@ -12,7 +12,7 @@ import {
   SearchIcon,
   UsersIcon,
 } from "./Icons";
-import { MessageMarkdown } from "./MessageMarkdown";
+import { MarkdownView } from "./markdown/MarkdownView";
 import { useChatFold } from "./useChatFold";
 
 interface ProcessTraceItemProps {
@@ -92,7 +92,8 @@ export const ProcessTraceItem: React.FC<ProcessTraceItemProps> = ({
       <div
         className={`process-trace-row process-trace-row--progress${row.active ? " process-trace-row--active" : ""}`}
       >
-        <MessageMarkdown
+        <MarkdownView
+          documentId={row.id}
           content={row.title}
           className="assistant-response process-trace-progress-content"
         />
