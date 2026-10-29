@@ -4,8 +4,7 @@ import {
   useNotificationCardManager,
 } from "@shared/cards/display-card-managers";
 import { getWorkspaceLabel } from "@shared/workspace";
-import { type ComponentProps, useEffect, useRef, useState } from "react";
-import type { AppShell } from "./AppShell";
+import { type ComponentProps, type CSSProperties, useEffect, useRef, useState } from "react";
 import type { AppTopbar } from "./AppTopbar";
 import { useAgentActivityStream } from "./agent/useAgentActivityStream";
 import { useAgentRunController } from "./agent/useAgentRunController";
@@ -25,7 +24,11 @@ import type { WorkspaceView } from "./WorkspaceView";
 
 type AppModel = {
   boot: AppBootState;
-  shell: Omit<ComponentProps<typeof AppShell>, "topbar" | "children">;
+  shell: {
+    notificationMessage: string | null;
+    workspaceClassName: string;
+    workspaceStyle: CSSProperties;
+  };
   topbar: ComponentProps<typeof AppTopbar>;
   content:
     | { area: "workspace"; props: ComponentProps<typeof WorkspaceView> }

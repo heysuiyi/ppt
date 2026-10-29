@@ -216,7 +216,7 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 Key areas:
 
-- `src/renderer/`: React workspace, chat stream, live PPT mirror, settings console
+- `src/renderer/`: React workspace, chat stream, live PPT mirror, settings console; `src/renderer/src/App.tsx` directly owns the shared layout and workspace/settings view selection
 - `src/main/agent/`: Agent runtime, tool registry, model gateways, commit gate, sub-agents
 - `src/design-system/`: DesignSystemV2 schema, presets, and resolution
 - `src/shared/`: presentation model, command model, session and IPC types

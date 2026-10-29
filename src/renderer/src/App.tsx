@@ -1,7 +1,7 @@
-import { AppShell } from "./app/AppShell";
 import { AppTopbar } from "./app/AppTopbar";
 import { SettingsView } from "./app/SettingsView";
 import { useAppModel } from "./app/useAppModel";
+import { NotificationViewport } from "./app/useNotificationCenter";
 import { WorkspaceView } from "./app/WorkspaceView";
 
 export function App() {
@@ -24,12 +24,16 @@ export function App() {
   }
 
   return (
-    <AppShell {...shell} topbar={<AppTopbar {...topbar} />}>
-      {content.area === "workspace" ? (
-        <WorkspaceView {...content.props} />
-      ) : (
-        <SettingsView {...content.props} />
-      )}
-    </AppShell>
+    <main className="app-shell">
+      <AppTopbar {...topbar} />
+      <NotificationViewport message={shell.notificationMessage} />
+      <div className={shell.workspaceClassName} style={shell.workspaceStyle}>
+        {content.area === "workspace" ? (
+          <WorkspaceView {...content.props} />
+        ) : (
+          <SettingsView {...content.props} />
+        )}
+      </div>
+    </main>
   );
 }
