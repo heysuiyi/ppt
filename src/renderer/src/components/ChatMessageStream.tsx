@@ -1,4 +1,4 @@
-import { filterTraceForDisplay, markTraceComplete } from "@shared/agent-activity";
+import { markTraceComplete } from "@shared/agent-activity";
 import type { AgentTaskNode } from "@shared/agent-task-list";
 import type { TeamSessionProjection } from "@shared/team-session";
 import { type ReactNode, useState } from "react";
@@ -6,7 +6,6 @@ import { ArtifactCardHost } from "../cards/hosts/ArtifactCardHost";
 import { InteractionCardHost } from "../cards/hosts/InteractionCardHost";
 import { ReviewCardHost } from "../cards/hosts/ReviewCardHost";
 import { AgentRunTerminalNotice } from "./AgentRunTerminalNotice";
-import { AgentRunTimeline } from "./AgentRunTimeline";
 import { IconButton } from "./Button";
 import { CHAT_WORKSPACE_COPY_ZH_CN as copy } from "./chat-workspace-copy";
 import type {
@@ -17,6 +16,7 @@ import type {
 } from "./chat-workspace-types";
 import { CopyIcon, Edit3Icon } from "./Icons";
 import { MarkdownView } from "./markdown/MarkdownView";
+import { RunTimeline } from "./run-process/RunTimeline";
 import { TaskPlanCard } from "./TaskPlanCard";
 import { FocusedTeamSession } from "./TeamSessionViews";
 import { UserMessageEditor } from "./UserMessageEditor";
@@ -239,14 +239,15 @@ function AssistantMessageContent({
               ? "denied"
               : "failed",
         );
-  const trace = filterTraceForDisplay(resolvedTrace, { keepTaskList: false });
   if (message.runId) {
     return (
-      <AgentRunTimeline
+      <RunTimeline
         documentId={message.id}
-        items={trace}
+        items={resolvedTrace}
         content={message.content}
         live={useLiveTrace}
+        startedAt={message.runStartedAt}
+        runStatus={useLiveTrace ? "running" : message.runStatus}
         durationMs={useLiveTrace ? undefined : message.runDurationMs}
         teamGraphTasks={activeTasks}
       />

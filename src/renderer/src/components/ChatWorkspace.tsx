@@ -47,13 +47,6 @@ function ChatWorkspaceContent({
   deck,
   actions,
 }: ChatWorkspaceProps): ReactNode {
-  const activeRunStartedAtRef = useRef<number | null>(null);
-  if (run.busy && activeRunStartedAtRef.current === null) {
-    activeRunStartedAtRef.current = Date.now();
-  } else if (!run.busy) {
-    activeRunStartedAtRef.current = null;
-  }
-
   const managedPermissionCards = usePermissionCardManager((state) => state.cards);
   const managedPermission = findActiveToolPermissionCard(managedPermissionCards, run.activeRunId);
   const pendingToolApproval =
@@ -70,7 +63,6 @@ function ChatWorkspaceContent({
         }
       : null,
     canCancelRun: Boolean(run.busy && run.activeRunId && run.onCancel),
-    runStartedAt: activeRunStartedAtRef.current ?? undefined,
   };
   const [conversationFocus, setConversationFocus] = useState<ConversationFocus>({ kind: "main" });
   // Derive the region phase from session/run facts; lifecycle controllers never set UI phases.

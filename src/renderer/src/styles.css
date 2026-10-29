@@ -28,7 +28,7 @@
 @import "./styles/modules/chat.css";
 @import "./styles/modules/chat-markdown.css";
 @import "./styles/modules/chat-agent-run.css";
-@import "./styles/modules/chat-process-trace.css";
+@import "./components/run-process/run-process.css";
 @import "./styles/modules/chat-team.css";
 @import "./styles/modules/review-approvals.css";
 @import "./styles/modules/review-artifacts-inline.css";

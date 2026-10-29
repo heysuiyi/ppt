@@ -6,7 +6,6 @@ import {
   applyTeammateProgressEvent,
   compactActivityTraceForPersistence,
   finishTool,
-  isProcessTraceActive,
   markTraceComplete,
   mergeActivityTraces,
   mergeResponseText,
@@ -213,9 +212,7 @@ describe("agent activity model", () => {
       },
     ];
 
-    expect(isProcessTraceActive(trace)).toBe(true);
     const failed = markTraceComplete(trace, "failed");
-    expect(isProcessTraceActive(failed)).toBe(false);
     expect(failed).toMatchObject([
       { kind: "reasoning", streaming: false },
       { kind: "tool", status: "failed" },

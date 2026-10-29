@@ -1,6 +1,6 @@
 import type { TeamSessionProjection, TeamSessionStatus } from "@shared/team-session";
 import type React from "react";
-import { ProcessTracePanel } from "./ProcessTracePanel";
+import { ProcessRecord } from "./run-process/ProcessRecord";
 
 const STATUS_COPY: Record<TeamSessionStatus, string> = {
   running: "进行中",
@@ -50,12 +50,7 @@ export const FocusedTeamSession: React.FC<{ session: TeamSessionProjection }> = 
         )}
       </div>
       {session.activity.steps.length > 0 ? (
-        <ProcessTracePanel
-          items={[session.activity]}
-          live={session.status === "running"}
-          defaultOpen
-          defaultExpandRows
-        />
+        <ProcessRecord items={[session.activity]} live={session.status === "running"} />
       ) : (
         <div className="focused-team-session-empty">任务正在初始化，事件到达后会在这里显示。</div>
       )}

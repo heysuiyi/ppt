@@ -29,6 +29,7 @@
     // Pure helpers still living in renderer that node/vitest imports directly
     "src/renderer/src/components/project-store.ts",
     "src/renderer/src/components/chat-scroll-controller.ts",
+    "src/renderer/src/components/run-process/process-model.ts",
     "src/renderer/src/components/markdown/**/*.ts",
     "src/renderer/src/app/chatMessageRuntime.ts",
     "src/renderer/src/app/userUiTheme.ts",

@@ -9,18 +9,8 @@
 .agent-run-block {
   min-width: 0;
 }
-.agent-run-block--activity {
-  padding: 0;
-}
 .agent-run-block--response {
   margin-top: 2px;
-}
-.agent-run-block--thought {
-  min-width: 0;
-}
-.agent-run-activity-cluster {
-  min-width: 0;
-  margin: 0;
 }
 .agent-run-terminal-notice {
   display: flex;

@@ -17,10 +17,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.run-status-elapsed {
-  flex-shrink: 0;
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}

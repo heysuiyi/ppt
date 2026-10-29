@@ -1,0 +1,183 @@
+.run-process-section,
+.run-process-record,
+.run-process-row {
+  min-width: 0;
+}
+
+.run-process-section-header,
+.run-process-row-title,
+.run-process-detail-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: var(--type-body-weight);
+  line-height: 1.6;
+  text-align: left;
+  user-select: text;
+}
+
+.run-process-section-header,
+.run-process-row-title {
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+}
+
+button.run-process-section-header,
+.run-process-detail-toggle {
+  cursor: pointer;
+}
+
+button.run-process-section-header:hover,
+.run-process-detail-toggle:hover,
+.run-process-row--active .run-process-row-title {
+  color: var(--text-secondary);
+}
+
+.run-process-section-header--static {
+  cursor: text;
+}
+
+.run-process-section-label,
+.run-process-row-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.run-process-section-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-process-caret,
+.run-process-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.run-process-attention {
+  flex-shrink: 0;
+  color: var(--warning);
+  font-size: var(--text-2xs);
+}
+
+.run-process-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0 6px;
+}
+
+.run-process-thought,
+.run-process-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: var(--type-body-weight);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.run-process-row-details {
+  min-width: 0;
+  margin-left: 20px;
+  padding: 2px 0 4px;
+}
+
+.run-process-detail-toggle {
+  margin-top: 2px;
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+}
+
+.markdown-body.run-process-progress {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  user-select: text;
+}
+
+.run-process-row--failed .run-process-row-icon {
+  color: var(--danger);
+}
+
+.run-process-row--denied .run-process-row-icon,
+.run-process-row--invalid-input .run-process-row-icon {
+  color: var(--warning);
+}
+
+.run-process-row--running.run-process-row--active .run-process-row-icon,
+.run-process-cursor {
+  animation: run-process-pulse var(--duration-loading-mid) var(--ease-in-out) infinite;
+}
+
+.run-process-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 3px;
+  background: currentColor;
+  vertical-align: text-bottom;
+}
+
+.run-process-duration {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-process-section-header:focus-visible,
+.run-process-detail-toggle:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--border-focused);
+  outline-offset: 2px;
+}
+
+.run-process-section ::selection,
+.run-process-record ::selection {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-primary) 28%, transparent);
+}
+
+.run-process-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes run-process-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-process-row--running.run-process-row--active .run-process-row-icon,
+  .run-process-cursor {
+    animation: none;
+  }
+}

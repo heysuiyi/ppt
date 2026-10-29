@@ -263,6 +263,7 @@ export function useAgentActivityStream({
               kind: "step",
               text: displayMessage,
               status: "running",
+              transient: true,
             },
           ]);
         } else {

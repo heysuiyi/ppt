@@ -89,5 +89,4 @@ export interface PendingToolApprovalView {
 export interface ChatWorkspaceInputRuntime {
   pendingToolApproval: PendingToolApprovalView | null;
   canCancelRun: boolean;
-  runStartedAt?: number;
 }

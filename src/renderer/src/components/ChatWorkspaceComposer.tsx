@@ -73,7 +73,7 @@ export function ChatWorkspaceComposer({
     phase: agentRunPhase,
     activityTrace,
   } = run;
-  const { pendingToolApproval, canCancelRun, runStartedAt } = runtime;
+  const { pendingToolApproval, canCancelRun } = runtime;
   const { onResolveToolApproval } = actions;
   const [dismissedSlashRequest, setDismissedSlashRequest] = useState<string | null>(null);
   const [activeTemplate, setActiveTemplate] = useState(0);
@@ -336,11 +336,7 @@ export function ChatWorkspaceComposer({
                 <div className="functional-control-bar">
                   <div className="functional-left">
                     {busy ? (
-                      <RunStatusIndicator
-                        phase={agentRunPhase}
-                        activityTrace={activityTrace}
-                        startedAt={runStartedAt}
-                      />
+                      <RunStatusIndicator phase={agentRunPhase} activityTrace={activityTrace} />
                     ) : null}
                   </div>
 

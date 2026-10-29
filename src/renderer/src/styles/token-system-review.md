@@ -50,7 +50,7 @@
 
 - 框架：`base`、`layout`、`startup`、`view-enter`。
 - 左侧与文件：`sidebar`、`project-files`。
-- 聊天：`chat`、`chat-markdown`、`chat-agent-run`、`chat-process-trace`、`chat-team`。
+- 聊天：`chat`、`chat-markdown`、`chat-agent-run`、`components/run-process/run-process.css`、`chat-team`。
 - 输入：`unified-input`。
 - 画布外壳与镜像：`canvas-chrome`、`canvas-mirror`。
 - 审批与产物：`review-approvals`、`review-artifacts-inline`、`review-surfaces`。

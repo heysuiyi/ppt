@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  type AgentToolActivityState,
-  type AgentToolDisplayCategory,
-  formatAgentToolActivity,
-  getAgentToolDisplayCopy,
-} from "./agent-activity-display";
+import type { AgentToolActivityState } from "./agent-activity-display";
 import { type AgentTaskNode, agentTaskNodeSchema, TASK_LIST_TRACE_ID } from "./agent-task-list";
 import type { TeammateProgressEvent } from "./teammate-progress";
 
@@ -37,6 +32,8 @@ export const agentActivityItemSchema = z.discriminatedUnion("kind", [
     kind: z.literal("step"),
     text: z.string(),
     status: z.enum(["typing", "running", "done"]).optional(),
+    /** Ephemeral request presentation; not a durable process record. */
+    transient: z.boolean().optional(),
   }),
   z.object({
     id: z.string(),
@@ -423,17 +420,6 @@ export function findPendingToolApproval(
     );
 }
 
-export function filterTraceForDisplay(
-  trace: AgentActivityItem[],
-  options: { keepTaskList?: boolean } = {},
-): AgentActivityItem[] {
-  return trace.filter(
-    (item) =>
-      (options.keepTaskList || item.kind !== "tasklist") &&
-      !(item.kind === "tool-approval" && item.status === "pending"),
-  );
-}
-
 const MAX_PERSISTED_TRACE_ITEMS = 80;
 const MAX_PERSISTED_APPROVAL_ITEMS = 10;
 const MAX_PERSISTED_TASK_STEPS = 24;
@@ -549,97 +535,6 @@ export function compactActivityTraceForPersistence(
     kept.splice(removableIndex, 1);
   }
   return kept;
-}
-
-export function isProcessTraceActive(items: AgentActivityItem[]): boolean {
-  return items.some((item) => {
-    if (item.kind === "reasoning" && item.streaming) return true;
-    if (item.kind === "tool" && item.status === "running") return true;
-    if (item.kind === "step" && item.status !== "done") return true;
-    if (item.kind === "task") {
-      if (item.status === "running") return true;
-      return item.steps.some((step) => step.status === "running" || step.streaming);
-    }
-    return false;
-  });
-}
-
-const PROCESS_TRACE_CATEGORY_ORDER: AgentToolDisplayCategory[] = [
-  "read",
-  "search",
-  "inspect",
-  "change",
-  "coordinate",
-  "other",
-];
-
-const PROCESS_TRACE_CATEGORY_LABEL: Record<AgentToolDisplayCategory, (count: number) => string> = {
-  read: (count) => `已查看 ${count} 项`,
-  search: (count) => `搜索 ${count} 次`,
-  inspect: (count) => `检查 ${count} 次`,
-  change: (count) => `更新 ${count} 项`,
-  coordinate: (count) => `协调 ${count} 次`,
-  other: (count) => `处理 ${count} 项`,
-};
-
-type ProcessTraceToolRef = {
-  toolName: string;
-  status: AgentToolActivityState;
-};
-
-function collectProcessTraceTools(items: AgentActivityItem[]): ProcessTraceToolRef[] {
-  const tools: ProcessTraceToolRef[] = [];
-  for (const item of items) {
-    if (item.kind === "tool") {
-      tools.push({ toolName: item.toolName, status: item.status });
-      continue;
-    }
-    if (item.kind !== "task") continue;
-    for (const step of item.steps) {
-      if (step.type !== "tool" || !step.toolName) continue;
-      tools.push({ toolName: step.toolName, status: step.status });
-    }
-  }
-  return tools;
-}
-
-export function summarizeProcessTrace(
-  items: AgentActivityItem[],
-  options?: { live?: boolean },
-): string {
-  const tools = collectProcessTraceTools(items);
-
-  if (options?.live) {
-    const running = [...tools].reverse().find((tool) => tool.status === "running");
-    if (running) {
-      return formatAgentToolActivity(running.toolName, "running");
-    }
-  }
-
-  if (tools.length === 0) {
-    if (items.some((item) => item.kind === "reasoning")) return "思考片刻";
-    return "执行过程";
-  }
-
-  const counts: Partial<Record<AgentToolDisplayCategory, number>> = {};
-  for (const tool of tools) {
-    const category = getAgentToolDisplayCopy(tool.toolName).category;
-    counts[category] = (counts[category] ?? 0) + 1;
-  }
-
-  const parts = PROCESS_TRACE_CATEGORY_ORDER.filter((category) => (counts[category] ?? 0) > 0).map(
-    (category) => PROCESS_TRACE_CATEGORY_LABEL[category](counts[category]!),
-  );
-
-  const incomplete = tools.filter(
-    (tool) =>
-      tool.status === "failed" || tool.status === "denied" || tool.status === "invalid-input",
-  ).length;
-  if (incomplete > 0) {
-    parts.push(`${incomplete} 项未完成`);
-  }
-
-  return parts.join(" · ") || "执行过程";
 }
 
 export function extractLatestTaskList(
