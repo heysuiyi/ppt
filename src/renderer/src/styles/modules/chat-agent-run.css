@@ -25,7 +25,7 @@
 .agent-run-terminal-notice {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--layout-gap-compact);
   margin: 2px 0 6px;
   padding: 2px 0;
   border: 0;
@@ -47,11 +47,11 @@
 .agent-run-terminal-notice-copy strong {
   color: inherit;
   font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--type-label-weight);
 }
 .agent-run-terminal-notice-copy small {
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
 }
 .agent-run-terminal-notice button {
   padding: 0;
@@ -59,7 +59,7 @@
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;

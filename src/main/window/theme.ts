@@ -3,19 +3,14 @@ import { BrowserWindow, nativeTheme } from "electron";
 
 type WindowThemePreset = Exclude<WindowThemeMode, "system">;
 
-const WINDOW_FRAME_BY_THEME: Record<
-  WindowThemePreset,
-  { background: string; symbol: string; nativeTheme: "light" | "dark" }
-> = {
+const WINDOW_FRAME_BY_THEME: Record<WindowThemePreset, { background: string; symbol: string }> = {
   light: {
     background: "#e8eaed",
     symbol: "#0f1217",
-    nativeTheme: "light",
   },
   dark: {
     background: "#181818",
     symbol: "#ffffff",
-    nativeTheme: "dark",
   },
 };
 
@@ -66,9 +61,12 @@ function applyWindowBackgroundColor(): void {
 
 export function applyWindowThemeMode(themeMode: WindowThemeMode): "light" | "dark" {
   activeWindowThemeMode = themeMode;
-  const resolvedMode = resolveWindowThemeMode(themeMode);
-  nativeTheme.themeSource = WINDOW_FRAME_BY_THEME[resolvedMode].nativeTheme;
+  nativeTheme.themeSource = themeMode;
   const resolvedTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
   applyWindowBackgroundColor();
   return resolvedTheme;
 }
+
+nativeTheme.on("updated", () => {
+  if (activeWindowThemeMode === "system") applyWindowBackgroundColor();
+});

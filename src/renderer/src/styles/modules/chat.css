@@ -4,7 +4,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background-color: var(--accent-green);
+  background-color: var(--success);
 }
 
 .status-dot.active,
@@ -17,7 +17,7 @@
   align-items: center;
   gap: 10px;
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: var(--type-heading-weight);
 }
 
 /* Chat scroll viewport */
@@ -42,30 +42,14 @@
 }
 
 .chat-scroll-viewport::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--scrollbar-thumb-color);
   border-radius: var(--control-radius-xs);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 .chat-scroll-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.16);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-:root[data-color-scheme="dark"] .chat-scroll-viewport {
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
-}
-
-:root[data-color-scheme="dark"] .chat-scroll-viewport::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-:root[data-color-scheme="dark"] .chat-scroll-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--scrollbar-thumb-hover-color);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -161,8 +145,9 @@
   max-width: min(84%, 640px);
   padding: 6px 11px;
   border: 0;
-  border-radius: var(--control-radius-md) var(--control-radius-md) var(--control-radius-xs)
-    var(--control-radius-md);
+  /* A single tight trailing corner conveys message direction. */
+  border-radius: var(--card-border-radius) var(--card-border-radius) var(--control-radius-xs)
+    var(--card-border-radius);
   background: color-mix(in srgb, var(--text-primary) 6%, var(--surface-sunken));
   color: var(--text-primary);
   box-shadow: none;
@@ -202,14 +187,14 @@
 
 .user-message-editor-title {
   color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--type-heading-weight);
 }
 
 .user-message-editor-hint,
 .user-message-editor-shortcut {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -220,10 +205,10 @@
   max-height: 320px;
   background: var(--surface-sunken);
   border: 1px solid var(--border-default);
-  border-radius: var(--button-border-radius);
+  border-radius: var(--field-border-radius);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: var(--text-md);
   line-height: 1.6;
   padding: 12px 14px;
   resize: none;
@@ -234,14 +219,14 @@
 }
 
 .user-message-editor-textarea:focus {
-  border-color: var(--accent-primary);
+  border-color: var(--border-focused);
   box-shadow: 0 0 0 1px var(--accent-primary-glow);
 }
 
 .user-message-edit-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--layout-gap-compact);
 }
 
 .user-message-actions {
@@ -276,9 +261,9 @@
   border-radius: var(--field-border-radius);
   background: transparent;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-body);
-  font-weight: 500;
+  font-weight: var(--type-label-weight);
   cursor: pointer;
   box-shadow: none;
   transition: var(--transition-color);
@@ -482,7 +467,7 @@
 
 .task-plan-card {
   border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent);
-  border-radius: var(--control-radius-sm);
+  border-radius: var(--card-border-radius);
   background: transparent;
   box-shadow: none;
   overflow: hidden;
@@ -517,7 +502,7 @@
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   text-align: left;
 }
@@ -537,8 +522,8 @@
 .task-plan-card-title {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-sm);
+  font-weight: var(--type-heading-weight);
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -547,7 +532,7 @@
 .task-plan-card-activity {
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -557,14 +542,14 @@
   flex-shrink: 0;
   white-space: nowrap;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 
 .task-plan-card-body {
   padding: 2px 10px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--layout-gap-compact);
   border-top: 1px solid color-mix(in srgb, var(--text-muted) 10%, transparent);
 }
 
@@ -574,15 +559,15 @@
 
 .task-plan-card-goal-label {
   display: block;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--type-heading-weight);
   color: var(--text-muted);
   margin-bottom: 3px;
 }
 
 .task-plan-card-goal-text {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--text-secondary);
   white-space: pre-wrap;
@@ -601,10 +586,10 @@
 .task-plan-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--layout-gap-compact);
   min-height: 34px;
   padding: 4px 2px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--text-secondary);
 }
@@ -625,7 +610,7 @@
   flex-shrink: 0;
   width: 14px;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .task-plan-icon.done {
@@ -662,7 +647,7 @@
 
 .task-plan-item-title {
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .task-plan-item--completed .task-plan-item-title {
@@ -671,7 +656,7 @@
 
 .task-plan-item-state {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 
 .task-plan-item-open {
@@ -682,7 +667,7 @@
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: 10px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -701,25 +686,21 @@
 .progress-bar-track {
   flex: 1;
   height: 4px;
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 2px;
+  background: var(--surface-active);
+  border-radius: var(--control-radius-pill);
   overflow: hidden;
-}
-
-:root[data-color-scheme="dark"] .progress-bar-track {
-  background: rgba(255, 255, 255, 0.05);
 }
 
 .progress-bar-fill {
   height: 100%;
   background: var(--accent-primary);
-  border-radius: 2px;
+  border-radius: inherit;
   transition: width 0.3s ease;
   box-shadow: none;
 }
 
 .progress-percentage {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -752,9 +733,6 @@
 .chat-stream > .task-plan-card {
   margin-top: 2px;
   margin-bottom: 12px;
-  border-color: color-mix(in srgb, var(--text-muted) 18%, transparent);
-  border-radius: var(--control-radius-sm);
-  background: transparent;
 }
 
 .chat-stream > .task-plan-card.task-plan-card--active {
@@ -791,15 +769,20 @@
 
 /* Outline line editor (from former overlays-presentation) */
 .chat-hover-line-wrapper:hover .edit-line-btn {
-  opacity: 1 !important;
+  opacity: 1;
 }
 
 .chat-line-editor {
   background: var(--surface-sunken);
-  border: 1px solid var(--accent-primary);
-  border-radius: var(--control-radius-xs);
+  border: 1px solid var(--border-focused);
+  border-radius: var(--field-border-radius);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--text-md);
   padding: 2px 6px;
   width: 100%;
+}
+
+.user-message-editor-textarea:focus-visible {
+  outline: 2px solid var(--border-focused);
+  outline-offset: 2px;
 }

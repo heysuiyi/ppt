@@ -39,7 +39,7 @@ import {
   normalizePersistedUiFontSize,
   normalizePersistedUiLineHeight,
 } from "./uiTypography";
-import { getComputedScheme, useAppearanceRuntime } from "./useAppearanceRuntime";
+import { useAppearanceRuntime, useComputedScheme } from "./useAppearanceRuntime";
 import { normalizePersistedUiThemeId } from "./userUiTheme";
 
 export interface SettingsController {
@@ -173,7 +173,7 @@ export function useSettingsController(
   );
   const selectedModel =
     visibleModels.find((model) => model.id === selectedModelId) ?? visibleModels[0];
-  const computedScheme = getComputedScheme(colorScheme);
+  const computedScheme = useComputedScheme(colorScheme);
 
   const markSaving = useCallback(() => {
     setSaveStatus("saving");

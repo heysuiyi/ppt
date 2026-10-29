@@ -115,7 +115,7 @@ describe("PPTMirror preview workspace", () => {
     ).toBe("page");
   });
 
-  it("fits slideshow pages to the container while preserving 16:9 and disconnects on close", () => {
+  it("fits slideshow width to the available container and disconnects on close", () => {
     let resize: ResizeObserverCallback;
     const disconnect = vi.fn();
     vi.stubGlobal(
@@ -142,7 +142,6 @@ describe("PPTMirror preview workspace", () => {
 
     resizeContainer(1000, 360);
     expect(slide.style.width).toBe("640px");
-    expect(slide.style.aspectRatio).toBe("1280 / 720");
 
     resizeContainer(480, 600);
     expect(slide.style.width).toBe("480px");

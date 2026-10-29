@@ -13,10 +13,11 @@ import {
 import { PresentationSettingsPanel } from "../components/settings/PresentationSettingsPanel";
 import { SettingsPanel } from "../components/settings/SettingsPrimitives";
 import { TokenUsageOverview } from "../components/TokenUsageOverview";
+import { ResizeHandle } from "../components/ResizeHandle";
 import { cx } from "../lib/cx";
 import type { SettingsCategory } from "../settingsCategories";
 import type { SettingsController } from "./useSettingsController";
-import type { ResizablePanel } from "./useWorkbenchLayout";
+import type { PanelResizeControl } from "./useWorkbenchLayout";
 
 interface SettingsViewProps {
   activeCategory: ComponentProps<typeof SettingsSidebar>["activeCategory"];
@@ -64,7 +65,7 @@ interface SettingsViewProps {
   localStoragePath: string;
   onOpenWorkspace: () => void;
   notify: (message: string) => void;
-  onStartPanelResize: (panel: ResizablePanel, startClientX: number) => void;
+  primaryResize: PanelResizeControl;
   activeSessionId?: string;
 }
 
@@ -180,7 +181,7 @@ function renderCategory(
 }
 
 export function SettingsView(props: SettingsViewProps) {
-  const { activeCategory, onSelectCategory, onBackToWorkspace, onStartPanelResize } = props;
+  const { activeCategory, onSelectCategory, onBackToWorkspace, primaryResize } = props;
   const webSearchController = useWebSearchSettings({
     preferences: props.controller.agentGatewayPreferences,
     setPreferences: props.controller.setAgentGatewayPreferences,
@@ -198,16 +199,7 @@ export function SettingsView(props: SettingsViewProps) {
           onBackToWorkspace={onBackToWorkspace}
         />
       </div>
-      <div
-        className="panel-resizer panel-resizer--primary"
-        role="separator"
-        aria-label="调整设置导航宽度"
-        aria-orientation="vertical"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          onStartPanelResize("primary", event.clientX);
-        }}
-      />
+      <ResizeHandle axis="x" label="调整设置导航宽度" {...primaryResize} />
       <div key="settings" className="rounded-canvas view-enter" data-ui-region="canvas">
         <div className="settings-page settings-console-container" data-ui-region="settings">
           <div className="settings-page-inner">

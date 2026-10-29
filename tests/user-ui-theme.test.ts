@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { CATNIP_UI_THEME_ID } from "@shared/ui-themes";
+import { CATNIP_UI_THEME_ID, DEFAULT_UI_THEME_ID } from "@shared/ui-themes";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyUserUiThemeCss,
-  BUILTIN_UI_THEME_ID,
   getBuiltinUiThemeCss,
   normalizePersistedUiThemeId,
   USER_UI_THEME_STYLE_ID,
@@ -16,16 +15,16 @@ describe("user UI theme helpers", () => {
   });
 
   it("normalizes missing or invalid persisted ids to studio", () => {
-    expect(normalizePersistedUiThemeId(undefined)).toBe(BUILTIN_UI_THEME_ID);
-    expect(normalizePersistedUiThemeId("")).toBe(BUILTIN_UI_THEME_ID);
-    expect(normalizePersistedUiThemeId("studio")).toBe(BUILTIN_UI_THEME_ID);
+    expect(normalizePersistedUiThemeId(undefined)).toBe(DEFAULT_UI_THEME_ID);
+    expect(normalizePersistedUiThemeId("")).toBe(DEFAULT_UI_THEME_ID);
+    expect(normalizePersistedUiThemeId("studio")).toBe(DEFAULT_UI_THEME_ID);
   });
 
   it("keeps bundled theme ids even when they are absent from the user directory", () => {
     expect(normalizePersistedUiThemeId(CATNIP_UI_THEME_ID, new Set(["example"]))).toBe(
       CATNIP_UI_THEME_ID,
     );
-    expect(getBuiltinUiThemeCss(BUILTIN_UI_THEME_ID)).toBeNull();
+    expect(getBuiltinUiThemeCss(DEFAULT_UI_THEME_ID)).toBeNull();
     // Vitest stubs CSS modules to an empty string; the production Vite build
     // resolves the ?raw import to the bundled stylesheet text.
     expect(getBuiltinUiThemeCss(CATNIP_UI_THEME_ID)).toBeTypeOf("string");
@@ -34,7 +33,7 @@ describe("user UI theme helpers", () => {
 
   it("keeps custom ids until an availability set proves they are gone", () => {
     expect(normalizePersistedUiThemeId("midnight")).toBe("midnight");
-    expect(normalizePersistedUiThemeId("midnight", new Set(["example"]))).toBe(BUILTIN_UI_THEME_ID);
+    expect(normalizePersistedUiThemeId("midnight", new Set(["example"]))).toBe(DEFAULT_UI_THEME_ID);
     expect(normalizePersistedUiThemeId("example", new Set(["example"]))).toBe("example");
   });
 

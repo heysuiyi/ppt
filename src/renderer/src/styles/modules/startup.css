@@ -15,7 +15,7 @@
   color: var(--text-secondary);
   font-size: var(--text-sm);
   line-height: var(--text-sm-lh);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--type-label-weight);
   letter-spacing: var(--letter-wide);
   text-align: center;
   overflow-wrap: anywhere;

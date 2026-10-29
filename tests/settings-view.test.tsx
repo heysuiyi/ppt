@@ -37,7 +37,7 @@ function SettingsRegion({
       controller={controller}
       onSelectCategory={vi.fn()}
       onBackToWorkspace={vi.fn()}
-      onStartPanelResize={vi.fn()}
+      primaryResize={{ value: 280, min: 232, max: 360, onValueChange: vi.fn() }}
     />
   );
 }

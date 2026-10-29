@@ -9,6 +9,7 @@
 .markdown-body {
   font-family: var(--font-body);
   font-size: var(--text-md);
+  font-weight: var(--type-body-weight);
   line-height: 1.8;
   letter-spacing: 0.02em;
   color: var(--text-primary);
@@ -54,11 +55,12 @@
 .markdown-body h6 {
   margin: 20px 0 8px;
   font-family: var(--font-display);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--type-heading-weight);
   line-height: 1.35;
   letter-spacing: -0.01em;
   color: var(--text-primary);
 }
+/* Prose heading ratios and code/table em sizes stay relative to the reading size. */
 .markdown-body h1 {
   font-size: 1.5em;
 }
@@ -95,7 +97,7 @@
   border-left: 3px solid var(--accent-primary);
   color: var(--text-secondary);
   background: var(--surface-sunken);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--field-border-radius) var(--field-border-radius) 0;
 }
 .markdown-body blockquote > :first-child {
   margin-top: 0;
@@ -116,7 +118,7 @@
 .markdown-body pre {
   margin: 12px 0;
   padding: 12px 14px;
-  border-radius: var(--button-border-radius);
+  border-radius: var(--card-border-radius);
   background: var(--surface-sunken);
   border: 1px solid var(--border-default);
   overflow-x: auto;
@@ -131,7 +133,7 @@
 }
 
 .markdown-body a {
-  color: var(--accent-primary);
+  color: var(--accent-link-text);
   text-decoration: none;
 }
 .markdown-body a:hover {
@@ -158,14 +160,14 @@
 }
 .markdown-body th {
   background: var(--surface-sunken);
-  font-weight: 600;
+  font-weight: var(--type-heading-weight);
 }
 .markdown-body tr:nth-child(even) td {
   background: var(--surface-sunken);
 }
 
 .markdown-body strong {
-  font-weight: 600;
+  font-weight: var(--type-heading-weight);
   color: var(--text-primary);
 }
 .markdown-body em {

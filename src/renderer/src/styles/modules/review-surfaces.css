@@ -1,27 +1,27 @@
 /* ==========================================================================
-   Decision and artifact surfaces �?one neutral visual language
+   Decision and artifact surfaces — the authoritative shared visual recipe
    ========================================================================== */
 
 .inline-artifact-card,
 .approval-card,
 .patch-review-card {
   margin-top: 10px;
-  border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent);
-  border-radius: var(--control-radius-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--card-border-radius);
   background: transparent;
   box-shadow: none;
 }
 
 .approval-card,
 .patch-review-card {
-  padding: 13px 14px;
+  padding: var(--space-3) var(--card-padding);
 }
 
 .inline-artifact-card-header {
-  gap: 9px;
+  gap: var(--control-gap);
   min-height: 42px;
-  padding: 10px 13px;
-  border-bottom-color: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  padding: var(--space-3) var(--card-padding);
+  border-bottom: 1px solid var(--border-subtle);
   background: transparent;
 }
 
@@ -31,31 +31,31 @@
   border-radius: 0;
   background: transparent;
   color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0.08em;
 }
 
 .inline-artifact-title {
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-base);
+  font-weight: var(--type-heading-weight);
 }
 
 .inline-artifact-resolved,
 .deck-preview-count {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .approval-card-title {
   margin-bottom: 7px;
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-base);
+  font-weight: var(--type-heading-weight);
 }
 
 .approval-summary,
 .patch-review-summary {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.55;
 }
 
@@ -63,8 +63,8 @@
   gap: 0;
   margin: 12px 0;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent);
-  border-radius: var(--control-radius-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--field-border-radius);
 }
 
 .approval-command-item {
@@ -76,12 +76,12 @@
 }
 
 .approval-command-item + .approval-command-item {
-  border-top: 1px solid color-mix(in srgb, var(--text-muted) 14%, transparent);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .cmd-type,
 .cmd-val {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .cmd-val {
@@ -92,11 +92,11 @@
 .patch-review-buttons,
 .inline-artifact-actions {
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--control-gap);
 }
 
 .inline-artifact-actions {
-  padding: 0 13px 13px;
+  padding: 0 var(--card-padding) var(--card-padding);
 }
 
 .approval-buttons button,
@@ -104,21 +104,21 @@
 .inline-artifact-actions button {
   flex: 0 0 auto;
   min-width: 96px;
-  min-height: 34px;
-  padding: 7px 13px;
-  border-radius: var(--control-radius-sm);
+  min-height: var(--control-height-md);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--button-border-radius);
   font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-sm);
+  font-weight: var(--type-label-weight);
 }
 
 /* Artifact follow-ups are optional, not blocking decisions like approval and
    patch buttons, so they stay a size down. */
 .inline-artifact-actions button {
   min-width: 76px;
-  min-height: 28px;
-  padding: 5px 10px;
-  font-size: 11px;
+  min-height: var(--control-height-sm);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
 }
 
 .btn-reject {
@@ -161,22 +161,23 @@
 }
 
 .agent-question-options {
-  padding: 11px 13px;
+  padding: var(--space-3) var(--card-padding);
 }
 
 .agent-question-option {
-  border-radius: var(--control-radius-sm);
+  border-radius: var(--button-border-radius);
   background: transparent;
 }
 
 .agent-question-option.is-selected {
-  background: color-mix(in srgb, var(--accent-primary) 7%, transparent);
+  background: var(--accent-selected-bg);
+  color: var(--accent-selected-text);
 }
 
 .resolved-card {
   margin-top: 8px;
-  border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent);
-  border-radius: var(--control-radius-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--card-border-radius);
   background: transparent;
   box-shadow: none;
 }
@@ -185,7 +186,7 @@
   display: grid;
   grid-template-columns: 18px auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--layout-gap-compact);
   min-height: 38px;
   padding: 7px 10px;
   color: var(--text-secondary);
@@ -203,10 +204,10 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--accent-green) 12%, transparent);
-  color: var(--accent-green);
-  font-size: 10px;
-  font-weight: 800;
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-bold);
 }
 
 .resolved-card-copy {
@@ -218,33 +219,33 @@
 
 .resolved-card-label {
   color: var(--text-muted);
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-sm);
+  font-weight: var(--type-heading-weight);
   letter-spacing: 0.04em;
 }
 
 .resolved-card-copy strong {
   color: var(--text-primary);
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-sm);
+  font-weight: var(--type-heading-weight);
 }
 
 .resolved-card-detail {
   min-width: 0;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .resolved-card-disclosure {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .resolved-card[open] .resolved-card-disclosure {
-  color: var(--accent-primary);
+  color: var(--accent-link-text);
 }
 
 .resolved-card-body {
@@ -268,15 +269,15 @@
 .mirror-panel.is-expanded .slide-preview-gallery-grid {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 14px;
-  padding: 16px;
+  padding: var(--card-padding);
 }
 
 .slide-preview-gallery-item {
   min-width: 0;
   padding: 0;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent);
-  border-radius: 7px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--field-border-radius);
   background: transparent;
   color: var(--text-primary);
   cursor: zoom-in;
@@ -292,8 +293,8 @@
 }
 
 .slide-preview-gallery-item.is-current-slide {
-  border-color: color-mix(in srgb, var(--accent-primary) 62%, transparent);
-  box-shadow: 0 0 0 2px var(--accent-primary-glow);
+  border-color: var(--accent-selected-border);
+  box-shadow: 0 0 0 2px var(--accent-selected-bg);
 }
 
 .slide-preview-gallery-item:disabled {
@@ -305,7 +306,8 @@
   place-items: center;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  background: color-mix(in srgb, var(--surface-sunken) 80%, #fff 20%);
+  /* The thumbnail is slide paper, not a themed UI surface. */
+  background: #fff;
 }
 
 .slide-preview-gallery-media img {
@@ -318,7 +320,7 @@
 .slide-preview-gallery-error {
   padding: 10px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-align: center;
 }
 
@@ -328,7 +330,7 @@
   gap: 7px;
   min-width: 0;
   padding: 7px 9px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .slide-preview-gallery-caption b {
@@ -350,7 +352,7 @@
   display: grid;
   place-items: center;
   padding: 28px;
-  background: rgba(15, 23, 42, 0.68);
+  background: var(--modal-backdrop);
   backdrop-filter: blur(8px);
 }
 
@@ -358,9 +360,9 @@
   width: min(980px, 92vw);
   max-height: 90vh;
   overflow: auto;
-  border-radius: 10px;
-  background: var(--surface-sunken);
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.28);
+  border-radius: var(--panel-border-radius);
+  background: var(--surface-overlay);
+  box-shadow: var(--elevation-3);
 }
 
 .slide-preview-lightbox-header {
@@ -371,18 +373,18 @@
   min-height: 44px;
   padding: 7px 10px 7px 14px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .slide-preview-lightbox-header button {
   width: 28px;
   height: 28px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--button-border-radius);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 20px;
+  font-size: var(--text-xl);
 }
 
 .slide-preview-lightbox-header button:hover {
@@ -422,17 +424,17 @@
   margin: 0;
   padding: 10px 14px 12px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .tool-approval-attached {
   overflow: hidden;
-  border-radius: var(--control-radius-md) var(--control-radius-md) 0 0;
+  border-radius: var(--panel-border-radius) var(--panel-border-radius) 0 0;
   border-bottom: 1px solid color-mix(in srgb, var(--text-muted) 16%, transparent);
 }
 
 .tool-approval-attached .tool-approval-gate {
-  gap: 8px;
+  gap: var(--layout-gap-compact);
   padding: 11px 13px;
   border-radius: 0;
 }
@@ -458,5 +460,11 @@
 
   .resolved-card-detail {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-preview-gallery-item:hover:not(:disabled) {
+    transform: none;
   }
 }

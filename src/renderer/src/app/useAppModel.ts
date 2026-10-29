@@ -365,7 +365,8 @@ export function useAppModel(): AppModel {
               isMirrorExpanded,
               isPrimarySidebarCollapsed: workbenchLayout.isPrimarySidebarCollapsed,
               onTogglePrimarySidebar: workbenchLayout.togglePrimarySidebar,
-              onStartPanelResize: workbenchLayout.startPanelResize,
+              primaryResize: workbenchLayout.primaryResize,
+              secondaryResize: workbenchLayout.secondaryResize,
             },
           }
         : {
@@ -380,7 +381,7 @@ export function useAppModel(): AppModel {
                 if (sessionLoaded) void openWorkspace();
               },
               notify,
-              onStartPanelResize: workbenchLayout.startPanelResize,
+              primaryResize: workbenchLayout.primaryResize,
               activeSessionId: activeSessionId || undefined,
             },
           },

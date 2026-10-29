@@ -218,6 +218,7 @@ Key areas:
 
 - `src/renderer/`: React workspace, chat stream, live PPT mirror, settings console; `src/renderer/src/App.tsx` directly owns the shared layout and workspace/settings view selection
   - Container-driven layout: the root bounds the window height and Flex/Grid allocates the remaining space. `useWorkbenchLayout` owns panel-width CSS variables and observes the actual container with `ResizeObserver`. Panels scroll independently and local responsive rules use container queries; shrinking the window preserves the saved preview-width preference. SVG previews retain their 16:9 ratio and 1280×720 authoring coordinates.
+  - Panel resizing uses `src/renderer/src/components/ResizeHandle.tsx` with controlled `value/min/max/onValueChange`, an `axis` for horizontal or vertical movement, and a `direction` for growth. It owns idle/hover/dragging/disabled feedback, pointer capture, global cursors, and cleanup; arrow keys adjust by 10px and Home/End select bounds. Cancellation retains the last size. Disabling, blur, capture loss, unmounting, or changed bounds ends the drag; sizing policy and persistence remain in the layout layer.
 - `src/main/agent/`: Agent runtime, tool registry, model gateways, commit gate, sub-agents
 - `src/design-system/`: DesignSystemV2 schema, presets, and resolution
 - `src/shared/`: presentation model, command model, session and IPC types

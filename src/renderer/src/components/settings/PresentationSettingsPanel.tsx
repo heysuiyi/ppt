@@ -306,8 +306,8 @@ export function PresentationSettingsPanel({
               {activeSessionId ? "当前项目未应用参考模板 pack（仅在模板库或未导入）" : "无活动会话"}
             </span>
           ) : (
-            <div className="settings-hint" style={{ display: "grid", gap: 8 }}>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="settings-hint settings-palette-summary">
+              <div className="settings-palette-row">
                 <span>配色：</span>
                 {packPalette
                   ? [
@@ -323,14 +323,8 @@ export function PresentationSettingsPanel({
                         <span
                           key={hex}
                           title={hex}
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: 3,
-                            background: hex,
-                            border: "1px solid var(--border-color, #444)",
-                            display: "inline-block",
-                          }}
+                          className="settings-palette-swatch"
+                          style={{ background: hex }}
                         />
                       ))
                   : "（无 custom palette）"}

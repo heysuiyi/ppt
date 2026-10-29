@@ -11,13 +11,13 @@
   border-bottom: 1px solid var(--border-default);
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--surface-raised) 74%, transparent);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .ppt-job-status-bar__label {
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0.08em;
 }
 
@@ -32,16 +32,12 @@
 .ppt-job-status-bar__stale {
   margin-left: auto;
   color: var(--warning);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--type-heading-weight);
 }
 
 .ppt-job-status-bar.is-waiting_approval {
-  color: var(--accent-primary);
-  background: color-mix(
-    in srgb,
-    var(--accent-primary-glow, rgba(42, 143, 155, 0.18)) 55%,
-    transparent
-  );
+  color: var(--accent-link-text);
+  background: color-mix(in srgb, var(--accent-primary-glow) 55%, transparent);
 }
 
 .ppt-job-status-bar.is-failed,

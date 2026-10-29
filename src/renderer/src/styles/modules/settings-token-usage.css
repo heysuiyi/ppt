@@ -1,13 +1,14 @@
 .token-usage-shell {
   display: grid;
-  gap: 16px;
+  gap: var(--layout-gap-default);
 }
 
 .token-current-model {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: var(--layout-gap-default);
+  flex-wrap: wrap;
   padding: 12px 0;
   border: 0;
   border-radius: 0;
@@ -23,21 +24,22 @@
 .token-current-model span,
 .token-current-model small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
 }
 
 .token-current-model strong {
-  overflow: hidden;
   color: var(--text-primary);
-  font-size: 15px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: var(--text-md);
+  font-weight: var(--type-heading-weight);
+  line-height: var(--text-md-lh);
+  overflow-wrap: anywhere;
 }
 
 .token-model-status {
   flex: 0 0 auto;
   padding: 5px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-sunken);
 }
 
@@ -51,7 +53,7 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--control-radius-sm);
+  border-radius: var(--card-border-radius);
   background: transparent;
 }
 
@@ -67,32 +69,30 @@
 
 .token-usage-metric strong {
   max-width: 100%;
-  overflow: hidden;
   color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: var(--text-md);
+  font-weight: var(--type-heading-weight);
+  line-height: var(--text-md-lh);
+  overflow-wrap: anywhere;
 }
 
 .token-usage-metric span {
   color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.3;
-  white-space: nowrap;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
+  overflow-wrap: anywhere;
 }
 
 .token-usage-metric small {
   min-height: 14px;
   color: var(--text-muted);
-  font-size: 10px;
-  line-height: 1.35;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
 }
 
 .token-activity-card {
   display: grid;
-  gap: 18px;
+  gap: var(--layout-gap-default);
   min-width: 0;
   padding: 16px 0 4px;
 }
@@ -101,20 +101,23 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
+  gap: var(--layout-gap-default);
+  flex-wrap: wrap;
 }
 
 .token-activity-header h3 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-md);
+  font-weight: var(--type-heading-weight);
+  line-height: var(--text-md-lh);
 }
 
 .token-activity-header p {
   margin: 5px 0 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
 }
 
 .token-activity-actions,
@@ -136,17 +139,17 @@
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: var(--font-weight-medium);
+  font-size: var(--text-sm);
+  font-weight: var(--type-label-weight);
+  line-height: var(--text-sm-lh);
   cursor: pointer;
-  transition:
-    color 0.14s ease,
-    background 0.14s ease;
+  transition: var(--transition-color);
 }
 
 .token-view-tabs button {
+  min-height: var(--control-height-sm);
   padding: 4px 6px;
-  border-radius: var(--field-border-radius);
+  border-radius: var(--button-border-radius);
 }
 
 .token-view-tabs button:hover,
@@ -159,12 +162,12 @@
 }
 
 .token-usage-refresh {
-  width: 26px;
-  height: 26px;
+  min-width: var(--control-height-sm);
+  min-height: var(--control-height-sm);
   display: grid;
   place-items: center;
   padding: 0;
-  border-radius: var(--field-border-radius);
+  border-radius: var(--button-border-radius);
 }
 
 .token-usage-refresh:hover:not(:disabled) {
@@ -178,7 +181,7 @@
 }
 
 .token-usage-refresh:disabled svg {
-  animation: settingsSavingSpin 0.9s linear infinite;
+  animation: settingsSavingSpin var(--duration-loading-inner) linear infinite;
 }
 
 .token-trend-chart {
@@ -212,8 +215,8 @@
     color-mix(in srgb, var(--accent-primary) 42%, var(--surface-sunken))
   );
   transition:
-    height 0.2s ease,
-    opacity 0.14s ease;
+    height var(--duration-base) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out);
 }
 
 .token-trend-column:hover .token-trend-bar {
@@ -232,19 +235,19 @@
 
 .token-model-breakdown {
   display: grid;
-  gap: 16px;
+  gap: var(--layout-gap-default);
 }
 
 .token-model-list {
   display: grid;
-  gap: 13px;
+  gap: var(--layout-gap-compact);
 }
 
 .token-model-row {
   display: grid;
   grid-template-columns: minmax(130px, 0.9fr) minmax(150px, 1.6fr) minmax(90px, auto);
   align-items: center;
-  gap: 14px;
+  gap: var(--layout-gap-default);
 }
 
 .token-model-copy,
@@ -255,24 +258,25 @@
 }
 
 .token-model-copy strong {
-  overflow: hidden;
   color: var(--text-primary);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: var(--text-base);
+  font-weight: var(--type-label-weight);
+  line-height: var(--text-base-lh);
+  overflow-wrap: anywhere;
 }
 
 .token-model-copy span,
 .token-model-values span,
 .token-pricing-note {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
 }
 
 .token-model-bar-track {
   height: 7px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-sunken);
 }
 
@@ -290,7 +294,9 @@
 
 .token-model-values strong {
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-base);
+  font-weight: var(--type-label-weight);
+  line-height: var(--text-base-lh);
 }
 
 .token-pricing-note {
@@ -303,15 +309,17 @@
   margin: 0;
   padding: 18px;
   border: 1px dashed var(--border-default);
-  border-radius: var(--button-border-radius);
+  border-radius: var(--card-border-radius);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
   text-align: center;
 }
 
 .token-usage-state button {
-  margin-left: 8px;
-  color: var(--accent-primary);
+  min-height: var(--control-height-sm);
+  margin-left: var(--control-gap);
+  color: var(--accent-link-text);
 }
 
 .token-usage-state.is-error {
@@ -321,4 +329,34 @@
 .token-usage-empty {
   padding: 10px;
   border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .token-usage-refresh:disabled svg {
+    animation: none;
+  }
+}
+
+@container (max-width: 720px) {
+  .token-usage-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .token-activity-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .token-activity-actions {
+    justify-content: space-between;
+  }
+
+  .token-model-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .token-model-bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }

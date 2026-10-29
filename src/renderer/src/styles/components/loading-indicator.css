@@ -1,6 +1,10 @@
-/* Nested rotating frames — sizes / stroke / spin via tokens */
+/* Component-owned nested frames; local variants may override their dimensions. */
 
 .loading-indicator {
+  --loading-indicator-size: 48px;
+  --loading-indicator-mid: 38px;
+  --loading-indicator-inner: 28px;
+  --loading-indicator-stroke: 2px;
   width: var(--loading-indicator-size);
   height: var(--loading-indicator-size);
   display: inline-block;

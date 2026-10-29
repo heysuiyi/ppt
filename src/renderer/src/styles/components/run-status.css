@@ -6,8 +6,9 @@
   gap: 6px;
   min-width: 0;
   color: var(--text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--text-sm);
+  font-weight: var(--type-label-weight);
+  line-height: var(--text-sm-lh);
 }
 
 .run-status-label {
@@ -19,7 +20,7 @@
 
 .run-status-elapsed {
   flex-shrink: 0;
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }

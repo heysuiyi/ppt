@@ -17,7 +17,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
+  gap: var(--layout-gap-compact);
   font-size: var(--text-sm);
   color: var(--text-muted);
   cursor: pointer;
@@ -45,7 +45,7 @@
 .process-trace-panel-meta {
   flex-shrink: 0;
   color: var(--text-muted);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--type-label-weight);
   font-variant-numeric: tabular-nums;
 }
 .process-trace-panel-separator {
@@ -58,12 +58,12 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-muted);
-  font-weight: var(--font-weight-regular);
+  font-weight: var(--type-body-weight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .process-trace-panel-label {
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--type-label-weight);
 }
 .process-trace-panel-elapsed {
   flex-shrink: 0;
@@ -98,8 +98,8 @@
   gap: 6px;
   padding: 1px 0;
   font-family: var(--font-body);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-regular);
+  font-size: var(--text-sm);
+  font-weight: var(--type-body-weight);
   line-height: 1.5;
   letter-spacing: 0.01em;
   color: var(--text-muted);
@@ -226,8 +226,8 @@
 .process-trace-row-line,
 .process-trace-row-text {
   font-family: var(--font-body);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-regular);
+  font-size: var(--text-sm);
+  font-weight: var(--type-body-weight);
   line-height: 1.6;
   letter-spacing: 0.01em;
   color: var(--text-muted);

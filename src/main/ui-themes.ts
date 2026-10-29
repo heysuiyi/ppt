@@ -1,12 +1,11 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import type { UiThemeSummary } from "@shared/ipc";
-import { BUILTIN_UI_THEME_IDS, DEFAULT_UI_THEME_ID } from "@shared/ui-themes";
+import { BUILTIN_UI_THEME_IDS } from "@shared/ui-themes";
 import { getApplicationDataRoot } from "./application-data";
 
 export type { UiThemeSummary };
 
-export const BUILTIN_UI_THEME_ID = DEFAULT_UI_THEME_ID;
 export const UI_THEMES_DIRECTORY_NAME = "themes";
 export const UI_THEME_ENTRY_FILE_NAME = "theme.css";
 export const UI_THEME_MAX_BYTES = 256 * 1024;
@@ -46,9 +45,13 @@ block loses the cascade and its colors silently do nothing.
   --surface-overlay: #27313d;
   --text-primary: #f3f6fa;
   --text-secondary: #a8b3c2;
-  --text-muted: #7b8796;
+  --text-muted: #a0adbf;
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-default: rgba(255, 255, 255, 0.1);
+  --accent-action-bg: #0369a1;
+  --text-on-accent: #ffffff;
+  --accent-link-text: #38bdf8;
+  --border-focused: #38bdf8;
 }
 
 :root[data-skin][data-color-scheme="light"] {
@@ -59,11 +62,23 @@ block loses the cascade and its colors silently do nothing.
   --surface-overlay: #ffffff;
   --text-primary: #12161c;
   --text-secondary: #4a5563;
-  --text-muted: #6b7280;
+  --text-muted: #596372;
   --border-subtle: rgba(0, 0, 0, 0.06);
   --border-default: rgba(0, 0, 0, 0.1);
+  --accent-action-bg: #0369a1;
+  --text-on-accent: #ffffff;
+  --accent-link-text: #0369a1;
+  --border-focused: #0369a1;
 }
 \`\`\`
+
+Keep identity color, readable links and solid-action backgrounds separate.
+Check normal text at 4.5:1 against its actual composited surface, including
+selected and hover states. Do not reduce every dark-mode font weight.
+User font/size choices take precedence through root inline variables.
+Shared geometry roles include field/button/card/panel/popover radii,
+control-height-sm/md, card-padding and layout-gap-compact/default.
+Native caption colors and panel resize geometry are not theme parameters.
 
 ## Deep customization
 
@@ -99,12 +114,15 @@ const EXAMPLE_THEME_CSS = `/*
 
   --text-primary: #f3f6fa;
   --text-secondary: #a8b3c2;
-  --text-muted: #7b8796;
+  --text-muted: #a0adbf;
 
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-default: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.16);
-  --border-focused: rgba(255, 255, 255, 0.22);
+  --border-focused: #38bdf8;
+  --accent-action-bg: #0369a1;
+  --text-on-accent: #ffffff;
+  --accent-link-text: #38bdf8;
 }
 
 :root[data-skin][data-color-scheme="light"] {
@@ -118,12 +136,15 @@ const EXAMPLE_THEME_CSS = `/*
 
   --text-primary: #12161c;
   --text-secondary: #4a5563;
-  --text-muted: #6b7280;
+  --text-muted: #596372;
 
   --border-subtle: rgba(0, 0, 0, 0.06);
   --border-default: rgba(0, 0, 0, 0.1);
   --border-strong: rgba(0, 0, 0, 0.14);
-  --border-focused: rgba(0, 0, 0, 0.2);
+  --border-focused: #0369a1;
+  --accent-action-bg: #0369a1;
+  --text-on-accent: #ffffff;
+  --accent-link-text: #0369a1;
 }
 `;
 

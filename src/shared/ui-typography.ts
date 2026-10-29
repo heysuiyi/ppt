@@ -1,9 +1,9 @@
 export type UiFontFamily = "system" | "yahei" | "pingfang" | "segoe";
 
 export const DEFAULT_UI_FONT_FAMILY: UiFontFamily = "system";
-/** Base UI size in px; matches --text-base in tokens/typography.css. */
+/** Base UI size in px; drives the renderer's default --text-base. */
 export const DEFAULT_UI_FONT_SIZE = 13;
-/** Base leading multiplier; --text-base-lh (21px) is ~1.6x of 13px. */
+/** Base leading multiplier; the default base line box is 21px. */
 export const DEFAULT_UI_LINE_HEIGHT = 1.6;
 
 export const MIN_UI_FONT_SIZE = 11;
@@ -35,9 +35,9 @@ export const FONT_FAMILY_STACKS: Record<UiFontFamily, { display: string; body: s
 };
 
 /**
- * Default scale from tokens/typography.css, in px. Each step keeps its own
- * leading character (badges stay tight, prose stays loose); the settings values
- * scale the whole table rather than flattening it to one ratio.
+ * Single default size/leading source for the renderer stylesheet and overrides.
+ * Each step retains its own leading character; user settings scale the table
+ * rather than flattening badges and prose to one line-height ratio.
  */
 export const DEFAULT_TEXT_SCALE: Array<{ name: string; size: number; lineHeight: number }> = [
   { name: "2xs", size: 10, lineHeight: 14 },

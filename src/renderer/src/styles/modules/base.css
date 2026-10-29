@@ -7,7 +7,7 @@
 }
 
 :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent-primary) 62%, transparent);
+  outline: 2px solid var(--border-focused);
   outline-offset: 2px;
 }
 
@@ -16,7 +16,7 @@ body {
   font-family: var(--font-body);
   font-size: var(--text-base);
   line-height: var(--text-base-lh);
-  font-weight: var(--font-weight-regular);
+  font-weight: var(--type-body-weight);
   color: var(--text-primary);
   background-color: var(--surface-canvas);
   overflow: hidden;
@@ -42,5 +42,14 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--scrollbar-thumb-color) 140%, transparent);
+  background: var(--scrollbar-thumb-hover-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
 }

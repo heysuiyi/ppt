@@ -1,6 +1,6 @@
 /*
- * Settings density tokens - primitives only.
- * Component classes live in modules/settings-panels.css and settings-nav.css.
+ * Settings-specific layout and typography. Shared control and card geometry
+ * lives in geometry.css; these values are not a global density mode.
  */
 
 :root {
@@ -9,11 +9,7 @@
   --settings-font-section: var(--text-md);
   --settings-font-nav: var(--text-base);
   --settings-row-height: 36px;
-  --settings-gap: var(--space-3);
-  --settings-section-pad: var(--space-4);
   --settings-page-pad: var(--space-6) var(--space-8) var(--space-8);
   --settings-label-width: 168px;
-  --settings-control-height: 32px;
-  --settings-radius: var(--field-border-radius);
   --settings-content-width: 880px;
 }

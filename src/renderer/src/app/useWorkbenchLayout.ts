@@ -4,12 +4,12 @@ import {
   type RefCallback,
   type SetStateAction,
   useEffect,
-  useRef,
   useState,
 } from "react";
 
+import type { ResizeHandleProps } from "../components/ResizeHandle";
 import type { AppLocation } from "./appViewState";
-export type ResizablePanel = "primary" | "secondary";
+export type PanelResizeControl = Pick<ResizeHandleProps, "value" | "min" | "max" | "onValueChange">;
 
 interface WorkbenchLayoutOptions {
   location: AppLocation;
@@ -21,7 +21,8 @@ export interface WorkbenchLayoutController {
   isPrimarySidebarCollapsed: boolean;
   setIsPrimarySidebarCollapsed: Dispatch<SetStateAction<boolean>>;
   togglePrimarySidebar: () => void;
-  startPanelResize: (panel: ResizablePanel, startClientX: number) => void;
+  primaryResize: PanelResizeControl;
+  secondaryResize: PanelResizeControl;
   workspaceRef: RefCallback<HTMLDivElement>;
   workspaceClassName: string;
   workspaceStyle: CSSProperties;
@@ -51,7 +52,6 @@ export function useWorkbenchLayout({
     location.area === "settings" ? "settings" : location.page === "files" ? "files" : "workspace";
   const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const stopResizeRef = useRef<(() => void) | null>(null);
   const [isPrimarySidebarCollapsed, setIsPrimarySidebarCollapsed] = useState(
     () => window.localStorage.getItem("agent-ppt:primary-sidebar") === "collapsed",
   );
@@ -100,8 +100,6 @@ export function useWorkbenchLayout({
     return () => observer.disconnect();
   }, [workspaceElement]);
 
-  useEffect(() => () => stopResizeRef.current?.(), []);
-
   const hasPreview = activeMode === "workspace" && previewOpen && !previewExpanded;
   const requestedPrimaryWidth =
     activeMode !== "settings" && isPrimarySidebarCollapsed ? PRIMARY_RAIL : primarySidebarWidth;
@@ -119,6 +117,8 @@ export function useWorkbenchLayout({
   );
   const effectiveSecondaryPaneWidth =
     containerWidth > 0 ? Math.min(secondaryPaneWidth, maxSecondaryWidth) : secondaryPaneWidth;
+  const maxPrimaryWidth =
+    containerWidth > 0 ? Math.min(PRIMARY_MAX, containerWidth * 0.4) : PRIMARY_MAX;
 
   useEffect(() => {
     if (
@@ -137,49 +137,6 @@ export function useWorkbenchLayout({
     secondaryPaneWidth,
   ]);
 
-  const startPanelResize = (panel: ResizablePanel, startClientX: number) => {
-    stopResizeRef.current?.();
-    const startPrimaryWidth = effectivePrimarySidebarWidth;
-    const startSecondaryWidth = effectiveSecondaryPaneWidth;
-    document.documentElement.classList.add("is-resizing-panels");
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (panel === "primary") {
-        const maxWidth =
-          containerWidth > 0 ? Math.min(PRIMARY_MAX, containerWidth * 0.4) : PRIMARY_MAX;
-        setPrimarySidebarWidth(
-          Math.min(
-            maxWidth,
-            Math.max(
-              Math.min(PRIMARY_MIN, maxWidth),
-              startPrimaryWidth + event.clientX - startClientX,
-            ),
-          ),
-        );
-        return;
-      }
-      const minWidth = Math.min(SECONDARY_MIN, maxSecondaryWidth);
-      setSecondaryPaneWidth(
-        Math.min(
-          maxSecondaryWidth,
-          Math.max(minWidth, startSecondaryWidth - (event.clientX - startClientX)),
-        ),
-      );
-    };
-
-    const handlePointerUp = () => {
-      document.documentElement.classList.remove("is-resizing-panels");
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-      window.removeEventListener("pointercancel", handlePointerUp);
-      stopResizeRef.current = null;
-    };
-    stopResizeRef.current = handlePointerUp;
-    window.addEventListener("pointercancel", handlePointerUp, { once: true });
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-  };
-
   const workspaceStyle = {
     "--primary-sidebar-width": `${effectivePrimarySidebarWidth}px`,
     "--secondary-pane-width": `${effectiveSecondaryPaneWidth}px`,
@@ -192,7 +149,18 @@ export function useWorkbenchLayout({
     isPrimarySidebarCollapsed,
     setIsPrimarySidebarCollapsed,
     togglePrimarySidebar: () => setIsPrimarySidebarCollapsed((collapsed) => !collapsed),
-    startPanelResize,
+    primaryResize: {
+      value: effectivePrimarySidebarWidth,
+      min: Math.min(PRIMARY_MIN, maxPrimaryWidth),
+      max: maxPrimaryWidth,
+      onValueChange: setPrimarySidebarWidth,
+    },
+    secondaryResize: {
+      value: effectiveSecondaryPaneWidth,
+      min: Math.min(SECONDARY_MIN, maxSecondaryWidth),
+      max: maxSecondaryWidth,
+      onValueChange: setSecondaryPaneWidth,
+    },
     workspaceRef: setWorkspaceElement,
     workspaceClassName,
     workspaceStyle,

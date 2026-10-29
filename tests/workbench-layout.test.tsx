@@ -74,25 +74,16 @@ describe("container-driven workbench layout", () => {
     ).toBe("380px");
   });
 
-  it("starts dragging from the fitted width rather than the larger saved preference", () => {
+  it("preserves an explicit width change across later container resizes", () => {
     const { result } = mountLayout();
     resizeContainer(900);
-    act(() => result.current.startPanelResize("secondary", 500));
-    act(() => window.dispatchEvent(new MouseEvent("pointermove", { clientX: 520 })));
+    act(() => result.current.secondaryResize.onValueChange(312.8));
+    resizeContainer(700);
+    expect(result.current.secondaryResize.value).toBeLessThan(312.8);
     expect(Number(window.localStorage.getItem("agent-ppt:secondary-pane-width"))).toBeCloseTo(
       312.8,
     );
-    act(() => window.dispatchEvent(new Event("pointerup")));
-    expect(document.documentElement.classList.contains("is-resizing-panels")).toBe(false);
-  });
-
-  it("stops an active drag when the layout unmounts", () => {
-    const { result, unmount } = mountLayout();
     resizeContainer(1300);
-    act(() => result.current.startPanelResize("secondary", 500));
-    unmount();
-    expect(document.documentElement.classList.contains("is-resizing-panels")).toBe(false);
-    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 400 }));
-    expect(window.localStorage.getItem("agent-ppt:secondary-pane-width")).toBe("380");
+    expect(result.current.secondaryResize.value).toBeCloseTo(312.8);
   });
 });

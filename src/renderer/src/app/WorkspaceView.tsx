@@ -4,8 +4,9 @@ import { DeckPreviewModal } from "../components/DeckPreviewModal";
 import { LeftPanel } from "../components/LeftPanel";
 import { PPTMirror } from "../components/PPTMirror";
 import { ProjectFilesPage } from "../components/ProjectFilesPage";
+import { ResizeHandle } from "../components/ResizeHandle";
 import type { AppLocation } from "./appViewState";
-import type { ResizablePanel } from "./useWorkbenchLayout";
+import type { PanelResizeControl } from "./useWorkbenchLayout";
 
 interface WorkspaceViewProps {
   state: Extract<AppLocation, { area: "workspace" }>;
@@ -22,7 +23,8 @@ interface WorkspaceViewProps {
   isMirrorExpanded: boolean;
   isPrimarySidebarCollapsed: boolean;
   onTogglePrimarySidebar: () => void;
-  onStartPanelResize: (panel: ResizablePanel, startClientX: number) => void;
+  primaryResize: PanelResizeControl;
+  secondaryResize: PanelResizeControl;
 }
 
 export function WorkspaceView({
@@ -37,7 +39,8 @@ export function WorkspaceView({
   isMirrorExpanded,
   isPrimarySidebarCollapsed,
   onTogglePrimarySidebar,
-  onStartPanelResize,
+  primaryResize,
+  secondaryResize,
 }: WorkspaceViewProps) {
   return (
     <>
@@ -51,16 +54,7 @@ export function WorkspaceView({
       </div>
 
       {!isPrimarySidebarCollapsed ? (
-        <div
-          className="panel-resizer panel-resizer--primary"
-          role="separator"
-          aria-label="调整工作台侧栏宽度"
-          aria-orientation="vertical"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            onStartPanelResize("primary", event.clientX);
-          }}
-        />
+        <ResizeHandle axis="x" label="调整工作台侧栏宽度" {...primaryResize} />
       ) : (
         <div className="panel-resizer-placeholder" />
       )}
@@ -91,16 +85,12 @@ export function WorkspaceView({
 
               {isMirrorVisible && mirrorProps ? (
                 <>
-                  <div
-                    className={`panel-resizer panel-resizer--secondary${isMirrorExpanded ? " is-disabled" : ""}`}
-                    role="separator"
-                    aria-label="调整预览面板宽度"
-                    aria-orientation="vertical"
-                    onPointerDown={(event) => {
-                      if (isMirrorExpanded) return;
-                      event.preventDefault();
-                      onStartPanelResize("secondary", event.clientX);
-                    }}
+                  <ResizeHandle
+                    axis="x"
+                    direction={-1}
+                    label="调整预览面板宽度"
+                    disabled={isMirrorExpanded}
+                    {...secondaryResize}
                   />
                   <PPTMirror {...mirrorProps} />
                 </>

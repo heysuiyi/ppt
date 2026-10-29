@@ -1,0 +1,40 @@
+/* Shared UI geometry. Theme recipes may map shapes; layout algorithms own
+ * native chrome, panel widths and resize hit targets. Light/dark share sizes. */
+:root {
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  --control-radius-xs: var(--radius-xs);
+  --control-radius-sm: var(--radius-sm);
+  --control-radius-md: var(--radius-md);
+  --control-radius-lg: var(--radius-lg);
+  --control-radius-xl: var(--radius-xl);
+  --control-radius-pill: var(--radius-pill);
+  --field-border-radius: var(--radius-sm);
+  --button-border-radius: var(--radius-md);
+  --card-border-radius: var(--radius-lg);
+  --panel-border-radius: var(--radius-xl);
+  --popover-border-radius: var(--radius-md);
+  --workbench-border-radius: var(--panel-border-radius);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --control-height-sm: 28px;
+  --control-height-md: 32px;
+  --control-padding-inline: var(--space-2);
+  --control-gap: var(--space-2);
+  --card-padding: var(--space-4);
+  --layout-gap-compact: var(--space-2);
+  --layout-gap-default: var(--space-4);
+  --section-gap: var(--space-6);
+}

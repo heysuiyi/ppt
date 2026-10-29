@@ -2,7 +2,7 @@
 
 /* 全屏放映灯箱模态窗�?*/
 .slideshow-lightbox-overlay {
-  --slideshow-slide-shadow: 0 25px 60px rgba(15, 23, 42, 0.15);
+  --slideshow-slide-shadow: var(--elevation-3);
   position: fixed;
   top: 0;
   left: 0;
@@ -15,10 +15,6 @@
   display: grid;
   place-items: center;
   color: var(--text-primary);
-}
-
-:root[data-color-scheme="dark"] .slideshow-lightbox-overlay {
-  --slideshow-slide-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
 }
 
 .slideshow-lightbox-content {
@@ -38,7 +34,7 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 64px;
+  min-height: 64px;
   padding-left: 40px;
   padding-right: max(
     40px,
@@ -54,13 +50,13 @@
 }
 
 .slideshow-title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--text-lg);
+  font-weight: var(--type-heading-weight);
   font-family: var(--font-display);
 }
 
 .slideshow-progress {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--text-secondary);
 }
 
@@ -69,10 +65,10 @@
   border: 1px solid var(--border-default);
   color: var(--text-primary);
   padding: 6px 14px;
-  border-radius: var(--field-border-radius);
+  border-radius: var(--button-border-radius);
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--type-label-weight);
   font-family: var(--font-display);
   transition: var(--transition-color);
 }
@@ -92,6 +88,16 @@
   overflow: hidden;
 }
 
+.slideshow-slide-viewport {
+  height: auto;
+  aspect-ratio: 1280 / 720;
+  /* Slideshow paper and author colors stay independent of the UI palette. */
+  background: #fff;
+  box-shadow: var(--slideshow-slide-shadow);
+  border-radius: var(--card-border-radius);
+  position: relative;
+}
+
 .slideshow-nav-arrow {
   position: absolute;
   top: 50%;
@@ -102,6 +108,7 @@
   width: 54px;
   height: 54px;
   border-radius: 50%;
+  /* Optical chevron size inside a fixed circular hit target, not reading text. */
   font-size: 32px;
   display: grid;
   place-items: center;
@@ -126,4 +133,10 @@
 }
 .slideshow-nav-arrow.right {
   right: 40px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slideshow-nav-arrow:hover:not(:disabled) {
+    transform: translateY(-50%);
+  }
 }

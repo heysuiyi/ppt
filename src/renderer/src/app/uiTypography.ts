@@ -23,6 +23,25 @@ export {
   normalizePersistedUiLineHeight,
 } from "@shared/ui-typography";
 
+const DEFAULT_TYPOGRAPHY_STYLE_ID = "ui-typography-defaults";
+const DEFAULT_TYPOGRAPHY_CSS = `:root{${DEFAULT_TEXT_SCALE.map(
+  (step) => `--text-${step.name}:${step.size}px;--text-${step.name}-lh:${step.lineHeight}px;`,
+).join("")}}`;
+
+/** Lowest-priority defaults: themes can override them without inline styles. */
+export function installUiTypographyDefaults(): void {
+  if (typeof document === "undefined") return;
+  let sheet = document.getElementById(DEFAULT_TYPOGRAPHY_STYLE_ID);
+  if (!sheet) {
+    sheet = document.createElement("style");
+    sheet.id = DEFAULT_TYPOGRAPHY_STYLE_ID;
+    document.head.prepend(sheet);
+  }
+  if (sheet.textContent !== DEFAULT_TYPOGRAPHY_CSS) {
+    sheet.textContent = DEFAULT_TYPOGRAPHY_CSS;
+  }
+}
+
 /**
  * Writes font/size CSS variables as inline styles on :root.
  * Default values remove the inline overrides so stylesheet tokens take over again.
@@ -33,6 +52,7 @@ export function applyUiTypography(
   lineHeight: number,
 ): void {
   if (typeof document === "undefined") return;
+  installUiTypographyDefaults();
 
   const root = document.documentElement;
 

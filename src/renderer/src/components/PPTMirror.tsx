@@ -505,16 +505,8 @@ export const PPTMirror: React.FC<PPTMirrorProps> = ({
               >
                 {slides[fullscreenIndex] ? (
                   <div
-                    className="slide-viewport"
-                    style={{
-                      width: fullscreenWidth,
-                      height: "auto",
-                      aspectRatio: "1280 / 720",
-                      background: "#ffffff",
-                      boxShadow: "var(--slideshow-slide-shadow)",
-                      borderRadius: 8,
-                      position: "relative",
-                    }}
+                    className="slide-viewport slideshow-slide-viewport"
+                    style={{ width: fullscreenWidth }}
                   >
                     {slides[fullscreenIndex].visualSource?.kind === "svg" ? (
                       <SvgSlideSurface slide={slides[fullscreenIndex]} />

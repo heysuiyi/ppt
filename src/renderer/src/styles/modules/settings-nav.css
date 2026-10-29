@@ -11,22 +11,22 @@
   flex: 0 0 auto;
   min-width: 0;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--layout-gap-default);
 }
 
 .settings-nav-filter {
   width: 100%;
   min-width: 0;
   flex-shrink: 0;
-  height: var(--settings-control-height);
-  padding: 0 10px;
+  min-height: var(--control-height-md);
+  padding: 4px var(--control-padding-inline);
   border: 1px solid var(--border-default);
-  border-radius: var(--settings-radius);
+  border-radius: var(--field-border-radius);
   background: var(--surface-sunken);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: var(--settings-font-nav);
-  outline: none;
+  line-height: var(--text-base-lh);
 }
 
 .settings-nav-filter:focus {
@@ -53,15 +53,17 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 10px;
-  min-height: 30px;
-  padding: 6px 10px;
+  gap: var(--control-gap);
+  min-height: var(--control-height-sm);
+  padding: 6px var(--control-padding-inline);
   border: 0;
   border-radius: var(--control-radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font-family: var(--font-body);
   font-size: var(--settings-font-nav);
+  font-weight: var(--type-label-weight);
+  line-height: var(--text-base-lh);
   text-align: left;
   cursor: pointer;
   width: 100%;
@@ -90,25 +92,27 @@
 }
 
 .settings-nav-item.is-active {
-  background: var(--surface-active);
-  color: var(--text-primary);
-  font-weight: var(--font-weight-medium);
+  background: var(--accent-selected-bg);
+  color: var(--accent-selected-text);
+  font-weight: var(--type-label-weight);
 }
 
 .settings-nav-back {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 6px;
+  gap: var(--control-gap);
   width: 100%;
-  min-height: 28px;
-  padding: 6px 8px;
+  min-height: var(--control-height-sm);
+  padding: 6px var(--control-padding-inline);
   border: 0;
   border-radius: var(--control-radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font-family: var(--font-body);
   font-size: var(--settings-font-nav);
+  font-weight: var(--type-label-weight);
+  line-height: var(--text-base-lh);
   cursor: pointer;
   text-align: left;
   transition: var(--transition-color);
@@ -121,4 +125,9 @@
 
 .settings-sidebar-footer .settings-nav-back svg {
   transform: rotate(180deg);
+}
+
+.settings-nav-item:active,
+.settings-nav-back:active {
+  background: var(--surface-active);
 }

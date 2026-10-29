@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { UserMessageEditor } from "../src/renderer/src/components/UserMessageEditor";
@@ -40,17 +38,5 @@ describe("UserMessageEditor", () => {
     expect(render("有效消息", false)).not.toMatch(
       /<button[^>]*disabled=""[^>]*>提交修改<\/button>/,
     );
-  });
-
-  it("uses a full-width editing bubble instead of fit-content sizing", () => {
-    const css = readFileSync(
-      join(process.cwd(), "src/renderer/src/styles/modules/chat.css"),
-      "utf8",
-    );
-
-    expect(css).toMatch(
-      /\.user-message-bubble\.is-editing\s*\{[^}]*width:\s*100%[^}]*max-width:\s*720px/s,
-    );
-    expect(css).toMatch(/\.user-message-editor\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0/s);
   });
 });

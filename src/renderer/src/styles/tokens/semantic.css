@@ -18,6 +18,7 @@
   --surface-overlay: var(--raw-neutral-750);
   --surface-hover: rgba(255, 255, 255, 0.04);
   --surface-active: rgba(255, 255, 255, 0.07);
+  --modal-backdrop: color-mix(in srgb, var(--surface-canvas) 78%, transparent);
 
   /* Text */
   --text-primary: var(--raw-neutral-50);
@@ -29,21 +30,24 @@
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-default: rgba(255, 255, 255, 0.09);
   --border-strong: rgba(255, 255, 255, 0.14);
-  --border-focused: rgba(255, 255, 255, 0.2);
+  --border-focused: #38bdf8;
 
   /* Elevation */
   --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --elevation-2: 0 4px 12px rgba(0, 0, 0, 0.45);
   --elevation-3: 0 16px 40px rgba(0, 0, 0, 0.5);
 
-  /* Accent (overridden by data-accent) */
+  /* Accent identity, readable text and solid actions are distinct roles. */
   --accent-primary: var(--raw-cyan-500);
   --accent-primary-glow: var(--raw-cyan-glow);
-  --accent-primary-contrast: var(--raw-neutral-0);
+  --accent-action-bg: #0369a1;
+  --accent-link-text: #38bdf8;
+  --accent-action-hover-bg: color-mix(in srgb, var(--accent-action-bg) 92%, black);
+  --accent-action-active-bg: color-mix(in srgb, var(--accent-action-bg) 84%, black);
   --accent-primary-hover-shadow: rgba(14, 165, 233, 0.35);
   --accent-selected-bg: var(--accent-primary-glow);
   --accent-selected-border: var(--accent-primary);
-  --accent-selected-text: var(--accent-primary);
+  --accent-selected-text: var(--accent-link-text);
 
   /* Status */
   --danger: var(--raw-danger-400);
@@ -68,42 +72,6 @@
   --accent-purple-glow: rgba(168, 85, 247, 0.18);
   --accent-orange: var(--raw-orange-500);
 
-  /* Shape family */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-pill: 999px;
-  --border-radius-scale: 1;
-  --content-radius-scale: 0.2;
-
-  --control-radius-xs: calc(var(--radius-xs) * var(--border-radius-scale));
-  --control-radius-sm: calc(var(--radius-sm) * var(--border-radius-scale));
-  --control-radius-md: calc(var(--radius-md) * var(--border-radius-scale));
-  --control-radius-lg: calc(var(--radius-lg) * var(--border-radius-scale));
-  --control-radius-xl: calc(var(--radius-xl) * var(--border-radius-scale));
-  --control-radius-pill: var(--radius-pill);
-  --field-border-radius: var(--control-radius-sm);
-  --button-border-radius: var(--control-radius-md);
-  --card-border-radius: var(--control-radius-lg);
-  --panel-border-radius: var(--control-radius-xl);
-
-  /* Spacing */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-
-  /* Loading indicator (md default; --sm overrides locally) */
-  --loading-indicator-size: 48px;
-  --loading-indicator-mid: 38px;
-  --loading-indicator-inner: 28px;
-  --loading-indicator-stroke: 2px;
-
   /* Z-index */
   --z-base: 0;
   --z-sticky: 100;
@@ -116,4 +84,5 @@
 
   /* Scrollbar */
   --scrollbar-thumb-color: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover-color: color-mix(in srgb, var(--text-muted) 65%, transparent);
 }

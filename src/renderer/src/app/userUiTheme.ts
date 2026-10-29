@@ -1,7 +1,7 @@
 import { CATNIP_UI_THEME_ID, DEFAULT_UI_THEME_ID } from "@shared/ui-themes";
 import catnipThemeCss from "../styles/themes/catnip.css?raw";
 
-export { BUILTIN_UI_THEME_ID, normalizePersistedUiThemeId } from "@shared/ui-themes";
+export { normalizePersistedUiThemeId } from "@shared/ui-themes";
 
 export const USER_UI_THEME_STYLE_ID = "user-ui-theme";
 

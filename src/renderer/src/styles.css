@@ -2,6 +2,7 @@
 @import "./styles/tokens/typography.css";
 @import "./styles/tokens/motion.css";
 @import "./styles/tokens/semantic.css";
+@import "./styles/tokens/geometry.css";
 @import "./styles/tokens/skins/studio.css";
 @import "./styles/tokens/fonts.css";
 @import "./styles/tokens/settings-density.css";
@@ -9,6 +10,7 @@
 @import "./styles/components/select.css";
 @import "./styles/components/run-status.css";
 @import "./styles/components/loading-indicator.css";
+@import "./styles/components/resize-handle.css";
 @import "./styles/modules/base.css";
 @import "./styles/modules/layout.css";
 @import "./styles/modules/view-enter.css";

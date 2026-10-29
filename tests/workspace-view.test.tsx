@@ -100,7 +100,8 @@ function props(): ComponentProps<typeof WorkspaceView> {
     isMirrorExpanded: false,
     isPrimarySidebarCollapsed: false,
     onTogglePrimarySidebar: vi.fn(),
-    onStartPanelResize: vi.fn(),
+    primaryResize: { value: 280, min: 232, max: 360, onValueChange: vi.fn() },
+    secondaryResize: { value: 380, min: 300, max: 560, onValueChange: vi.fn() },
   };
 }
 

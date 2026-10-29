@@ -1,38 +1,17 @@
 /*
- * Typography scale. Modules consume --text-* / --font-weight-* only.
- * Weights: 400 / 500 / 600 / 700 (variable font; no fake 520/650 values).
- */
-
-/*
- * The 2xs/xs steps stay tight because they label single-line badges and meta.
- * From `sm` up the copy is read as prose and is mostly CJK, which needs a
- * looser leading (~1.6) than Latin to avoid looking packed.
+ * The text size/leading ladder is installed from shared/ui-typography.ts before
+ * first render. Keep weights stable; theme recipes map roles, not fake weights.
  */
 :root {
-  --text-2xs: 10px;
-  --text-2xs-lh: 14px;
-  --text-xs: 11px;
-  --text-xs-lh: 16px;
-  --text-sm: 12px;
-  --text-sm-lh: 19px;
-  --text-base: 13px;
-  --text-base-lh: 21px;
-  --text-md: 14px;
-  --text-md-lh: 23px;
-  --text-lg: 16px;
-  --text-lg-lh: 26px;
-  --text-xl: 20px;
-  --text-xl-lh: 30px;
-  --text-2xl: 24px;
-  --text-2xl-lh: 34px;
-
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
+  --type-body-weight: var(--font-weight-regular);
+  --type-label-weight: var(--font-weight-medium);
+  --type-heading-weight: var(--font-weight-semibold);
 
   --letter-tight: -0.01em;
-  --letter-normal: 0;
   --letter-wide: 0.04em;
   --letter-caps: 0.08em;
 }

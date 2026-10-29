@@ -1,7 +1,7 @@
 /*
  * UI text uses the platform UI font (system-ui). Pairing a Latin webfont with a
  * CJK system fallback mismatches x-height and advance widths in mixed prose.
- * Lora is reserved for slide/content serif via --font-serif.
+ * Lora resources remain available for presentation content, not UI roles.
  */
 @import "@fontsource/lora/latin-400.css";
 @import "@fontsource/lora/latin-400-italic.css";
@@ -16,7 +16,6 @@
     system-ui, "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
   --font-body:
     system-ui, "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
-  --font-serif: "Lora", Georgia, serif;
   --font-mono:
     "JetBrains Mono", "Cascadia Code", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
 }

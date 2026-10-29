@@ -3,7 +3,6 @@
 .app-shell {
   --window-titlebar-height: 30px;
   --chrome-inset: 8px;
-  --main-radius: calc(12px * var(--content-radius-scale, 0.2) + 10px);
   min-height: 0;
   height: 100vh;
   display: flex;
@@ -91,7 +90,7 @@
   color: var(--text-secondary);
   font-family: inherit;
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: var(--type-label-weight);
   /* line-height:1 clips CJK ascent/descent asymmetrically and pushes the glyphs
      below the flex center; let the full line box drive the centering. */
   line-height: normal;
@@ -122,10 +121,10 @@
   min-width: 188px;
   padding: 4px;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--control-radius-md, 8px);
-  background: var(--surface-elevated, var(--surface-base));
-  box-shadow: var(--shadow-popover, 0 8px 24px rgba(0, 0, 0, 0.18));
-  z-index: var(--z-popover, 40);
+  border-radius: var(--popover-border-radius);
+  background: var(--surface-overlay);
+  box-shadow: var(--elevation-2);
+  z-index: var(--z-popover);
   -webkit-app-region: no-drag;
 }
 
@@ -133,12 +132,16 @@
   display: block;
   width: 100%;
   padding: 8px 10px;
+  min-height: var(--control-height-sm);
   border: 0;
   border-radius: var(--control-radius-sm);
   background: transparent;
   color: var(--text-primary);
+  font-family: var(--font-body);
   font-size: var(--text-sm);
-  line-height: 1.3;
+  font-weight: var(--type-label-weight);
+  line-height: var(--text-sm-lh);
+  overflow-wrap: anywhere;
   text-align: left;
   cursor: pointer;
 }
@@ -184,50 +187,12 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  border-radius: var(--workbench-border-radius);
 }
 
-.panel-resizer,
 .panel-resizer-placeholder {
   position: relative;
   width: 6px;
   min-height: 0;
   touch-action: none;
-}
-
-.panel-resizer {
-  cursor: col-resize;
-  z-index: var(--z-sticky);
-}
-
-.panel-resizer::after {
-  content: "";
-  position: absolute;
-  top: 12%;
-  bottom: 12%;
-  left: 2px;
-  width: 2px;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  transition: background-color var(--duration-fast) var(--ease-out);
-}
-
-.panel-resizer:hover::after,
-.panel-resizer:active::after {
-  background: var(--accent-primary);
-}
-
-.panel-resizer--secondary {
-  width: 6px;
-  background: transparent;
-}
-
-.panel-resizer.is-disabled {
-  pointer-events: none;
-  opacity: 0;
-}
-
-html.is-resizing-panels,
-html.is-resizing-panels * {
-  cursor: col-resize !important;
-  user-select: none !important;
 }

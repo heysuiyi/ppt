@@ -27,7 +27,7 @@
 
   --text-primary: #fff4fb;
   --text-secondary: #d9bfd2;
-  --text-muted: #a28a9f;
+  --text-muted: #b19bae;
   --text-on-accent: #2b1020;
 
   --border-subtle: rgba(255, 165, 207, 0.08);
@@ -39,18 +39,14 @@
   --elevation-2: 0 10px 28px rgba(8, 5, 11, 0.56);
   --elevation-3: 0 24px 64px rgba(8, 5, 11, 0.7);
 
-  /* 主题内部状态色与强调色别名 */
-  --accent-cyan: #ff78b5;
-  --accent-cyan-glow: rgba(255, 120, 181, 0.28);
-  --accent-green: #7de4c3;
-  --accent-green-glow: rgba(125, 228, 195, 0.24);
-  --accent-purple: #c895ff;
-  --accent-purple-glow: rgba(200, 149, 255, 0.25);
-  --accent-orange: #ffb67f;
-  --accent-orange-glow: rgba(255, 182, 127, 0.25);
-
-  --accent-primary-contrast: #2b1020;
+  --accent-primary: #ff78b5;
+  --accent-primary-glow: rgba(255, 120, 181, 0.28);
   --accent-primary-hover-shadow: rgba(255, 120, 181, 0.34);
+  --accent-action-bg: #ff78b5;
+  --accent-link-text: #ff78b5;
+  --accent-selected-bg: color-mix(in srgb, var(--accent-primary) 14%, var(--surface-raised));
+  --accent-selected-border: var(--border-focused);
+  --accent-selected-text: var(--accent-link-text);
 
   --danger: #ff7088;
   --danger-glow: rgba(255, 112, 136, 0.2);
@@ -65,6 +61,7 @@
   --diff-add: #a0f2c4;
   --diff-remove: #ffb2bf;
   --scrollbar-thumb-color: rgba(255, 165, 207, 0.26);
+  --scrollbar-thumb-hover-color: #ff78b5;
 
   /* 主题私有变量 */
   --catnip-shell-highlight: rgba(255, 130, 190, 0.15);
@@ -90,44 +87,42 @@
   --surface-active: rgba(255, 87, 158, 0.135);
 
   --text-primary: #3f2837;
-  --text-secondary: #76546c;
-  --text-muted: #9d8195;
+  --text-secondary: #67495e;
+  --text-muted: #795b70;
   --text-on-accent: #ffffff;
 
   --border-subtle: rgba(222, 84, 148, 0.1);
   --border-default: rgba(222, 84, 148, 0.22);
   --border-strong: rgba(222, 84, 148, 0.38);
-  --border-focused: #f6539f;
+  --border-focused: #b72a70;
 
   --elevation-1: 0 2px 8px rgba(173, 94, 132, 0.12);
   --elevation-2: 0 10px 28px rgba(173, 94, 132, 0.16);
   --elevation-3: 0 24px 64px rgba(173, 94, 132, 0.22);
 
-  --accent-cyan: #f6539f;
-  --accent-cyan-glow: rgba(246, 83, 159, 0.2);
-  --accent-green: #16ad88;
-  --accent-green-glow: rgba(22, 173, 136, 0.16);
-  --accent-purple: #9254e8;
-  --accent-purple-glow: rgba(146, 84, 232, 0.16);
-  --accent-orange: #e87f32;
-  --accent-orange-glow: rgba(232, 127, 50, 0.17);
+  --accent-primary: #f6539f;
+  --accent-primary-glow: rgba(246, 83, 159, 0.2);
+  --accent-primary-hover-shadow: rgba(183, 42, 112, 0.28);
+  --accent-action-bg: #b72a70;
+  --accent-link-text: #b72a70;
+  --accent-selected-bg: color-mix(in srgb, var(--accent-action-bg) 8%, var(--surface-raised));
+  --accent-selected-border: var(--border-focused);
+  --accent-selected-text: var(--accent-link-text);
 
-  --accent-primary-contrast: #ffffff;
-  --accent-primary-hover-shadow: rgba(246, 83, 159, 0.28);
-
-  --danger: #e63f5d;
-  --danger-glow: rgba(230, 63, 93, 0.13);
-  --danger-border: rgba(230, 63, 93, 0.29);
-  --success: #119c77;
-  --success-glow: rgba(17, 156, 119, 0.13);
-  --success-border: rgba(17, 156, 119, 0.28);
-  --warning: #ce7900;
-  --warning-glow: rgba(206, 121, 0, 0.13);
-  --warning-border: rgba(206, 121, 0, 0.29);
+  --danger: #b42345;
+  --danger-glow: rgba(180, 35, 69, 0.13);
+  --danger-border: rgba(180, 35, 69, 0.29);
+  --success: #087052;
+  --success-glow: rgba(8, 112, 82, 0.13);
+  --success-border: rgba(8, 112, 82, 0.28);
+  --warning: #855013;
+  --warning-glow: rgba(133, 80, 19, 0.13);
+  --warning-border: rgba(133, 80, 19, 0.29);
 
   --diff-add: #0b8463;
   --diff-remove: #c93655;
   --scrollbar-thumb-color: rgba(220, 82, 146, 0.28);
+  --scrollbar-thumb-hover-color: #f6539f;
 
   --catnip-shell-highlight: rgba(255, 168, 209, 0.5);
   --catnip-shell-secondary: rgba(202, 180, 255, 0.38);
@@ -140,46 +135,8 @@
 }
 
 /* --------------------------------------------------------------------------
-   3. 强调色兼容
-   保留 data-accent 兼容；当前设置未暴露强调色选择时使用 cyan 兜底。
-   -------------------------------------------------------------------------- */
-:root[data-accent="cyan"] {
-  --accent-primary-hover-shadow: var(--accent-cyan-glow);
-}
-
-:root[data-accent="green"] {
-  --accent-primary-hover-shadow: var(--accent-green-glow);
-}
-
-:root[data-accent="purple"] {
-  --accent-primary-hover-shadow: var(--accent-purple-glow);
-}
-
-:root[data-accent="orange"] {
-  --accent-primary-glow: var(--accent-orange-glow);
-  --accent-primary-hover-shadow: var(--accent-orange-glow);
-}
-
-/* 浅色绿色/橙色按钮使用深色文字，避免低对比度 */
-:root[data-skin][data-color-scheme="light"][data-accent="green"] {
-  --text-on-accent: #052c23;
-  --accent-primary-contrast: #052c23;
-}
-
-:root[data-skin][data-color-scheme="light"][data-accent="orange"] {
-  --text-on-accent: #321505;
-  --accent-primary-contrast: #321505;
-}
-
-/* 应用首帧尚未写入 data-accent 时的兜底 */
-:root:not([data-accent]) {
-  --accent-primary: var(--accent-cyan);
-  --accent-primary-glow: var(--accent-cyan-glow);
-}
-
-/* --------------------------------------------------------------------------
-   4. 基础形状、字体和动效
-   只改基础 radius，不覆盖控件形状缩放变量。
+   3. 基础尺度、用途圆角、字体和动效
+   明暗共用几何；公开用途直接映射，不通过全局缩放相乘。
    -------------------------------------------------------------------------- */
 :root {
   --radius-xs: 6px;
@@ -187,6 +144,18 @@
   --radius-md: 13px;
   --radius-lg: 18px;
   --radius-xl: 24px;
+  --control-radius-xs: 6px;
+  --control-radius-sm: 9px;
+  --control-radius-md: 13px;
+  --control-radius-lg: 18px;
+  --control-radius-xl: 24px;
+  --control-radius-pill: var(--radius-pill);
+  --field-border-radius: 9px;
+  --button-border-radius: 13px;
+  --card-border-radius: 18px;
+  --panel-border-radius: 24px;
+  --popover-border-radius: 13px;
+  --workbench-border-radius: 24px;
 
   --font-display: "Segoe Print", "Comic Sans MS", "Microsoft YaHei UI", "PingFang SC", sans-serif;
   --font-body: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
@@ -199,7 +168,7 @@
 }
 
 .app-shell :where(button, [role="button"], a, select):focus-visible {
-  outline: 2px solid var(--accent-primary);
+  outline: 2px solid var(--border-focused);
   outline-offset: 2px;
 }
 
@@ -271,7 +240,7 @@
 ::-webkit-scrollbar-thumb:hover,
 :root[data-skin] .chat-scroll-viewport::-webkit-scrollbar-thumb:hover {
   border: 2px solid transparent;
-  background: var(--accent-primary);
+  background: var(--scrollbar-thumb-hover-color);
   background-clip: padding-box;
 }
 
@@ -302,7 +271,7 @@
 }
 
 [data-ui-region="sidebar"] :is(.workbench-sidebar-action-row, .session-row) {
-  border-radius: var(--control-radius-md, var(--radius-md));
+  border-radius: var(--button-border-radius);
 }
 
 [data-ui-region="sidebar"] :is(.workbench-sidebar-action-row, .session-row):hover {
@@ -311,19 +280,15 @@
 }
 
 [data-ui-region="sidebar"] :is(.session-row.active, .workbench-sidebar-action-row.active) {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--accent-primary) 17%, transparent),
-    transparent 88%
-  );
+  background: var(--accent-selected-bg);
   box-shadow:
     inset 3px 0 0 var(--accent-primary),
     inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 10%, transparent);
 }
 
 [data-ui-region="sidebar"] .session-row.active .session-title {
-  color: var(--accent-primary);
-  font-weight: var(--font-weight-semibold);
+  color: var(--accent-selected-text);
+  font-weight: var(--type-label-weight);
 }
 
 [data-ui-region="sidebar"] .sidebar-rail-btn {
@@ -337,8 +302,8 @@
 }
 
 [data-ui-region="sidebar"] .sidebar-rail-btn.active {
-  color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+  color: var(--accent-selected-text);
+  background: var(--accent-selected-bg);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 24%, transparent);
 }
 
@@ -356,14 +321,14 @@
 }
 
 [data-ui-region="sidebar"] .workbench-sidebar-search-input:focus {
-  border-color: var(--accent-primary);
+  border-color: var(--border-focused);
   background: var(--surface-sunken);
   box-shadow: 0 0 0 3px var(--accent-primary-glow);
 }
 
 /* --------------------------------------------------------------------------
    8. Composer — 猫耳输入工作台
-   仅保留外层卡片描边；内层行、textarea 和 focus outline 全部清除。
+   外层承载 textarea 焦点，内层无框由共享 Composer 配方维护，按钮独立显示焦点。
    -------------------------------------------------------------------------- */
 [data-ui-region="composer"] {
   padding-top: 12px;
@@ -373,7 +338,7 @@
   position: relative;
   overflow: visible;
   border: 1.5px solid var(--border-default);
-  border-radius: var(--card-border-radius);
+  border-radius: var(--panel-border-radius);
   background:
     linear-gradient(180deg, var(--catnip-panel-highlight), transparent 44%),
     radial-gradient(
@@ -396,13 +361,12 @@
 }
 
 [data-ui-region="composer"] .double-deck-panel-card:focus-within {
-  border-color: var(--accent-primary);
+  border-color: var(--border-focused);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent-primary) 28%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--border-focused) 28%, transparent),
     0 0 24px var(--accent-primary-glow),
     var(--elevation-2),
     inset 0 1px 0 var(--catnip-panel-highlight);
-  transform: translateY(-1px);
 }
 
 /* 猫耳 */
@@ -452,7 +416,7 @@
 
 [data-ui-region="composer"] .unified-agent-input-shell:focus-within::before,
 [data-ui-region="composer"] .unified-agent-input-shell:focus-within::after {
-  border-color: var(--accent-primary);
+  border-color: var(--border-focused);
   filter: drop-shadow(0 -2px 6px var(--accent-primary-glow));
 }
 
@@ -484,45 +448,23 @@
   }
 }
 
-/* 清除截图中的内层粉色矩形线框。
-   !important 仅限 Composer 内部，避免误伤设置页表单。 */
-[data-ui-region="composer"] :is(.input-textarea-row, .input-textarea, textarea) {
-  border: 0 !important;
-  outline: 0 !important;
-  box-shadow: none !important;
-}
-
-[data-ui-region="composer"]
-  :is(
-    .input-textarea-row:focus,
-    .input-textarea-row:focus-within,
-    .input-textarea:focus,
-    .input-textarea:focus-visible,
-    textarea:focus,
-    textarea:focus-visible
-  ) {
-  border: 0 !important;
-  outline: 0 !important;
-  box-shadow: none !important;
-}
-
 [data-ui-region="composer"] .input-textarea-row {
   padding: var(--space-3) var(--space-4) var(--space-2);
-  background: transparent !important;
+  background: transparent;
 }
 
 [data-ui-region="composer"] .input-textarea {
   appearance: none;
   resize: none;
   color: var(--text-primary);
-  caret-color: var(--accent-primary);
-  background: transparent !important;
+  caret-color: var(--accent-link-text);
+  background: transparent;
   font-size: var(--text-md);
   line-height: var(--text-md-lh);
 }
 
 [data-ui-region="composer"] .input-textarea::placeholder {
-  color: color-mix(in srgb, var(--text-muted) 78%, transparent);
+  color: var(--text-muted);
 }
 
 [data-ui-region="composer"] .send-cta-btn {
@@ -533,17 +475,20 @@
 }
 
 [data-ui-region="composer"] .send-cta-btn.is-ready {
+  color: var(--text-on-accent);
+  background: var(--accent-action-bg);
   box-shadow:
     0 5px 14px var(--accent-primary-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
-[data-ui-region="composer"] .send-cta-btn.is-ready:hover {
-  filter: saturate(1.08);
+[data-ui-region="composer"] .send-cta-btn.is-ready:not(:disabled):hover {
+  background: var(--accent-action-hover-bg);
   transform: translateY(-1px) scale(1.025);
 }
 
-[data-ui-region="composer"] .send-cta-btn.is-ready:active {
+[data-ui-region="composer"] .send-cta-btn.is-ready:not(:disabled):active {
+  background: var(--accent-action-active-bg);
   transform: translateY(0) scale(0.97);
 }
 
@@ -593,18 +538,14 @@
   color: var(--text-primary);
 }
 
-[data-ui-region="canvas"] .markdown-body :is(h1, h2, h3) {
-  letter-spacing: -0.018em;
-}
-
 [data-ui-region="canvas"] .markdown-body h2 {
   padding-bottom: 0.34em;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 [data-ui-region="canvas"] .markdown-body a {
-  color: var(--accent-primary);
-  text-decoration-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+  color: var(--accent-link-text);
+  text-decoration-color: color-mix(in srgb, var(--accent-link-text) 60%, transparent);
   text-underline-offset: 3px;
   transition:
     color var(--duration-fast) var(--ease-out),
@@ -612,20 +553,20 @@
 }
 
 [data-ui-region="canvas"] .markdown-body a:hover {
-  color: color-mix(in srgb, var(--accent-primary) 80%, var(--text-primary));
+  color: color-mix(in srgb, var(--accent-link-text) 80%, var(--text-primary));
   text-decoration-color: currentColor;
 }
 
 [data-ui-region="canvas"] .markdown-body li::marker {
-  color: var(--accent-primary);
-  font-weight: var(--font-weight-bold);
+  color: var(--accent-link-text);
+  font-weight: var(--type-heading-weight);
 }
 
 [data-ui-region="canvas"] .markdown-body :not(pre) > code {
   padding: 0.12em 0.38em;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xs);
-  color: color-mix(in srgb, var(--accent-primary) 76%, var(--text-primary));
+  color: var(--accent-link-text);
   background: color-mix(in srgb, var(--accent-primary) 7%, var(--surface-sunken));
 }
 
@@ -859,24 +800,17 @@
     .cursor-model-search,
     .user-message-editor-textarea
   ):focus {
-  border-color: var(--accent-primary);
+  border-color: var(--border-focused);
   background: var(--surface-sunken);
   box-shadow: 0 0 0 3px var(--accent-primary-glow);
 }
 
 [data-ui-region="settings"] .settings-range {
-  accent-color: var(--accent-primary);
+  accent-color: var(--accent-action-bg);
 }
 
 [data-ui-region="settings"]
-  :is(
-    .settings-nav-item,
-    .settings-choice,
-    .settings-choice-card,
-    .settings-accent-card,
-    .settings-control-shape-card,
-    .theme-card
-  ) {
+  :is(.settings-nav-item, .settings-choice, .settings-choice-card, .theme-card) {
   transition:
     border-color var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out),
@@ -885,14 +819,7 @@
     transform var(--duration-fast) var(--ease-out);
 }
 
-[data-ui-region="settings"]
-  :is(
-    .settings-choice,
-    .settings-choice-card,
-    .settings-accent-card,
-    .settings-control-shape-card,
-    .theme-card
-  ):hover {
+[data-ui-region="settings"] :is(.settings-choice, .settings-choice-card, .theme-card):hover {
   border-color: var(--border-strong);
   background: color-mix(in srgb, var(--accent-primary) 5%, var(--surface-raised));
   transform: translateY(-1px);
@@ -903,8 +830,6 @@
     .settings-nav-item.is-active,
     .settings-choice.is-active,
     .settings-choice-card.active,
-    .settings-accent-card.active,
-    .settings-control-shape-card.active,
     .theme-card.active
   ) {
   color: var(--text-primary);
@@ -931,8 +856,8 @@
 }
 
 :is(.settings-secondary-btn, .secondary-btn):hover {
-  color: var(--accent-primary);
-  border-color: var(--accent-primary);
+  color: var(--accent-link-text);
+  border-color: var(--border-focused);
   background: color-mix(in srgb, var(--accent-primary) 7%, transparent);
   transform: translateY(-1px);
 }
@@ -947,12 +872,8 @@
   border-color: transparent;
   border-radius: var(--button-border-radius);
   color: var(--text-on-accent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent-primary) 88%, white),
-    var(--accent-primary)
-  );
-  font-weight: var(--font-weight-semibold);
+  background: var(--accent-action-bg);
+  font-weight: var(--type-label-weight);
   box-shadow:
     0 5px 14px var(--accent-primary-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.32);
@@ -968,10 +889,10 @@
   .btn-apply,
   .message-action-btn--primary,
   .cursor-model-add-btn
-):hover {
+):not(:disabled):not([aria-disabled="true"]):hover {
   color: var(--text-on-accent);
   border-color: transparent;
-  filter: saturate(1.08) brightness(1.03);
+  background: var(--accent-action-hover-bg);
   transform: translateY(-1px);
   box-shadow:
     0 8px 20px var(--accent-primary-hover-shadow),
@@ -984,7 +905,8 @@
   .btn-apply,
   .message-action-btn--primary,
   .cursor-model-add-btn
-):active {
+):not(:disabled):not([aria-disabled="true"]):active {
+  background: var(--accent-action-active-bg);
   transform: translateY(0) scale(0.98);
 }
 
@@ -994,7 +916,7 @@
 :is(.custom-context-menu, .slash-menu-popup, .floating-toast-alert, .model-dialog) {
   overflow: hidden;
   border-color: var(--border-strong);
-  border-radius: var(--panel-border-radius);
+  border-radius: var(--popover-border-radius);
   background:
     linear-gradient(180deg, var(--catnip-panel-highlight), transparent 52%), var(--catnip-glass);
   box-shadow:
@@ -1003,8 +925,12 @@
   backdrop-filter: blur(22px) saturate(135%);
 }
 
+.model-dialog {
+  border-radius: var(--panel-border-radius);
+}
+
 :is(.model-tier-option, .slash-menu-item) {
-  border-radius: var(--control-radius-sm, var(--radius-sm));
+  border-radius: var(--control-radius-xs);
   transition:
     background-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
@@ -1021,7 +947,7 @@
 }
 
 .model-tier-option-check {
-  color: var(--accent-primary);
+  color: var(--accent-link-text);
   filter: drop-shadow(0 0 5px var(--accent-primary-glow));
 }
 
@@ -1073,13 +999,74 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  :root[data-skin][data-color-scheme]
+    :is(
+      .workbench-sidebar-action-row,
+      .session-row,
+      .sidebar-rail-btn,
+      .send-cta-btn,
+      .suggestion-chip,
+      .settings-choice,
+      .settings-choice-card,
+      .theme-card,
+      .settings-secondary-btn,
+      .secondary-btn,
+      .settings-primary-btn,
+      .sandbox-preflight-btn,
+      .btn-apply,
+      .message-action-btn--primary,
+      .cursor-model-add-btn,
+      .model-tier-option,
+      .slash-menu-item
+    ):is(:hover, :active) {
+    transform: none;
+  }
+
+  :root[data-skin] [data-ui-region="composer"] .unified-agent-input-shell::before,
+  :root[data-skin] [data-ui-region="composer"] .unified-agent-input-shell::after {
+    animation: none;
+    transition: none;
+  }
+
+  .chat-stream
+    :is(
+      .inline-artifact-card,
+      .approval-card,
+      .patch-review-card,
+      .resolved-card,
+      .task-plan-card
+    )::before,
+  .chat-stream
+    :is(
+      .inline-artifact-card,
+      .approval-card,
+      .patch-review-card,
+      .resolved-card,
+      .task-plan-card
+    )::after {
+    transition: none;
+  }
+
+  .chat-stream
+    :is(
+      .inline-artifact-card,
+      .approval-card,
+      .patch-review-card,
+      .resolved-card,
+      .task-plan-card
+    ):hover::before {
+    transform: rotate(-11deg);
+  }
+
+  .chat-stream
+    :is(
+      .inline-artifact-card,
+      .approval-card,
+      .patch-review-card,
+      .resolved-card,
+      .task-plan-card
+    ):hover::after {
+    transform: rotate(11deg);
   }
 }
 

@@ -3,13 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  BUILTIN_UI_THEME_ID,
   ensureUiThemesDirectory,
   listUiThemes,
   readUiThemeCss,
   UI_THEME_ENTRY_FILE_NAME,
   UI_THEME_MAX_BYTES,
 } from "@main/ui-themes";
+import { DEFAULT_UI_THEME_ID } from "@shared/ui-themes";
 import { afterEach, describe, expect, it } from "vitest";
 
 const temporaryDirectories: string[] = [];
@@ -69,7 +69,7 @@ describe("ui themes directory", () => {
     expect(ids).toContain("midnight");
     expect(ids).toContain("example");
     expect(ids).toContain("午夜蓝");
-    expect(ids).not.toContain(BUILTIN_UI_THEME_ID);
+    expect(ids).not.toContain(DEFAULT_UI_THEME_ID);
     expect(ids).not.toContain("catnip");
     expect(ids).not.toContain("empty-folder");
     expect(ids).not.toContain("hidden");

@@ -66,4 +66,28 @@ describe("ui typography helpers", () => {
     expect(style.getPropertyValue("--text-base")).toBe("");
     expect(style.getPropertyValue("--text-base-lh")).toBe("");
   });
+
+  it("restores theme typography after a personal override without replacing defaults", () => {
+    const theme = document.createElement("style");
+    theme.textContent = ":root { --text-base: 17px; --text-base-lh: 28px; }";
+    document.head.append(theme);
+    try {
+      applyUiTypography("system", 20, 2);
+      expect(getComputedStyle(document.documentElement).getPropertyValue("--text-base")).toBe(
+        "20px",
+      );
+      applyUiTypography(DEFAULT_UI_FONT_FAMILY, DEFAULT_UI_FONT_SIZE, DEFAULT_UI_LINE_HEIGHT);
+      expect(getComputedStyle(document.documentElement).getPropertyValue("--text-base")).toBe(
+        "17px",
+      );
+      expect(getComputedStyle(document.documentElement).getPropertyValue("--text-base-lh")).toBe(
+        "28px",
+      );
+    } finally {
+      theme.remove();
+    }
+    expect(getComputedStyle(document.documentElement).getPropertyValue("--text-base")).toBe(
+      `${DEFAULT_UI_FONT_SIZE}px`,
+    );
+  });
 });

@@ -20,7 +20,7 @@
   max-width: min(560px, 100%);
   padding: 7px 14px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--button-border-radius);
+  border-radius: var(--popover-border-radius);
   background: color-mix(in srgb, var(--surface-overlay) 92%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -28,7 +28,7 @@
   color: var(--text-primary);
   font-size: var(--text-sm);
   line-height: var(--text-sm-lh);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--type-label-weight);
   letter-spacing: var(--letter-tight);
   overflow-wrap: anywhere;
   animation: toast-drop-in var(--duration-base) var(--ease-out);
