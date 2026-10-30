@@ -75,6 +75,7 @@ describe("ModelManagement vendor onboarding", () => {
     fireEvent.click(screen.getByRole("button", { name: "添加厂商" }));
     fireEvent.click(screen.getByRole("button", { name: /DeepSeek/ }));
     const dialog = screen.getByRole("dialog", { name: "添加厂商" });
+    expect(document.activeElement).toBe(within(dialog).getByRole("textbox", { name: "显示名称" }));
     fireEvent.change(within(dialog).getByLabelText("API Key"), {
       target: { value: "deepseek-secret" },
     });
@@ -300,6 +301,55 @@ describe("ModelManagement vendor onboarding", () => {
         baseURL: "https://other.example.com/v1",
         apiKey: "draft-secret",
       }),
+    );
+  });
+
+  it("keeps remote checkboxes and renamed model controls accessible by their current names", async () => {
+    const vendor = deepseekVendor();
+    const onSaveVendor = vi.fn().mockResolvedValue(true);
+    Object.defineProperty(window, "desktopApi", {
+      configurable: true,
+      value: {
+        listRemoteModels: vi.fn().mockResolvedValue({
+          models: [
+            { id: "deepseek-v4-flash", displayName: "DeepSeek V4 Flash" },
+            { id: "remote/beta:v2", displayName: "Remote Beta" },
+          ],
+        }),
+      },
+    });
+    render(
+      <ModelManagement
+        vendors={[vendor]}
+        models={flattenVendors([vendor])}
+        selectedModelId="deepseek-v4-flash"
+        onSelectModel={vi.fn()}
+        onSaveVendor={onSaveVendor}
+        onDeleteVendor={vi.fn().mockResolvedValue(true)}
+        onDeleteModel={vi.fn().mockResolvedValue(true)}
+        onSetVendorEnabled={vi.fn().mockResolvedValue(true)}
+        onSetModelEnabled={vi.fn().mockResolvedValue(true)}
+        triggerToast={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "编辑厂商 DeepSeek" }));
+    fireEvent.click(screen.getByRole("button", { name: "获取模型列表" }));
+    const remote = await screen.findByRole("checkbox", { name: /^Remote Beta/, checked: false });
+    fireEvent.click(remote);
+    expect(screen.getByRole("checkbox", { name: /^Remote Beta/, checked: true })).toBe(remote);
+    fireEvent.click(screen.getByRole("checkbox", { name: /^DeepSeek V4 Flash/, checked: true }));
+    fireEvent.click(screen.getByRole("button", { name: /高级设置/ }));
+    const nameInput = screen.getByDisplayValue("Remote Beta");
+    fireEvent.change(nameInput, { target: { value: "Beta [renamed]" } });
+    expect(screen.getByRole("checkbox", { name: "启用模型 Beta [renamed]" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(onSaveVendor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          models: [expect.objectContaining({ model: "remote/beta:v2", name: "Beta [renamed]" })],
+        }),
+        undefined,
+      ),
     );
   });
 });

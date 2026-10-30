@@ -1,6 +1,5 @@
 import type {
   CollabMode,
-  Deliverable,
   DifficultyDims,
   DifficultySummary,
   Level,

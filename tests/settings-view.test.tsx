@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
@@ -206,6 +206,24 @@ describe("SettingsRegion credential controls", () => {
     expect(screen.getByText("保存中…")).toBeTruthy();
     expect(listApplicationTemplates).not.toHaveBeenCalled();
     expect(getApplicationDataPath).not.toHaveBeenCalled();
+  });
+
+  it("announces a save failure and returns to a polite status after recovery", () => {
+    const view = renderSearchSettings({ activeCategory: "agent", saveStatus: "saving" });
+    const savingText = screen.getByRole("status", { name: "设置保存状态" }).textContent;
+    view.rerender(<SettingsRegion {...view.props} saveStatus="failed" />);
+    expect(screen.getByRole("alert", { name: "设置保存状态" }).textContent).not.toBe(savingText);
+    expect(screen.queryByRole("status", { name: "设置保存状态" })).toBeNull();
+    view.rerender(<SettingsRegion {...view.props} saveStatus="saved" />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status", { name: "设置保存状态" }).textContent).not.toBe(savingText);
+  });
+
+  it("keeps composite credential actions in a named group without relabeling the input", () => {
+    renderSearchSettings();
+    const group = screen.getByRole("group", { name: "Tavily API Key" });
+    expect(within(group).getByLabelText("Tavily API Key", { selector: "input" })).toBeTruthy();
+    expect(within(group).getAllByRole("button")).toHaveLength(2);
   });
 
   it("normalizes output length and appearance drafts on blur", () => {

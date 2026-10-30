@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 export interface ResizeHandleProps {
   axis: "x" | "y";
@@ -13,6 +13,10 @@ export interface ResizeHandleProps {
 }
 
 interface ResizeSession {
+  axis: ResizeHandleProps["axis"];
+  min: number;
+  max: number;
+  direction: number;
   finish: (updateState: boolean, checkHover?: boolean) => void;
 }
 
@@ -48,7 +52,17 @@ export function ResizeHandle({
   }, [value]);
 
   useLayoutEffect(() => {
-    sessionRef.current?.finish(true);
+    const session = sessionRef.current;
+    if (
+      session &&
+      (disabled ||
+        session.axis !== axis ||
+        session.min !== min ||
+        session.max !== max ||
+        session.direction !== direction)
+    ) {
+      session.finish(true);
+    }
   }, [axis, disabled, min, max, direction]);
 
   useLayoutEffect(
@@ -78,6 +92,10 @@ export function ResizeHandle({
     }
 
     const session: ResizeSession = {
+      axis,
+      min,
+      max,
+      direction,
       finish(updateState, checkHover = false) {
         if (sessionRef.current !== session) return;
         sessionRef.current = null;

@@ -21,7 +21,6 @@ export const PatchReviewCard: React.FC<PatchReviewCardProps> = ({
   onReject,
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const isResolved = Boolean(patch.resolved);
   const canShowDiff = Boolean(
     patch.contentBefore !== undefined && patch.contentAfter !== undefined,
   );
@@ -73,11 +72,6 @@ export const PatchReviewCard: React.FC<PatchReviewCardProps> = ({
       <div className="patch-review-header">
         <span className="patch-review-badge">PATCH</span>
         <span className="patch-review-target">{patch.targetPath}</span>
-        {isResolved && (
-          <span className={`patch-resolved-badge patch-resolved-${patch.resolved}`}>
-            {patch.resolved === "accepted" ? "已接受" : "已拒绝"}
-          </span>
-        )}
       </div>
 
       <p className="patch-review-summary">{patch.summary || "AI 建议修改此产物文件"}</p>
@@ -87,23 +81,26 @@ export const PatchReviewCard: React.FC<PatchReviewCardProps> = ({
           {renderDiffPreview()}
           {(patch.contentBefore ?? "").split("\n").length > 8 ||
           (patch.contentAfter ?? "").split("\n").length > 8 ? (
-            <Button variant="quiet" size="sm" onClick={() => setExpanded((value) => !value)}>
+            <Button
+              variant="quiet"
+              size="sm"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((value) => !value)}
+            >
               {expanded ? "收起 diff" : "展开完整 diff"}
             </Button>
           ) : null}
         </>
       )}
 
-      {!isResolved && (
-        <div className="patch-review-buttons">
-          <Button disabled={busy} onClick={onReject}>
-            拒绝变更
-          </Button>
-          <Button disabled={busy} onClick={onAccept} data-theme-emphasis="primary">
-            确认接受
-          </Button>
-        </div>
-      )}
+      <div className="patch-review-buttons">
+        <Button disabled={busy} onClick={onReject}>
+          拒绝变更
+        </Button>
+        <Button disabled={busy} onClick={onAccept} data-theme-emphasis="primary">
+          确认接受
+        </Button>
+      </div>
     </div>
   );
 };

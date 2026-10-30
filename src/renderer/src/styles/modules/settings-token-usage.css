@@ -136,29 +136,38 @@
   animation: settingsSavingSpin var(--duration-loading-inner) linear infinite;
 }
 
-.token-trend-chart {
-  height: 190px;
+.token-trend {
   display: grid;
-  grid-template-columns: repeat(30, minmax(5px, 1fr));
+  gap: var(--layout-gap-compact);
+  min-width: 0;
+}
+
+.token-trend-chart {
+  min-width: 0;
+}
+
+.token-trend-bars {
+  height: 166px;
+  display: grid;
   align-items: end;
-  gap: 4px;
-  padding: 16px 4px 24px;
+  padding-top: 16px;
   border-bottom: 1px solid var(--border-default);
 }
 
-.token-trend-chart.is-loading {
+.token-trend.is-loading {
   opacity: 0.52;
 }
 
 .token-trend-column {
-  position: relative;
+  min-width: 0;
   height: 100%;
   display: flex;
   align-items: flex-end;
+  justify-content: center;
 }
 
 .token-trend-bar {
-  width: 100%;
+  width: calc(100% - min(4px, 30%));
   min-height: 3px;
   border-radius: 4px 4px 2px 2px;
   background: linear-gradient(
@@ -171,19 +180,94 @@
     opacity var(--duration-fast) var(--ease-out);
 }
 
+@media (forced-colors: active) {
+  .token-trend-bar {
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+}
+
 .token-trend-column:hover .token-trend-bar {
   opacity: 0.72;
 }
 
-.token-trend-column small {
-  position: absolute;
-  top: calc(100% + 7px);
-  left: 50%;
+.token-trend-axis {
+  position: relative;
+  min-width: 0;
+  min-height: 1lh;
+  margin-top: 7px;
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: var(--text-sm-lh);
+}
+
+.token-trend-measure {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.token-trend-measure span,
+.token-trend-tick {
+  position: absolute;
+  top: 0;
   white-space: nowrap;
-  transform: translateX(-50%);
+}
+
+.token-trend-measure span {
+  left: 0;
+}
+
+.token-trend-range {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.token-trend-data {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
+}
+
+.token-trend-data summary {
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.token-trend-data table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  color: var(--text-primary);
+}
+
+.token-trend-data caption {
+  padding: 8px 0;
+  color: var(--text-muted);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.token-trend-data th,
+.token-trend-data td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: normal;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.token-trend-data thead th {
+  font-weight: var(--type-label-weight);
+}
+
+.token-trend-data tr > :last-child {
+  text-align: right;
 }
 
 .token-model-breakdown {

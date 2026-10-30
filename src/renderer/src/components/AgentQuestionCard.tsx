@@ -112,6 +112,7 @@ export const AgentQuestionCard: React.FC<AgentQuestionCardProps> = ({
               type="button"
               className={optionClass(option)}
               disabled={!interactive}
+              aria-pressed={isMultiple ? selectedIds.includes(option.id) : undefined}
               onClick={() => toggleOption(option)}
             >
               <span className="agent-question-option-main">
@@ -134,6 +135,7 @@ export const AgentQuestionCard: React.FC<AgentQuestionCardProps> = ({
       {showFreeText && !resolved && (
         <div className="agent-question-free-text">
           <Textarea
+            aria-label="补充回答"
             value={freeText}
             disabled={!interactive}
             placeholder={question.placeholder || "请输入补充信息"}

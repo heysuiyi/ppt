@@ -8,19 +8,14 @@ import {
 } from "../src/main/plugins/ppt/prompts/prompt-sections";
 import { rankSkillCatalogForStage } from "../src/main/plugins/ppt/prompts/skill-stage-policy";
 import {
-  capabilityGuidanceFromPlan,
   composePptTaskPlan,
-  formatPptTaskPlanProjection,
   resolveActiveRoute,
   resolveSkillTiers,
   skillRecommendationForPlan,
   summarizeDifficulty,
 } from "../src/main/plugins/ppt/task/ppt-task-composer";
 import { deriveTaskFacts } from "../src/main/plugins/ppt/task/ppt-task-facts";
-import {
-  applyPptTaskAssessment,
-  createPptTaskSession,
-} from "../src/main/plugins/ppt/task/ppt-task-session";
+import { createPptTaskSession } from "../src/main/plugins/ppt/task/ppt-task-session";
 import type {
   DifficultyDims,
   Level,

@@ -1,6 +1,6 @@
 import type { SlidePreviewEvent } from "@shared/cards/select-slide-previews";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArtifactCard, CardHeader } from "./ArtifactCard";
 import { IconButton } from "./Button";
 import { Dialog } from "./Dialog";
@@ -23,6 +23,10 @@ export const SlidePreviewGallery: React.FC<SlidePreviewGalleryProps> = ({
 }) => {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const selected = selectedIndex === null ? undefined : previews[selectedIndex];
+  const availableIndices = useMemo(
+    () => previews.flatMap((preview, index) => (preview.payload.thumbnail ? [index] : [])),
+    [previews],
+  );
 
   const openPreview = useCallback(
     (index: number) => {
@@ -37,9 +41,12 @@ export const SlidePreviewGallery: React.FC<SlidePreviewGalleryProps> = ({
   const movePreview = useCallback(
     (delta: number) => {
       if (selectedIndex === null) return;
-      openPreview(Math.max(0, Math.min(previews.length - 1, selectedIndex + delta)));
+      const position = availableIndices.indexOf(selectedIndex);
+      const nextIndex =
+        availableIndices[Math.max(0, Math.min(availableIndices.length - 1, position + delta))];
+      if (nextIndex !== undefined) openPreview(nextIndex);
     },
-    [openPreview, previews.length, selectedIndex],
+    [availableIndices, openPreview, selectedIndex],
   );
   useEffect(() => {
     if (selectedIndex !== null && !previews[selectedIndex]) {
@@ -83,6 +90,7 @@ export const SlidePreviewGallery: React.FC<SlidePreviewGalleryProps> = ({
                 key={event.eventId}
                 onClick={() => openPreview(index)}
                 disabled={!thumbnail}
+                aria-current={selectedSlideId === event.payload.slideId ? "page" : undefined}
                 aria-label={thumbnail ? `查看 ${event.payload.title} 大图` : event.payload.title}
               >
                 <span className="slide-preview-gallery-media">
@@ -127,8 +135,8 @@ export const SlidePreviewGallery: React.FC<SlidePreviewGalleryProps> = ({
             <div className="slide-preview-lightbox-header">
               <span>{selected.payload.title}</span>
               <PreviewNavigation
-                index={selectedIndex ?? 0}
-                count={previews.length}
+                index={availableIndices.indexOf(selectedIndex ?? -1)}
+                count={availableIndices.length}
                 onNavigate={movePreview}
                 showPosition
                 previousLabel="上一张检查预览"

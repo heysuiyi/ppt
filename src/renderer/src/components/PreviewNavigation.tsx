@@ -1,3 +1,4 @@
+import { type MouseEvent, useRef } from "react";
 import { IconButton } from "./Button";
 
 interface PreviewNavigationProps {
@@ -23,21 +24,34 @@ export function PreviewNavigation({
   variant = "toolbar",
   className,
 }: PreviewNavigationProps) {
+  const groupRef = useRef<HTMLDivElement>(null);
+  const navigate = (event: MouseEvent<HTMLButtonElement>, delta: number) => {
+    event.stopPropagation();
+    const nextIndex = index + delta;
+    if (
+      (nextIndex === 0 || nextIndex === count - 1) &&
+      event.currentTarget === event.currentTarget.ownerDocument.activeElement
+    ) {
+      // The activated arrow becomes disabled at an endpoint; keep focus in navigation.
+      groupRef.current?.focus();
+    }
+    onNavigate(delta);
+  };
   return (
     <div
+      ref={groupRef}
+      tabIndex={-1}
       className={["preview-navigation", `preview-navigation--${variant}`, className]
         .filter(Boolean)
         .join(" ")}
+      role="group"
       aria-label={label}
     >
       <IconButton
         className={variant === "slideshow" ? "slideshow-nav-arrow left" : undefined}
         disabled={count === 0 || index <= 0}
         aria-label={previousLabel}
-        onClick={(event) => {
-          event.stopPropagation();
-          onNavigate(-1);
-        }}
+        onClick={(event) => navigate(event, -1)}
       >
         ‹
       </IconButton>
@@ -50,10 +64,7 @@ export function PreviewNavigation({
         className={variant === "slideshow" ? "slideshow-nav-arrow right" : undefined}
         disabled={count === 0 || index < 0 || index >= count - 1}
         aria-label={nextLabel}
-        onClick={(event) => {
-          event.stopPropagation();
-          onNavigate(1);
-        }}
+        onClick={(event) => navigate(event, 1)}
       >
         ›
       </IconButton>

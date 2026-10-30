@@ -536,6 +536,7 @@ export function ModelManagement({
               <label>
                 <span>显示名称</span>
                 <Input
+                  autoFocus
                   value={draft.label}
                   onChange={(event) => updateDraft({ label: event.target.value })}
                 />

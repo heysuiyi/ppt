@@ -21,7 +21,6 @@
   font-size: var(--settings-font-nav);
 }
 
-
 .settings-nav-group {
   display: flex;
   flex-direction: column;

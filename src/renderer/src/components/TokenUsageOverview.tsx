@@ -11,6 +11,7 @@ import {
 import { Button, IconButton } from "./Button";
 import { RefreshIcon } from "./Icons";
 import { Tabs, TabsList, TabsPanel } from "./Tabs";
+import { UsageTrendChart, type UsageTrendDay } from "./UsageTrendChart";
 
 type UsageView = "tokens" | "cost" | "tasks";
 
@@ -144,12 +145,28 @@ export const TokenUsageOverview: React.FC<TokenUsageOverviewProps> = ({
     [pricing, stats.models],
   );
   const trendDays = React.useMemo(() => buildTrendDays(stats), [stats]);
-  const trendValues = trendDays.map((day) => {
-    if (view === "tokens") return day.totalTokens;
-    if (view === "tasks") return day.taskCount;
-    return estimateModelsCost(day.models, pricing).costs[costCurrency];
-  });
-  const trendMax = Math.max(0, ...trendValues);
+  const trendData = React.useMemo<UsageTrendDay[]>(() => {
+    const spansYears = trendDays[0]?.date.slice(0, 4) !== trendDays.at(-1)?.date.slice(0, 4);
+    return trendDays.map((day) => {
+      const value =
+        view === "tokens"
+          ? day.totalTokens
+          : view === "tasks"
+            ? day.taskCount
+            : estimateModelsCost(day.models, pricing).costs[costCurrency];
+      return {
+        date: day.date,
+        dateLabel: `${spansYears ? `${day.date.slice(0, 4)}/` : ""}${Number(day.date.slice(5, 7))}/${Number(day.date.slice(8, 10))}`,
+        value,
+        formattedValue:
+          view === "cost"
+            ? formatCost(value, costCurrency)
+            : view === "tokens"
+              ? `${formatTokens(value)} Token`
+              : `${value} 个任务`,
+      };
+    });
+  }, [costCurrency, pricing, trendDays, view]);
   const selectedModel = models.find((model) => model.id === selectedModelId);
   const configuredCurrencies = React.useMemo(
     () =>
@@ -218,36 +235,11 @@ export const TokenUsageOverview: React.FC<TokenUsageOverviewProps> = ({
       </Button>
     </div>
   ) : (
-    <div
-      className={`token-trend-chart ${loading ? "is-loading" : ""}`}
-      role="img"
-      aria-label="最近 30 天用量柱状图"
-    >
-      {trendDays.map((day, index) => {
-        const value = trendValues[index];
-        const label =
-          view === "cost"
-            ? formatCost(value, costCurrency)
-            : view === "tokens"
-              ? `${formatTokens(value)} Token`
-              : `${value} 个任务`;
-        return (
-          <div className="token-trend-column" key={day.date} title={`${day.date} · ${label}`}>
-            <span
-              className="token-trend-bar"
-              style={{
-                height: `${trendMax > 0 ? Math.max(3, (value / trendMax) * 100) : 3}%`,
-              }}
-            />
-            {(index === 0 || index === 29 || index % 7 === 1) && (
-              <small>
-                {Number(day.date.slice(5, 7))}/{Number(day.date.slice(8, 10))}
-              </small>
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <UsageTrendChart
+      days={trendData}
+      loading={loading}
+      label={USAGE_VIEWS.find((option) => option.value === view)!.label}
+    />
   );
   return (
     <div className="token-usage-shell">

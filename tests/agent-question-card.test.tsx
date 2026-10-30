@@ -78,4 +78,54 @@ describe("AgentQuestionCard", () => {
     expect(screen.getByText("已回答")).not.toBeNull();
     expect(screen.getByText("管理层")).not.toBeNull();
   });
+
+  it("exposes multiple-choice state without submitting until confirmation", () => {
+    const onResolve = vi.fn();
+    render(
+      <AgentQuestionCard
+        question={{
+          variant: "choices",
+          selectionMode: "multiple",
+          options: [
+            { id: "a", title: "Audience A", value: "a" },
+            { id: "b", title: "Audience B", value: "b" },
+          ],
+        }}
+        onResolve={onResolve}
+      />,
+    );
+
+    const first = screen.getByRole("button", { name: "Audience A", pressed: false });
+    const second = screen.getByRole("button", { name: "Audience B", pressed: false });
+    fireEvent.click(first);
+    fireEvent.click(second);
+    expect(screen.getAllByRole("button", { pressed: true })).toHaveLength(2);
+    expect(onResolve).not.toHaveBeenCalled();
+    fireEvent.click(first);
+    expect(screen.getByRole("button", { name: "Audience A", pressed: false })).toBe(first);
+    expect(screen.getByRole("button", { name: "Audience B", pressed: true })).toBe(second);
+    fireEvent.click(screen.getByRole("button", { name: "确认选择" }));
+    expect(onResolve).toHaveBeenCalledWith(
+      expect.objectContaining({ optionIds: ["b"], value: "b" }),
+    );
+  });
+
+  it("names free text and blocks keyboard submission after disabling a drafted answer", () => {
+    const onResolve = vi.fn();
+    const question = { variant: "markdown" as const, selectionMode: "single" as const };
+    const view = render(<AgentQuestionCard question={question} onResolve={onResolve} />);
+    const input = screen.getByRole("textbox", { name: /./ });
+    fireEvent.change(input, { target: { value: "Draft answer" } });
+    view.rerender(<AgentQuestionCard question={question} onResolve={onResolve} disabled />);
+    expect((input as HTMLTextAreaElement).disabled).toBe(true);
+    fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    expect(onResolve).not.toHaveBeenCalled();
+
+    view.rerender(<AgentQuestionCard question={question} onResolve={onResolve} />);
+    fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
+    expect(onResolve).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Draft answer", optionIds: [] }),
+    );
+  });
 });

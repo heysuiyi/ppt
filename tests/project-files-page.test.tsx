@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectFilesController } from "../src/renderer/src/app/project/useProjectFiles";
@@ -316,6 +316,7 @@ describe("ProjectFilesPageContent", () => {
   });
 
   it("keeps reload guidance visible after a failed edit session", () => {
+    const save = vi.fn(async () => undefined);
     render(
       <ProjectFilesPageContent
         controller={createController({
@@ -336,6 +337,7 @@ describe("ProjectFilesPageContent", () => {
           draft: "preserved draft",
           dirty: true,
           requiresReload: true,
+          save,
         })}
         hasSession
         sessionTitle="季度汇报"
@@ -351,6 +353,10 @@ describe("ProjectFilesPageContent", () => {
     expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "编辑 brief.md" }).value).toBe(
       "preserved draft",
     );
+    const editor = screen.getByRole("textbox", { name: "编辑 brief.md" });
+    expect(fireEvent.keyDown(editor, { key: "s", ctrlKey: true })).toBe(false);
+    expect(fireEvent.keyDown(editor, { key: "S", metaKey: true })).toBe(false);
+    expect(save).not.toHaveBeenCalled();
   });
 });
 

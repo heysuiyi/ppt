@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { ResizeHandle } from "../components/ResizeHandle";
 import { SettingsSidebar } from "../components/SettingsSidebar";
 import { AgentBehaviorSettingsPanel } from "../components/settings/AgentSettingsPanels";
 import { AppearanceSettingsPanel } from "../components/settings/AppearanceSettingsPanel";
@@ -13,7 +14,6 @@ import {
 import { PresentationSettingsPanel } from "../components/settings/PresentationSettingsPanel";
 import { SettingsPanel } from "../components/settings/SettingsPrimitives";
 import { TokenUsageOverview } from "../components/TokenUsageOverview";
-import { ResizeHandle } from "../components/ResizeHandle";
 import { cx } from "../lib/cx";
 import type { SettingsCategory } from "../settingsCategories";
 import type { SettingsController } from "./useSettingsController";
@@ -206,7 +206,12 @@ export function SettingsView(props: SettingsViewProps) {
             <header className="settings-page-header">
               <h1 className="settings-page-title">{categoryTitles[activeCategory]}</h1>
               {activeCategory !== "usage" ? (
-                <span className={cx("settings-status", saveStatus === "saving" && "is-saving")}>
+                <span
+                  className={cx("settings-status", saveStatus === "saving" && "is-saving")}
+                  role={saveStatus === "failed" ? "alert" : "status"}
+                  aria-label="设置保存状态"
+                  aria-atomic="true"
+                >
                   {saveStatus === "failed"
                     ? "保存失败"
                     : saveStatus === "saving"
