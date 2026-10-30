@@ -29,17 +29,31 @@ export function RunTimeline({
   runStatus,
   teamGraphTasks = [],
 }: RunTimelineProps) {
-  const liveOrigin = useRef({ documentId, live });
+  const liveOrigin = useRef({
+    documentId,
+    live,
+    provisionalResponse: false,
+    responseId: undefined as string | undefined,
+  });
   if (liveOrigin.current.documentId !== documentId) {
-    liveOrigin.current = { documentId, live };
+    liveOrigin.current = { documentId, live, provisionalResponse: false, responseId: undefined };
   } else if (live) {
     liveOrigin.current.live = true;
   }
   const markdownMode = liveOrigin.current.live ? "live" : "static";
   const segments = buildTimelineSegments(items);
+  const firstResponse = segments.find((segment) => segment.kind === "response");
+  if (!firstResponse && content) liveOrigin.current.provisionalResponse = true;
+  if (firstResponse && liveOrigin.current.provisionalResponse) {
+    liveOrigin.current.responseId ??= firstResponse.item.id;
+  }
+  // A late trace enriches the provisional response instead of replacing its document.
+  const visibleSegments =
+    firstResponse || !content ? segments : [...segments, { kind: "provisional-response" as const }];
   let lastResponseIndex = -1;
-  for (let index = segments.length - 1; index >= 0; index -= 1) {
-    if (segments[index]!.kind === "response") {
+  for (let index = visibleSegments.length - 1; index >= 0; index -= 1) {
+    const kind = visibleSegments[index]!.kind;
+    if (kind === "response" || kind === "provisional-response") {
       lastResponseIndex = index;
       break;
     }
@@ -47,30 +61,25 @@ export function RunTimeline({
 
   return (
     <div className="agent-run-timeline">
-      {segments.length === 0 && content && (
-        <MarkdownView
-          documentId={documentId}
-          content={content}
-          mode={markdownMode}
-          streaming={live}
-          className="assistant-response"
-        />
-      )}
-      {segments.map((segment, index) => {
-        if (segment.kind === "response") {
-          const item = segment.item;
+      {visibleSegments.map((segment, index) => {
+        if (segment.kind === "response" || segment.kind === "provisional-response") {
+          const item = segment.kind === "response" ? segment.item : undefined;
+          const responseDocumentId =
+            !item || item.id === liveOrigin.current.responseId
+              ? `${documentId}:initial-response`
+              : `${documentId}:${item.id}`;
           return (
             <div
-              key={item.id}
+              key={responseDocumentId}
               className="agent-run-block agent-run-block--response"
-              data-run-block-id={item.id}
+              data-run-block-id={item?.id}
               data-run-block-kind="response"
             >
               <MarkdownView
-                documentId={`${documentId}:${item.id}`}
-                content={getResponseBlockContent(item, content)}
+                documentId={responseDocumentId}
+                content={item ? getResponseBlockContent(item, content) : content}
                 mode={markdownMode}
-                streaming={live && Boolean(item.streaming)}
+                streaming={live && (!item || Boolean(item.streaming))}
                 className="assistant-response"
               />
             </div>
@@ -93,7 +102,7 @@ export function RunTimeline({
             view={buildProcessView(segment.items, {
               live,
               hasLaterResponse: index < lastResponseIndex,
-              runStatus: index === segments.length - 1 ? runStatus : undefined,
+              runStatus: index === visibleSegments.length - 1 ? runStatus : undefined,
             })}
           />
         );

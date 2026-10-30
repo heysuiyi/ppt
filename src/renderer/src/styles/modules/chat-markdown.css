@@ -1,16 +1,13 @@
 /* Markdown rendering inside chat messages — single typography source of truth */
 
 .markdown-view {
+  position: relative;
   min-width: 0;
 }
 
-/* The caret is React-owned, outside the renderer's native-owned host. */
-.markdown-view--active > .markdown-view-host {
-  display: inline;
-}
-
-.markdown-view--active > .markdown-view-host > p:last-child {
-  display: inline;
+/* The caret is React-owned and out of flow; native Markdown always keeps block layout. */
+.markdown-view-host {
+  display: block;
 }
 
 /*
@@ -50,7 +47,7 @@
 .markdown-body li,
 .markdown-body blockquote,
 .markdown-body td {
-  text-wrap: pretty;
+  text-wrap: wrap;
 }
 
 .markdown-body p {

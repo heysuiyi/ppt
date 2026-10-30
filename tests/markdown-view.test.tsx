@@ -149,6 +149,36 @@ describe("MarkdownView release lifecycle", () => {
     );
   });
 
+  it("keeps visible text and selection in the same native document when streaming completes", () => {
+    const content = "Stable selected paragraph.\n\nA completed **reply**.";
+    const view = render(
+      <MarkdownView documentId="completion" content={content} mode="live" streaming />,
+    );
+    advance(30_000);
+    const host = view.container.querySelector(".markdown-body")!;
+    const paragraph = host.querySelector("p")!;
+    const selection = document.getSelection()!;
+    const range = document.createRange();
+    range.setStart(paragraph.firstChild!, 7);
+    range.setEnd(paragraph.firstChild!, 15);
+    selection.addRange(range);
+
+    view.rerender(
+      <MarkdownView documentId="completion" content={content} mode="static" streaming={false} />,
+    );
+
+    expect(view.container.querySelector(".markdown-body")).toBe(host);
+    expect(host.querySelector("p")).toBe(paragraph);
+    expect(host.textContent).toBe("Stable selected paragraph.\nA completed reply.");
+    expect(selection.toString()).toBe("selected");
+    expect(view.container.querySelector(".markdown-ink-caret")).toBeNull();
+    expect(host.parentElement?.getAttribute("data-chat-scroll-anchor")).toBe("markdown:completion");
+    advance(1_000);
+    expect(host.textContent).toBe("Stable selected paragraph.\nA completed reply.");
+    expect(selection.toString()).toBe("selected");
+    selection.removeAllRanges();
+  });
+
   it("resets release state on document identity changes without stale writes", () => {
     const view = render(
       <MarkdownView documentId="old" content={"Old response ".repeat(100)} mode="live" streaming />,

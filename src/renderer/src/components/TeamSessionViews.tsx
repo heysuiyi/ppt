@@ -29,7 +29,11 @@ function TeamStatusMark({ status }: { status: TeamSessionStatus }) {
 }
 
 export const FocusedTeamSession: React.FC<{ session: TeamSessionProjection }> = ({ session }) => (
-  <section className="focused-team-session" aria-labelledby="focused-team-session-title">
+  <section
+    className="focused-team-session"
+    aria-labelledby="focused-team-session-title"
+    data-chat-scroll-anchor={`team:${session.id}`}
+  >
     <header className={`focused-team-session-hero focused-team-session-hero--${session.status}`}>
       <div className="focused-team-session-status">
         <TeamStatusMark status={session.status} />

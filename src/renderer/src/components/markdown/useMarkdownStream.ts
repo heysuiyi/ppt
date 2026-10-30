@@ -32,12 +32,11 @@ export function useMarkdownStream(
   hostRef: RefObject<HTMLDivElement | null>,
   options: MarkdownStreamOptions,
 ): StreamStatus {
-  const latestOptions = useRef(options);
-  latestOptions.current = options;
   const sessionRef = useRef<StreamSession | null>(null);
   const [status, setStatus] = useState<StreamStatus>(IDLE_STATUS);
   const { documentId, content, mode, streaming } = options;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: document identity must reset the parser, release queue and effects even when the host is reused.
   useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -165,7 +164,6 @@ export function useMarkdownStream(
     sessionRef.current = { receive };
     document.addEventListener("visibilitychange", onVisibilityChange);
     media.addEventListener("change", onMotionChange);
-    receive({ ...latestOptions.current, documentId });
     return () => {
       disposed = true;
       sessionRef.current = null;

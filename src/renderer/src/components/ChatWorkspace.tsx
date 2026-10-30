@@ -12,7 +12,9 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
+import { Button } from "./Button";
 import { ChatMessageStream } from "./ChatMessageStream";
 import { ChatWorkspaceComposer } from "./ChatWorkspaceComposer";
 import { ChatWorkspaceHeader } from "./ChatWorkspaceHeader";
@@ -22,7 +24,8 @@ import type {
   ChatWorkspaceInputRuntime,
   ChatWorkspaceProps,
 } from "./chat-workspace-types";
-import { ChatScrollProvider, useChatScroll } from "./useChatScroll";
+import { ChevronDownIcon } from "./Icons";
+import { type ChatScrollPosition, ChatScrollProvider, useChatScroll } from "./useChatScroll";
 
 export type { ChatWorkspaceProps } from "./chat-workspace-types";
 
@@ -82,9 +85,16 @@ function ChatWorkspaceContent({
     (state.phase === "welcome" ? copy.newChatTitle : copy.currentChatTitle);
 
   const chatScroll = useChatScroll();
+  const following = useSyncExternalStore(chatScroll.subscribe, chatScroll.isFollowing);
   const [mainHasAttention, setMainHasAttention] = useState(false);
-  const scrollPositionsRef = useRef(new Map<string, number>());
-  const pendingScrollRestoreRef = useRef<string | null>(null);
+  const [hasNewContent, setHasNewContent] = useState(false);
+  const latestUpdateRef = useRef<{
+    sessionId: string;
+    focus: string;
+    fingerprint: string;
+  } | null>(null);
+  const scrollPositionsRef = useRef(new Map<string, ChatScrollPosition>());
+  const pendingScrollRestoreRef = useRef<{ key: string; latest: boolean } | null>(null);
   const mainFingerprintRef = useRef<string | null>(null);
   const decisionReturnFocusRef = useRef<ConversationFocus | null>(null);
   const hadPendingDecisionRef = useRef(false);
@@ -146,9 +156,17 @@ function ChatWorkspaceContent({
   }, [run.activityTrace, run.busy, session.messages]);
 
   const switchConversationFocus = useCallback(
-    (nextFocus: ConversationFocus) => {
-      scrollPositionsRef.current.set(currentFocusKey, chatScroll.getScrollTop());
-      pendingScrollRestoreRef.current = focusKey(nextFocus);
+    (nextFocus: ConversationFocus, latest = false) => {
+      const nextKey = focusKey(nextFocus);
+      if (nextKey === currentFocusKey) {
+        if (latest) {
+          chatScroll.setFollowing(true);
+          chatScroll.scrollToBottom();
+        }
+        return;
+      }
+      scrollPositionsRef.current.set(currentFocusKey, chatScroll.capturePosition());
+      pendingScrollRestoreRef.current = { key: nextKey, latest };
       chatScroll.setFollowing(false);
       setConversationFocus(nextFocus);
       if (nextFocus.kind === "main") setMainHasAttention(false);
@@ -166,12 +184,13 @@ function ChatWorkspaceContent({
   const openPendingDecision = useCallback(() => {
     if (!inputRuntime.pendingToolApproval) return;
     if (conversationFocus.kind !== "main") decisionReturnFocusRef.current = conversationFocus;
-    switchConversationFocus({ kind: "main" });
-    window.requestAnimationFrame(() => {
-      chatScroll.setFollowing(true);
-      chatScroll.scrollToBottom();
-    });
-  }, [chatScroll, conversationFocus, inputRuntime.pendingToolApproval, switchConversationFocus]);
+    switchConversationFocus({ kind: "main" }, true);
+  }, [conversationFocus, inputRuntime.pendingToolApproval, switchConversationFocus]);
+
+  const submitRequest = () => {
+    switchConversationFocus({ kind: "main" }, true);
+    composer.onSubmitRequest();
+  };
 
   useLayoutEffect(() => {
     if (sessionIdentityRef.current === null) {
@@ -209,6 +228,43 @@ function ChatWorkspaceContent({
   }, [conversationFocus.kind, mainFingerprint]);
 
   useEffect(() => {
+    const lastStep = selectedTeamSession?.activity.steps.at(-1);
+    const fingerprint =
+      conversationFocus.kind === "main"
+        ? mainFingerprint
+        : [
+            selectedTeamSession?.status,
+            selectedTeamSession?.stepCount,
+            lastStep?.id,
+            lastStep?.text.length,
+            lastStep?.status,
+          ].join(":");
+    const previous = latestUpdateRef.current;
+    latestUpdateRef.current = {
+      sessionId: sessionIdentity,
+      focus: currentFocusKey,
+      fingerprint,
+    };
+    if (
+      following ||
+      !previous ||
+      previous.sessionId !== sessionIdentity ||
+      previous.focus !== currentFocusKey
+    ) {
+      setHasNewContent(false);
+    } else if (previous.fingerprint !== fingerprint) {
+      setHasNewContent(true);
+    }
+  }, [
+    conversationFocus.kind,
+    currentFocusKey,
+    following,
+    mainFingerprint,
+    selectedTeamSession,
+    sessionIdentity,
+  ]);
+
+  useEffect(() => {
     const pending = Boolean(inputRuntime.pendingToolApproval);
     if (hadPendingDecisionRef.current && !pending && decisionReturnFocusRef.current) {
       const returnFocus = decisionReturnFocusRef.current;
@@ -219,9 +275,21 @@ function ChatWorkspaceContent({
   }, [inputRuntime.pendingToolApproval, switchConversationFocus]);
 
   useLayoutEffect(() => {
-    if (pendingScrollRestoreRef.current !== currentFocusKey) return;
-    chatScroll.setScrollTop(scrollPositionsRef.current.get(currentFocusKey) ?? 0);
+    const pending = pendingScrollRestoreRef.current;
+    if (pending?.key !== currentFocusKey) return;
     pendingScrollRestoreRef.current = null;
+    if (pending.latest) {
+      chatScroll.setFollowing(true);
+      chatScroll.scrollToBottom();
+    } else {
+      chatScroll.restorePosition(
+        scrollPositionsRef.current.get(currentFocusKey) ?? {
+          following: false,
+          scrollTop: 0,
+          anchor: null,
+        },
+      );
+    }
   }, [chatScroll, currentFocusKey]);
 
   const showConversation = state.phase !== "welcome";
@@ -249,32 +317,47 @@ function ChatWorkspaceContent({
         onOpenPendingDecision={openPendingDecision}
       />
       {state.phase !== "welcome" && (
-        <div className="chat-scroll-viewport" ref={chatScroll.viewportRef}>
-          <div className="chat-conversation-shell">
-            <div className="chat-stream" ref={chatScroll.streamRef}>
-              <ChatMessageStream
-                key={session.id}
-                session={session}
-                run={run}
-                deck={deck}
-                actions={actions}
-                activeTasks={activeTasks}
-                planGoal={planGoal}
-                planState={latestPlan?.state}
-                planArchive={latestPlan?.archive}
-                teamSessions={teamSessions}
-                selectedTeamSession={selectedTeamSession}
-                showMainConversation={state.focus.kind === "main"}
-                onOpenTask={focusTeamSession}
-              />
-              <div />
+        <div className="chat-scroll-region">
+          <div className="chat-scroll-viewport" ref={chatScroll.viewportRef} tabIndex={0}>
+            <div className="chat-conversation-shell">
+              <div className="chat-stream" ref={chatScroll.streamRef}>
+                <ChatMessageStream
+                  key={session.id}
+                  session={session}
+                  run={run}
+                  deck={deck}
+                  actions={actions}
+                  activeTasks={activeTasks}
+                  planGoal={planGoal}
+                  planState={latestPlan?.state}
+                  planArchive={latestPlan?.archive}
+                  teamSessions={teamSessions}
+                  selectedTeamSession={selectedTeamSession}
+                  showMainConversation={state.focus.kind === "main"}
+                  onOpenTask={focusTeamSession}
+                />
+              </div>
             </div>
           </div>
+          {!following && (
+            <Button
+              size="sm"
+              className="chat-return-latest"
+              onClick={() => {
+                chatScroll.setFollowing(true);
+                chatScroll.scrollToBottom();
+                chatScroll.viewportRef.current?.focus({ preventScroll: true });
+              }}
+            >
+              <ChevronDownIcon size={14} aria-hidden="true" />
+              {hasNewContent ? copy.newContentReturnToLatest : copy.returnToLatest}
+            </Button>
+          )}
         </div>
       )}
       <ChatWorkspaceComposer
         state={state}
-        composer={composer}
+        composer={{ ...composer, onSubmitRequest: submitRequest }}
         run={run}
         deck={deck}
         actions={actions}

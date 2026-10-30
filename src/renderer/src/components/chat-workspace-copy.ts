@@ -18,6 +18,8 @@ export const CHAT_WORKSPACE_COPY_ZH_CN = {
   copyFailed: "复制失败，请重试",
   copyContent: "复制内容",
   editAndRerun: "编辑指令并重新运行",
+  returnToLatest: "回到最新",
+  newContentReturnToLatest: "有新动态 · 回到最新",
   promptTemplateAria: "提示词模板",
   promptTemplateHeader: "提示词模板（填入输入框，不会直接执行）",
   teammateComposerNote: "当前正在查看任务详情；这里发送的新指令仍会交给 PPT Agent。",

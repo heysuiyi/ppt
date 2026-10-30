@@ -10,11 +10,12 @@ import {
 } from "react";
 import {
   type ChatScrollController,
+  type ChatScrollPosition,
   createChatScrollController,
   type FoldToken,
 } from "./chat-scroll-controller";
 
-export type { FoldToken };
+export type { ChatScrollPosition, FoldToken };
 
 export interface ChatScrollApi {
   viewportRef: RefObject<HTMLDivElement | null>;
@@ -27,8 +28,9 @@ export interface ChatScrollApi {
   stickToBottomIfFollowing: () => void;
   beginFold: (anchor: HTMLElement | null) => FoldToken | null;
   commitFold: (token: FoldToken | null) => void;
-  getScrollTop: () => number;
-  setScrollTop: (value: number) => void;
+  subscribe: (listener: () => void) => () => void;
+  capturePosition: () => ChatScrollPosition;
+  restorePosition: (position: ChatScrollPosition) => void;
 }
 
 const noopRef: RefObject<HTMLDivElement | null> = { current: null };
@@ -43,8 +45,9 @@ const noopApi: ChatScrollApi = {
   stickToBottomIfFollowing: () => {},
   beginFold: () => null,
   commitFold: () => {},
-  getScrollTop: () => 0,
-  setScrollTop: () => {},
+  subscribe: () => () => {},
+  capturePosition: () => ({ following: false, scrollTop: 0, anchor: null }),
+  restorePosition: () => {},
 };
 
 const ChatScrollContext = createContext<ChatScrollApi | null>(null);
@@ -77,8 +80,9 @@ export function ChatScrollProvider({ children }: { children: ReactNode }) {
       stickToBottomIfFollowing: () => controller.stickToBottomIfFollowing(),
       beginFold: (anchor) => controller.beginFold(anchor),
       commitFold: (token) => controller.commitFold(token),
-      getScrollTop: () => controller.getScrollTop(),
-      setScrollTop: (value) => controller.setScrollTop(value),
+      subscribe: (listener) => controller.subscribe(listener),
+      capturePosition: () => controller.capturePosition(),
+      restorePosition: (position) => controller.restorePosition(position),
     }),
     [bind, controller],
   );

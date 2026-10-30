@@ -241,6 +241,85 @@ describe("MarkdownRenderer native document semantics", () => {
     expect(renderer.activeEffects).toBe(false);
   });
 
+  it("retains running ink and selected prose through semantic changes, finalization and retirement", async () => {
+    let time = 1_000;
+    const timeline = Object.getOwnPropertyDescriptor(document, "timeline");
+    const animate = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "animate");
+    const effects = new Map<HTMLElement, { animation: Animation; finish: () => void }>();
+    Object.defineProperty(document, "timeline", {
+      configurable: true,
+      value: {
+        get currentTime() {
+          return time;
+        },
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value(this: HTMLElement) {
+        let finish!: () => void;
+        const finished = new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        const animation = { startTime: null, finished, cancel() {} } as unknown as Animation;
+        effects.set(this, { animation, finish });
+        return animation;
+      },
+    });
+    try {
+      renderer.update("Selected prefix.\n\nNext **bold", { animate: true });
+      const paragraph = root.querySelector("p")!;
+      const selection = document.getSelection()!;
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      selection.addRange(range);
+      const running = [...paragraph.querySelectorAll<HTMLElement>(".markdown-ink-glyph")].map(
+        (span) => ({
+          span,
+          effect: effects.get(span)!,
+          start: effects.get(span)!.animation.startTime,
+        }),
+      );
+      expect(running.length).toBeGreaterThan(0);
+
+      time += 50;
+      const source = "Selected prefix.\n\nNext **bold** ending.";
+      renderer.update(source, { animate: true });
+      renderer.update(source, { animate: true, finalize: true });
+      expect(root.querySelector("p")).toBe(paragraph);
+      expect(root.querySelector("strong")?.textContent).toBe("bold");
+      expect(selection.toString()).toBe("Selected prefix.");
+      for (const { span, effect, start } of running) {
+        expect(paragraph.contains(span)).toBe(true);
+        expect(effects.get(span)).toBe(effect);
+        expect(effect.animation.startTime).toBe(start);
+      }
+
+      for (const effect of effects.values()) effect.finish();
+      await Promise.all([...effects.values()].map((effect) => effect.animation.finished));
+      expect(root.querySelectorAll(".markdown-ink-glyph")).toHaveLength(0);
+      expect(root.textContent).toBe("Selected prefix.\nNext bold ending.");
+      expect(selection.toString()).toBe("Selected prefix.");
+      expect(root.querySelector("p")).toBe(paragraph);
+
+      time += 300;
+      renderer.update(`${source} More.`, { animate: true, finalize: true });
+      expect(paragraph.querySelector(".markdown-ink-glyph")).toBeNull();
+      expect(root.textContent).toBe("Selected prefix.\nNext bold ending. More.");
+      expect(selection.toString()).toBe("Selected prefix.");
+      expect(
+        [...root.querySelectorAll(".markdown-ink-glyph")]
+          .map((glyph) => glyph.textContent)
+          .join(""),
+      ).toBe("More.");
+    } finally {
+      if (timeline) Object.defineProperty(document, "timeline", timeline);
+      else Reflect.deleteProperty(document, "timeline");
+      if (animate) Object.defineProperty(HTMLElement.prototype, "animate", animate);
+      else Reflect.deleteProperty(HTMLElement.prototype, "animate");
+    }
+  });
+
   it("keeps code and table text clear without introducing animation wrappers", () => {
     renderer.update("`inline code`\n\n```js\nconst value = 1;\n```\n\n| A |\n| - |\n| B |", {
       animate: true,

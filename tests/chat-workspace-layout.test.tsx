@@ -23,6 +23,7 @@ afterEach(() => {
   cleanup();
   clearAllDisplayCardManagers();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function workspaceProps(isNewChat: boolean): ChatWorkspaceProps {
@@ -133,8 +134,19 @@ describe("ChatWorkspace layouts", () => {
   });
 
   it("keeps team focus and approval navigation under the region owner, resetting focus on session change", () => {
+    vi.useFakeTimers();
     const props = workspaceProps(false);
     props.run.activeRunId = "run-1";
+    props.run.busy = true;
+    props.run.streamingMessageId = "live-reply";
+    const reply = "已经显示的回复不应该在返回主会话后从头播放。".repeat(30);
+    props.session.messages.push({
+      id: "live-reply",
+      role: "assistant",
+      runId: "run-1",
+      runStatus: "running",
+      content: reply,
+    });
     props.run.activityTrace = [
       {
         id: "trace-1",
@@ -147,6 +159,13 @@ describe("ChatWorkspace layouts", () => {
         steps: [],
       },
     ];
+    props.run.activityTrace.unshift({
+      id: "reply-1",
+      kind: "response",
+      start: 0,
+      end: reply.length,
+      streaming: true,
+    });
     props.actions.onResolveToolApproval = vi.fn();
     ingestDisplayEvent({
       protocolVersion: 1,
@@ -177,6 +196,11 @@ describe("ChatWorkspace layouts", () => {
       },
     });
     const { container, rerender } = render(<ChatWorkspace {...props} />);
+    act(() => vi.advanceTimersByTime(120));
+    const displayedReply = container.querySelector(".assistant-response")?.textContent ?? "";
+    expect(displayedReply).toContain("已经显示的回复");
+    expect(reply.startsWith(displayedReply)).toBe(true);
+    expect(displayedReply.length).toBeLessThan(reply.length);
     fireEvent.click(screen.getByRole("button", { name: /起草大纲/ }));
     fireEvent.click(screen.getByRole("button", { name: "详情" }));
     expect(container.querySelector(".focused-team-session")).not.toBeNull();
@@ -202,6 +226,9 @@ describe("ChatWorkspace layouts", () => {
     expect(screen.getAllByRole("region", { name: "需要你的授权" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /写入文件/ }));
     expect(container.querySelector(".focused-team-session")).toBeNull();
+    expect(
+      container.querySelector(".assistant-response")?.textContent?.startsWith(displayedReply),
+    ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "允许继续" }));
     expect(props.actions.onResolveToolApproval).toHaveBeenCalledWith("approval-1", true);
     act(() => {

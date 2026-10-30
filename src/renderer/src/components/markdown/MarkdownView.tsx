@@ -1,5 +1,6 @@
 import { getOpenExportFolderPath } from "@shared/export-links";
 import { useLayoutEffect, useRef } from "react";
+import { useMarkdownCaret } from "./useMarkdownCaret";
 import { type MarkdownStreamOptions, useMarkdownStream } from "./useMarkdownStream";
 
 export interface MarkdownViewProps extends MarkdownStreamOptions {
@@ -14,12 +15,14 @@ export function MarkdownView({
   className,
 }: MarkdownViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const caretRef = useRef<HTMLSpanElement>(null);
   const { busy, showCaret, liveOrigin, completed } = useMarkdownStream(hostRef, {
     documentId,
     content,
     mode,
     streaming,
   });
+  useMarkdownCaret(hostRef, caretRef, showCaret);
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -41,14 +44,14 @@ export function MarkdownView({
   }, []);
 
   return (
-    <div className={`markdown-view${showCaret ? " markdown-view--active" : ""}`}>
+    <div className="markdown-view" data-chat-scroll-anchor={`markdown:${documentId}`}>
       {/* React owns this empty host; MarkdownRenderer exclusively owns its descendants. */}
       <div
         ref={hostRef}
         className={`markdown-body markdown-view-host${className ? ` ${className}` : ""}`}
         aria-busy={busy}
       />
-      {showCaret && <span className="markdown-ink-caret" aria-hidden="true" />}
+      {showCaret && <span ref={caretRef} className="markdown-ink-caret" aria-hidden="true" />}
       {liveOrigin && (
         <span className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
           {completed ? "输出已结束" : ""}

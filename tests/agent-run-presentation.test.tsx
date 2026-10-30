@@ -49,6 +49,134 @@ function disclosure() {
 }
 
 describe("run process disclosure", () => {
+  it.each([true, false])(
+    "retains visible response text and selection when its trace arrives with live=%s",
+    (live) => {
+      vi.useFakeTimers();
+      vi.stubGlobal(
+        "matchMedia",
+        vi.fn(() => Object.assign(new EventTarget(), { matches: false })),
+      );
+      const content = "Already selected reply.";
+      const view = render(
+        <RunTimeline documentId="late-trace" items={[]} content={content} live />,
+      );
+      act(() => vi.advanceTimersByTime(10_000));
+      const host = view.container.querySelector(".markdown-body")!;
+      const paragraph = host.querySelector("p")!;
+      const anchor = host.parentElement;
+      const selection = document.getSelection()!;
+      const range = document.createRange();
+      range.setStart(paragraph.firstChild!, 8);
+      range.setEnd(paragraph.firstChild!, 16);
+      selection.addRange(range);
+
+      view.rerender(
+        <RunTimeline documentId="late-trace" items={[thought]} content={content} live />,
+      );
+      expect(view.container.querySelector(".assistant-response")).toBe(host);
+      expect(host.textContent).toBe(content);
+      const traceResponse: AgentActivityItem = {
+        id: "late-response",
+        kind: "response",
+        start: 0,
+        end: content.length,
+        streaming: live,
+      };
+      view.rerender(
+        <RunTimeline
+          documentId="late-trace"
+          items={[thought, traceResponse]}
+          content={content}
+          live={live}
+        />,
+      );
+
+      expect(view.container.querySelector(".assistant-response")).toBe(host);
+      expect(host.querySelector("p")).toBe(paragraph);
+      expect(host.parentElement).toBe(anchor);
+      expect(host.textContent).toBe(content);
+      expect(selection.toString()).toBe("selected");
+      expect(host.closest("[data-run-block-id]")?.getAttribute("data-run-block-id")).toBe(
+        "late-response",
+      );
+      act(() => vi.advanceTimersByTime(10_000));
+      expect(host.textContent).toBe(content);
+      expect(selection.toString()).toBe("selected");
+      selection.removeAllRanges();
+    },
+  );
+
+  it("continues an in-flight provisional response instead of replaying its released prefix", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => Object.assign(new EventTarget(), { matches: false })),
+    );
+    const content = "A long live reply that is still being released to the reader. ".repeat(10);
+    const view = render(<RunTimeline documentId="in-flight" items={[]} content={content} live />);
+    act(() => vi.advanceTimersByTime(120));
+    const host = view.container.querySelector(".markdown-body")!;
+    const released = host.textContent!;
+    expect(released.length).toBeGreaterThan(0);
+    expect(released.length).toBeLessThan(content.length);
+
+    view.rerender(
+      <RunTimeline
+        documentId="in-flight"
+        items={[{ id: "response", kind: "response", start: 0, end: content.length }]}
+        content={content}
+      />,
+    );
+
+    expect(view.container.querySelector(".markdown-body")).toBe(host);
+    expect(host.textContent).toBe(released);
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(host.textContent).toBe(content.trimEnd());
+  });
+
+  it("closes completed process work when provisional response content appears, not at trace handoff", () => {
+    const completedThought = { ...thought, streaming: false };
+    const content = "The visible response is already here.";
+    const view = render(
+      <RunTimeline
+        documentId="provisional-disclosure"
+        items={[completedThought]}
+        content=""
+        live
+      />,
+    );
+    const entrance = disclosure();
+    expect(screen.getByText(thought.content)).not.toBeNull();
+
+    view.rerender(
+      <RunTimeline
+        documentId="provisional-disclosure"
+        items={[completedThought]}
+        content={content}
+        live
+      />,
+    );
+    expect(screen.getByRole("button", { expanded: false })).toBe(entrance);
+    expect(screen.queryByText(thought.content)).toBeNull();
+    const host = view.container.querySelector(".assistant-response");
+
+    view.rerender(
+      <RunTimeline
+        documentId="provisional-disclosure"
+        items={[
+          completedThought,
+          { id: "late-response", kind: "response", start: 0, end: content.length, streaming: true },
+        ]}
+        content={content}
+        live
+      />,
+    );
+    expect(screen.getByRole("button", { expanded: false })).toBe(entrance);
+    expect(view.container.querySelector(".assistant-response")).toBe(host);
+    expect(screen.queryByText(thought.content)).toBeNull();
+  });
+
   it("opens reasoning with one click and keeps the same entrance when tools arrive", () => {
     const view = render(
       <RunTimeline documentId="run" items={[{ ...thought, streaming: false }]} content="" />,

@@ -82,136 +82,142 @@ export function ChatMessageStream({
     }
   };
 
-  if (!showMainConversation) {
-    return selectedTeamSession ? <FocusedTeamSession session={selectedTeamSession} /> : null;
-  }
-
   return (
     <>
-      {session.messages.map((message) => {
-        const isLiveAssistantMessage =
-          message.role === "assistant" && run.busy && run.streamingMessageId === message.id;
-        return (
-          <div
-            key={message.id}
-            className={`chat-message ${message.role}${isLiveAssistantMessage ? " is-active-run" : ""}`}
-          >
-            {message.role === "user" ? (
-              <div
-                className={`user-message-shell${editingMessageId === message.id ? " is-editing" : ""}`}
-              >
+      <div className="chat-main-conversation" hidden={!showMainConversation}>
+        {session.messages.map((message) => {
+          const isLiveAssistantMessage =
+            message.role === "assistant" && run.busy && run.streamingMessageId === message.id;
+          return (
+            <div
+              key={message.id}
+              data-chat-scroll-anchor={`message:${message.id}`}
+              className={`chat-message ${message.role}${isLiveAssistantMessage ? " is-active-run" : ""}`}
+            >
+              {message.role === "user" ? (
                 <div
-                  className={`user-message-bubble${editingMessageId === message.id ? " is-editing" : ""}`}
+                  className={`user-message-shell${editingMessageId === message.id ? " is-editing" : ""}`}
                 >
-                  {editingMessageId === message.id ? (
-                    <UserMessageEditor
-                      value={editingText}
-                      busy={run.busy}
-                      onChange={setEditingText}
-                      onCancel={cancelEditing}
-                      onSubmit={() => saveEditing(message.id)}
-                    />
-                  ) : (
-                    <MarkdownView
-                      documentId={message.id}
-                      content={message.content}
-                      className="user-message-text"
-                    />
+                  <div
+                    className={`user-message-bubble${editingMessageId === message.id ? " is-editing" : ""}`}
+                  >
+                    {editingMessageId === message.id ? (
+                      <UserMessageEditor
+                        value={editingText}
+                        busy={run.busy}
+                        onChange={setEditingText}
+                        onCancel={cancelEditing}
+                        onSubmit={() => saveEditing(message.id)}
+                      />
+                    ) : (
+                      <MarkdownView
+                        documentId={message.id}
+                        content={message.content}
+                        className="user-message-text"
+                      />
+                    )}
+                  </div>
+
+                  {editingMessageId !== message.id && (
+                    <div className="user-message-actions">
+                      <IconButton
+                        onClick={() => void copyMessage(message.content)}
+                        title={copy.copyContent}
+                        aria-label={copy.copyContent}
+                      >
+                        <CopyIcon size={13} />
+                      </IconButton>
+                      <IconButton
+                        onClick={() => startEditing(message.id, message.content)}
+                        disabled={run.busy}
+                        title={copy.editAndRerun}
+                        aria-label={copy.editAndRerun}
+                      >
+                        <Edit3Icon size={13} />
+                      </IconButton>
+                    </div>
                   )}
                 </div>
+              ) : (
+                <div className="assistant-message-shell">
+                  <div className="assistant-message-main">
+                    <AssistantMessageContent
+                      message={message}
+                      run={run}
+                      activeTasks={activeTasks}
+                    />
 
-                {editingMessageId !== message.id && (
-                  <div className="user-message-actions">
-                    <IconButton
-                      onClick={() => void copyMessage(message.content)}
-                      title={copy.copyContent}
-                      aria-label={copy.copyContent}
-                    >
-                      <CopyIcon size={13} />
-                    </IconButton>
-                    <IconButton
-                      onClick={() => startEditing(message.id, message.content)}
-                      disabled={run.busy}
-                      title={copy.editAndRerun}
-                      aria-label={copy.editAndRerun}
-                    >
-                      <Edit3Icon size={13} />
-                    </IconButton>
+                    <AgentRunTerminalNotice
+                      status={message.runStatus}
+                      error={message.runError}
+                      onRetry={run.onRetry ? () => run.onRetry?.(message.id) : undefined}
+                    />
+
+                    <InteractionCardHost
+                      host="timeline"
+                      anchorMessageId={message.id}
+                      busy={run.busy}
+                      onResolveQuestion={actions.onResolveQuestion}
+                    />
+                    <ReviewCardHost
+                      anchorMessageId={message.id}
+                      busy={run.busy}
+                      onResolveApproval={actions.onResolveApproval}
+                      onResolvePatch={actions.onResolvePatch}
+                      onFocusAffectedSlides={deck.onFocusAffectedSlides}
+                    />
+                    <ArtifactCardHost
+                      anchorMessageId={message.id}
+                      presentation={deck.presentation}
+                      busy={run.busy}
+                      isExportingDeck={deck.isExporting}
+                      onReviseOutline={actions.onReviseOutline}
+                      onOpenDeckPreview={deck.onOpenPreview}
+                      onExportDeck={deck.onExport}
+                    />
                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="assistant-message-shell">
-                <div className="assistant-message-main">
-                  <AssistantMessageContent message={message} run={run} activeTasks={activeTasks} />
-
-                  <AgentRunTerminalNotice
-                    status={message.runStatus}
-                    error={message.runError}
-                    onRetry={run.onRetry ? () => run.onRetry?.(message.id) : undefined}
-                  />
-
-                  <InteractionCardHost
-                    host="timeline"
-                    anchorMessageId={message.id}
-                    busy={run.busy}
-                    onResolveQuestion={actions.onResolveQuestion}
-                  />
-                  <ReviewCardHost
-                    anchorMessageId={message.id}
-                    busy={run.busy}
-                    onResolveApproval={actions.onResolveApproval}
-                    onResolvePatch={actions.onResolvePatch}
-                    onFocusAffectedSlides={deck.onFocusAffectedSlides}
-                  />
-                  <ArtifactCardHost
-                    anchorMessageId={message.id}
-                    presentation={deck.presentation}
-                    busy={run.busy}
-                    isExportingDeck={deck.isExporting}
-                    onReviseOutline={actions.onReviseOutline}
-                    onOpenDeckPreview={deck.onOpenPreview}
-                    onExportDeck={deck.onExport}
-                  />
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+          );
+        })}
+
+        <InteractionCardHost
+          host="timeline"
+          busy={run.busy}
+          onResolveQuestion={actions.onResolveQuestion}
+        />
+        <ReviewCardHost
+          busy={run.busy}
+          onResolveApproval={actions.onResolveApproval}
+          onResolvePatch={actions.onResolvePatch}
+          onFocusAffectedSlides={deck.onFocusAffectedSlides}
+        />
+        <ArtifactCardHost
+          presentation={deck.presentation}
+          busy={run.busy}
+          isExportingDeck={deck.isExporting}
+          onReviseOutline={actions.onReviseOutline}
+          onOpenDeckPreview={deck.onOpenPreview}
+          onExportDeck={deck.onExport}
+        />
+
+        {activeTasks.length > 0 && (
+          <div className="card-stack" data-chat-scroll-anchor="task-plan">
+            <TaskPlanCard
+              goal={planGoal}
+              tasks={activeTasks}
+              live={run.busy || hasActiveTaskPlan}
+              state={planState}
+              archive={planArchive}
+              sessions={teamSessions}
+              onOpenTask={onOpenTask}
+            />
           </div>
-        );
-      })}
-
-      <InteractionCardHost
-        host="timeline"
-        busy={run.busy}
-        onResolveQuestion={actions.onResolveQuestion}
-      />
-      <ReviewCardHost
-        busy={run.busy}
-        onResolveApproval={actions.onResolveApproval}
-        onResolvePatch={actions.onResolvePatch}
-        onFocusAffectedSlides={deck.onFocusAffectedSlides}
-      />
-      <ArtifactCardHost
-        presentation={deck.presentation}
-        busy={run.busy}
-        isExportingDeck={deck.isExporting}
-        onReviseOutline={actions.onReviseOutline}
-        onOpenDeckPreview={deck.onOpenPreview}
-        onExportDeck={deck.onExport}
-      />
-
-      {activeTasks.length > 0 && (
-        <div className="card-stack">
-          <TaskPlanCard
-            goal={planGoal}
-            tasks={activeTasks}
-            live={run.busy || hasActiveTaskPlan}
-            state={planState}
-            archive={planArchive}
-            sessions={teamSessions}
-            onOpenTask={onOpenTask}
-          />
-        </div>
+        )}
+      </div>
+      {!showMainConversation && selectedTeamSession && (
+        <FocusedTeamSession session={selectedTeamSession} />
       )}
     </>
   );

@@ -252,14 +252,45 @@
 }
 
 .markdown-ink-caret {
-  display: inline-block;
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
   width: 2px;
   height: 1em;
-  margin-left: 3px;
+  top: 0;
+  left: 0;
   border-radius: 1px;
   background: var(--accent-primary);
-  vertical-align: -0.12em;
   animation: markdown-ink-caret var(--duration-loading-inner) steps(1, end) infinite;
+}
+
+.chat-scroll-region {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat-main-conversation {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chat-main-conversation[hidden] {
+  display: none;
+}
+
+.chat-return-latest {
+  position: absolute;
+  inset-inline-start: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 1;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .visually-hidden {
