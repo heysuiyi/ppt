@@ -9,7 +9,10 @@ import { ResourceScope } from "../scope/resource-scope";
 import { ToolPipeline } from "../tools/tool-pipeline";
 import { ToolRegistry } from "../tools/tool-registry";
 
-/** 服务均为借用；只有本次绑定、注册表及插件作用域进入 Agent 的所有权树。 */
+/**
+ * 服务均为借用；只有本次绑定、注册表及插件作用域进入 Agent 的所有权树。
+ * 按“安装贡献 → 绑定模型 → 封闭新增注册 → 发布实例”装配；创建本身不启动 Loop。
+ */
 export function createDefaultAgentFactory(
   services: AgentServices,
   parentScope?: ResourceScope,
@@ -78,6 +81,7 @@ export function createDefaultAgentFactory(
           await binding.dispose();
           ensureOpen();
         }
+        // 模型绑定归 Agent 所有，不随单次 Run 或审批等待释放。
         scope.own(binding);
         models.seal();
         tools.seal();

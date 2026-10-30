@@ -65,6 +65,7 @@ async function settle(
     ) {
       throw new AgentError("INVALID_INTERACTION", "Tool returned an invalid continuation");
     }
+    // 等待数据归 Query 持有；落盘后结束当前激活，不悬挂 Promise 等待用户回答。
     await session.save({
       ...checkpointData(session.state),
       status: "waiting",
@@ -93,7 +94,7 @@ async function settle(
   return false;
 }
 
-/** 首版串行派发。每次先落盘 claimed，再进入不可推断幂等的外部执行。 */
+/** 串行完成工具批次；所有调用都有持久结果后，才将助手调用与结果成对提交历史。 */
 export async function executeToolTurn(
   session: CheckpointSession,
   env: RunEnvironment,
@@ -153,11 +154,13 @@ export async function executeToolTurn(
     env.signal.throwIfAborted();
     const rest = batch.remaining.slice(1);
     if (invocation.state === "dispatched") {
+      // 只能证明已越过派发边界，不能证明外部操作未执行；恢复不得再次进入工具体。
       await settle(session, { ...batch, remaining: rest }, invocation, unknownCompletion(), env);
     } else {
       if ((env.tools.getVersion(invocation.call.name) ?? null) !== invocation.toolVersion) {
         throw new AgentError("TOOL_VERSION_CHANGED", "Tool implementation changed before dispatch");
       }
+      // 先记录派发，再进入外部调用，避免崩溃后把已执行操作当成 pending 重做。
       const claimed: StoredToolInvocation = { ...invocation, state: "dispatched" };
       await session.save(running(state, { ...batch, remaining: [claimed, ...rest] }));
       env.signal.throwIfAborted();
@@ -179,7 +182,10 @@ export async function executeToolTurn(
   }
 }
 
-/** 回答先被 CAS 消费，再运行续传；不能因为恢复而重新 execute 原工具。 */
+/**
+ * 回答先被 CAS 消费，再运行续传；不能因为恢复而重新 execute 原工具。
+ * 内核负责持久消费与路由；续传的当前权限和业务校验仍由工具执行管线负责。
+ */
 export async function resumeTool(
   session: CheckpointSession,
   env: RunEnvironment,

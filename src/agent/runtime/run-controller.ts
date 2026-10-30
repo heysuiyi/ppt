@@ -16,6 +16,10 @@ import { CheckpointSession, checkpointData, running } from "./query/checkpoint-s
 import { executeModelTurn } from "./turns/model-turn";
 import { executeToolTurn, resumeTool } from "./turns/tool-turn";
 
+/**
+ * Loop 只依赖执行端口与当前身份，不接收工作区、Presentation 或厂商服务。
+ * 业务事实通过提示词贡献和工具协议进入，不能直接改变内核状态。
+ */
 export interface RunEnvironment {
   readonly identity: RunIdentity;
   readonly definition: AgentDefinition;
@@ -152,9 +156,14 @@ function emitResult(result: AgentRunResult, env: RunEnvironment): void {
     });
 }
 
+/**
+ * 正常执行的阅读入口：按持久化阶段调度模型步、工具步与历史提交，不解释工具业务。
+ * executeRun 负责激活与恢复；这里既推进新步骤，也接续检查点中尚未完成的步骤。
+ */
 async function drive(session: CheckpointSession, env: RunEnvironment): Promise<void> {
   while (session.state.status === "running") {
     env.signal.throwIfAborted();
+    // 先对账未确认的追加，避免用旧历史前缀调用模型或在恢复时重复提交消息。
     if (await session.reconcileHistory()) {
       env.emit({
         identity: env.identity,
@@ -171,12 +180,14 @@ async function drive(session: CheckpointSession, env: RunEnvironment): Promise<v
       await executeToolTurn(session, env);
       continue;
     }
+    // 预算属于 Query，不能因审批后换了 Run 就重新获得完整步数。
     const step = state.committed.step + 1;
     if (step > Math.min(state.maxSteps, env.maxSteps))
       throw new AgentError("STEP_LIMIT", "Query exhausted its model step budget");
     let request: ModelRequest;
     let requestId: string;
     if (state.inflight?.type === "model") {
+      // 恢复复用已保存的请求，不重新渲染可能已变化的动态提示词。
       request = state.inflight.request;
       requestId = state.inflight.requestId;
     } else {
@@ -207,6 +218,7 @@ async function drive(session: CheckpointSession, env: RunEnvironment): Promise<v
       (part): part is ModelToolCallContent => part.type === "tool-call",
     );
     if (calls.length === 0) {
+      // 模型返回不等于提交成功；先保存追加意图，由下一次对账确认完成状态。
       await session.save(
         running(session.state, {
           type: "history",
@@ -367,6 +379,7 @@ export async function executeRun(
       if (env.signal.aborted) return cancelledBeforeStart();
       throw error;
     }
+    // 落盘结果不确定或写权限已丢失时，不得用当前内存状态覆盖持久断点。
     if (
       error instanceof AgentError &&
       ["PERSISTENCE_FAILED", "CHECKPOINT_CONFLICT", "HISTORY_CONFLICT"].includes(error.code)

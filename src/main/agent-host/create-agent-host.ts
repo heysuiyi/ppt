@@ -19,6 +19,7 @@ import type { HostSessionBinding } from "./host-session-binding";
 import { createSqliteAgentStores, type SqliteAgentStores } from "./sqlite-agent-stores";
 import { createWorkspaceReader } from "./workspace-read-adapter";
 
+// 这是宿主选择的文件助手运行配置，不是通用内核的默认业务或固定工作流。
 const definition: AgentDefinition = {
   id: "general-file-assistant",
   version: "1",
@@ -64,6 +65,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     if (closing) return closing;
     closing = Promise.resolve().then(async () => {
       const errors: unknown[] = [];
+      // 先排空 Agent 执行，再释放模型凭据与存储，避免活动 Run 使用已关闭的依赖。
       for (const resource of [application, prepared, stores]) {
         try {
           await resource?.dispose();
@@ -82,6 +84,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     prepared = await prepareConfiguredModel(options.configuration, options.modelId, signal);
     const plugin = createFilePlugin(reader);
     const agentId = options.agentId ?? "development-agent";
+    // 工作目录属于宿主权限边界；先固化绑定，禁止同一历史在恢复时换到另一个目录。
     const binding: HostSessionBinding = snapshot({
       schemaVersion: 1,
       agentId,
@@ -104,6 +107,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       models: prepared.models,
       history: stores.history,
       checkpoints: stores.checkpoints,
+      // 授权由宿主独立提供，插件即使注册了工具，也不能自行批准调用。
       authorizeTool(call, context) {
         if (call.name !== "ReadFile" || typeof call.input.path !== "string")
           return { type: "deny", reason: "宿主只授权已安装的文件读取能力。" };

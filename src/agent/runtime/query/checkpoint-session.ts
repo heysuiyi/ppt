@@ -51,6 +51,7 @@ export class CheckpointSession {
         "Checkpoint writer or revision is no longer current",
       );
     }
+    // 只有存储确认 CAS 成功，内存快照与修订号才一起向前推进。
     this.state = detached;
     this.revision = result.revision;
   }
@@ -59,6 +60,7 @@ export class CheckpointSession {
     const state = this.state;
     if (state.status !== "running" || state.inflight?.type !== "history") return false;
     const intent = state.inflight;
+    // 批次 ID 属于持久意图而非本次 Run；上次已提交但丢失确认时，重试取回同一收据。
     let appended;
     try {
       appended = await this.history.append(
@@ -84,6 +86,7 @@ export class CheckpointSession {
         step: intent.step,
       },
     };
+    // 历史先提交、检查点后确认；若检查点未更新，恢复仍可用原追加意图对账。
     await this.save(
       intent.terminal ? { ...base, status: "completed" } : { ...base, status: "running" },
     );

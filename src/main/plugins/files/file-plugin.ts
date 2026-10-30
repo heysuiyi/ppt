@@ -12,7 +12,10 @@ const outputSchema = z
   .strict()
   .refine((value) => Buffer.byteLength(value.content, "utf8") <= MAX_FILE_READ_BYTES);
 
-/** 文件权限由宿主执行管线决定，插件只持有只读能力。 */
+/**
+ * 文件权限由宿主执行管线决定，插件只持有只读端口，不知道根目录、凭据或 Agent 状态。
+ * 外层闭包提供业务实现；setup 只声明能力，不执行读取，也不启动下一轮模型调用。
+ */
 export function createFilePlugin(reader: FileReadPort): AgentPlugin {
   return {
     id: "files",
@@ -41,6 +44,7 @@ export function createFilePlugin(reader: FileReadPort): AgentPlugin {
             };
           }
         },
+        // 模型消费的是结果投影，不是文件服务对象；业务输出的存储结构可独立演进。
         toModelContent(result) {
           return [
             {

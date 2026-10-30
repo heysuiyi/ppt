@@ -59,12 +59,20 @@ export interface AgentRunHandle {
   readonly identity: RunIdentity;
   /** 单一消费者；观察或放弃该流不会驱动或取消执行。 */
   readonly events: AsyncIterable<RuntimeEvent>;
-  /** 在执行与清理完成后落定；持久化失败时可能以拒绝结束，而非宣称成功。 */
+  /**
+   * 在执行与清理完成后落定；waiting 仅结束本次 Run，原 Query 仍可被新 Run 恢复。
+   * 持久化失败时可能以拒绝结束，不能把“模型已返回”当作执行已提交。
+   */
   readonly completed: Promise<AgentRunResult>;
   /** 停止新的调度并向活动任务发出中止信号；取消不会撤销外部影响。 */
   cancel(reason?: string): void;
 }
 
+/**
+ * Agent 是绑定定义、模型与能力的长寿命实例，不是某一次业务 Task。
+ * Thread 承载历史，Query 标识逻辑请求；Query/Step 的恢复事实由存储拥有，
+ * Run 只负责一次激活，因此等待或重启后不需要保留原来的实例内调用栈。
+ */
 export interface Agent extends Disposable {
   readonly id: string;
   readonly definition: AgentDefinition;

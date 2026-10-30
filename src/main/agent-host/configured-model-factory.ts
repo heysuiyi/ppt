@@ -61,6 +61,7 @@ export async function prepareConfiguredModel(
       : settings.openaiApiMode === "chat-completions"
         ? "chat"
         : "responses";
+  // 恢复校验连接身份而不是密钥值：同一连接可轮换凭据，换 endpoint 则不能沿用旧状态。
   const connectionFingerprint = createHash("sha256")
     .update(
       JSON.stringify({
@@ -75,6 +76,7 @@ export async function prepareConfiguredModel(
       }),
     )
     .digest("hex");
+  // 内核用配置 ID 选模；远程模型名、协议路径和凭据的解析由适配边界负责。
   const selection: ModelSelection = Object.freeze({
     providerId: "configured-gateway",
     modelId: configuredModelId,
