@@ -8,17 +8,17 @@ export interface CheckpointKey {
 
 export interface CheckpointLease {
   readonly key: CheckpointKey;
-  /** Identifies one writer activation, normally its runId; not a shared process identity. */
+  /** 标识一次写入方激活，通常为其 runId；不是共享的进程标识。 */
   readonly ownerId: string;
-  /** Monotonically advances on every acquisition for this key and is never reused. */
+  /** 每次获取该键时单调递增，且绝不重用。 */
   readonly generation: number;
 }
 
 export interface CheckpointAcquireOptions {
   /**
-   * Explicit takeover after the host has established that this writer has stopped.
-   * Storage compares the entire observed lease before replacing it atomically.
-   * Fencing cannot retract external effects already dispatched by the old writer.
+   * 在宿主确认该写入方已停止后的显式接管。
+   * 存储在原子替换前比较整个观测到的租约。
+   * 围栏无法撤回旧写入方已派发的外部影响。
    */
   readonly replace?: CheckpointLease;
 }
@@ -29,7 +29,7 @@ export type CheckpointAcquireResult =
   | {
       readonly status: "acquired";
       readonly lease: CheckpointLease;
-      /** Zero before the first save; releasing or acquiring does not change this revision. */
+      /** 首次保存前为 0；释放或获取不会改变该修订号。 */
       readonly currentRevision: number;
       readonly checkpoint: AgentCheckpoint | null;
     };
@@ -40,16 +40,16 @@ export type CheckpointSaveResult =
   | { readonly status: "stale" };
 
 /**
- * Storage atomically enforces exclusive writer ownership, generation fencing and revision
- * CAS across all writers, not just within one store object. There is no lease TTL or
- * automatic takeover. I/O failures reject; they are not busy/conflict/stale.
+ * 存储在所有写入方之间（而非仅单个存储对象内）原子地强制独占写入方所有权、
+ * 世代围栏与修订 CAS。没有租约 TTL，也没有自动接管。
+ * I/O 失败以拒绝结束；它们不属于 busy/conflict/stale。
  */
 export interface CheckpointStore {
   /**
-   * Atomically acquire an unowned key or replace the exact lease explicitly supplied.
-   * A live owner without a matching replacement makes this busy, even if ownerId matches.
-   * A stale replacement must not acquire or release the key, including after it was released.
-   * Successful acquisition reads the snapshot and advances the writer generation.
+   * 原子地获取无属主的键，或替换显式提供的确切租约。
+   * 若属主存活且没有匹配的替换，则结果为 busy，即使 ownerId 匹配。
+   * 过期的替换不得获取或释放该键，即使该键已被释放也不例外。
+   * 成功获取会读取快照并推进写入方世代。
    */
   acquire(
     key: CheckpointKey,
@@ -57,17 +57,16 @@ export interface CheckpointStore {
     options?: CheckpointAcquireOptions,
   ): Promise<CheckpointAcquireResult>;
   /**
-   * First fence by the current key/ownerId/generation, then compare expectedRevision.
-   * A mismatched or released lease is stale; a current lease with a revision mismatch
-   * conflicts. Neither outcome writes anything. The checkpoint identity must match key.
+   * 先按当前 key/ownerId/generation 设围栏，再比较 expectedRevision。
+   * 租约不匹配或已释放为 stale；租约当前但修订不匹配为 conflict。
+   * 两种结果都不写入任何内容。检查点标识必须与 key 匹配。
    *
-   * Success atomically replaces the whole checkpoint and advances revision by one;
-   * both the snapshot and revision are durably committed before this promise resolves
-   * and survive store/process restart. A rejected write may have committed: callers
-   * must reconcile from storage, not assume failure means no write.
+   * 成功会原子替换整个检查点并将修订号加一；快照与修订在该 promise 解析前
+   * 均已持久提交，并能在存储/进程重启后保留。被拒绝的写入可能已经提交：
+   * 调用方必须从存储进行对账，而不能假设失败意味着未写入。
    *
-   * This protects checkpoint ownership only. It does not make tool side effects,
-   * interaction consumption, or writes to another store exactly-once by itself.
+   * 这仅保护检查点所有权。它本身不会使工具副作用、交互消费或对另一存储的
+   * 写入变成恰好一次。
    */
   save(
     lease: CheckpointLease,
@@ -75,8 +74,8 @@ export interface CheckpointStore {
     checkpoint: AgentCheckpoint,
   ): Promise<CheckpointSaveResult>;
   /**
-   * Idempotent. Release only when key, ownerId and generation still identify the current
-   * owner; a stale release must never release a newer writer or delete its checkpoint.
+   * 幂等。仅当 key、ownerId 与 generation 仍标识当前属主时才释放；
+   * 过期的释放绝不得释放更新的写入方或删除其检查点。
    */
   release(lease: CheckpointLease): Promise<void>;
 }

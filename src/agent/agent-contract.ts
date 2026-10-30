@@ -8,7 +8,7 @@ import type {
 } from "./protocol-values";
 import type { RuntimeEvent } from "./session/session-events";
 
-/** Stable execution definition identity; resume must reject incompatible definitions. */
+/** 稳定的执行定义标识；恢复执行时必须拒绝不兼容的定义。 */
 export interface AgentDefinition {
   readonly id: string;
   readonly version: string;
@@ -23,12 +23,12 @@ export interface AgentRunInput {
   readonly signal?: AbortSignal;
 }
 
-/** The runtime loads the authoritative checkpoint; callers cannot replace its state. */
+/** 运行时加载权威检查点；调用方无法替换其状态。 */
 export interface AgentResumeInput {
   readonly threadId: string;
   readonly queryId: string;
   readonly runId: string;
-  /** Only valid for the corresponding stored pending interaction; consume it atomically. */
+  /** 仅对相应的已存储待处理交互有效；必须以原子方式消费它。 */
   readonly response?: InteractionResponse;
   readonly signal?: AbortSignal;
 }
@@ -53,11 +53,11 @@ export type AgentRunResult =
 
 export interface AgentRunHandle {
   readonly identity: RunIdentity;
-  /** One consumer; observing or abandoning the stream cannot drive or cancel execution. */
+  /** 单一消费者；观察或放弃该流不会驱动或取消执行。 */
   readonly events: AsyncIterable<RuntimeEvent>;
-  /** Settles after execution and cleanup; persistence failures may reject instead of claiming success. */
+  /** 在执行与清理完成后落定；持久化失败时可能以拒绝结束，而非宣称成功。 */
   readonly completed: Promise<AgentRunResult>;
-  /** Stops new dispatches and signals active work; cancellation does not undo external effects. */
+  /** 停止新的调度并向活动任务发出中止信号；取消不会撤销外部影响。 */
   cancel(reason?: string): void;
 }
 
@@ -65,7 +65,7 @@ export interface Agent extends Disposable {
   readonly id: string;
   readonly definition: AgentDefinition;
   readonly model: ModelSelection;
-  /** Reject concurrent activations of this Agent rather than sharing mutable execution state. */
+  /** 拒绝该 Agent 的并发激活，而不是共享可变的执行状态。 */
   run(input: AgentRunInput): Promise<AgentRunHandle>;
   resume(input: AgentResumeInput): Promise<AgentRunHandle>;
 }

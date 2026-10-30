@@ -224,6 +224,10 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `src/renderer/`：React 工作台、聊天流、实时 PPT 镜像、设置台；`src/renderer/src/App.tsx` 直接承载公共布局与工作台/设置页切换
   - 布局由容器分配空间：根节点限定窗口高度，主体通过 Flex/Grid 伸展；栏宽由 `useWorkbenchLayout` 的 CSS 变量统一控制，并通过 `ResizeObserver` 按实际容器尺寸适配。内部面板独立滚动，局部响应式使用容器查询；窗口缩小时不会覆盖用户保存的预览宽度。SVG 预览保持 16:9，作者坐标仍为 1280×720。
   - 面板尺寸拖拽统一使用 `src/renderer/src/components/ResizeHandle.tsx`：受控 `value/min/max/onValueChange`，`axis` 选择左右或上下拖动，`direction` 决定增减方向。组件统一管理 idle/hover/dragging/disabled、指针捕获、全局光标和清理；支持方向键（10px）、Home/End。取消保留最后尺寸，禁用、失焦、失去捕获、卸载或边界变化时结束拖拽；尺寸约束和持久化仍由布局层负责。
+- `src/agent/`：独立的通用 Agent 协议层，尚未接入生产执行链；现有 `src/main/agent/` 继续运行。
+  - `agent-contract.ts`、`agent-factory.ts` 定义运行、恢复、取消和工厂装配约定，不提供默认运行时实现，也不使用 `index.ts` 聚合入口。
+  - `model/` 保留模型中立内容与适配器私有续传数据；`tools/` 分离业务结果、模型内容与展示投影，业务依赖由外层闭包提供。
+  - `session/` 定义历史条件追加、版本化检查点、写所有权与显式接管；`extensions/` 定义插件装配及注册资源的作用域生命周期。协议不依赖 PPT、Electron、应用存储或厂商 SDK。
 - `src/main/agent/`：Agent runtime、工具注册、模型网关、审批门禁、子任务
 - `src/main/agent-configuration/`：通过 `createAgentConfiguration()` 提供 `management` 和 `runtime` 两套操作，不公开 Store、凭据绑定或解密接口。
   - Renderer 只使用管理 IPC：读取无密钥快照、初始化、保存/删除厂商、保存执行偏好、修改搜索凭据、发现远程模型。厂商保存完成后才发布已提交状态；历史浏览器配置只读迁移，Main 初始化成功后清理。

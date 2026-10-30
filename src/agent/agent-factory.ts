@@ -9,15 +9,15 @@ export interface AgentCreationOptions {
   readonly agentId: string;
   readonly definition: AgentDefinition;
   readonly model: ModelSelection;
-  /** Positive maximum model steps per logical query, including restored committed steps. */
+  /** 每个逻辑查询的最大模型步数（正数），包含已恢复的已提交步数。 */
   readonly maxSteps: number;
   readonly plugins: readonly AgentPlugin[];
 }
 
-/** Host-supplied implementations; none of these ports expose credentials or business services. */
+/** 由宿主提供的实现；这些端口均不暴露凭据或业务服务。 */
 export interface AgentServices {
   readonly models: ModelClientFactory;
-  /** Includes schema validation, host authorization and safe result projection before dispatch settles. */
+  /** 在调度落定前完成模式校验、宿主授权与安全的结果投影。 */
   readonly tools: ToolExecutor;
   readonly checkpoints: CheckpointStore;
   readonly history: SessionHistoryStore;
@@ -25,9 +25,9 @@ export interface AgentServices {
 
 export interface AgentFactory {
   /**
-   * Assemble before publishing the Agent; do not start model or tool execution here.
-   * Reject duplicate registrations and roll back acquired resources if setup fails.
-   * The returned Agent owns its plugin scopes, not the borrowed host services.
+   * 在发布 Agent 之前完成组装；此处不得启动模型或工具执行。
+   * 拒绝重复注册，若设置失败则回滚已获取的资源。
+   * 返回的 Agent 拥有其插件作用域，但不拥有借用的宿主服务。
    */
   create(options: AgentCreationOptions, services: AgentServices): Promise<Agent>;
 }

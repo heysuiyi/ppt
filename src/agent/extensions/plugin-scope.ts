@@ -1,12 +1,12 @@
 import type { Disposable } from "../protocol-values";
 
-/** Ownership boundary for one plugin activation; not a permission or process sandbox. */
+/** 一次插件激活的所有权边界；不是权限或进程沙箱。 */
 export interface PluginScope extends Disposable {
   readonly signal: AbortSignal;
   /**
-   * Adopt one resource. Reject adoption after disposal begins.
-   * Teardown aborts the signal, drains owned work and disposes resources in reverse order.
-   * Continue cleanup after an individual disposer fails; report failures after all resources settle.
+   * 接管一个资源。释放开始后拒绝接管。
+   * 拆卸会中止信号、排空所拥有的工作，并按逆序释放资源。
+   * 单个释放器失败后继续清理；在所有资源落定后报告失败。
    */
   own(resource: Disposable): void;
 }

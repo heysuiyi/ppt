@@ -10,19 +10,19 @@ export interface PromptContext {
 
 export interface PromptContribution {
   readonly id: string;
-  /** Called at a step boundary; business dependencies stay in the contributor's closure. */
+  /** 在步骤边界调用；业务依赖保留在贡献者的闭包中。 */
   render(context: PromptContext): string | Promise<string>;
 }
 
 export interface PromptRegistrar {
-  /** Reject duplicate IDs in the same scope; disposal removes only this registration. */
+  /** 拒绝同一作用域内的重复 ID；释放仅移除该注册。 */
   register(contribution: PromptContribution): Disposable;
 }
 
-/** A scoped registration surface, not a service locator or a shared mutable business context. */
+/** 带作用域的注册接口，而非服务定位器或共享的可变业务上下文。 */
 export interface PluginContext {
   readonly scope: PluginScope;
-  /** Registrations made here are owned by this plugin scope and reclaimed on setup failure or disposal. */
+  /** 在此进行的注册归该插件作用域所有，在设置失败或释放时被回收。 */
   readonly models: ModelRegistrar;
   readonly tools: ToolRegistrar;
   readonly prompts: PromptRegistrar;
@@ -30,8 +30,8 @@ export interface PluginContext {
 
 export interface AgentPlugin {
   readonly id: string;
-  /** Resume checks the installed version before interpreting plugin-owned continuation data. */
+  /** 恢复时先检查已安装版本，再解释插件拥有的续传数据。 */
   readonly version: string;
-  /** Trusted in-process composition only; external services are provided by the plugin factory. */
+  /** 仅限受信任的进程内组合；外部服务由插件工厂提供。 */
   setup(context: PluginContext): void | Promise<void>;
 }

@@ -1,4 +1,4 @@
-/** Values allowed across persistence and plugin protocol boundaries; exclude services and secrets. */
+/** 可跨持久化与插件协议边界传递的值；排除服务与密钥。 */
 export type JsonValue =
   | null
   | boolean
@@ -11,14 +11,14 @@ export interface JsonObject {
   readonly [key: string]: JsonValue;
 }
 
-/** A versioned payload belongs to its named producer, not to the execution loop. */
+/** 带版本的载荷归属于其命名的生产者，而非执行循环。 */
 export interface VersionedData {
   readonly type: string;
   readonly version: number;
   readonly data: JsonValue;
 }
 
-/** A query can survive multiple run activations within one conversation thread. */
+/** 一个查询可在同一会话线程内跨越多次运行激活而存活。 */
 export interface RunIdentity {
   readonly agentId: string;
   readonly threadId: string;
@@ -26,25 +26,25 @@ export interface RunIdentity {
   readonly runId: string;
 }
 
-/** Safe public error data; native errors, credentials and stack traces stay with the host. */
+/** 安全的公开错误数据；原生错误、凭据与堆栈跟踪保留在宿主侧。 */
 export interface ProtocolError {
   readonly code: string;
   readonly message: string;
 }
 
-/** The owner validates the payload and interprets the response; the kernel only routes it. */
+/** 由属主校验载荷并解释响应；内核仅负责路由。 */
 export interface InteractionRequest {
   readonly id: string;
   readonly owner: string;
   readonly payload: VersionedData;
 }
 
-/** Resolve only a stored pending interaction; this is not an execution snapshot from the client. */
+/** 仅解析已存储的待处理交互；这不是来自客户端的执行快照。 */
 export type InteractionResponse =
   | { readonly interactionId: string; readonly type: "answer"; readonly value: JsonValue }
   | { readonly interactionId: string; readonly type: "reject" | "cancel" };
 
 export interface Disposable {
-  /** Idempotent; resolves after owned work and registrations have been released. */
+  /** 幂等；在所拥有的工作与注册被释放后完成。 */
   dispose(): Promise<void>;
 }

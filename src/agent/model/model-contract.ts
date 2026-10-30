@@ -3,7 +3,7 @@ import type { Disposable, JsonObject, JsonValue } from "../protocol-values";
 export interface ModelSelection {
   readonly providerId: string;
   readonly modelId: string;
-  /** Adapter-defined value; the protocol does not enumerate provider-specific effort levels. */
+  /** 由适配器定义的值；协议不枚举提供方特定的推理力度级别。 */
   readonly reasoningEffort?: string;
 }
 
@@ -19,7 +19,7 @@ export interface ModelImageContent {
     | { readonly type: "base64"; readonly mediaType: string; readonly data: string };
 }
 
-/** Only reasoning that the adapter can expose; private reasoning belongs in replay state. */
+/** 仅包含适配器可公开的推理内容；私有推理属于重放状态。 */
 export interface ModelReasoningContent {
   readonly type: "reasoning";
   readonly text: string;
@@ -32,7 +32,7 @@ export interface ModelToolCallContent {
   readonly input: JsonObject;
 }
 
-/** Deliberately excludes business values, presentation payloads and nested tool calls. */
+/** 刻意排除业务值、展示载荷与嵌套工具调用。 */
 export type ModelToolContent = ModelTextContent | ModelImageContent;
 
 export interface ModelToolResultContent {
@@ -49,7 +49,7 @@ export type ModelContent =
   | ModelToolCallContent
   | ModelToolResultContent;
 
-/** Opaque to the kernel. Only the adapter decides whether this state is reusable. */
+/** 对内核不透明。只有适配器决定该状态是否可重用。 */
 export interface ModelReplayState {
   readonly providerId: string;
   readonly modelId: string;
@@ -64,7 +64,7 @@ export interface ModelAssistantMessage {
   readonly replayState?: ModelReplayState;
 }
 
-/** Preserve content order and replay state; UI text cannot reconstruct canonical messages. */
+/** 保留内容顺序与重放状态；UI 文本无法重建规范消息。 */
 export type ModelMessage =
   | { readonly role: "system"; readonly content: readonly ModelTextContent[] }
   | { readonly role: "user"; readonly content: readonly ModelToolContent[] }
@@ -94,7 +94,7 @@ export interface ModelResponse {
   readonly usage?: ModelUsage;
 }
 
-/** Tool input deltas are incomplete JSON fragments, not validated tool calls. */
+/** 工具输入增量是不完整的 JSON 片段，而非已校验的工具调用。 */
 export type ModelContentDelta =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "reasoning"; readonly text: string }
@@ -106,9 +106,8 @@ export type ModelContentDelta =
     };
 
 /**
- * Deltas are provisional and indexed by final assistant content position. A successful
- * stream ends with exactly one authoritative completed response; persist that response,
- * not reconstructed deltas. Cancellation or failure can terminate without completed.
+ * 增量是临时的，按最终助手内容位置索引。成功的流以恰好一个权威的完成响应结束；
+ * 持久化该响应，而非重建的增量。取消或失败可能在没有 completed 的情况下终止。
  */
 export type ModelStreamEvent =
   | { readonly type: "content-delta"; readonly index: number; readonly delta: ModelContentDelta }
@@ -128,12 +127,12 @@ export interface ModelClient {
   stream(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelStreamEvent>;
 }
 
-/** Credentials and provider services are captured by the concrete factory, not requests. */
+/** 凭据与提供方服务由具体工厂捕获，而非请求。 */
 export interface ModelClientFactory {
   create(selection: ModelSelection): Promise<ModelClient>;
 }
 
-/** Duplicate provider routes must be rejected; disposal removes only this registration. */
+/** 必须拒绝重复的提供方路由；释放仅移除该注册。 */
 export interface ModelRegistrar {
   register(providerId: string, factory: ModelClientFactory): Disposable;
 }

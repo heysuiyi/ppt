@@ -15,7 +15,7 @@ import type { ToolCompletion, ToolSideEffects } from "../tools/tool-contract";
 
 export interface SessionHistory {
   readonly threadId: string;
-  /** Starts at zero for an empty thread and increases on each successful append. */
+  /** 空线程从 0 开始，每次成功追加后递增。 */
   readonly revision: number;
   readonly messages: readonly ModelMessage[];
 }
@@ -24,14 +24,14 @@ export type SessionHistoryAppendResult =
   | { readonly status: "appended"; readonly revision: number }
   | { readonly status: "conflict"; readonly currentRevision: number };
 
-/** Canonical model history, including ordered tool calls/results and provider replay state. */
+/** 规范的模型历史，包含有序的工具调用/结果与提供方重放状态。 */
 export interface SessionHistoryStore {
-  /** Missing threads read as an empty history at revision zero. I/O failures reject. */
+  /** 不存在的线程读取为修订 0 的空历史。I/O 失败以拒绝结束。 */
   read(threadId: string): Promise<SessionHistory>;
   /**
-   * Atomically append the entire ordered batch only when expectedRevision matches.
-   * Success durably preserves the existing prefix and advances the revision by one;
-   * conflict changes nothing. I/O failures reject rather than becoming conflicts.
+   * 仅当 expectedRevision 匹配时，才原子地追加整个有序批次。
+   * 成功会持久保留既有前缀并将修订号加一；冲突不改变任何内容。
+   * I/O 失败以拒绝结束，而不转化为冲突。
    */
   append(
     threadId: string,
@@ -40,7 +40,7 @@ export interface SessionHistoryStore {
   ): Promise<SessionHistoryAppendResult>;
 }
 
-/** Identity and pinned implementation version survive a different run resuming this call. */
+/** 标识与固定实现版本可在另一次运行恢复该调用时保持不变。 */
 export interface StoredToolInvocation {
   readonly identity: RunIdentity;
   readonly call: ModelToolCallContent;
@@ -49,7 +49,7 @@ export interface StoredToolInvocation {
 
 export interface StoredToolCompletion {
   readonly invocation: StoredToolInvocation;
-  /** Includes the already-converted model content; recovery must not rerun its conversion. */
+  /** 包含已转换的模型内容；恢复时不得重新执行其转换。 */
   readonly completion: ToolCompletion;
 }
 
@@ -61,11 +61,11 @@ export interface ModelRequestCheckpoint {
 
 export interface ToolBatchCheckpoint {
   readonly type: "tools";
-  /** The authoritative response preserves call ordering and provider replay state. */
+  /** 权威响应保留调用顺序与提供方重放状态。 */
   readonly response: ModelResponse;
   /**
-   * Calls without a durably recorded completion, excluding a waiting checkpoint's
-   * pending invocation. Absence of a result is not proof that no side effect occurred.
+   * 尚无持久化完成记录的调用，排除等待检查点的待处理调用。
+   * 缺少结果并不证明没有发生副作用。
    */
   readonly remaining: readonly StoredToolInvocation[];
   readonly completed: readonly StoredToolCompletion[];
@@ -87,23 +87,24 @@ interface AgentCheckpointBase {
   readonly queryId: string;
   readonly lastRunId: string;
   readonly definition: { readonly id: string; readonly version: string };
+  /** 恢复扩展状态之前必须检查已安装的实现版本。 */
+  readonly plugins: readonly { readonly id: string; readonly version: string }[];
   readonly model: ModelSelection;
   readonly committed: {
-    /** Revision of the authoritative history represented by messages. */
+    /** messages 所代表的权威历史的修订号。 */
     readonly historyRevision: number;
     readonly messages: readonly ModelMessage[];
-    /** Last fully committed step; zero before the first step. Inflight is the next step. */
+    /** 最后一个完全提交的步；第一步之前为 0。inflight 是下一步。 */
     readonly step: number;
   };
-  /** Unique producer names in type; extension payloads never replace kernel fields. */
+  /** type 中的生产者名称唯一；扩展载荷绝不替换内核字段。 */
   readonly extensions: readonly VersionedData[];
 }
 
 /**
- * Persist only serializable protocol values, never services, credentials or abort signals.
- * Call IDs partition the tool response into remaining/completed and, while waiting,
- * exactly one pending invocation; retain original IDs and tool versions on recovery.
- * This snapshot and SessionHistoryStore are not an implicit cross-store transaction.
+ * 仅持久化可序列化的协议值，绝不持久化服务、凭据或中止信号。
+ * 调用 ID 将工具响应划分为 remaining/completed，且在等待时恰好有一个待处理调用；
+ * 恢复时保留原始 ID 与工具版本。该快照与 SessionHistoryStore 并非隐式的跨存储事务。
  */
 export type AgentCheckpoint = AgentCheckpointBase &
   (
@@ -112,15 +113,14 @@ export type AgentCheckpoint = AgentCheckpointBase &
         readonly status: "waiting";
         readonly inflight: ToolBatchCheckpoint;
         /**
-         * Only this stored interaction may accept a matching response. Its consumption
-         * and transition out of waiting must be committed under the checkpoint CAS;
-         * reject duplicate or stale responses rather than executing the continuation twice.
+         * 只有该已存储的交互可以接受匹配的响应。其消费与离开等待状态的迁移
+         * 必须在检查点 CAS 下提交；拒绝重复或过期的响应，而不是执行续传两次。
          */
         readonly pending: PendingInteraction;
       }
     | { readonly status: "completed" }
     | {
-        /** Cancellation stops future work; it neither rolls back history nor external effects. */
+        /** 取消停止后续工作；既不回滚历史，也不回滚外部影响。 */
         readonly status: "cancelled";
         readonly inflight?: InflightCheckpoint;
       }
