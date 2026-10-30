@@ -1,4 +1,4 @@
-import type { ModelMessage, ModelSelection } from "./model/model-contract";
+import type { ModelMessage, ModelSelection, ModelUserMessage } from "./model/model-contract";
 import type {
   Disposable,
   InteractionRequest,
@@ -6,6 +6,7 @@ import type {
   ProtocolError,
   RunIdentity,
 } from "./protocol-values";
+import type { CheckpointLease } from "./session/checkpoint-contract";
 import type { RuntimeEvent } from "./session/session-events";
 
 /** 稳定的执行定义标识；恢复执行时必须拒绝不兼容的定义。 */
@@ -19,7 +20,7 @@ export interface AgentRunInput {
   readonly threadId: string;
   readonly queryId: string;
   readonly runId: string;
-  readonly input: readonly ModelMessage[];
+  readonly input: readonly ModelUserMessage[];
   readonly signal?: AbortSignal;
 }
 
@@ -31,6 +32,8 @@ export interface AgentResumeInput {
   /** 仅对相应的已存储待处理交互有效；必须以原子方式消费它。 */
   readonly response?: InteractionResponse;
   readonly signal?: AbortSignal;
+  /** 仅由确认旧写入方已停止的宿主提供，不接受前端提交的替换快照。 */
+  readonly takeover?: CheckpointLease;
 }
 
 export type AgentRunResult =
@@ -45,6 +48,7 @@ export type AgentRunResult =
       readonly interaction: InteractionRequest;
     }
   | { readonly status: "cancelled"; readonly identity: RunIdentity }
+  | { readonly status: "interrupted"; readonly identity: RunIdentity }
   | {
       readonly status: "failed";
       readonly identity: RunIdentity;

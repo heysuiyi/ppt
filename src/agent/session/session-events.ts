@@ -21,7 +21,7 @@ export type RuntimeFactEvent = RuntimeEventIdentity &
   (
     | {
         readonly kind: "fact";
-        readonly type: "run.started" | "run.completed" | "run.cancelled";
+        readonly type: "run.started" | "run.completed" | "run.cancelled" | "run.interrupted";
       }
     | {
         readonly kind: "fact";

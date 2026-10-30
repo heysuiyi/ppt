@@ -19,6 +19,8 @@ export interface LogContext {
   runId?: string;
   threadId?: string;
   queryId?: string;
+  /** 独立宿主可仅保留本地诊断，终端由自己的公开事件投影负责。 */
+  console?: boolean;
 }
 
 export interface DiagnosticValuePreview {
@@ -322,14 +324,16 @@ function write(level: AppLogLevel, event: string, data: AgentLogData = {}): void
 
   // The development launcher configures Windows consoles for UTF-8.
   try {
-    if (level === "error") {
-      console.error(line);
-    } else if (level === "warn") {
-      console.warn(line);
-    } else if (level === "debug") {
-      console.debug(line);
-    } else {
-      console.info(line);
+    if (logContextStorage.getStore()?.console !== false) {
+      if (level === "error") {
+        console.error(line);
+      } else if (level === "warn") {
+        console.warn(line);
+      } else if (level === "debug") {
+        console.debug(line);
+      } else {
+        console.info(line);
+      }
     }
   } catch {
     // Logging is observational and must never replace application control flow.
@@ -340,7 +344,9 @@ function write(level: AppLogLevel, event: string, data: AgentLogData = {}): void
     appendDailyLogLine(json);
   } catch (error) {
     try {
-      console.error("[agent] Failed to append log entry:", error);
+      if (logContextStorage.getStore()?.console !== false) {
+        console.error("[agent] Failed to append log entry:", error);
+      }
     } catch {
       // There is no safe fallback if both sinks fail.
     }

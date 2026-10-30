@@ -7,6 +7,7 @@ import type {
 } from "../model/model-contract";
 import type {
   InteractionRequest,
+  InteractionResponse,
   ProtocolError,
   RunIdentity,
   VersionedData,
@@ -37,6 +38,8 @@ export interface SessionHistoryStore {
     threadId: string,
     expectedRevision: number,
     messages: readonly ModelMessage[],
+    /** 稳定批次 ID；同一 ID/内容的重放返回原修订，不重复追加。 */
+    batchId: string,
   ): Promise<SessionHistoryAppendResult>;
 }
 
@@ -44,7 +47,8 @@ export interface SessionHistoryStore {
 export interface StoredToolInvocation {
   readonly identity: RunIdentity;
   readonly call: ModelToolCallContent;
-  readonly toolVersion: string;
+  readonly toolVersion: string | null;
+  readonly state: "pending" | "dispatched";
 }
 
 export interface StoredToolCompletion {
@@ -71,7 +75,26 @@ export interface ToolBatchCheckpoint {
   readonly completed: readonly StoredToolCompletion[];
 }
 
-export type InflightCheckpoint = ModelRequestCheckpoint | ToolBatchCheckpoint;
+export interface HistoryAppendCheckpoint {
+  readonly type: "history";
+  readonly batchId: string;
+  readonly messages: readonly ModelMessage[];
+  readonly step: number;
+  readonly terminal: boolean;
+}
+
+export interface ToolResumeCheckpoint {
+  readonly type: "resume";
+  readonly batch: ToolBatchCheckpoint;
+  readonly pending: PendingInteraction;
+  readonly response: InteractionResponse;
+}
+
+export type InflightCheckpoint =
+  | ModelRequestCheckpoint
+  | ToolBatchCheckpoint
+  | HistoryAppendCheckpoint
+  | ToolResumeCheckpoint;
 
 export interface PendingInteraction {
   readonly invocation: StoredToolInvocation;
@@ -90,6 +113,8 @@ interface AgentCheckpointBase {
   /** 恢复扩展状态之前必须检查已安装的实现版本。 */
   readonly plugins: readonly { readonly id: string; readonly version: string }[];
   readonly model: ModelSelection;
+  /** 查询创建时固定预算；恢复不能重置已消费步数或提高该预算。 */
+  readonly maxSteps: number;
   readonly committed: {
     /** messages 所代表的权威历史的修订号。 */
     readonly historyRevision: number;
@@ -97,6 +122,8 @@ interface AgentCheckpointBase {
     /** 最后一个完全提交的步；第一步之前为 0。inflight 是下一步。 */
     readonly step: number;
   };
+  /** 输入之前的历史长度，用于恢复后精确返回本次查询产生的输出。 */
+  readonly startMessageCount: number;
   /** type 中的生产者名称唯一；扩展载荷绝不替换内核字段。 */
   readonly extensions: readonly VersionedData[];
 }
@@ -124,6 +151,7 @@ export type AgentCheckpoint = AgentCheckpointBase &
         readonly status: "cancelled";
         readonly inflight?: InflightCheckpoint;
       }
+    | { readonly status: "interrupted"; readonly inflight?: InflightCheckpoint }
     | {
         readonly status: "failed";
         readonly error: ProtocolError;

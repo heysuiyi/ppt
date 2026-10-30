@@ -63,11 +63,15 @@ export interface ModelAssistantMessage {
   readonly content: readonly (ModelTextContent | ModelReasoningContent | ModelToolCallContent)[];
   readonly replayState?: ModelReplayState;
 }
+export interface ModelUserMessage {
+  readonly role: "user";
+  readonly content: readonly ModelToolContent[];
+}
 
 /** 保留内容顺序与重放状态；UI 文本无法重建规范消息。 */
 export type ModelMessage =
   | { readonly role: "system"; readonly content: readonly ModelTextContent[] }
-  | { readonly role: "user"; readonly content: readonly ModelToolContent[] }
+  | ModelUserMessage
   | ModelAssistantMessage
   | { readonly role: "tool"; readonly content: readonly ModelToolResultContent[] };
 
@@ -127,9 +131,14 @@ export interface ModelClient {
   stream(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelStreamEvent>;
 }
 
+/** 每次绑定只释放本次取得的资源或池租约，不关闭借用的共享服务。 */
+export interface ModelBinding extends Disposable {
+  readonly client: ModelClient;
+}
+
 /** 凭据与提供方服务由具体工厂捕获，而非请求。 */
 export interface ModelClientFactory {
-  create(selection: ModelSelection): Promise<ModelClient>;
+  create(selection: ModelSelection, signal: AbortSignal): Promise<ModelBinding>;
 }
 
 /** 必须拒绝重复的提供方路由；释放仅移除该注册。 */

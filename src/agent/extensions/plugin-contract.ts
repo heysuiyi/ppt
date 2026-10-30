@@ -1,7 +1,7 @@
 import type { ModelRegistrar } from "../model/model-contract";
 import type { Disposable, RunIdentity } from "../protocol-values";
+import type { ResourceScope } from "../scope/resource-scope";
 import type { ToolRegistrar } from "../tools/tool-contract";
-import type { PluginScope } from "./plugin-scope";
 
 export interface PromptContext {
   readonly identity: RunIdentity;
@@ -21,7 +21,7 @@ export interface PromptRegistrar {
 
 /** 带作用域的注册接口，而非服务定位器或共享的可变业务上下文。 */
 export interface PluginContext {
-  readonly scope: PluginScope;
+  readonly scope: ResourceScope;
   /** 在此进行的注册归该插件作用域所有，在设置失败或释放时被回收。 */
   readonly models: ModelRegistrar;
   readonly tools: ToolRegistrar;

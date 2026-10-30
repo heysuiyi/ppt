@@ -224,10 +224,18 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `src/renderer/`：React 工作台、聊天流、实时 PPT 镜像、设置台；`src/renderer/src/App.tsx` 直接承载公共布局与工作台/设置页切换
   - 布局由容器分配空间：根节点限定窗口高度，主体通过 Flex/Grid 伸展；栏宽由 `useWorkbenchLayout` 的 CSS 变量统一控制，并通过 `ResizeObserver` 按实际容器尺寸适配。内部面板独立滚动，局部响应式使用容器查询；窗口缩小时不会覆盖用户保存的预览宽度。SVG 预览保持 16:9，作者坐标仍为 1280×720。
   - 面板尺寸拖拽统一使用 `src/renderer/src/components/ResizeHandle.tsx`：受控 `value/min/max/onValueChange`，`axis` 选择左右或上下拖动，`direction` 决定增减方向。组件统一管理 idle/hover/dragging/disabled、指针捕获、全局光标和清理；支持方向键（10px）、Home/End。取消保留最后尺寸，禁用、失焦、失去捕获、卸载或边界变化时结束拖拽；尺寸约束和持久化仍由布局层负责。
-- `src/agent/`：独立的通用 Agent 协议层，尚未接入生产执行链；现有 `src/main/agent/` 继续运行。
-  - `agent-contract.ts`、`agent-factory.ts` 定义运行、恢复、取消和工厂装配约定，不提供默认运行时实现，也不使用 `index.ts` 聚合入口。
-  - `model/` 保留模型中立内容与适配器私有续传数据；`tools/` 分离业务结果、模型内容与展示投影，业务依赖由外层闭包提供。
-  - `session/` 定义历史条件追加、版本化检查点、写所有权与显式接管；`extensions/` 定义插件装配及注册资源的作用域生命周期。协议不依赖 PPT、Electron、应用存储或厂商 SDK。
+- `src/agent/`：独立的通用 Agent 协议与默认执行实现，尚未接入生产 UI；现有 `src/main/agent/` 继续运行。这里不依赖 PPT、Electron、应用存储或厂商 SDK，也不使用 `index.ts` 聚合入口。
+  - `application/`：`createAgentApplication()` 组合根与 `createDefaultAgentFactory()`；安装插件、绑定模型、就绪后发布实例，失败回滚。应用关闭先拒绝新创建、打断并排空执行，再释放拥有的资源。
+  - `scope/`：Application → Agent → Run 的资源所有权、逆序释放与注册句柄；借用的宿主服务不随 Agent 关闭。
+  - `runtime/`：单实例单激活的 `run/resume`、独立事件观察通道、Query 检查点协调，以及模型步/工具步。新请求只接收用户消息，不强制转换为业务 Task；Step 在提交边界更新快照。
+  - `model/`：模型中立消息、能力声明、私有重放状态、按 provider ID 注册的模型工厂；增加厂商不在循环中新增分支。
+  - `tools/`：注册、输入/输出校验、宿主强制授权、审批与续传；业务依赖由插件闭包捕获，业务结果、模型内容、展示投影分别持久化。
+  - `session/`：历史条件追加与幂等批次收据、版本化检查点、写租约、世代围栏和显式接管；`extensions/`：插件安装、模型/工具/提示词贡献及作用域清理。
+- `src/main/agent-host/`：新内核的宿主适配，不从内核反向导入业务。
+  - `createSqliteAgentStores(filePath)` 使用独立 SQLite 表持久保存历史、批次收据和检查点，不迁移或替换旧生产数据库。独立 Node 运行需要支持 `node:sqlite` 的版本（Node 22.13+；项目开发使用 Node 24）。
+  - `createGatewayModelFactory(resolve)` 在宿主解析凭据与连接后绑定现有 Gateway；稳定的 `replayScope` 标识连接，私有重放校验模型、连接和规范内容。旧 Gateway 流的索引无法保证最终内容位置，因此该适配仅发布权威 `completed`，不伪造实时增量；旧 Chat 图片、远程图片 URL 和不兼容的私有推理重放明确拒绝，不静默降级。
+  - `createAgentHost()` 在独立数据库中绑定会话、规范工作目录、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 复用已签发的配置计划与真实凭据解析，只绑定主模型，不自动切换备用模型。
+- `src/main/plugins/files/`：新内核的只读文件插件，仅注册 `ReadFile`；宿主适配器复用已有路径守卫与稳定快照读取，不调用会恢复写入事务的文件入口，不依赖 `SessionSnapshot` 或 PPT。
 - `src/main/agent/`：Agent runtime、工具注册、模型网关、审批门禁、子任务
 - `src/main/agent-configuration/`：通过 `createAgentConfiguration()` 提供 `management` 和 `runtime` 两套操作，不公开 Store、凭据绑定或解密接口。
   - Renderer 只使用管理 IPC：读取无密钥快照、初始化、保存/删除厂商、保存执行偏好、修改搜索凭据、发现远程模型。厂商保存完成后才发布已提交状态；历史浏览器配置只读迁移，Main 初始化成功后清理。
@@ -245,6 +253,46 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `src/main/deck/`：缩略图、导出历史、PPTX 导出服务
 - `skills/`：核心创建 `ppt-workflow` → `ppt-design` → `ppt-design-layout` → `ppt-build`；短路径 `ppt-edit` / `ppt-beautify` / `ppt-review` / `ppt-export`；可选上游 Skill（`ppt-brief` / `ppt-outline` / `ppt-storyboard` / `ppt-research`）仅知识包，经 ReadFile/WriteFile 写入，非 lifecycle 硬锁
 - `tests/`：Agent、导出、上下文压缩、工具审批和项目产物测试
+
+### 通用 Agent 的生命周期约定
+
+宿主显式装配 `AgentServices`（模型工厂、授权策略、历史和检查点），调用 `createAgentApplication(services)`，通过 `application.agents.create()` 提供定义、模型选择、步数预算和插件。业务工具在插件 `setup()` 中注册；内核只调用协议，不读取 Presentation、workspace 服务或厂商配置。关闭顺序为先 `application.close()`，再关闭宿主拥有的存储和连接。
+
+- 同一 Agent 同时只接受一次 `run()` 或 `resume()`，不隐式排队。`handle.events` 仅供单消费者观察；不消费或退出事件流都不会取消执行。
+- `waiting` 会保存交互和续传数据，结束本次 Run 并释放租约。回答只能匹配持久化交互，恢复必须提供新的 `runId`；不接收前端重建的执行快照。线程有未完成 Query 时，新请求不能越过它。
+- 用户取消为 `cancelled`；实例/应用关闭为可恢复的 `interrupted`。已保存的等待保持为 `waiting`。取消不会撤销外部副作用。
+- 历史与检查点不假设共享事务：先保存追加意图，再按稳定批次 ID 提交历史。崩溃后先对账；工具已派发或回答已消费、但没有持久结果时记为 `unknown`，不自动重做副作用。这不承诺外部操作恰好一次。
+- 模型流必须有权威完成响应，临时增量不作为规范历史；截断、缺失完成响应、存储失败不会被报告为成功。定义、插件或续传契约改变时必须升级相应版本。
+
+新链路的回归入口为 `tests/general-agent-*.test.ts`，覆盖真实 SQLite、真实 Gateway/SDK 到本地 HTTP 的传输、生命周期、文件工具与恢复边界。远程厂商推理需要另外配置凭据；这些本地验证不代表已经完成远程 LLM 或生产 UI 的切换验证。
+
+### 独立通用 Agent 开发入口
+
+先在应用 Settings 中保存一个支持工具调用的模型。`--model` 使用 `agent-settings.json` 中的模型配置 ID，不是远程模型名称。启动器单独构建 Electron Main，不创建窗口，也不启动旧 Agent、Renderer 或 PPT 服务：
+
+```powershell
+npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --prompt "读取 notes.txt 并概括内容"
+```
+
+省略 `--prompt` 可逐行对话，输入 `/exit` 退出。每次 `ReadFile` 都要求 `yes` / `no` / `cancel`；只允许工作目录内的常规 UTF-8 文本文件，单文件最多 64 KiB，超限不截断，路径越界、链接、不安全文件类型和二进制内容明确拒绝。不会初始化 PPT 项目产物。
+
+执行事实与结果使用逐行 JSON（构建日志和交互输入回显除外），包含 thread/query/run ID、公开执行事实和最终文本；不打印原始 SDK 异常、完整工具结果、reasoning 或私有重放状态。底层 Gateway 的本地诊断仍按日志策略保存，但不复制到开发终端；此入口禁用完整 Gateway IO 归档。Node 启动器拥有终端/管道输入，通过父子进程 IPC 传入 Electron，避免 Windows Main 丢失标准输入。
+
+等待审批时关闭输入（EOF）会保留 `waiting`。用输出中的 ID 恢复：
+
+```powershell
+npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --thread saved-thread-id --resume saved-query-id
+```
+
+恢复会重新展示已存储的交互，再接收回答；每次激活生成新 `runId`。Ctrl+C 取消当前请求（退出码 130）；正常关闭中断执行，已保存等待不丢失。完成/等待退出码为 0，执行失败为 1，参数错误为 2，中断为 143；退出码 0 不代表 `waiting` 已完成，应检查结果的 `status`。
+
+配置根沿用 `getApplicationDataRoot()`：默认 `~/.agent-ppt`，可通过 `AGENT_PPT_DATA_DIR` 指向独立开发配置。命令不会自动初始化配置或写入默认设置。执行历史、检查点与宿主绑定保存在该根目录的 `agent-development.sqlite`，不写生产会话库。恢复必须保持原 Agent、工作目录、模型连接、定义/插件版本和预算；同连接密钥轮换允许，连接或目录变化需新建线程。异常强杀留下的活跃租约不会被自动接管，开发命令不提供强制接管参数。
+
+除 `npm run typecheck`、`npm test` 外，可单独运行真实 Electron/加密凭据/本地 HTTP 回归（不需要远程厂商 Key；Linux 需要图形环境）：
+
+```powershell
+npx.cmd vitest run tests/general-agent-development-cli.integration.test.ts
+```
 
 ## 本地文件与隐私
 

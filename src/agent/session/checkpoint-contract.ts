@@ -45,6 +45,8 @@ export type CheckpointSaveResult =
  * I/O 失败以拒绝结束；它们不属于 busy/conflict/stale。
  */
 export interface CheckpointStore {
+  /** 查询线程内未结束的逻辑工作；新请求不得悄悄越过待决交互。 */
+  findUnfinished(agentId: string, threadId: string): Promise<AgentCheckpoint | null>;
   /**
    * 原子地获取无属主的键，或替换显式提供的确切租约。
    * 若属主存活且没有匹配的替换，则结果为 busy，即使 ownerId 匹配。

@@ -20,6 +20,16 @@ export interface ToolExecutionContext {
   readonly signal: AbortSignal;
 }
 
+export type ToolAuthorizationDecision =
+  | { readonly type: "allow" }
+  | { readonly type: "deny"; readonly reason: string }
+  | { readonly type: "approval"; readonly interaction: InteractionRequest };
+
+export type ToolAuthorizationPolicy = (
+  call: ModelToolCallContent,
+  context: ToolExecutionContext,
+) => ToolAuthorizationDecision | Promise<ToolAuthorizationDecision>;
+
 /** applied 表示发生了某种影响，并不表示所有预期工作都已成功。 */
 export type ToolSideEffects = "none" | "applied" | "unknown";
 
@@ -106,6 +116,7 @@ export type ToolExecutionResult = ToolCompletion | ToolSuspension;
  */
 export interface ToolExecutor {
   getSchemas(): readonly ModelToolSchema[];
+  getVersion(name: string): string | undefined;
   /** 调用 ID 必须与 context.callId 匹配；调度由外部执行策略控制。 */
   execute(call: ModelToolCallContent, context: ToolExecutionContext): Promise<ToolExecutionResult>;
   /** 在调用恢复处理器之前，先解析已保存的调用及其版本绑定的续传数据。 */

@@ -224,10 +224,18 @@ Key areas:
 - `src/renderer/`: React workspace, chat stream, live PPT mirror, settings console; `src/renderer/src/App.tsx` directly owns the shared layout and workspace/settings view selection
   - Container-driven layout: the root bounds the window height and Flex/Grid allocates the remaining space. `useWorkbenchLayout` owns panel-width CSS variables and observes the actual container with `ResizeObserver`. Panels scroll independently and local responsive rules use container queries; shrinking the window preserves the saved preview-width preference. SVG previews retain their 16:9 ratio and 1280×720 authoring coordinates.
   - Panel resizing uses `src/renderer/src/components/ResizeHandle.tsx` with controlled `value/min/max/onValueChange`, an `axis` for horizontal or vertical movement, and a `direction` for growth. It owns idle/hover/dragging/disabled feedback, pointer capture, global cursors, and cleanup; arrow keys adjust by 10px and Home/End select bounds. Cancellation retains the last size. Disabling, blur, capture loss, unmounting, or changed bounds ends the drag; sizing policy and persistence remain in the layout layer.
-- `src/agent/`: standalone general-purpose Agent contracts, not yet wired into production; the existing `src/main/agent/` remains active.
-  - `agent-contract.ts` and `agent-factory.ts` define run, resume, cancellation, and factory composition contracts. They provide no default runtime implementation and use no `index.ts` barrel.
-  - `model/` preserves provider-neutral content and adapter-private replay state. `tools/` separates business results, model content, and presentation projections; business dependencies stay in outer closures.
-  - `session/` defines conditional history appends, versioned checkpoints, writer ownership, and explicit takeover. `extensions/` defines plugin composition and scope-owned registration cleanup. These contracts do not depend on PPT, Electron, application storage, or provider SDKs.
+- `src/agent/`: independent general-purpose contracts and a default execution implementation, not yet wired into production UI; the existing `src/main/agent/` remains active. This area has no PPT, Electron, application-storage, or provider-SDK dependency and no `index.ts` barrel.
+  - `application/`: the `createAgentApplication()` composition root and `createDefaultAgentFactory()` install plugins, bind a model, publish only ready instances, and roll back failures. Closing rejects creation, interrupts and drains execution, then releases owned resources.
+  - `scope/`: Application → Agent → Run resource ownership, reverse-order disposal, and registration handles. Borrowed host services outlive individual Agents.
+  - `runtime/`: mutually exclusive `run/resume`, independent event observation, Query checkpoint coordination, and model/tool turns. New queries accept user messages without forcing them into a business Task; Steps update snapshots at commit boundaries.
+  - `model/`: neutral messages, capability declarations, private replay state, and model factories registered by provider ID. Adding a provider does not add a branch to the loop.
+  - `tools/`: registration, input/output validation, mandatory host authorization, approval, and continuation. Plugins capture business services in closures; business results, model content, and presentation projections are persisted separately.
+  - `session/`: conditional history appends with idempotent batch receipts, versioned checkpoints, writer leases, fencing generations, and explicit takeover. `extensions/` owns plugin installation, model/tool/prompt contributions, and scoped cleanup.
+- `src/main/agent-host/`: host adapters for the new kernel, without reverse business imports from the kernel.
+  - `createSqliteAgentStores(filePath)` persists history, batch receipts, and checkpoints in separate SQLite tables without migrating or replacing production storage. Standalone Node execution requires `node:sqlite` support (Node 22.13+; development uses Node 24).
+  - `createGatewayModelFactory(resolve)` binds the existing Gateway after the host resolves credentials and connections. A stable `replayScope` identifies the connection; private replay checks model, transport, and canonical content. Legacy stream indices cannot guarantee final content positions, so this adapter publishes only authoritative `completed` events, not invented real-time deltas. Legacy Chat images, remote image URLs, and incompatible private reasoning replay are rejected rather than silently degraded.
+  - `createAgentHost()` binds threads to canonical workspaces, model-connection fingerprints, definitions, plugin versions, and step budgets in the independent database. `prepareConfiguredModel()` reuses issued configuration plans and real credential resolution, binding only the primary model without automatic fallback.
+- `src/main/plugins/files/`: the new kernel's read-only file plugin registers only `ReadFile`. Its host adapter reuses path guards and stable snapshots without invoking file entry points that can recover write transactions, and has no `SessionSnapshot` or PPT dependency.
 - `src/main/agent/`: Agent runtime, tool registry, model gateways, commit gate, sub-agents
 - `src/main/agent-configuration/`: `createAgentConfiguration()` exposes separate `management` and `runtime` operations, not stores, credential bindings, or decryption APIs.
   - Renderer management IPC reads secret-free snapshots, initializes settings, saves/deletes vendors, saves execution preferences, updates search credentials, and discovers remote models. Vendor saves publish committed state only after completion. Browser migrations read legacy data without rewriting it and clear it after Main initialization succeeds.
@@ -245,6 +253,46 @@ Key areas:
 - `src/main/deck/`: thumbnails, export history, PPTX export services
 - `skills/`: core create `ppt-workflow` → `ppt-design` → `ppt-design-layout` → `ppt-build`; short paths `ppt-edit` / `ppt-beautify` / `ppt-review` / `ppt-export`; optional upstream skills (`ppt-brief` / `ppt-outline` / `ppt-storyboard` / `ppt-research`) are knowledge-only and written via ReadFile/WriteFile — not lifecycle hard locks
 - `tests/`: coverage for Agent behavior, export, context compaction, approvals, and project artifacts
+
+### General Agent lifecycle contract
+
+The host explicitly supplies `AgentServices` (model factory, authorization policy, history, and checkpoints), calls `createAgentApplication(services)`, then provides a definition, model selection, step budget, and plugins to `application.agents.create()`. Business tools register in plugin `setup()`; the kernel calls protocols rather than reading Presentation, workspace services, or provider configuration. Close `application.close()` before closing host-owned stores and connections.
+
+- An Agent admits only one `run()` or `resume()` at a time, without an implicit queue. `handle.events` is single-consumer observation; skipping or leaving the stream does not cancel execution.
+- `waiting` persists the interaction and continuation, ends the current Run, and releases its lease. Answers must match the stored interaction, and resuming requires a fresh `runId`, never a client-reconstructed execution snapshot. New queries cannot bypass unfinished work on the thread.
+- User cancellation is `cancelled`; instance/application shutdown is resumable `interrupted`. Already persisted waits remain `waiting`. Cancellation does not undo external effects.
+- History and checkpoints need not share a transaction: persist append intent, then commit history with a stable batch ID. Recovery reconciles receipts. Dispatched calls or consumed answers without durable results become `unknown`, without automatically repeating side effects. External operations are not claimed to be exactly once.
+- Streams require an authoritative completion response; provisional deltas are not canonical history. Truncation, missing completion, and persistence failure never count as success. Incompatible definition, plugin, or continuation changes require corresponding version increments.
+
+`tests/general-agent-*.test.ts` covers real SQLite, real Gateway/SDK transport to local HTTP endpoints, lifecycle, file tools, and recovery boundaries. Remote inference needs separately configured credentials; local verification is not a claim of remote LLM or production-UI cutover validation.
+
+### Independent general Agent development entry
+
+First save a tool-capable model in the app's Settings. `--model` is the configured model ID from `agent-settings.json`, not the remote model name. The launcher builds a separate Electron Main entry without creating windows or starting the old Agent, Renderer, or PPT services:
+
+```powershell
+npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --prompt "Read notes.txt and summarize it"
+```
+
+Omit `--prompt` for line-oriented conversation; `/exit` exits. Every `ReadFile` requires `yes`, `no`, or `cancel`. Only regular UTF-8 text files within the workspace are supported, up to 64 KiB each. Oversized files are rejected rather than truncated; traversal, links, unsafe file types, and binary content are rejected. No PPT project artifacts are initialized.
+
+Execution facts and results use newline-delimited JSON (apart from build logs and interactive input echo), with thread/query/run IDs, public execution facts, and final text, not raw SDK exceptions, full tool results, reasoning, or private replay state. Gateway diagnostics remain in local logs under the underlying logging policy but are not mirrored to the terminal; this entry disables full Gateway IO archives. The Node launcher owns terminal/piped input and forwards it over parent-child IPC because Windows Electron Main cannot reliably receive stdin.
+
+EOF during approval preserves `waiting`. Resume with the IDs from the output:
+
+```powershell
+npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --thread saved-thread-id --resume saved-query-id
+```
+
+Resuming displays the stored interaction before accepting an answer; each activation gets a fresh `runId`. Ctrl+C cancels the current query (exit 130). Graceful shutdown interrupts execution and preserves stored waits. Completed/waiting exit 0, execution failure 1, invalid arguments 2, and interruption 143; exit 0 does not mean a waiting query completed—check the result `status`.
+
+Configuration uses `getApplicationDataRoot()`: `~/.agent-ppt` by default, or `AGENT_PPT_DATA_DIR` for isolated development configuration. The command never initializes missing configuration or writes default settings. History, checkpoints, and host bindings use `agent-development.sqlite` under that root, not production conversation storage. Recovery requires the same Agent, workspace, model connection, definition/plugin versions, and budget; rotating a key on the same connection is allowed. Changed connections or workspaces require a new thread. Leases left by a force-killed writer are never automatically stolen, and this command has no forced-takeover option.
+
+In addition to `npm run typecheck` and `npm test`, run the real Electron/encrypted-credential/local-HTTP regression separately (no remote provider key required; Linux requires a graphical environment):
+
+```powershell
+npx.cmd vitest run tests/general-agent-development-cli.integration.test.ts
+```
 
 ## Local Files And Privacy
 
