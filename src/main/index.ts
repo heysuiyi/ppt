@@ -65,7 +65,7 @@ import {
   type SkillRegistry,
   scanSkills,
 } from "./agent/skills/loadSkillsDir";
-import { acceptAgentRequest } from "./agent/submit-agent-request";
+import { acceptAgentRequest, assertProductionModelAdapter } from "./agent/submit-agent-request";
 import { formatMailboxMessagesForHistory, MessageBus } from "./agent/teammate/message-bus";
 import { TeammateManager } from "./agent/teammate/spawn-teammate";
 import { createAgentConfiguration, registerAgentConfigurationIpc } from "./agent-configuration";
@@ -1171,6 +1171,7 @@ app.whenReady().then(async () => {
     try {
       const plan = await agentConfiguration.runtime.loadExecutionPlan(request.modelId);
       controller.signal.throwIfAborted();
+      assertProductionModelAdapter(plan);
       const admission = await acceptAgentRequest(sessionStore, plan, request);
       sessionId = admission.sessionId;
       accepted = true;

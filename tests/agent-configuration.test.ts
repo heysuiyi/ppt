@@ -7,6 +7,11 @@ import {
   registerAgentConfigurationIpc,
 } from "../src/main/agent-configuration";
 import type { SafeStorageAdapter } from "../src/main/agent-configuration/internal/credential-store";
+import {
+  MIMO_REASONING_EFFORTS,
+  MIMO_TOKEN_PLAN_CN_BASE_URL,
+  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+} from "../src/models/mimo-token-plan-cn-contract";
 import type { VendorConfiguration } from "../src/shared/agent-configuration";
 import type { AgentSettings } from "../src/shared/agent-settings";
 import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
@@ -38,6 +43,12 @@ function vendor(
         enabled: true,
       },
     ],
+  };
+}
+function mimoVendor(): VendorConfiguration {
+  return {
+    ...vendor("mimo", MIMO_TOKEN_PLAN_CN_BASE_URL),
+    kind: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
   };
 }
 function settings(vendors = [vendor()]): AgentSettings {
@@ -239,6 +250,133 @@ describe("agent configuration management", () => {
       credential: { type: "keep" },
     });
     expect((await config.management.getSnapshot())?.credentials.webSearchConfigured).toBe(false);
+  });
+});
+
+describe("native MiMo execution configuration", () => {
+  it.each([undefined, ...MIMO_REASONING_EFFORTS])(
+    "preserves effort %s through management, disk reopening, plan and runtime",
+    async (reasoningEffort) => {
+      const config = await configuration();
+      await config.management.initialize(settings([]));
+      const selected = mimoVendor();
+      if (reasoningEffort !== undefined) selected.models[0]!.reasoningEffort = reasoningEffort;
+      const saved = await config.management.saveVendor({
+        vendor: selected,
+        credential: { type: "replace", apiKey: "bound-mimo-key" },
+      });
+      expect(saved.settings.vendors[0]!.models[0]!.reasoningEffort).toBe(reasoningEffort);
+      const reopened = createAgentConfiguration({
+        applicationDataRoot: config.directory,
+        safeStorage: config.safeStorage,
+        environment: {},
+      });
+      expect((await reopened.management.getSnapshot())?.settings.vendors[0]).toEqual(selected);
+      const plan = await reopened.runtime.loadExecutionPlan("mimo-model");
+      expect(plan.modelAdapter).toBe(MIMO_TOKEN_PLAN_CN_PROVIDER_ID);
+      expect(plan.model).toMatchObject({
+        configurationId: "mimo-model",
+        vendorId: "mimo",
+        model: "mimo-remote",
+        openaiApiMode: "responses",
+      });
+      expect(plan.model.reasoningEffort).toBe(reasoningEffort);
+      expect(JSON.stringify(plan)).not.toContain("bound-mimo-key");
+      if (reasoningEffort === undefined) expect(plan.model).not.toHaveProperty("reasoningEffort");
+      const resolved = await reopened.runtime.resolveRuntime(plan);
+      expect(resolved.modelAdapter).toBe(MIMO_TOKEN_PLAN_CN_PROVIDER_ID);
+      expect(resolved.primary.reasoningEffort).toBe(reasoningEffort);
+      expect(resolved.primary.apiKey).toBe("bound-mimo-key");
+    },
+  );
+
+  it("retains issued adapter and effort and rejects copied or foreign plans", async () => {
+    const config = await configuration();
+    const selected = mimoVendor();
+    selected.models[0]!.reasoningEffort = "ultra";
+    await config.management.initialize(settings([selected]));
+    const plan = await config.runtime.loadExecutionPlan("mimo-model");
+    await expect(config.runtime.resolveRuntime(structuredClone(plan))).rejects.toThrow(
+      /not created/,
+    );
+    const foreign = await configuration();
+    await expect(foreign.runtime.resolveRuntime(plan)).rejects.toThrow(/not created/);
+    plan.modelAdapter = undefined;
+    plan.model.reasoningEffort = "none";
+    await config.management.saveVendor({
+      vendor: {
+        ...selected,
+        kind: "custom",
+        models: [{ ...selected.models[0]!, reasoningEffort: "low" }],
+      },
+      credential: { type: "keep" },
+    });
+    const resolved = await config.runtime.resolveRuntime(plan);
+    expect(resolved.modelAdapter).toBe(MIMO_TOKEN_PLAN_CN_PROVIDER_ID);
+    expect(resolved.primary.reasoningEffort).toBe("ultra");
+  });
+
+  it("never uses environment model credentials or fallback for the native adapter", async () => {
+    const config = await configuration({
+      OPENAI_API_KEY: "unrelated-openai-key",
+      OPENAI_BASE_URL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      OPENAI_API_MODE: "chat-completions",
+      MIMO_API_KEY: "unbound-mimo-key",
+      AGENT_FALLBACK_PROVIDER: "openai",
+      AGENT_FALLBACK_MODEL: "paid-fallback",
+    });
+    const initialized = await config.management.initialize(settings([mimoVendor()]));
+    expect(initialized.credentials.models[0]!.configured).toBe(false);
+    const plan = await config.runtime.loadExecutionPlan("mimo-model");
+    expect(plan.services.fallbackModel).toBeUndefined();
+    const resolved = await config.runtime.resolveRuntime(plan);
+    expect(resolved.primary.apiKey).toBeUndefined();
+    expect(resolved.primary.baseURL).toBe(MIMO_TOKEN_PLAN_CN_BASE_URL);
+    expect(resolved.primary.openaiApiMode).toBe("responses");
+    expect(resolved.gateway.fallbackModel).toBeUndefined();
+    await expect(
+      config.management.listRemoteModels({
+        type: "saved-vendor",
+        vendorId: "mimo",
+      }),
+    ).rejects.toThrow(/credential/i);
+  });
+
+  it("validates MiMo budgets before persistence while retaining the old vendor budget range", async () => {
+    const config = await configuration();
+    await config.management.initialize(settings([mimoVendor()]));
+    for (const maxOutputTokens of [1, 131_072]) {
+      await config.management.savePreferences({
+        ...preferences(settings()),
+        gateway: { timeoutMs: 180_000, maxOutputTokens },
+      });
+    }
+    await expect(
+      config.management.savePreferences({
+        ...preferences(settings()),
+        gateway: { timeoutMs: 180_000, maxOutputTokens: 131_073 },
+      }),
+    ).rejects.toThrow(/131072/);
+    expect((await config.management.getSnapshot())!.settings.gateway.maxOutputTokens).toBe(131_072);
+    const legacy = await configuration();
+    const initial = settings();
+    initial.gateway.maxOutputTokens = 200_000;
+    await expect(legacy.management.initialize(initial)).resolves.toMatchObject({
+      settings: { gateway: { maxOutputTokens: 200_000 } },
+    });
+  });
+
+  it("refuses native MiMo as a legacy gateway fallback rather than routing it through the gateway", async () => {
+    const config = await configuration();
+    const initial = settings([vendor(), mimoVendor()]);
+    initial.gateway.fallbackModelId = "mimo-model";
+    await config.management.initialize(initial);
+    await expect(config.runtime.loadExecutionPlan("primary-model")).rejects.toThrow(
+      /native MiMo fallback/,
+    );
+    const native = await config.runtime.loadExecutionPlan("mimo-model");
+    expect(native.modelAdapter).toBe(MIMO_TOKEN_PLAN_CN_PROVIDER_ID);
+    expect(native.services.fallbackModel).toBeUndefined();
   });
 });
 

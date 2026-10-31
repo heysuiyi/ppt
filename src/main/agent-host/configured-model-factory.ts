@@ -7,6 +7,12 @@ import type {
 } from "../../agent/model/model-contract";
 import { AgentError, sameValue, snapshot } from "../../agent/protocol-utils";
 import type { Disposable } from "../../agent/protocol-values";
+import type { Logger } from "../../logs/log-contract";
+import { createMimoTokenPlanCN } from "../../models/mimo-token-plan-cn";
+import {
+  MIMO_TOKEN_PLAN_CN_BASE_URL,
+  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+} from "../../models/mimo-token-plan-cn-contract";
 import type { AgentModelSettings } from "../../shared/agent";
 import { getEffectiveMainMaxSteps } from "../../shared/agent-step-limits";
 import { AgentGateway } from "../agent/gateway";
@@ -26,12 +32,14 @@ export async function prepareConfiguredModel(
   runtime: AgentConfiguration["runtime"],
   configuredModelId: string,
   signal: AbortSignal,
+  logger?: Logger,
 ): Promise<PreparedConfiguredModel> {
   signal.throwIfAborted();
   let settings: AgentModelSettings | undefined;
   let timeoutMs: number;
   let maxOutputTokens: number;
   let maxSteps: number;
+  let modelAdapter: "mimo-token-plan-cn" | undefined;
   try {
     // resolveRuntime 用 WeakMap 识别计划；必须传回原对象，不能 JSON 重建。
     const plan = await runtime.loadExecutionPlan(configuredModelId);
@@ -39,6 +47,7 @@ export async function prepareConfiguredModel(
     const resolved = await runtime.resolveRuntime(plan);
     signal.throwIfAborted();
     settings = { ...resolved.primary };
+    modelAdapter = resolved.modelAdapter;
     timeoutMs = resolved.gateway.timeoutMs;
     maxOutputTokens = resolved.gateway.maxOutputTokens;
     maxSteps = getEffectiveMainMaxSteps(plan.stepLimits);
@@ -54,6 +63,58 @@ export async function prepareConfiguredModel(
       "MODEL_CREDENTIAL_MISSING",
       "所选模型没有可用凭据，请先在应用设置中配置。",
     );
+  }
+  if (modelAdapter === MIMO_TOKEN_PLAN_CN_PROVIDER_ID) {
+    if (
+      settings.provider !== "openai" ||
+      settings.openaiApiMode !== "responses" ||
+      settings.baseURL !== MIMO_TOKEN_PLAN_CN_BASE_URL
+    ) {
+      throw new AgentError("MODEL_CONFIGURATION_FAILED", "MiMo 必须使用固定 CN Responses 连接。");
+    }
+    const selection: ModelSelection = Object.freeze({
+      providerId: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      modelId: settings.model,
+      ...(settings.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: settings.reasoningEffort }),
+    });
+    const connectionFingerprint = createHash("sha256")
+      .update(
+        JSON.stringify({
+          adapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+          replayVersion: 1,
+          baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+          configuredModelId,
+          configurationId: settings.configurationId ?? null,
+          vendorId: settings.vendorId ?? null,
+          model: settings.model,
+          reasoningEffort: settings.reasoningEffort ?? null,
+          maxOutputTokens,
+        }),
+      )
+      .digest("hex");
+    const provider = createMimoTokenPlanCN({
+      apiKey: settings.apiKey,
+      connectionFingerprint,
+      timeoutMs,
+      maxOutputTokens,
+      ...(logger ? { logger } : {}),
+    });
+    settings = undefined;
+    return {
+      selection,
+      connectionFingerprint,
+      maxSteps,
+      models: {
+        create(requested, bindingSignal) {
+          if (!sameValue(requested, selection))
+            throw new AgentError("MODEL_SELECTION_CHANGED", "模型绑定与已准备配置不一致。");
+          return provider.create(requested, bindingSignal);
+        },
+      },
+      dispose: () => provider.dispose(),
+    };
   }
   const callPath =
     settings.provider === "anthropic"
@@ -127,13 +188,13 @@ export async function prepareConfiguredModel(
             get capabilities() {
               return binding.client.capabilities;
             },
-            generate: (request, requestSignal) =>
+            generate: (request, requestSignal, context) =>
               withLogContext({ console: false }, () =>
-                binding.client.generate(request, requestSignal),
+                binding.client.generate(request, requestSignal, context),
               ),
-            async *stream(request, requestSignal): AsyncGenerator<ModelStreamEvent> {
+            async *stream(request, requestSignal, context): AsyncGenerator<ModelStreamEvent> {
               const iterator = binding.client
-                .stream(request, requestSignal)
+                .stream(request, requestSignal, context)
                 [Symbol.asyncIterator]();
               try {
                 while (true) {

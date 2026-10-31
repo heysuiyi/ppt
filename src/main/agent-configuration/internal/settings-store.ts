@@ -54,6 +54,7 @@ export function resolveConfiguredModel(
       model: model.model,
       baseURL: vendor.baseURL || undefined,
       openaiApiMode: vendor.protocol === "openai" ? model.openaiApiMode : undefined,
+      ...(model.reasoningEffort !== undefined ? { reasoningEffort: model.reasoningEffort } : {}),
       supports1MContext: model.supports1MContext,
     };
   }

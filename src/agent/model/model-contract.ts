@@ -1,4 +1,4 @@
-import type { Disposable, JsonObject, JsonValue } from "../protocol-values";
+import type { Disposable, JsonObject, JsonValue, RunIdentity } from "../protocol-values";
 
 export interface ModelSelection {
   readonly providerId: string;
@@ -124,11 +124,26 @@ export interface ModelCapabilities {
   readonly reasoning: boolean;
 }
 
+/** 仅用于调用诊断关联；不进入请求正文、消息或检查点。 */
+export interface ModelCallContext {
+  readonly identity: RunIdentity;
+  readonly requestId: string;
+  readonly step: number;
+}
+
 export interface ModelClient {
   readonly selection: ModelSelection;
   readonly capabilities: ModelCapabilities;
-  generate(request: ModelRequest, signal: AbortSignal): Promise<ModelResponse>;
-  stream(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelStreamEvent>;
+  generate(
+    request: ModelRequest,
+    signal: AbortSignal,
+    context?: ModelCallContext,
+  ): Promise<ModelResponse>;
+  stream(
+    request: ModelRequest,
+    signal: AbortSignal,
+    context?: ModelCallContext,
+  ): AsyncIterable<ModelStreamEvent>;
 }
 
 /** 每次绑定只释放本次取得的资源或池租约，不关闭借用的共享服务。 */

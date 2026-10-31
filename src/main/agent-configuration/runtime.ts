@@ -1,6 +1,7 @@
 import type { AgentModelSelection, AgentModelSettings } from "@shared/agent";
 import { DEFAULT_WEB_SEARCH_ENDPOINT } from "@shared/agent-gateway-config";
 import { normalizeCredentialUrl } from "@shared/credentials";
+import { MIMO_TOKEN_PLAN_CN_PROVIDER_ID } from "../../models/mimo-token-plan-cn-contract";
 import { type CredentialStore, CredentialStoreError } from "./internal/credential-store";
 import { modelCredentialBindingFromSelection } from "./internal/credential-types";
 import {
@@ -36,10 +37,14 @@ export function createRuntime(
   async function resolveModel(
     selection: AgentModelSelection,
     env: NodeJS.ProcessEnv,
+    modelAdapter?: "mimo-token-plan-cn",
   ): Promise<AgentModelSettings> {
     const stored = await storedKey(selection);
     const apiKey =
-      stored ?? resolveEnvironmentModelApiKey(selection.provider, selection.baseURL, env);
+      stored ??
+      (modelAdapter
+        ? undefined
+        : resolveEnvironmentModelApiKey(selection.provider, selection.baseURL, env));
     const environmentURL =
       selection.provider === "openai"
         ? env.OPENAI_BASE_URL?.trim()
@@ -76,6 +81,11 @@ export function createRuntime(
         const settings = await settingsStore.get();
         if (!settings) throw new Error("Execution settings have not been initialized.");
         const model = resolveConfiguredModel(settings, modelId);
+        const modelAdapter =
+          settings.vendors.find((vendor) => vendor.id === model.vendorId)?.kind ===
+          MIMO_TOKEN_PLAN_CN_PROVIDER_ID
+            ? MIMO_TOKEN_PLAN_CN_PROVIDER_ID
+            : undefined;
         const env = { ...environment };
         const fallbackId = settings.gateway.fallbackModelId;
         const fallbackEnabled = settings.vendors.some(
@@ -85,7 +95,20 @@ export function createRuntime(
         );
         let fallbackModel =
           fallbackId && fallbackEnabled ? resolveConfiguredModel(settings, fallbackId) : undefined;
-        if (!fallbackModel) {
+        if (
+          fallbackModel &&
+          settings.vendors.some(
+            (vendor) =>
+              vendor.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID &&
+              vendor.models.some((entry) => entry.id === fallbackId),
+          )
+        ) {
+          if (!modelAdapter)
+            throw new Error("The legacy gateway cannot use a native MiMo fallback model.");
+          fallbackModel = undefined;
+        }
+        if (modelAdapter) fallbackModel = undefined;
+        if (!modelAdapter && !fallbackModel) {
           const provider = env.AGENT_FALLBACK_PROVIDER?.trim().toLowerCase();
           const fallbackName = env.AGENT_FALLBACK_MODEL?.trim();
           if ((provider === "openai" || provider === "anthropic") && fallbackName)
@@ -101,6 +124,7 @@ export function createRuntime(
           fallbackModel = undefined;
         const { fallbackModelId: _fallbackId, ...services } = settings.gateway;
         const plan: ExecutionPlan = {
+          ...(modelAdapter ? { modelAdapter } : {}),
           model,
           services: { ...services, ...(fallbackModel ? { fallbackModel } : {}) },
           stepLimits: settings.stepLimits,
@@ -116,7 +140,7 @@ export function createRuntime(
         if (!issued)
           throw new Error("Execution plan was not created by this configuration runtime.");
         const { plan, environment: env } = issued;
-        const primary = await resolveModel(plan.model, env);
+        const primary = await resolveModel(plan.model, env, plan.modelAdapter);
         const fallbackModel = plan.services.fallbackModel
           ? await resolveModel(plan.services.fallbackModel, env)
           : undefined;
@@ -141,6 +165,7 @@ export function createRuntime(
           ? normalizeCredentialUrl(effectiveEndpoint)
           : storedEndpoint;
         return {
+          ...(plan.modelAdapter ? { modelAdapter: plan.modelAdapter } : {}),
           primary,
           gateway: {
             timeoutMs: plan.services.timeoutMs,

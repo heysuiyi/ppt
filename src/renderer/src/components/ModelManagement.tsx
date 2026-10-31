@@ -3,6 +3,11 @@ import { normalizeCredentialUrl } from "@shared/credentials";
 import type { RemoteModelInfo } from "@shared/remote-models";
 import { useMemo, useState } from "react";
 import {
+  MIMO_REASONING_EFFORTS,
+  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+  type MimoReasoningEffort,
+} from "../../../models/mimo-token-plan-cn-contract";
+import {
   buildCustomVendorDraft,
   buildVendorDraftFromPreset,
   changeModelVendorDraftProtocol,
@@ -243,7 +248,15 @@ export function ModelManagement({
     setRemotePending(true);
     try {
       const request: DiscoverAgentModelsRequest = apiKey
-        ? { type: "draft", provider: draft.protocol, baseURL: draft.baseURL.trim(), apiKey }
+        ? {
+            type: "draft",
+            provider: draft.protocol,
+            baseURL: draft.baseURL.trim(),
+            apiKey,
+            ...(draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID
+              ? { modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID }
+              : {}),
+          }
         : { type: "saved-vendor", vendorId: draft.id };
       const result = await window.desktopApi.listRemoteModels(request);
       setRemoteModels(result.models);
@@ -268,11 +281,19 @@ export function ModelManagement({
     const seen = new Set<string>();
     for (const remote of remoteModels) {
       if (!selectedIds.includes(remote.id)) continue;
+      if (remote.supported === false && !byApiId.has(catalogModelKey(remote.id))) continue;
       const key = catalogModelKey(remote.id);
       if (!key || seen.has(key)) continue;
       seen.add(key);
       const existing = byApiId.get(key);
-      nextModels.push(existing ?? createCatalogEntriesFromRemoteIds([remote], draft.protocol)[0]!);
+      nextModels.push(
+        existing ?? {
+          ...createCatalogEntriesFromRemoteIds([remote], draft.protocol)[0]!,
+          ...(draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID
+            ? { openaiApiMode: "responses" as const }
+            : {}),
+        },
+      );
     }
     updateDraft({ models: nextModels });
   };
@@ -570,6 +591,7 @@ export function ModelManagement({
                 <span>Base URL</span>
                 <Input
                   value={draft.baseURL}
+                  readOnly={draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID}
                   onChange={(event) => updateDraft({ baseURL: event.target.value })}
                   placeholder="https://"
                 />
@@ -617,6 +639,7 @@ export function ModelManagement({
                             <input
                               type="checkbox"
                               checked={checked}
+                              disabled={model.supported === false && !checked}
                               onChange={() => {
                                 const next = checked
                                   ? remoteSelectedIds.filter((id) => id !== model.id)
@@ -627,6 +650,9 @@ export function ModelManagement({
                             <span>
                               <strong>{model.displayName ?? model.id}</strong>
                               {model.displayName ? <small>{model.id}</small> : null}
+                              {model.supported === false ? (
+                                <small>{model.unsupportedReason ?? "当前适配器未支持此模型"}</small>
+                              ) : null}
                             </span>
                           </label>
                         </li>
@@ -681,7 +707,7 @@ export function ModelManagement({
 
               {advancedOpen ? (
                 <div className="model-vendor-advanced">
-                  {draft.kind === "custom" ? (
+                  {draft.kind === "custom" || draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID ? (
                     <Button
                       onClick={() => {
                         const entries = createCatalogEntriesFromRemoteIds(
@@ -693,6 +719,9 @@ export function ModelManagement({
                             ...draft.models,
                             {
                               ...entries[0]!,
+                              ...(draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID
+                                ? { openaiApiMode: "responses" as const }
+                                : {}),
                               model: "",
                               name: "手动模型",
                             },
@@ -723,7 +752,8 @@ export function ModelManagement({
                           }
                         />
                       </label>
-                      {draft.protocol === "openai" ? (
+                      {draft.protocol === "openai" &&
+                      draft.kind !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID ? (
                         <label>
                           <span>OpenAI API 模式</span>
                           <Select
@@ -738,6 +768,41 @@ export function ModelManagement({
                                 openaiApiMode: value as ModelCatalogEntry["openaiApiMode"],
                               })
                             }
+                          />
+                        </label>
+                      ) : null}
+                      {draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID ? (
+                        <label>
+                          <span>思考强度</span>
+                          <Select
+                            ariaLabel={`${model.name} 思考强度`}
+                            value={model.reasoningEffort ?? ""}
+                            options={[
+                              { value: "", label: "默认（不发送）" },
+                              ...MIMO_REASONING_EFFORTS.map((effort) => ({
+                                value: effort,
+                                label: effort,
+                              })),
+                            ]}
+                            onChange={(value) => {
+                              setDraft((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      models: current.models.map((entry) => {
+                                        if (entry.id !== model.id) return entry;
+                                        const { reasoningEffort: _previous, ...rest } = entry;
+                                        return value
+                                          ? {
+                                              ...rest,
+                                              reasoningEffort: value as MimoReasoningEffort,
+                                            }
+                                          : rest;
+                                      }),
+                                    }
+                                  : current,
+                              );
+                            }}
                           />
                         </label>
                       ) : null}

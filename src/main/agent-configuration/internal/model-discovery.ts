@@ -2,6 +2,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AgentProvider } from "@shared/agent";
 import type { ListRemoteModelsResult, RemoteModelInfo } from "@shared/remote-models";
 import OpenAI from "openai";
+import { createMimoTokenPlanCN } from "../../../models/mimo-token-plan-cn";
+import {
+  MIMO_TOKEN_PLAN_CN_BASE_URL,
+  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+} from "../../../models/mimo-token-plan-cn-contract";
 
 const LIST_TIMEOUT_MS = 20_000;
 const MAX_MODELS = 2_000;
@@ -96,7 +101,24 @@ export async function discoverModels(request: {
   provider: AgentProvider;
   baseURL: string;
   apiKey: string;
+  modelAdapter?: "mimo-token-plan-cn";
 }): Promise<ListRemoteModelsResult> {
+  if (request.modelAdapter === MIMO_TOKEN_PLAN_CN_PROVIDER_ID) {
+    if (request.provider !== "openai" || request.baseURL !== MIMO_TOKEN_PLAN_CN_BASE_URL)
+      throw new ListRemoteModelsError("Invalid MiMo Token Plan CN connection.");
+    const provider = createMimoTokenPlanCN({
+      apiKey: request.apiKey,
+      connectionFingerprint: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      timeoutMs: LIST_TIMEOUT_MS,
+      maxOutputTokens: 16_384,
+    });
+    try {
+      const models = await provider.listModels(new AbortController().signal);
+      return { models: models.map((model) => ({ ...model })) };
+    } finally {
+      await provider.dispose();
+    }
+  }
   const models =
     request.provider === "openai"
       ? await listOpenAICompatibleModels(request.apiKey, request.baseURL)

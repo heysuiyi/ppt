@@ -6,6 +6,10 @@ import type {
   PresetVendorKind,
   VendorKind,
 } from "@shared/model-catalog";
+import {
+  MIMO_TOKEN_PLAN_CN_BASE_URL,
+  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+} from "../../models/mimo-token-plan-cn-contract";
 import { markCredentialReentryRequired } from "./credentialMigration";
 
 export type {
@@ -27,6 +31,7 @@ export interface ManagedModel {
   model: string;
   baseURL: string;
   openaiApiMode: "responses" | "chat-completions";
+  reasoningEffort?: string;
   supports1MContext?: boolean;
   enabled?: boolean;
   /** Runtime-only status from Main; never persisted in browser storage. */
@@ -57,6 +62,16 @@ export interface ModelVendorDraft {
 }
 
 export const MODEL_VENDOR_PRESETS: readonly ModelVendorPreset[] = [
+  {
+    id: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+    label: "MiMo Token Plan 中国",
+    hint: "中国连接 · Responses API",
+    defaultProvider: "openai",
+    supportedProviders: ["openai"],
+    baseURLs: { openai: MIMO_TOKEN_PLAN_CN_BASE_URL },
+    defaultModelId: "",
+    models: [],
+  },
   {
     id: "openai",
     label: "OpenAI",
@@ -202,6 +217,7 @@ export function flattenVendors(vendors: readonly ModelVendorConnection[]): Manag
       model: entry.model,
       baseURL: vendor.baseURL,
       openaiApiMode: entry.openaiApiMode,
+      ...(entry.reasoningEffort === undefined ? {} : { reasoningEffort: entry.reasoningEffort }),
       ...(entry.supports1MContext === true ? { supports1MContext: true } : {}),
       enabled: vendor.enabled !== false && entry.enabled !== false,
       ...(vendor.credentialConfigured === undefined
@@ -275,6 +291,7 @@ export function changeModelVendorDraftProtocol(
   draft: ModelVendorDraft,
   protocol: AgentProvider,
 ): ModelVendorDraft {
+  if (draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID) return draft;
   const preset = getModelVendorPreset(draft.kind);
   const baseURL = preset?.baseURLs[protocol] ?? draft.baseURL;
   return {
@@ -295,16 +312,18 @@ export function changeModelVendorDraftProtocol(
 }
 
 export function materializeVendorDraft(draft: ModelVendorDraft): ModelVendorConnection {
-  const baseURL = draft.baseURL.trim().replace(/\/+$/, "");
+  const isMimo = draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID;
+  const baseURL = isMimo ? MIMO_TOKEN_PLAN_CN_BASE_URL : draft.baseURL.trim().replace(/\/+$/, "");
   return {
     id: draft.id,
     kind: draft.kind,
     label: draft.label.trim() || (getModelVendorPreset(draft.kind)?.label ?? "自定义兼容服务"),
-    protocol: draft.protocol,
+    protocol: isMimo ? "openai" : draft.protocol,
     baseURL,
     enabled: draft.enabled !== false,
     models: draft.models.map((model) => ({
       ...model,
+      ...(isMimo ? { openaiApiMode: "responses" as const } : {}),
       name: model.name.trim() || model.model.trim(),
       model: model.model.trim(),
       enabled: model.enabled !== false,
@@ -430,6 +449,9 @@ function normalizeCatalogEntry(value: unknown): ModelCatalogEntry | undefined {
     name: item.name,
     model: item.model,
     openaiApiMode: item.openaiApiMode === "responses" ? "responses" : "chat-completions",
+    ...(typeof item.reasoningEffort === "string" && item.reasoningEffort
+      ? { reasoningEffort: item.reasoningEffort }
+      : {}),
     ...(item.supports1MContext === true ? { supports1MContext: true } : {}),
     enabled: item.enabled !== false,
     pricing: storedPricing === undefined ? null : storedPricing,
@@ -445,6 +467,7 @@ function normalizeVendorConnection(value: unknown): ModelVendorConnection | unde
     (item.kind !== "openai" &&
       item.kind !== "anthropic" &&
       item.kind !== "deepseek" &&
+      item.kind !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID &&
       item.kind !== "custom") ||
     (item.protocol !== "openai" && item.protocol !== "anthropic") ||
     typeof item.baseURL !== "string" ||

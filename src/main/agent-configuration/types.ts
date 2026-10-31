@@ -12,6 +12,7 @@ import type {
 import type { AgentStepLimits } from "@shared/agent-step-limits";
 
 export interface ExecutionPlan {
+  modelAdapter?: "mimo-token-plan-cn";
   model: AgentModelSelection;
   services: Omit<AgentGatewayPreferences, "fallbackModelId"> & {
     fallbackModel?: AgentModelSelection;
@@ -21,6 +22,7 @@ export interface ExecutionPlan {
   defaultTemplateId: string;
 }
 export interface ResolvedRunConfiguration {
+  modelAdapter?: "mimo-token-plan-cn";
   primary: AgentModelSettings;
   gateway: AgentGatewayConfig;
   search: AgentSearchConfig;

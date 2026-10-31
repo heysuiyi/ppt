@@ -2,7 +2,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acceptAgentRequest } from "../src/main/agent/submit-agent-request";
+import {
+  acceptAgentRequest,
+  assertProductionModelAdapter,
+} from "../src/main/agent/submit-agent-request";
 import { createAgentConfiguration, type ExecutionPlan } from "../src/main/agent-configuration";
 import { FileSessionStore } from "../src/main/session-store";
 import { agentSettingsSchema } from "../src/shared/agent-settings";
@@ -152,6 +155,22 @@ describe("Main-owned Agent submission", () => {
     });
     await expect(config.runtime.loadExecutionPlan("configured-model")).rejects.toThrow("disabled");
     expect(store.getBootstrap().sessions).toHaveLength(0);
+  });
+
+  it("rejects native adapters before preparing or writing either new or existing sessions", async () => {
+    const { store } = await fixture();
+    const existing = await store.createSession();
+    const sessionId = existing.activeSession!.session.id;
+    const prepare = vi.spyOn(store, "prepareSession");
+    const accept = vi.spyOn(store, "acceptAgentRun");
+    const native: ExecutionPlan = { ...plan, modelAdapter: "mimo-token-plan-cn" };
+    expect(() => assertProductionModelAdapter(native)).toThrow(/生产聊天尚未接入/);
+    for (const command of [request(), request({ target: { type: "session", sessionId } })])
+      await expect(acceptAgentRequest(store, native, command)).rejects.toThrow(/生产聊天尚未接入/);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(accept).not.toHaveBeenCalled();
+    expect(store.getBootstrap().sessions).toHaveLength(1);
+    expect(store.getSession(sessionId).messages).toEqual([]);
   });
 
   it("omits a disabled optional fallback while retaining the selected model", async () => {

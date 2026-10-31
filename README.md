@@ -235,11 +235,12 @@ PPTX exporter (hybrid: SVG background + editable text)
   - `createSqliteAgentStores(filePath)` 使用独立 SQLite 表持久保存历史、批次收据和检查点，不迁移或替换旧生产数据库。独立 Node 运行需要支持 `node:sqlite` 的版本（Node 22.13+；项目开发使用 Node 24）。
   - `createGatewayModelFactory(resolve)` 在宿主解析凭据与连接后绑定现有 Gateway；稳定的 `replayScope` 标识连接，私有重放校验模型、连接和规范内容。旧 Gateway 流的索引无法保证最终内容位置，因此该适配仅发布权威 `completed`，不伪造实时增量；旧 Chat 图片、远程图片 URL 和不兼容的私有推理重放明确拒绝，不静默降级。
   - `createAgentHost()` 在独立数据库中绑定会话、规范工作目录、工具模式、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 复用已签发的配置计划与真实凭据解析，只绑定主模型，不自动切换备用模型。
+- `src/models/`：`createMimoTokenPlanCN()` 提供固定中国 Token Plan 连接的原生 Responses、模型发现、真实流式、工具和版本化私有重放，不依赖旧 Gateway。已知对话能力覆盖 `mimo-v2.6-flash`、`mimo-v2.6-pro`、`mimo-v2.6-pro-ultraspeed`；其他发现项显示未支持，不按名称猜能力。
 - `src/tools/`：基础工具 `read`、`write`、`edit`、`glob`、`grep` 的约定、默认实现与装配。`createTools({ workspaceRoot, mode })` 返回插件，默认 `read-only`；`read-write` 再安装写入和编辑工具，不自行批准调用。各同名文件拥有输入/输出 schema、工具定义与模型投影；内部共享路径守卫、稳定快照、观察记录、有界搜索与原子发布，不依赖 PPT 或当前宿主。
   - `read` 按 UTF-16 单元分页（默认最多 4000 单元），后续窗口必须携带 `expectedVersion`；完整观察同一文件版本后才能替换或编辑。`write` 显式区分 `create` 与带版本的 `replace`，`edit` 使用精确文本匹配。读取记录按安装隔离，重启丢失记录后要求重新读取。
   - `glob` 支持 `*`、`**`、`?`；`grep` 只做字面量逐行搜索，不执行正则或 Shell。遍历、文件字节数、搜索总字节数与结果都有上限，未完成扫描明确报告 `truncated`，二进制/过大文件明确列为跳过；搜索不授予修改资格。
   - `internal/` 中迁出的安全读写与原子持久化原语也继续服务旧生产调用方，没有旧路径别名；旧 PPT 工具名称和业务提交链路未切换。原子 I/O 限制只由新工具显式启用，不对旧持久化调用新增全局限制。
-  - 可用 `createTools(options, logs.getLogger("tools"))` 注入窄 Logger；省略时不创建日志实例。执行日志关联当前 Agent/Thread/Query/Run 与工具调用 ID，只记录工具名、状态、影响、耗时和分类错误码，不采集路径、正文、搜索词或编辑载荷；审批未通过时不记录“已执行”。工具释放不关闭借用的日志系统，现有开发宿主暂未传入 Logger。
+  - 可用 `createTools(options, logs.getLogger("tools"))` 注入窄 Logger；省略时不创建日志实例。执行日志关联当前 Agent/Thread/Query/Run 与工具调用 ID，只记录工具名、状态、影响、耗时和分类错误码，不采集路径、正文、搜索词或编辑载荷；审批未通过时不记录“已执行”。开发宿主已注入 Logger；工具释放不关闭借用的日志系统。
 - `src/logs/`：独立诊断日志模块，尚未替换旧 logger、Harness 埋点或现有日志面板。`logs.ts` 的 `createLogs()` 接收显式输出，`node-logs.ts` 的 `createNodeLogs()` 内聚 stderr、按日 JSONL、近期环形缓冲与管理；协议在 `log-contract.ts`。
   - Logger 只负责记录与绑定上下文；输出配置、清理与关闭归宿主。记录先做有界快照和凭据遮蔽再分发，单个输出失败不阻止其他输出，日志不能替代规范历史或检查点。
   - 文件写入显式根下的 `<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，日期使用 UTC；保留与清理仅处理当前实例的托管旧日文件，不读写旧日志、应用设置或 Gateway 归档。
@@ -277,6 +278,10 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 先在应用 Settings 中保存一个支持工具调用的模型。`--model` 使用 `agent-settings.json` 中的模型配置 ID，不是远程模型名称。启动器单独构建 Electron Main，不创建窗口，也不启动旧 Agent、Renderer 或 PPT 服务：
 
+MiMo 请选择“MiMo Token Plan 中国”预设，使用其已保存凭据获取模型、勾选保存，并在高级设置选择思考强度。默认省略 `reasoning`，显式档位原样发送；固定使用 `https://token-plan-cn.xiaomimimo.com/v1`，不使用其他厂商的环境 Key。已有自定义连接不会自动升级为原生连接。原生 MiMo 仅供此开发宿主使用，旧生产聊天会在受理前明确拒绝，不创建会话或回落旧 Gateway。
+
+已分别验证真实 Electron 设置组件的获取/选择/保存/重开、本地 SDK/HTTP/SSE 和实际 CN `mimo-v2.6-flash` 的 `high` 问答、流式取消、文件审批与新进程恢复；不代表 Pro、其他档位的远程行为或生产聊天已经验收。具体证据和边界见 [MiMo 实施记录](docs/mimo-token-plan-cn.md#11-实施与验收记录2026-10-31)。
+
 ```powershell
 npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --prompt "读取 notes.txt 并概括内容"
 ```
@@ -288,6 +293,10 @@ npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes -
 ```
 
 执行事实与结果使用逐行 JSON（构建日志和交互输入回显除外），包含 thread/query/run ID、公开执行事实和最终文本；不打印原始 SDK 异常、完整工具结果、reasoning 或私有重放状态。底层 Gateway 的本地诊断仍按日志策略保存，但不复制到开发终端；此入口禁用完整 Gateway IO 归档。Node 启动器拥有终端/管道输入，通过父子进程 IPC 传入 Electron，避免 Windows Main 丢失标准输入。
+
+宿主拥有 `NodeLogs`，模型与 tools 仅借用 Logger；按 Agent 排空 → provider → stores → Logs 顺序关闭。新诊断写入配置根下 `agent-development-logs/<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，不记录模型正文、工具载荷或凭据，且遮蔽 `tp-` / `ttp-` 形态。模型日志通过 `ModelCallContext` 关联 Run/request/step，不将诊断上下文写进请求体或检查点。
+
+MiMo 不做应用层或 SDK 重试（`maxRetries=0`），不换域名或降级；Node Fetch 仍可能按 HTTP 规范内部重传 421，不能承诺底层绝无重传。
 
 等待审批时关闭输入（EOF）会保留 `waiting`。用输出中的 ID 恢复：
 
@@ -302,7 +311,7 @@ npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes -
 除 `npm run typecheck`、`npm test` 外，可单独运行真实 Electron/加密凭据/本地 HTTP 回归（不需要远程厂商 Key；Linux 需要图形环境）：
 
 ```powershell
-npx.cmd vitest run tests/general-agent-development-cli.integration.test.ts
+npx.cmd vitest run tests/general-agent-development-cli.integration.test.ts tests/mimo-development-cli.integration.test.ts
 ```
 
 ## 本地文件与隐私

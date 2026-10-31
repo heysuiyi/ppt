@@ -9,7 +9,7 @@ export interface ModelTokenPricing {
   updatedAt: string;
 }
 
-export type VendorKind = "openai" | "anthropic" | "deepseek" | "custom";
+export type VendorKind = "openai" | "anthropic" | "deepseek" | "mimo-token-plan-cn" | "custom";
 export type PresetVendorKind = Exclude<VendorKind, "custom">;
 
 export interface ModelCatalogEntry {
@@ -17,6 +17,7 @@ export interface ModelCatalogEntry {
   name: string;
   model: string;
   openaiApiMode: "responses" | "chat-completions";
+  reasoningEffort?: string;
   supports1MContext?: boolean;
   enabled: boolean;
   pricing?: ModelTokenPricing | null;

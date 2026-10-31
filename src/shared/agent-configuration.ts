@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  MIMO_TOKEN_PLAN_CN_BASE_URL,
+  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+} from "../models/mimo-token-plan-cn-contract";
 import { agentExecutionStrategySchema, agentProviderSchema } from "./agent";
 import { agentGatewayPreferencesSchema } from "./agent-gateway-config";
 import { type AgentSettings, agentSettingsSchema } from "./agent-settings";
@@ -51,17 +55,34 @@ export const updateSearchCredentialSchema = z
     credential: credentialUpdateSchema,
   })
   .strict();
-export const discoverAgentModelsSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("saved-vendor"), vendorId: vendorIdSchema }).strict(),
-  z
-    .object({
-      type: z.literal("draft"),
-      provider: agentProviderSchema,
-      baseURL: connectionUrlSchema,
-      apiKey: credentialApiKeySchema,
-    })
-    .strict(),
-]);
+export const discoverAgentModelsSchema = z
+  .discriminatedUnion("type", [
+    z.object({ type: z.literal("saved-vendor"), vendorId: vendorIdSchema }).strict(),
+    z
+      .object({
+        type: z.literal("draft"),
+        provider: agentProviderSchema,
+        baseURL: connectionUrlSchema,
+        modelAdapter: z.literal("mimo-token-plan-cn").optional(),
+        apiKey: credentialApiKeySchema,
+      })
+      .strict(),
+  ])
+  .superRefine((request, context) => {
+    if (request.type !== "draft" || request.modelAdapter !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID) return;
+    if (request.provider !== "openai")
+      context.addIssue({
+        code: "custom",
+        path: ["provider"],
+        message: "MiMo requires OpenAI protocol.",
+      });
+    if (request.baseURL !== MIMO_TOKEN_PLAN_CN_BASE_URL)
+      context.addIssue({
+        code: "custom",
+        path: ["baseURL"],
+        message: "MiMo requires its fixed CN Token Plan URL.",
+      });
+  });
 
 export type VendorConfiguration = z.infer<typeof vendorConfigurationSchema>;
 export type CredentialUpdate = z.infer<typeof credentialUpdateSchema>;

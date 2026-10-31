@@ -5,12 +5,19 @@ import type { ExecutionPlan } from "../agent-configuration";
 import type { FileSessionStore } from "../session-store";
 import type { DurableServiceThread } from "./persistence/durable-service-store";
 
+// 生产入口仍使用旧 Gateway，原生适配必须在创建或写入会话前拒绝。
+export function assertProductionModelAdapter(plan: ExecutionPlan): void {
+  if (plan.modelAdapter)
+    throw new Error("当前生产聊天尚未接入原生 MiMo 执行适配器；请使用独立开发入口。");
+}
+
 /** Called under Main's foreground-run reservation. No Renderer state is consulted. */
 export async function acceptAgentRequest(
   store: FileSessionStore,
   plan: ExecutionPlan,
   request: SubmitAgentRequest,
 ) {
+  assertProductionModelAdapter(plan);
   const { model } = plan;
   if (store.conversationDatabase.hasRun(request.requestId)) {
     throw new Error("This request has already been accepted.");

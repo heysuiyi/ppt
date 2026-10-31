@@ -12,6 +12,7 @@ export const agentModelSettingsSchema = z.object({
   apiKey: z.string().trim().min(1).optional(),
   baseURL: z.string().trim().url().optional(),
   openaiApiMode: z.enum(["responses", "chat-completions"]).optional(),
+  reasoningEffort: z.string().min(1).optional(),
   supports1MContext: z.boolean().optional(),
 });
 export const agentModelSelectionSchema = agentModelSettingsSchema.omit({ apiKey: true }).strict();

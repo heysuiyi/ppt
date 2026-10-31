@@ -4,6 +4,8 @@ export const remoteModelInfoSchema = z
   .object({
     id: z.string().trim().min(1).max(512),
     displayName: z.string().trim().min(1).max(512).optional(),
+    supported: z.boolean().optional(),
+    unsupportedReason: z.string().min(1).optional(),
   })
   .strict();
 

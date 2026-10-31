@@ -25,6 +25,7 @@
     "src/main/**/*.ts",
     "src/agent/**/*.ts",
     "src/logs/**/*.ts",
+    "src/models/**/*.ts",
     "src/tools/**/*.ts",
     "src/ppt/**/*.ts",
     "src/preload/**/*.ts",

@@ -23,8 +23,9 @@ export async function executeModelTurn(
     throw new AgentError("MODEL_CAPABILITY", "Selected model does not accept image input");
   }
   let response: ModelResponse | undefined;
+  const context = { identity: env.identity, requestId, step };
   if (env.model.capabilities.streaming) {
-    for await (const event of env.model.stream(snapshot(request), env.signal)) {
+    for await (const event of env.model.stream(snapshot(request), env.signal, context)) {
       env.signal.throwIfAborted();
       if (response)
         throw new AgentError("INVALID_MODEL_STREAM", "Model emitted data after completion");
@@ -50,7 +51,7 @@ export async function executeModelTurn(
         "Model stream ended without a complete response",
       );
   } else {
-    response = snapshot(await env.model.generate(snapshot(request), env.signal));
+    response = snapshot(await env.model.generate(snapshot(request), env.signal, context));
     env.signal.throwIfAborted();
   }
   if (response.message.role !== "assistant" || !Array.isArray(response.message.content)) {

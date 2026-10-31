@@ -2,6 +2,10 @@
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  MIMO_REASONING_EFFORTS,
+  MIMO_TOKEN_PLAN_CN_BASE_URL,
+} from "../src/models/mimo-token-plan-cn-contract";
 import { ModelManagement } from "../src/renderer/src/components/ModelManagement";
 import type { ModelVendorConnection } from "../src/renderer/src/modelCatalog";
 import { flattenVendors } from "../src/renderer/src/modelCatalog";
@@ -52,6 +56,78 @@ function deepseekVendor(): ModelVendorConnection {
 
 describe("ModelManagement vendor onboarding", () => {
   afterEach(cleanup);
+  it("discovers MiMo drafts and preserves every effort through save and reopen", async () => {
+    const listRemoteModels = vi.fn().mockResolvedValue({
+      models: [
+        { id: "mimo-v2.6-pro", displayName: "MiMo Pro", supported: true },
+        { id: "unknown", supported: false, unsupportedReason: "当前适配器未支持此模型" },
+      ],
+    });
+    Object.defineProperty(window, "desktopApi", {
+      configurable: true,
+      value: { listRemoteModels },
+    });
+    let saved: ModelVendorConnection | undefined;
+    const onSaveVendor = vi.fn(async (vendor: ModelVendorConnection) => {
+      saved = { ...vendor, credentialConfigured: true };
+      return true;
+    });
+    const props = {
+      onSelectModel: vi.fn(),
+      onSaveVendor,
+      onDeleteVendor: vi.fn().mockResolvedValue(true),
+      onDeleteModel: vi.fn().mockResolvedValue(true),
+      onSetVendorEnabled: vi.fn().mockResolvedValue(true),
+      onSetModelEnabled: vi.fn().mockResolvedValue(true),
+      triggerToast: vi.fn(),
+    };
+    const view = render(<ModelManagement {...props} vendors={[]} models={[]} selectedModelId="" />);
+    fireEvent.click(screen.getByRole("button", { name: "添加厂商" }));
+    fireEvent.click(screen.getByRole("button", { name: /MiMo Token Plan 中国/ }));
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).readOnly).toBe(true);
+    expect(screen.queryByRole("combobox", { name: "协议" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "test-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "获取模型列表" }));
+    const checkbox = await screen.findByRole("checkbox", { name: /^MiMo Pro/ });
+    expect(listRemoteModels).toHaveBeenCalledWith({
+      type: "draft",
+      provider: "openai",
+      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      apiKey: "test-secret",
+      modelAdapter: "mimo-token-plan-cn",
+    });
+    expect((screen.getByRole("checkbox", { name: /^unknown/ }) as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole("button", { name: /高级设置/ }));
+    expect(screen.queryByRole("combobox", { name: /API 模式/ })).toBeNull();
+    for (const effort of MIMO_REASONING_EFFORTS) {
+      fireEvent.click(screen.getByRole("combobox", { name: "MiMo Pro 思考强度" }));
+      fireEvent.click(screen.getByRole("option", { name: effort, exact: true }));
+      fireEvent.click(screen.getByRole("button", { name: "保存" }));
+      await waitFor(() => expect(saved?.models[0]?.reasoningEffort).toBe(effort));
+      expect(saved?.models[0]?.openaiApiMode).toBe("responses");
+      expect(flattenVendors([saved!])[0]?.reasoningEffort).toBe(effort);
+      view.rerender(
+        <ModelManagement
+          {...props}
+          vendors={[saved!]}
+          models={flattenVendors([saved!])}
+          selectedModelId=""
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "编辑厂商 MiMo Token Plan 中国" }));
+      fireEvent.click(screen.getByRole("button", { name: /高级设置/ }));
+      expect(screen.getByRole("combobox", { name: "MiMo Pro 思考强度" }).textContent).toContain(
+        effort,
+      );
+    }
+    fireEvent.click(screen.getByRole("combobox", { name: "MiMo Pro 思考强度" }));
+    fireEvent.click(screen.getByRole("option", { name: "默认（不发送）" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(saved!.models[0]).not.toHaveProperty("reasoningEffort"));
+  });
 
   it("saves a DeepSeek vendor with one API key", async () => {
     const onSaveVendor = vi.fn().mockResolvedValue(true);

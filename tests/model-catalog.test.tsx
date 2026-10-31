@@ -23,9 +23,40 @@ function presetModel(kind: "openai" | "deepseek", index = 0) {
 
 describe("model catalog", () => {
   beforeEach(() => window.localStorage.clear());
+  it("retains MiMo efforts and stable IDs in persisted drafts and flattened disabled models", () => {
+    const draft = buildVendorDraftFromPreset("mimo-token-plan-cn");
+    expect(draft.models).toEqual([]);
+    expect(changeModelVendorDraftProtocol(draft, "anthropic")).toBe(draft);
+    draft.models = [
+      {
+        id: "saved-mimo",
+        name: "MiMo",
+        model: "mimo-v2.6-pro",
+        openaiApiMode: "responses",
+        reasoningEffort: "ultra",
+        enabled: false,
+      },
+    ];
+    const vendor = materializeVendorDraft(draft);
+    window.localStorage.setItem(
+      MODEL_STORAGE_KEY,
+      JSON.stringify({ version: 3, vendors: [vendor] }),
+    );
+    const loaded = loadManagedVendors();
+    expect(loaded[0]?.models[0]).toMatchObject({
+      id: "saved-mimo",
+      reasoningEffort: "ultra",
+      enabled: false,
+    });
+    expect(flattenVendors(loaded)[0]).toMatchObject({ reasoningEffort: "ultra", enabled: false });
+    expect(
+      buildVendorDraftFromPreset("mimo-token-plan-cn", loaded[0]).models[0]?.reasoningEffort,
+    ).toBe("ultra");
+  });
 
   it("defines official presets and DeepSeek Anthropic defaults", () => {
     expect(MODEL_VENDOR_PRESETS.map((preset) => preset.id)).toEqual([
+      "mimo-token-plan-cn",
       "openai",
       "anthropic",
       "deepseek",

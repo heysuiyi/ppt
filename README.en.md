@@ -235,6 +235,7 @@ Key areas:
   - `createSqliteAgentStores(filePath)` persists history, batch receipts, and checkpoints in separate SQLite tables without migrating or replacing production storage. Standalone Node execution requires `node:sqlite` support (Node 22.13+; development uses Node 24).
   - `createGatewayModelFactory(resolve)` binds the existing Gateway after the host resolves credentials and connections. A stable `replayScope` identifies the connection; private replay checks model, transport, and canonical content. Legacy stream indices cannot guarantee final content positions, so this adapter publishes only authoritative `completed` events, not invented real-time deltas. Legacy Chat images, remote image URLs, and incompatible private reasoning replay are rejected rather than silently degraded.
   - `createAgentHost()` binds threads to canonical workspaces, tool modes, model-connection fingerprints, definitions, plugin versions, and step budgets in the independent database. `prepareConfiguredModel()` reuses issued configuration plans and real credential resolution, binding only the primary model without automatic fallback.
+- `src/models/`: `createMimoTokenPlanCN()` owns native Responses, discovery, real streaming, tools, and versioned private replay for the fixed China Token Plan connection, without the old Gateway. Known conversation capabilities cover `mimo-v2.6-flash`, `mimo-v2.6-pro`, and `mimo-v2.6-pro-ultraspeed`; unknown discovery entries are explicitly unsupported, not guessed from their names.
 - `src/tools/`: the conventions, default implementations, and composition of `read`, `write`, `edit`, `glob`, and `grep`. `createTools({ workspaceRoot, mode })` returns a plugin, defaulting to `read-only`; `read-write` additionally installs mutators but never approves its own calls. Each named file owns its schemas, tool definition, and model projection. Internal path guards, stable snapshots, scoped observations, bounded search, and atomic publication have no PPT or application-host dependency.
   - `read` uses UTF-16 windows (up to 4000 units by default), with `expectedVersion` required for later windows. Replacing or editing requires observing the complete unchanged version. `write` distinguishes explicit `create` from version-checked `replace`; `edit` uses exact text matching. Observations are installation-local and require rereading after restart.
   - `glob` supports `*`, `**`, and `?`; `grep` performs literal line searches, not regex or shell execution. Traversal, file bytes, aggregate search bytes, and results are bounded. Incomplete scans report `truncated`; binary/oversized files are explicitly skipped. Discovery and search do not authorize mutations.
@@ -273,6 +274,10 @@ The host explicitly supplies `AgentServices` (model factory, authorization polic
 
 First save a tool-capable model in the app's Settings. `--model` is the configured model ID from `agent-settings.json`, not the remote model name. The launcher builds a separate Electron Main entry without creating windows or starting the old Agent, Renderer, or PPT services:
 
+For MiMo, select the “MiMo Token Plan 中国” preset, discover and select models using its saved credential, and choose reasoning effort in advanced settings. The default omits `reasoning`; explicit values pass through unchanged. The fixed endpoint is `https://token-plan-cn.xiaomimimo.com/v1`, without other providers' environment-key fallback. Existing custom connections are not automatically upgraded. Native MiMo is available to this development host only; production chat rejects it before admission, without creating a session or falling back to the old Gateway.
+
+Separate evidence covers the actual Electron settings component, local SDK/HTTP/SSE, and real CN `mimo-v2.6-flash` with `high`: conversation, stream cancellation, file approval, and cross-process recovery. This does not validate Pro, other remote effort levels, or production chat. See the [MiMo implementation record](docs/mimo-token-plan-cn.md#11-实施与验收记录2026-10-31).
+
 ```powershell
 npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --prompt "Read notes.txt and summarize it"
 ```
@@ -284,6 +289,10 @@ npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes -
 ```
 
 Execution facts and results use newline-delimited JSON (apart from build logs and interactive input echo), with thread/query/run IDs, public execution facts, and final text, not raw SDK exceptions, full tool results, reasoning, or private replay state. Gateway diagnostics remain in local logs under the underlying logging policy but are not mirrored to the terminal; this entry disables full Gateway IO archives. The Node launcher owns terminal/piped input and forwards it over parent-child IPC because Windows Electron Main cannot reliably receive stdin.
+
+The development host owns `NodeLogs`, lending Logger instances to models and tools. Shutdown drains Agents, then closes the provider, stores, and Logs. Diagnostics use `agent-development-logs/<instanceId>/diagnostic-YYYY-MM-DD.jsonl` below the configuration root and exclude model text, tool payloads, and credentials, including `tp-` / `ttp-` patterns. `ModelCallContext` correlates Run/request/step diagnostics without entering request bodies or checkpoints.
+
+MiMo has no application or SDK retries (`maxRetries=0`), endpoint switching, or paid fallback. Node Fetch may still internally retransmit HTTP 421 according to the Fetch standard; this is not a guarantee of zero transport-level retransmission.
 
 EOF during approval preserves `waiting`. Resume with the IDs from the output:
 
@@ -298,7 +307,7 @@ Configuration uses `getApplicationDataRoot()`: `~/.agent-ppt` by default, or `AG
 In addition to `npm run typecheck` and `npm test`, run the real Electron/encrypted-credential/local-HTTP regression separately (no remote provider key required; Linux requires a graphical environment):
 
 ```powershell
-npx.cmd vitest run tests/general-agent-development-cli.integration.test.ts
+npx.cmd vitest run tests/general-agent-development-cli.integration.test.ts tests/mimo-development-cli.integration.test.ts
 ```
 
 ## Local Files And Privacy

@@ -1,12 +1,21 @@
-# 下一步计划：独立 logs 与渐进接入
+# 下一步计划：mimo-token-plan-cn
 
-状态：独立模块已实现，`src/tools/` 已支持显式注入 Logger，并完成受控模型、真实工具与 JSONL 消费验证。现有宿主尚未启用该注入，旧 logger、UI 和归档仍保持原样。本文保留设计约束并记录实现证据；后续调用方、UI 和归档迁移按独立切片推进，不由本文自动授权。整体方向见 [项目整体规划](project-plan.md)，持续约束见 [AGENTS.md](../AGENTS.md)。
+状态：MiMo 原生接入已实现并完成本地协议、真实 Electron 设置组件/开发入口及小范围实际 CN 验收；完整方案与分层证据见 [mimo-token-plan-cn 具体实施方案](mimo-token-plan-cn.md#11-实施与验收记录2026-10-31)。未切换生产聊天或迁移 PPT 能力、生产会话；已有自定义连接不自动升级。整体方向见 [项目整体规划](project-plan.md)，持续约束见 [AGENTS.md](../AGENTS.md)。
 
-## 1. 本轮交付与非目标
+## 本轮已完成切片
 
-已实现 `src/logs/` 的通用创建、结构化记录、安全快照、输出过滤、失败隔离及 Node 默认管理；本次再为 `createTools(options, logger?)` 增加诊断接入。公开消费烟测与回归见第 10 节。
+1. `src/models/` 原生 provider：固定 CN 连接、发现、generate/stream、有序内容/函数调用、私有 output 重放、取消及关闭；52 项真实 SDK/本地 HTTP/SSE 回归通过。
+2. 连接预设、发现选择、模型级 `reasoningEffort`、签发 adapter/effort 与生产受理前保护贯通；真实 Electron 设置组件经管理 IPC/safeStorage 验证本地与实际 CN 发现、保存及重开。
+3. 开发宿主显式路由 MiMo，模型/tools 借用 Logger；真实 Electron 本地入口覆盖 EOF waiting、审批、新进程恢复、拒绝/取消、预算/强度变更拒绝与租约释放。
+4. 实际 CN 仅验收 `mimo-v2.6-flash` / `high`：普通问答、流式取消、文件工具等待后新进程恢复与取消；`/models` 返回 6 项，ASR/TTS 明确未支持。Pro 与其他 effort 的远程行为未验收。
 
-不替换 `src/main/agent/logger.ts`，不改变现有宿主的日志装配，不迁移旧日志文件，不更改日志面板、IPC、应用设置、模型归档或生产数据。独立模块及工具注入接口完成，不等于宿主或全量日志迁移完成。
+范围、具名接口、文件落点、请求与流式映射、重放载荷及恢复兼容性仍以[完整实施方案](mimo-token-plan-cn.md)为准。后续业务切片不由本轮自动授权；M1 公开面整轮收敛不是此次前置条件。以下第 1–11 节保留 logs/tools 切片的设计和历史证据，不扩大本次迁移范围。
+
+## 1. 已完成 logs/tools 切片与边界
+
+已完成 `src/logs/` 的通用创建、结构化记录、安全快照、输出过滤、失败隔离及 Node 默认管理，并为 `createTools(options, logger?)` 增加诊断接入。该切片的公开消费烟测与回归保留在第 10 节。
+
+此前 logs/tools 切片未替换 `src/main/agent/logger.ts`，未改变旧日志文件、日志面板、IPC、应用设置、模型归档或生产数据。本轮 MiMo 仅在开发宿主拥有 NodeLogs 并向模型/tools 注入 Logger，不迁移旧消费侧。
 
 Harness 公开面收敛仍是整体规划 M1 的目标，但不作为日志设计或第一个日志实现切片的前置条件。不借日志工作改写 Loop、消息历史、检查点、授权、恢复或执行身份，也不提前迁移 PPT。
 

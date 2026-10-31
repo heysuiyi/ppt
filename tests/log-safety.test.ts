@@ -84,6 +84,8 @@ describe("log safety", () => {
       "bearerTextAbc",
       "sk-knownCredentialAbc",
       "tvly-knownCredentialAbc",
+      "tp-mimoCredentialAbc",
+      "ttp-mimoCredentialAbc",
     ];
     logger
       .child({
@@ -93,7 +95,7 @@ describe("log safety", () => {
         endpoint:
           "https://urlUserAbc:urlPasswordAbc@example.test/path?api%5Fkey=queryApiAbc&refresh-token=queryRefreshAbc&tokenCount=18#ok",
         relative: "//schemeUserAbc:schemePasswordAbc@example.test/?accessToken=queryAccessAbc",
-        text: "Bearer bearerTextAbc sk-knownCredentialAbc tvly-knownCredentialAbc",
+        text: "Bearer bearerTextAbc sk-knownCredentialAbc tvly-knownCredentialAbc tp-mimoCredentialAbc ttp-mimoCredentialAbc",
       });
     const record = records[0];
     const json = JSON.stringify(record);

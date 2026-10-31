@@ -12,6 +12,7 @@ import {
 } from "../../agent/application/agent-application";
 import { AgentError, snapshot } from "../../agent/protocol-utils";
 import type { Disposable } from "../../agent/protocol-values";
+import { createNodeLogs, type NodeLogs } from "../../logs/node-logs";
 import { createTools, type ToolsMode } from "../../tools/tools";
 import type { AgentConfiguration } from "../agent-configuration";
 import { type PreparedConfiguredModel, prepareConfiguredModel } from "./configured-model-factory";
@@ -66,12 +67,18 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   let stores: SqliteAgentStores | undefined;
   let application: AgentApplication | undefined;
   let closing: Promise<void> | undefined;
+  let logs: NodeLogs | undefined;
   const close = (): Promise<void> => {
     if (closing) return closing;
     closing = Promise.resolve().then(async () => {
       const errors: unknown[] = [];
       // 先排空 Agent 执行，再释放模型凭据与存储，避免活动 Run 使用已关闭的依赖。
-      for (const resource of [application, prepared, stores]) {
+      for (const resource of [
+        application,
+        prepared,
+        stores,
+        logs && { dispose: () => logs!.close() },
+      ]) {
         try {
           await resource?.dispose();
         } catch (error) {
@@ -84,12 +91,25 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     return closing;
   };
   try {
-    const plugin = await createTools({
-      workspaceRoot: options.workspaceRoot,
-      ...(options.toolMode === undefined ? {} : { mode: options.toolMode }),
+    logs = await createNodeLogs({
+      directory: join(options.applicationDataRoot, "agent-development-logs"),
+      terminal: { enabled: false },
+      file: { enabled: true },
     });
+    const plugin = await createTools(
+      {
+        workspaceRoot: options.workspaceRoot,
+        ...(options.toolMode === undefined ? {} : { mode: options.toolMode }),
+      },
+      logs.getLogger("tools"),
+    );
     signal.throwIfAborted();
-    prepared = await prepareConfiguredModel(options.configuration, options.modelId, signal);
+    prepared = await prepareConfiguredModel(
+      options.configuration,
+      options.modelId,
+      signal,
+      logs.getLogger("models"),
+    );
     const definition = workspaceDefinition(plugin.mode);
     const agentId = options.agentId ?? "development-agent";
     // 工作目录属于宿主权限边界；先固化绑定，禁止同一历史在恢复时换到另一个目录。

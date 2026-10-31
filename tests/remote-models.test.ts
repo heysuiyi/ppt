@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentConfiguration } from "../src/main/agent-configuration";
 import {
+  MIMO_TOKEN_PLAN_CN_BASE_URL,
+  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+} from "../src/models/mimo-token-plan-cn-contract";
+import {
   discoverAgentModelsSchema,
   type VendorConfiguration,
 } from "../src/shared/agent-configuration";
@@ -15,6 +19,14 @@ const sdk = vi.hoisted(() => ({
   fail: false,
   waitForModels: undefined as Promise<void> | undefined,
   started: undefined as (() => void) | undefined,
+}));
+const mimo = vi.hoisted(() => ({
+  create: vi.fn(),
+  listModels: vi.fn(),
+  dispose: vi.fn(),
+}));
+vi.mock("../src/models/mimo-token-plan-cn", () => ({
+  createMimoTokenPlanCN: mimo.create,
 }));
 vi.mock("openai", () => ({
   default: class OpenAI {
@@ -55,6 +67,15 @@ beforeEach(() => {
   sdk.fail = false;
   sdk.waitForModels = undefined;
   sdk.started = undefined;
+  mimo.create.mockReset().mockReturnValue({
+    listModels: mimo.listModels,
+    dispose: mimo.dispose,
+  });
+  mimo.listModels.mockReset().mockResolvedValue([
+    { id: "mimo-v2-pro", supported: true },
+    { id: "unknown-model", supported: false, unsupportedReason: "Unsupported model capabilities." },
+  ]);
+  mimo.dispose.mockReset().mockResolvedValue(undefined);
 });
 afterEach(async () => {
   await Promise.all(
@@ -139,6 +160,112 @@ describe("model discovery request boundary", () => {
 });
 
 describe("configuration model discovery", () => {
+  it("dispatches native drafts through the shared provider and preserves capability metadata", async () => {
+    const api = await management();
+    const before = await api.getSnapshot();
+    await expect(
+      api.listRemoteModels({
+        type: "draft",
+        provider: "openai",
+        baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+        modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+        apiKey: "temporary-mimo-key",
+      }),
+    ).resolves.toEqual({
+      models: [
+        { id: "mimo-v2-pro", supported: true },
+        {
+          id: "unknown-model",
+          supported: false,
+          unsupportedReason: "Unsupported model capabilities.",
+        },
+      ],
+    });
+    expect(mimo.create).toHaveBeenCalledWith({
+      apiKey: "temporary-mimo-key",
+      connectionFingerprint: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      timeoutMs: 20_000,
+      maxOutputTokens: 16_384,
+    });
+    expect(mimo.listModels).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(mimo.dispose).toHaveBeenCalledOnce();
+    expect(sdk.openai).toEqual([]);
+    expect(sdk.anthropic).toEqual([]);
+    expect(await api.getSnapshot()).toEqual(before);
+  });
+
+  it("derives the native adapter from saved kind and never falls back to an environment key", async () => {
+    const api = await management({
+      OPENAI_API_KEY: "unrelated-openai-key",
+      OPENAI_BASE_URL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      MIMO_API_KEY: "unbound-mimo-key",
+    });
+    const native: VendorConfiguration = {
+      ...vendor,
+      kind: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+    };
+    await api.saveVendor({ vendor: native, credential: { type: "keep" } });
+    await expect(
+      api.listRemoteModels({
+        type: "saved-vendor",
+        vendorId: native.id,
+      }),
+    ).rejects.toThrow(/credential/i);
+    expect(mimo.create).not.toHaveBeenCalled();
+    await api.saveVendor({
+      vendor: native,
+      credential: { type: "replace", apiKey: "saved-mimo-key" },
+    });
+    await api.listRemoteModels({ type: "saved-vendor", vendorId: native.id });
+    expect(mimo.create).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "saved-mimo-key" }));
+    expect(mimo.dispose).toHaveBeenCalledOnce();
+    expect(sdk.openai).toEqual([]);
+    expect((await api.getSnapshot())!.settings.vendors[0]!.models).toEqual([]);
+  });
+
+  it("disposes native discovery on failure without trying legacy transports or cached candidates", async () => {
+    const api = await management();
+    const failure = Object.assign(new Error("MiMo model discovery failed."), {
+      code: "authentication",
+    });
+    mimo.listModels.mockRejectedValueOnce(failure);
+    await expect(
+      api.listRemoteModels({
+        type: "draft",
+        provider: "openai",
+        baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+        modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+        apiKey: "temporary-mimo-key",
+      }),
+    ).rejects.toBe(failure);
+    expect(mimo.dispose).toHaveBeenCalledOnce();
+    expect(sdk.openai).toEqual([]);
+    expect(sdk.anthropic).toEqual([]);
+  });
+
+  it("preserves an empty native discovery result and rejects mismatched draft routes before creation", async () => {
+    const api = await management();
+    const draft = {
+      type: "draft" as const,
+      provider: "openai" as const,
+      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      apiKey: "temporary-mimo-key",
+    };
+    mimo.listModels.mockResolvedValueOnce([]);
+    await expect(api.listRemoteModels(draft)).resolves.toEqual({ models: [] });
+    expect(mimo.dispose).toHaveBeenCalledOnce();
+    await expect(
+      api.listRemoteModels({
+        ...draft,
+        baseURL: "https://api.xiaomimimo.com/v1",
+      }),
+    ).rejects.toThrow();
+    expect(mimo.create).toHaveBeenCalledOnce();
+    expect(sdk.openai).toEqual([]);
+  });
+
   it("lists sorted, deduplicated OpenAI models using supplied draft credentials", async () => {
     const api = await management();
     await expect(

@@ -76,7 +76,7 @@ function sanitizeString(value: string, limit = MAX_STRING): string {
       return isSensitiveKey(decoded) ? `${separator}${key}=${REDACTED}` : match;
     })
     .replace(/\bbearer(?:\s+|%20)[^\s"'<>\\,;}]+/gi, REDACTED)
-    .replace(/(^|[^a-z0-9])(?:sk|tvly)-[a-z0-9_-]+/gi, `$1${REDACTED}`);
+    .replace(/(^|[^a-z0-9])(?:sk|tvly|ttp|tp)-[a-z0-9_-]+/gi, `$1${REDACTED}`);
   if (shortened || text.length > limit) {
     return text.slice(0, limit - TRUNCATED.length) + TRUNCATED;
   }
