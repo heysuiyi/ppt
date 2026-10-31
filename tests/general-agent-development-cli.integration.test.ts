@@ -18,7 +18,7 @@ const desktopAvailable =
   process.platform === "win32" || process.platform === "darwin" || Boolean(process.env.DISPLAY);
 
 describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
-  it("starts the real runner without an ESM-ready deadlock and consumes IPC approval after reopening encrypted configuration", async () => {
+  it("starts the real runner without an ESM-ready deadlock and reads automatically after reopening encrypted configuration", async () => {
     const directory = await mkdtemp(join(tmpdir(), "general-agent-cli-"));
     const dataRoot = join(directory, "data");
     const workspace = join(directory, "workspace");
@@ -26,6 +26,7 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
     const require = createRequire(import.meta.url);
     const electron = require("electron") as string;
     const key = "isolated-cli-integration-credential";
+    const notes = "Real workspace text read without approval.";
     const requests: Array<Record<string, unknown>> = [];
     const serverErrors: string[] = [];
     const reasoning = {
@@ -67,13 +68,12 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
             : String(result.output);
           expect(JSON.parse(text)).toMatchObject({
             path: "notes.txt",
-            content: "revision created after approval request",
+            content: notes,
             startOffset: 0,
-            endOffset: "revision created after approval request".length,
+            endOffset: notes.length,
             hasMore: false,
             version: expect.any(String),
           });
-          expect(text).not.toContain("before approval");
           output = [
             {
               id: "message-integration",
@@ -83,7 +83,7 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
               content: [
                 {
                   type: "output_text",
-                  text: "The approved notes.txt was read.",
+                  text: "The workspace notes.txt was read.",
                   annotations: [],
                 },
               ],
@@ -127,7 +127,7 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
     });
     try {
       await mkdir(workspace);
-      await writeFile(join(workspace, "notes.txt"), "before approval", "utf8");
+      await writeFile(join(workspace, "notes.txt"), notes, "utf8");
       const listening = once(server, "listening");
       server.listen(0, "127.0.0.1");
       await listening;
@@ -173,6 +173,7 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
             "type" in message &&
             message.type === "agent-dev.ready"
           ) {
+            child.send({ type: "agent-dev.context", workspaceRoot: workspace, interactive: false });
             if (input) child.send({ type: "agent-dev.input", text: input });
             child.send({ type: "agent-dev.end" });
           }
@@ -226,43 +227,24 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
       expect(seed.code, seed.stderr + seed.stdout).toBe(0);
       expect(seed.records).toContainEqual({ type: "seeded", configured: true });
       expect(await readFile(join(dataRoot, "credentials.v2.json"), "utf8")).not.toContain(key);
-      const common = [
-        "--model",
-        "integration-configured",
-        "--workspace",
-        workspace,
-        "--thread",
-        "integration-thread",
-      ];
-      // 直接运行真实 Electron runner，使用 launcher 的 ready/input/end 协议模拟管道 EOF。
-      const waiting = await run([
-        ...common,
-        "--prompt",
-        "Read notes.txt",
-        "--query",
-        "integration-query",
-      ]);
-      expect(waiting.code, waiting.stderr + waiting.stdout).toBe(0);
-      expect(waiting.records).toEqual(
-        expect.arrayContaining([expect.objectContaining({ type: "result", status: "waiting" })]),
+      const settingsBeforeHelp = await readFile(join(dataRoot, "agent-settings.json"), "utf8");
+      const credentialsBeforeHelp = await readFile(join(dataRoot, "credentials.v2.json"), "utf8");
+      const helped = await run(["--help"]);
+      expect(helped.code, helped.stderr + helped.stdout).toBe(0);
+      expect(helped.stdout).toContain("--prompt");
+      expect(helped.stdout + helped.stderr).not.toContain(key);
+      expect(requests).toEqual([]);
+      expect(await readFile(join(dataRoot, "agent-settings.json"), "utf8")).toBe(
+        settingsBeforeHelp,
       );
-      expect(waiting.records).toContainEqual(
-        expect.objectContaining({
-          type: "approval",
-          tool: "read",
-          path: "notes.txt",
-        }),
+      expect(await readFile(join(dataRoot, "credentials.v2.json"), "utf8")).toBe(
+        credentialsBeforeHelp,
       );
-      expect(requests).toHaveLength(1);
-      expect(waiting.records.some((record) => record.type === "tool.completed")).toBe(false);
-      await writeFile(
-        join(workspace, "notes.txt"),
-        "revision created after approval request",
-        "utf8",
-      );
-      const resumed = await run([...common, "--resume", "integration-query"], "yes\n");
-      expect(resumed.code, resumed.stderr + resumed.stdout).toBe(0);
-      expect(resumed.records).toEqual(
+      // 直接运行真实 Electron runner，以 IPC 上下文指定工作区并模拟管道 EOF。
+      const executed = await run(["--prompt", "Read notes.txt"]);
+      expect(executed.code, executed.stderr + executed.stdout).toBe(0);
+      expect(executed.records.some((record) => record.type === "approval")).toBe(false);
+      expect(executed.records).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ type: "result", status: "completed" }),
           expect.objectContaining({
@@ -273,24 +255,20 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
           }),
         ]),
       );
-      const waitingResult = waiting.records.find((record) => record.type === "result");
-      const completed = resumed.records.filter((record) => record.type === "result").at(-1);
-      if (!waitingResult || !completed) throw new Error("Expected both execution results");
-      expect(waitingResult).toMatchObject({
-        status: "waiting",
-        queryId: "integration-query",
-      });
-      expect(completed).toMatchObject({
-        status: "completed",
-        queryId: "integration-query",
-      });
+      const completed = executed.records.filter((record) => record.type === "result").at(-1);
+      if (!completed) throw new Error("Expected execution result");
+      expect(executed.records.filter((record) => record.type === "result")).toEqual([
+        expect.objectContaining({
+          status: "completed",
+          queryId: expect.any(String),
+        }),
+      ]);
       expect((completed.messages as Record<string, unknown>[]).at(-1)).toEqual({
         role: "assistant",
-        text: "The approved notes.txt was read.",
+        text: "The workspace notes.txt was read.",
       });
-      expect(completed.runId).not.toBe(waitingResult.runId);
       expect(requests).toHaveLength(2);
-      for (const output of [waiting, resumed]) {
+      for (const output of [executed]) {
         expect(output.stdout + output.stderr).not.toContain(key);
         expect(output.stdout + output.stderr).not.toContain("private-replay-marker");
         expect(output.stdout).not.toContain("replayState");

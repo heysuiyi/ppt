@@ -277,37 +277,42 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 ### 独立通用 Agent 开发入口
 
-先在应用 Settings 中保存已接入原生适配器的模型，当前仅支持“MiMo Token Plan 中国”预设。其他连接（包括相同 CN URL 的 custom 配置）不会自动升级，也不再通过 Gateway 兼容执行。`--model` 使用 `agent-settings.json` 中的模型配置 ID，不是远程模型名称。启动器单独构建 Electron Main，不创建窗口，也不启动旧 Agent、Renderer 或 PPT 服务：
-
-MiMo 请选择“MiMo Token Plan 中国”预设，使用其已保存凭据获取模型、勾选保存，并在高级设置选择思考强度。默认省略 `reasoning`，显式档位原样发送；固定使用 `https://token-plan-cn.xiaomimimo.com/v1`，不使用其他厂商的环境 Key。已有自定义连接不会自动升级为原生连接。原生 MiMo 仅供此开发宿主使用，旧生产聊天会在受理前明确拒绝，不创建会话或回落旧 Gateway。
-
-已分别验证真实 Electron 设置组件的获取/选择/保存/重开、本地 SDK/HTTP/SSE 和实际 CN `mimo-v2.6-flash` 的 `high` 问答、流式取消、文件审批与新进程恢复；不代表 Pro、其他档位的远程行为或生产聊天已经验收。具体证据和边界见 [MiMo 实施记录](docs/mimo-token-plan-cn.md#11-实施与验收记录2026-10-31)。
+启动循环对话，或使用 `--prompt` 执行一次任务：
 
 ```powershell
-npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --prompt "读取 notes.txt 并概括内容"
+npm.cmd run agent:dev
+npm.cmd run agent:dev -- --prompt "读取 notes.txt 并概括内容"
 ```
 
-省略 `--prompt` 可逐行对话，输入 `/exit` 退出。默认安装 `read/glob/grep`，每次调用都要求 `yes` / `no` / `cancel`；使用 `--tools read-write` 才额外安装 `write/edit`，写入同样逐次审批。只允许工作目录内的常规 UTF-8 文本文件，默认单文件最多 64 KiB，超限不截断；分页读取、发现和搜索不会创建目录、锁或恢复旧写入事务。不会初始化 PPT 项目产物。
+只保留 `--prompt`、`--help`（`-h`）启动参数。工作区为启动命令所在目录，不需要手填模型或会话 ID。没有可用的 CLI 默认模型时自动进入逐行向导：选择厂商/已有连接 → 输入 API Key → 选择该厂商的模型 → 保存连接与 CLI 默认模型。已有连接可直接选择已保存模型或发现远程模型，新增连接先发现、选定后保存。配置完成后继续原 `--prompt`，或进入循环；非交互输入缺少默认模型时明确退出，不把管道内容当作凭据。
 
-```powershell
-npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --tools read-write --prompt "完整读取 notes.txt，在原内容末尾增加一行说明"
-```
+API Key 按当前交互约定明文回显，会留在终端滚动记录中；不另写明文配置，不记录到执行历史或诊断，保存仍经过现有配置模块与加密凭据存储。“本地配置就绪”不表示远程鉴权、额度或生成已验证。向导仅显示已接入的厂商，当前为“MiMo Token Plan 中国”，固定使用 `https://token-plan-cn.xiaomimimo.com/v1`；其他连接（包括同 URL 的 custom）不会自动升级，也不回退旧 Gateway。新入口不创建窗口、不启动 Renderer 或 PPT 服务。
 
-执行事实与结果使用逐行 JSON（构建日志和交互输入回显除外），包含 thread/query/run ID、公开执行事实和最终文本；不打印原始 SDK 异常、完整工具结果、reasoning 或私有重放状态。新链路不再加载旧 Gateway、旧 logger 或 Gateway IO 归档。Node 启动器拥有终端/管道输入，通过父子进程 IPC 传入 Electron，避免 Windows Main 丢失标准输入。
+循环内的操作：
+
+| 命令 | 行为 |
+| --- | --- |
+| `/model` | 按厂商选择/配置模型，保存 CLI 默认选择；确认后新建会话，旧历史保留 |
+| `/new` | 按当前模型和工具模式新建会话 |
+| `/resume` | 选择当前工作区的历史会话，加载公开文本和原绑定；有未完成 Query 时恢复它 |
+| `/tools` | 选择只读或读写；实际变更需确认并新建会话，不改写旧绑定 |
+| `/help`、`/exit` | 显示帮助、退出 |
+
+默认只读，安装 `read/glob/grep`；循环中使用 `/tools` 选择读写后增加 `write/edit`。两种模式下，工作区内 `read/glob/grep` 均自动允许；`write/edit` 仍逐次要求 `yes` / `no` / `cancel`，未启用读写模式时不可调用。自动允许不绕过路径、UTF-8、大小或版本校验：只允许工作目录内的常规 UTF-8 文本文件，默认单文件最多 64 KiB，超限不截断；分页读取、发现和搜索不创建目录、锁或恢复旧写入事务，也不初始化 PPT 项目产物。
+
+既有真实厂商证据仍限于实际 CN `mimo-v2.6-flash` 的 `high` 问答、流式取消、文件审批与新进程恢复；本次向导和命令切换的验证使用真实 Electron/safeStorage 与本地 HTTP/SSE，不代表增加了 Pro、其他档位或生产聊天的远程验收。具体既有证据见 [MiMo 实施记录](docs/mimo-token-plan-cn.md#11-实施与验收记录2026-10-31)。
+
+执行事实与结果保留逐行 JSON，包含 thread/query/run ID、公开事实和最终文本；向导、菜单、输入提示和终端回显为可读文本。不打印原始 SDK 异常、完整工具结果、reasoning 或私有重放状态。新链路不加载旧 Gateway、旧 logger 或 Gateway IO 归档。Node 启动器拥有输入，通过父子 IPC 传入 Electron，并传递启动目录和终端信息，避免 Windows Main 丢失标准输入。
 
 宿主拥有 `NodeLogs`，模型与 tools 仅借用 Logger；按 Agent 排空 → provider → stores → Logs 顺序关闭。新诊断写入配置根下 `agent-development-logs/<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，不记录模型正文、工具载荷或凭据，且遮蔽 `tp-` / `ttp-` 形态。模型日志通过 `ModelCallContext` 关联 Run/request/step，不将诊断上下文写进请求体或检查点。
 
 MiMo 不做应用层或 SDK 重试（`maxRetries=0`），不换域名或降级；Node Fetch 仍可能按 HTTP 规范内部重传 421，不能承诺底层绝无重传。
 
-等待审批时关闭输入（EOF）会保留 `waiting`。用输出中的 ID 恢复：
-
-```powershell
-npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --thread saved-thread-id --resume saved-query-id
-```
+写入等待审批时关闭输入（EOF）会保留 `waiting`。重启进入循环后输入 `/resume`，按编号选择原会话；无需手工携带 Thread 或 Query ID。权限调整前已经持久化的只读审批仍需回答一次，不会被新策略自动批准；后续只读调用不再询问。
 
 恢复会重新展示已存储的交互，再接收回答；每次激活生成新 `runId`。Ctrl+C 取消当前请求（退出码 130）；正常关闭中断执行，已保存等待不丢失。完成/等待退出码为 0，执行失败为 1，参数错误为 2，中断为 143；退出码 0 不代表 `waiting` 已完成，应检查结果的 `status`。
 
-配置根沿用 `getApplicationDataRoot()`：默认 `~/.agent-ppt`，可通过 `AGENT_PPT_DATA_DIR` 指向独立开发配置。命令不会自动初始化配置或写入默认设置。执行历史、检查点与宿主绑定保存在该根目录的 `agent-development.sqlite`，不写生产会话库。恢复必须保持原 Agent、工作目录、工具模式、模型连接、定义/插件版本和预算；恢复写入配置时也须提供 `--tools read-write`。旧版 `ReadFile` 会话绑定明确拒绝，不自动迁移，请新建线程；同连接密钥轮换允许，连接或目录变化需新建线程。异常强杀留下的活跃租约不会被自动接管，开发命令不提供强制接管参数。
+配置根沿用 `getApplicationDataRoot()`：默认 `~/.agent-ppt`，可通过 `AGENT_PPT_DATA_DIR` 指向独立开发配置。CLI 首次设置会初始化配置，默认模型保存在 `agent-settings.json` 的 `cli.defaultModelId`，不改变生产 UI 当前选择。历史、检查点与宿主绑定保存在该根目录的 `agent-development.sqlite`，不写生产会话库。恢复加载原模型和工具模式，精确匹配连接指纹，保持原 Agent、工作目录、定义/插件版本和预算；不会用当前默认值覆盖原绑定。现有 v2 绑定继续支持，不靠原生模型名称猜配置 ID。同连接密钥轮换允许，连接或目录变化需新建会话。旧版 `ReadFile` 绑定仍明确拒绝。异常强杀留下的活跃租约不自动接管。
 
 除 `npm run typecheck`、`npm test` 外，可单独运行真实 Electron/加密凭据/本地 HTTP 回归（不需要远程厂商 Key；Linux 需要图形环境）：
 

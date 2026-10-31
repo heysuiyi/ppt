@@ -8,6 +8,7 @@ import { createInterface } from "node:readline";
 import { build } from "vite";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const workspaceRoot = process.env.INIT_CWD || process.cwd();
 const require = createRequire(import.meta.url);
 const electron = require("electron");
 const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
@@ -59,6 +60,7 @@ const interrupt = () => { stopping = true; send({ type: "agent-dev.cancel" }); t
 const terminate = () => { stopping = true; send({ type: "agent-dev.shutdown" }); terminal?.close(); process.stdin.pause(); };
 child.on("message", (message) => {
   if (message?.type !== "agent-dev.ready") return;
+  send({ type: "agent-dev.context", workspaceRoot, interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY) });
   process.stdin.setEncoding("utf8");
   if (process.stdin.isTTY) {
     terminal = createInterface({ input: process.stdin, output: process.stdout, terminal: true });

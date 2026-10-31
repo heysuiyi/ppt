@@ -77,6 +77,7 @@ if (process.argv[2] === "seed") {
         stepLimits: { enabled: true, mainMaxSteps: 4, subMaxSteps: 2 },
         executionStrategy: "REQUEST_APPROVAL",
         defaultTemplateId: "builtin/swiss-minimal",
+        cli: { defaultModelId: "integration-configured" },
       });
       const snapshot = await configuration.management.saveVendor({
         vendor,

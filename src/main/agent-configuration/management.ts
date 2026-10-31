@@ -12,7 +12,11 @@ import {
   DEFAULT_AGENT_GATEWAY_CONFIG,
   DEFAULT_WEB_SEARCH_ENDPOINT,
 } from "@shared/agent-gateway-config";
-import { type AgentSettings, agentSettingsSchema } from "@shared/agent-settings";
+import {
+  type AgentSettings,
+  agentCliPreferencesSchema,
+  agentSettingsSchema,
+} from "@shared/agent-settings";
 import { DEFAULT_AGENT_STEP_LIMITS } from "@shared/agent-step-limits";
 import { normalizeCredentialUrl } from "@shared/credentials";
 import { APPLICATION_DEFAULT_TEMPLATE_ID } from "@shared/template-protocol";
@@ -109,7 +113,13 @@ export function createManagement(
           !vendors.some((entry) => entry.models.some((model) => model.id === fallbackModelId))
             ? { ...current.gateway, fallbackModelId: undefined }
             : current.gateway;
-        const next = agentSettingsSchema.parse({ ...current, vendors, gateway });
+        const defaultModelId = current.cli?.defaultModelId;
+        const cli =
+          defaultModelId &&
+          !vendors.some((entry) => entry.models.some((model) => model.id === defaultModelId))
+            ? { ...current.cli, defaultModelId: undefined }
+            : current.cli;
+        const next = agentSettingsSchema.parse({ ...current, vendors, gateway, cli });
         const binding = vendorBinding(vendor);
         if (credential.type === "replace") {
           await credentials.setModelCredentials({ bindings: [binding], apiKey: credential.apiKey });
@@ -129,12 +139,16 @@ export function createManagement(
         const fallbackRemoved = removed?.models.some(
           (model) => model.id === current.gateway.fallbackModelId,
         );
+        const defaultRemoved = removed?.models.some(
+          (model) => model.id === current.cli?.defaultModelId,
+        );
         const next = agentSettingsSchema.parse({
           ...current,
           vendors: current.vendors.filter((vendor) => vendor.id !== vendorId),
           gateway: fallbackRemoved
             ? { ...current.gateway, fallbackModelId: undefined }
             : current.gateway,
+          cli: defaultRemoved ? { ...current.cli, defaultModelId: undefined } : current.cli,
         });
         await credentials.deleteModelCredential({ vendorId });
         return snapshot(await settingsStore.save(next));
@@ -153,6 +167,13 @@ export function createManagement(
           next.gateway.webSearchEndpoint?.trim() || DEFAULT_WEB_SEARCH_ENDPOINT,
         );
         if (previousEndpoint !== nextEndpoint) await credentials.deleteWebSearchCredential();
+        return snapshot(await settingsStore.save(next));
+      }),
+    saveCliPreferences: (input) =>
+      exclusive(async () => {
+        const cli = agentCliPreferencesSchema.parse(input);
+        const current = await requireSettings();
+        const next = agentSettingsSchema.parse({ ...current, cli });
         return snapshot(await settingsStore.save(next));
       }),
     updateSearchCredential: (input) =>

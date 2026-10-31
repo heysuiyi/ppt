@@ -5,7 +5,11 @@ import {
 } from "../models/mimo-token-plan-cn-contract";
 import { agentExecutionStrategySchema, agentProviderSchema } from "./agent";
 import { agentGatewayPreferencesSchema } from "./agent-gateway-config";
-import { type AgentSettings, agentSettingsSchema } from "./agent-settings";
+import {
+  type AgentSettings,
+  type agentCliPreferencesSchema,
+  agentSettingsSchema,
+} from "./agent-settings";
 import { agentStepLimitsSchema } from "./agent-step-limits";
 import {
   type CredentialStatusSnapshot,
@@ -88,6 +92,7 @@ export type VendorConfiguration = z.infer<typeof vendorConfigurationSchema>;
 export type CredentialUpdate = z.infer<typeof credentialUpdateSchema>;
 export type SaveAgentVendorRequest = z.infer<typeof saveAgentVendorSchema>;
 export type AgentPreferences = z.infer<typeof agentPreferencesSchema>;
+export type AgentCliPreferences = z.infer<typeof agentCliPreferencesSchema>;
 export type UpdateSearchCredentialRequest = z.infer<typeof updateSearchCredentialSchema>;
 export type DiscoverAgentModelsRequest = z.infer<typeof discoverAgentModelsSchema>;
 export interface AgentConfigurationSnapshot {
@@ -100,6 +105,7 @@ export interface ConfigurationManagement {
   saveVendor(request: SaveAgentVendorRequest): Promise<AgentConfigurationSnapshot>;
   deleteVendor(vendorId: string): Promise<AgentConfigurationSnapshot>;
   savePreferences(preferences: AgentPreferences): Promise<AgentConfigurationSnapshot>;
+  saveCliPreferences(preferences: AgentCliPreferences): Promise<AgentConfigurationSnapshot>;
   updateSearchCredential(
     request: UpdateSearchCredentialRequest,
   ): Promise<AgentConfigurationSnapshot>;

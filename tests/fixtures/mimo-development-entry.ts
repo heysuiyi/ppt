@@ -54,6 +54,7 @@ if (["seed", "inspect", "set-effort", "set-budget", "rotate-key"].includes(mode)
           stepLimits: { enabled: true, mainMaxSteps: 4, subMaxSteps: 2 },
           executionStrategy: "REQUEST_APPROVAL",
           defaultTemplateId: "builtin/swiss-minimal",
+          cli: { defaultModelId: "mimo-configured" },
         });
         await configuration.management.saveVendor({
           vendor,
@@ -92,7 +93,7 @@ if (["seed", "inspect", "set-effort", "set-budget", "rotate-key"].includes(mode)
             credential: { type: "replace", apiKey: "tp-rotated-native-integration" },
           });
         } else {
-          const { vendors: _vendors, ...preferences } = snapshot.settings;
+          const { vendors: _vendors, cli: _cli, ...preferences } = snapshot.settings;
           await configuration.management.savePreferences({
             ...preferences,
             gateway: { ...preferences.gateway, maxOutputTokens: Number(process.argv[3]) },
@@ -103,7 +104,7 @@ if (["seed", "inspect", "set-effort", "set-budget", "rotate-key"].includes(mode)
         const stores = createSqliteAgentStores(join(root, "agent-development.sqlite"));
         try {
           const queryId = process.argv[3];
-          const key = { agentId: "development-agent", threadId: "mimo-thread", queryId };
+          const key = { agentId: "development-agent", threadId: process.argv[4], queryId };
           const acquired = await stores.checkpoints.acquire(key, "integration-inspector");
           if (acquired.status !== "acquired") throw new Error("Execution lease not released");
           try {

@@ -112,7 +112,7 @@ export declare function createMimoTokenPlanCN(
 
 实际源文件的相对导入按其目录调整，类型名称和职责保持一致。Base URL 固定为本连接常量，不通过临时参数提供普通 API、其他集群或任意 endpoint 的回退。SDK maxRetries=0，超时来自显式选项；maxOutputTokens 合法范围 1–131072，timeoutMs 为正有限值，apiKey 非空，配置错误在创建时明确拒绝。
 
-- factory.create 使用 `ModelSelection { providerId: "mimo-token-plan-cn", modelId: <远程模型 ID>, reasoningEffort? }`。CLI 的 --model 仍是保存的配置 ID，由宿主解析，不能混为远程 ID。
+- factory.create 使用 `ModelSelection { providerId: "mimo-token-plan-cn", modelId: <远程模型 ID>, reasoningEffort? }`。宿主解析保存的模型配置 ID，不能混为远程 ID；当前 CLI 从 `cli.defaultModelId` 或厂商优先向导取得配置 ID，不再要求 `--model`。
 - 模块校验 providerId 和 effort；绑定客户端复制选择，运行中不跟随 UI 变化。未提供 effort 时不加 reasoning 字段，明确设置则发送对应字符串。
 - listModels 返回发现结果，不直接改保存配置，不默认挑选或启用模型。对 ID 做长度、去重和数量边界校验，返回上限 2000；空列表作为空结果，不伪造成功候选。
 - 模块可内聚小型能力元数据以区分当前支持的对话模型与 ASR/TTS；不把 /models 中每个条目都当成可执行对话模型，不维护“套餐额度/用途”白名单。未知模型 ID 可以保留在发现结果中，缺少适配能力信息时明确显示未支持，不能凭名称猜能力。
@@ -236,7 +236,7 @@ configured-model-factory 在 provider 创建、模型绑定、generate 和 strea
 | --- | --- | --- | --- |
 | P1：原生 provider | models 公共入口与内部实现；agent/model 通用协议；node 构建包含路径 | 独立创建、模型获取、generate/stream、effort、工具映射、replayState、取消与关闭；不是只有 SDK 调用壳 | 实际 SDK 到自建本地 HTTP/SSE 的消费者烟测通过，含工具参数分片、思考重放和故障 |
 | P2：配置与设置 | shared/model-catalog、agent-settings、agent、agent-configuration；Main 配置 runtime/management/discovery；Renderer modelCatalog/ModelManagement/useSettingsController 的实际消费路径 | 新预设、发现、选择、强度持久化、签发 adapter/effort、原计划解析、旧生产受理前保护 | 真实设置界面保存/重开通过，原厂商不受影响；合法配置经公开管理到签发计划不丢字段 |
-| P3：开发宿主闭环 | configured-model-factory、create-agent-host、development-runner/command 的必要部分；tools Logger 注入；logs 凭据遮蔽 | --model 按已保存配置进入原生 MiMo；关联日志、授权与关闭；保留旧配置路径，拒绝新 profile 回落 | 实际 Electron 入口使用本地 HTTP 测试服务完成工具、EOF waiting、重启恢复、拒绝与取消，并核验检查点/租约 |
+| P3：开发宿主闭环 | configured-model-factory、create-agent-host、development-runner/command 的必要部分；tools Logger 注入；logs 凭据遮蔽 | 按已保存配置进入原生 MiMo（原 `--model` 参数已由 CLI 默认模型/向导替代）；关联日志、授权与关闭；保留旧配置路径，拒绝新 profile 回落 | 实际 Electron 入口使用本地 HTTP 测试服务完成工具、EOF waiting、重启恢复、拒绝与取消，并核验检查点/租约 |
 | P4：真实 CN 验收与文档 | 现有入口、临时工作区、现有凭据、相关文档 | /models、无工具问答、思考+工具闭环、等待后新进程恢复、取消；记录精确模型与场景 | 事先说明 API 用量并使用已授权配置；实际 CN 结果通过后才写厂商验收完成 |
 
 P2 的管理验证需使用真实 Electron safeStorage 能力时，按现有集成设施运行，不引入 Node 假解密。草稿/模型列表 UI 不等于生产聊天切换；不在本轮增加聊天页或 PPT UI 迁移。

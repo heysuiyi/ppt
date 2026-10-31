@@ -70,7 +70,7 @@ function settings(vendors = [vendor()]): AgentSettings {
   };
 }
 function preferences(input: AgentSettings) {
-  const { vendors: _vendors, ...result } = input;
+  const { vendors: _vendors, cli: _cli, ...result } = input;
   return result;
 }
 async function configuration(
@@ -131,6 +131,65 @@ describe("agent configuration management", () => {
       executionStrategy: "REQUEST_APPROVAL",
       stepLimits: DEFAULT_AGENT_STEP_LIMITS,
     });
+  });
+  it("reads legacy settings and persists a CLI default independently of gateway preferences", async () => {
+    const config = await configuration();
+    const legacy = settings([vendor(), vendor("other")]);
+    const initialized = await config.management.initialize(legacy);
+    expect(initialized.settings.cli).toBeUndefined();
+    await config.management.saveCliPreferences({ defaultModelId: "primary-model" });
+    await config.management.savePreferences({
+      ...preferences(legacy),
+      gateway: { ...legacy.gateway, fallbackModelId: "other-model" },
+    });
+    const reopened = createAgentConfiguration({
+      applicationDataRoot: config.directory,
+      safeStorage: config.safeStorage,
+      environment: {},
+    });
+    expect((await reopened.management.getSnapshot())!.settings).toMatchObject({
+      cli: { defaultModelId: "primary-model" },
+      gateway: { fallbackModelId: "other-model" },
+    });
+    await expect(
+      config.management.saveCliPreferences({ defaultModelId: "missing-model" }),
+    ).rejects.toThrow();
+    expect((await config.management.getSnapshot())!.settings.cli?.defaultModelId).toBe(
+      "primary-model",
+    );
+    const cleared = await config.management.saveCliPreferences({});
+    expect(cleared.settings.cli?.defaultModelId).toBeUndefined();
+  });
+
+  it("clears a CLI default only when its model is removed by saving a vendor", async () => {
+    const config = await configuration();
+    await config.management.initialize(settings([vendor(), vendor("other")]));
+    await config.management.saveCliPreferences({ defaultModelId: "primary-model" });
+    const unrelated = await config.management.saveVendor({
+      vendor: { ...vendor("other"), models: [] },
+      credential: { type: "keep" },
+    });
+    expect(unrelated.settings.cli?.defaultModelId).toBe("primary-model");
+    const removed = await config.management.saveVendor({
+      vendor: { ...vendor(), models: [] },
+      credential: { type: "keep" },
+    });
+    expect(removed.settings.cli?.defaultModelId).toBeUndefined();
+    expect((await config.management.getSnapshot())!.settings.cli?.defaultModelId).toBeUndefined();
+  });
+
+  it("clears the CLI default when its vendor is deleted without adopting the fallback model", async () => {
+    const config = await configuration();
+    const initial = settings([vendor(), vendor("other")]);
+    initial.gateway.fallbackModelId = "other-model";
+    await config.management.initialize(initial);
+    await config.management.saveCliPreferences({ defaultModelId: "primary-model" });
+    const unrelated = await config.management.deleteVendor("missing-vendor");
+    expect(unrelated.settings.cli?.defaultModelId).toBe("primary-model");
+    const deleted = await config.management.deleteVendor("primary");
+    expect(deleted.settings.cli?.defaultModelId).toBeUndefined();
+    expect(deleted.settings.gateway.fallbackModelId).toBe("other-model");
+    expect((await config.management.getSnapshot())!.settings.cli?.defaultModelId).toBeUndefined();
   });
 
   it("coordinates vendor keys, snapshots, preferences, and deletion", async () => {

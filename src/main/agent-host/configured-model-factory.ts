@@ -13,7 +13,7 @@ import {
   MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
   type MimoTokenPlanCN,
 } from "../../models/mimo-token-plan-cn-contract";
-import type { AgentModelSettings } from "../../shared/agent";
+import type { AgentModelSelection, AgentModelSettings } from "../../shared/agent";
 import { getEffectiveMainMaxSteps } from "../../shared/agent-step-limits";
 import type { AgentConfiguration } from "../agent-configuration";
 
@@ -22,6 +22,29 @@ export interface PreparedConfiguredModel extends Disposable {
   readonly selection: ModelSelection;
   readonly connectionFingerprint: string;
   readonly maxSteps: number;
+}
+
+/** 宿主用同一连接身份关联已存会话；不解析凭据，也不创建模型客户端。 */
+export function configuredModelFingerprint(
+  configuredModelId: string,
+  model: AgentModelSelection,
+  maxOutputTokens: number,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        adapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+        replayVersion: 1,
+        baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+        configuredModelId,
+        configurationId: model.configurationId ?? null,
+        vendorId: model.vendorId ?? null,
+        model: model.model,
+        reasoningEffort: model.reasoningEffort ?? null,
+        maxOutputTokens,
+      }),
+    )
+    .digest("hex");
 }
 
 // 只转换适配器已脱敏的具名错误，未知异常仍由通用执行边界隐藏。
@@ -89,21 +112,11 @@ export async function prepareConfiguredModel(
         ? {}
         : { reasoningEffort: settings.reasoningEffort }),
     });
-    const connectionFingerprint = createHash("sha256")
-      .update(
-        JSON.stringify({
-          adapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-          replayVersion: 1,
-          baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
-          configuredModelId,
-          configurationId: settings.configurationId ?? null,
-          vendorId: settings.vendorId ?? null,
-          model: settings.model,
-          reasoningEffort: settings.reasoningEffort ?? null,
-          maxOutputTokens,
-        }),
-      )
-      .digest("hex");
+    const connectionFingerprint = configuredModelFingerprint(
+      configuredModelId,
+      settings,
+      maxOutputTokens,
+    );
     let provider: MimoTokenPlanCN;
     try {
       provider = createMimoTokenPlanCN({

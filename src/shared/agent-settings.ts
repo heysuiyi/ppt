@@ -32,6 +32,12 @@ const modelSchema = z
   })
   .strict();
 
+export const agentCliPreferencesSchema = z
+  .object({
+    defaultModelId: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
 export const agentSettingsSchema = z
   .object({
     vendors: z.array(
@@ -83,6 +89,7 @@ export const agentSettingsSchema = z
     stepLimits: agentStepLimitsSchema,
     executionStrategy: agentExecutionStrategySchema,
     defaultTemplateId: z.string().trim().min(1),
+    cli: agentCliPreferencesSchema.optional(),
   })
   .strict()
   .superRefine((settings, context) => {
@@ -100,6 +107,13 @@ export const agentSettingsSchema = z
     }
     if (settings.gateway.fallbackModelId && !modelIds.has(settings.gateway.fallbackModelId)) {
       context.addIssue({ code: "custom", message: "Unknown fallback model" });
+    }
+    if (settings.cli?.defaultModelId && !modelIds.has(settings.cli.defaultModelId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["cli", "defaultModelId"],
+        message: "Unknown CLI default model",
+      });
     }
   });
 

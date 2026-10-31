@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { ModelMessage } from "../../agent/model/model-contract";
+import type { ModelMessage, ModelSelection } from "../../agent/model/model-contract";
 import { AgentError, sameValue, snapshot } from "../../agent/protocol-utils";
 import type {
   CheckpointAcquireResult,
@@ -15,6 +15,7 @@ import type {
   SessionHistoryAppendResult,
   SessionHistoryStore,
 } from "../../agent/session/session-contract";
+import type { ToolsMode } from "../../tools/tools";
 import {
   type HostSessionBinding,
   type HostSessionBindingStore,
@@ -26,6 +27,79 @@ export interface SqliteAgentStores {
   readonly checkpoints: CheckpointStore;
   readonly bindings: HostSessionBindingStore;
   dispose(): Promise<void>;
+}
+
+export interface HostSessionSummary {
+  readonly threadId: string;
+  readonly model: ModelSelection;
+  readonly connectionFingerprint: string;
+  readonly toolMode: ToolsMode;
+  readonly history: readonly { readonly role: "user" | "assistant"; readonly text: string }[];
+  readonly unfinished?: {
+    readonly queryId: string;
+    readonly status: "running" | "waiting" | "interrupted";
+  };
+}
+
+const historyBatchesQuery =
+  "SELECT payload FROM general_agent_history_batches WHERE thread_id = ? ORDER BY revision";
+
+/** 仅宿主的只读投影；不取得检查点租约，也不将规范历史或重放状态暴露给 CLI。 */
+export function readSqliteAgentSessions(
+  filePath: string,
+  workspaceRoot: string,
+): readonly HostSessionSummary[] {
+  const database = new DatabaseSync(filePath, { readOnly: true });
+  try {
+    database.exec("PRAGMA busy_timeout = 5000; BEGIN");
+    const bindings = database.prepare(`
+      SELECT binding.payload
+      FROM general_agent_host_bindings AS binding
+      LEFT JOIN general_agent_checkpoints AS checkpoint
+        ON checkpoint.thread_id = binding.thread_id
+        AND checkpoint.agent_id = json_extract(binding.payload, '$.agentId')
+      WHERE json_extract(binding.payload, '$.workspaceRoot') = ?
+      GROUP BY binding.thread_id
+      ORDER BY COALESCE(MAX(checkpoint.updated_order), 0) DESC, binding.thread_id
+    `);
+    const historyBatches = database.prepare(historyBatchesQuery);
+    const unfinished = database.prepare(`
+      SELECT query_id, status FROM general_agent_checkpoints
+      WHERE agent_id = ? AND thread_id = ? AND status IN ('running', 'waiting', 'interrupted')
+      ORDER BY updated_order DESC LIMIT 1
+    `);
+    const sessions: HostSessionSummary[] = [];
+    for (const row of bindings.all(workspaceRoot)) {
+      const binding = snapshotHostSessionBinding(JSON.parse(row.payload as string));
+      const history: { role: "user" | "assistant"; text: string }[] = [];
+      for (const batch of historyBatches.all(binding.threadId)) {
+        const messages = JSON.parse(batch.payload as string) as readonly ModelMessage[];
+        for (const message of messages) {
+          if (message.role !== "user" && message.role !== "assistant") continue;
+          const text = message.content
+            .filter((content) => content.type === "text")
+            .map((content) => content.text)
+            .join("\n");
+          if (text.length > 0) history.push({ role: message.role, text });
+        }
+      }
+      const pending = unfinished.get(binding.agentId, binding.threadId) as
+        | { query_id: string; status: "running" | "waiting" | "interrupted" }
+        | undefined;
+      sessions.push({
+        threadId: binding.threadId,
+        model: binding.model,
+        connectionFingerprint: binding.connectionFingerprint,
+        toolMode: binding.toolMode,
+        history,
+        ...(pending ? { unfinished: { queryId: pending.query_id, status: pending.status } } : {}),
+      });
+    }
+    database.exec("COMMIT");
+    return sessions;
+  } finally {
+    database.close();
+  }
 }
 
 interface CheckpointRow {
@@ -105,9 +179,7 @@ export function createSqliteAgentStores(filePath: string): SqliteAgentStores {
     const historyHead = database.prepare(
       "SELECT revision FROM general_agent_history WHERE thread_id = ?",
     );
-    const historyBatches = database.prepare(
-      "SELECT payload FROM general_agent_history_batches WHERE thread_id = ? ORDER BY revision",
-    );
+    const historyBatches = database.prepare(historyBatchesQuery);
     const batchReceipt = database.prepare(
       "SELECT revision, payload FROM general_agent_history_batches WHERE thread_id = ? AND batch_id = ?",
     );

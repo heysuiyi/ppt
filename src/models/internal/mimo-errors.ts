@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { MIMO_TOKEN_PLAN_CN_MAX_OUTPUT_TOKENS } from "../mimo-token-plan-cn-contract";
 
 export type MimoModelErrorCode =
   | "CONFIGURATION"
@@ -86,7 +87,7 @@ export function nonempty(value: unknown): string {
 }
 
 export function outputBudget(value: number): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > 131072) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > MIMO_TOKEN_PLAN_CN_MAX_OUTPUT_TOKENS) {
     throw new MimoModelError("CONFIGURATION");
   }
   return value;

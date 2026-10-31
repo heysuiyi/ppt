@@ -17,17 +17,12 @@ import {
   type MimoRemoteModel,
   type MimoTokenPlanCN,
   type MimoTokenPlanCNOptions,
+  supportsMimoTokenPlanCNModel,
 } from "./mimo-token-plan-cn-contract";
 
 export type { MimoModelErrorCode } from "./internal/mimo-errors";
 export { MimoModelError } from "./internal/mimo-errors";
 
-// 官方 Responses 接口枚举；发现未知 ID 不等于已经确认其对话能力。
-const supportedModels: Readonly<Record<string, true>> = {
-  "mimo-v2.6-flash": true,
-  "mimo-v2.6-pro": true,
-  "mimo-v2.6-pro-ultraspeed": true,
-};
 const capabilities = Object.freeze({
   streaming: true,
   toolCalls: true,
@@ -197,7 +192,7 @@ export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoToke
           if (!validModelId(model.id)) throw new MimoModelError("INVALID_RESPONSE");
           if (ids.has(model.id)) continue;
           ids.add(model.id);
-          const supported = Object.hasOwn(supportedModels, model.id);
+          const supported = supportsMimoTokenPlanCNModel(model.id);
           result.push({
             id: model.id,
             supported,
@@ -223,7 +218,7 @@ export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoToke
       ) {
         throw new MimoModelError("CONFIGURATION");
       }
-      if (!Object.hasOwn(supportedModels, selection.modelId))
+      if (!supportsMimoTokenPlanCNModel(selection.modelId))
         throw new MimoModelError("MODEL_CAPABILITY");
       const selected = Object.freeze({
         providerId: selection.providerId,
