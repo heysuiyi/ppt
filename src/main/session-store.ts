@@ -69,7 +69,7 @@ import {
 import { getSessionSandboxPath, isLegacyProjectSandboxPath } from "@shared/workspace-meta";
 import { z } from "zod";
 import { createModuleLogger } from "./agent/logger";
-import { writeTextFileAtomic } from "./agent/persistence/atomic-json-file";
+import { writeTextFileAtomic } from "../tools/internal/atomic";
 import { ConversationDatabase } from "./conversation-database";
 import { ExportHistoryService, GenerationJobsService } from "./deck/deck-persistence-services";
 import type { ArtifactChangeObserverPort } from "./presentation-lifecycle/artifact-change-observer-types";

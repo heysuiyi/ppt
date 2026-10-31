@@ -13,7 +13,7 @@ import { classifyToolExecutionError } from "../src/main/agent/runtime/tools/tool
 import {
   WorkspaceFileError,
   WorkspaceFileService,
-} from "../src/main/agent/tools/files/workspace-file-service";
+} from "../src/tools/internal/workspace-file-service";
 import type { ToolContext } from "../src/main/agent/tools/tool-definition";
 import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";
 import { buildWorkspaceSection } from "../src/main/plugins/ppt/prompts/prompt-sections";

@@ -11,7 +11,7 @@ import {
   LEGACY_CREDENTIAL_STORE_FILE_NAME,
 } from "@shared/credentials";
 import { z } from "zod";
-import { readJsonFile, writeTextFileAtomic } from "../../agent/persistence/atomic-json-file";
+import { readJsonFile, writeTextFileAtomic } from "../../../tools/internal/atomic";
 import {
   type CredentialStatusRequest,
   credentialStatusRequestSchema,

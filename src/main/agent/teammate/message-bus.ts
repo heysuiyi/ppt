@@ -1,7 +1,7 @@
 import { mkdir, open, readdir, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { readJsonFile, writeJsonFileAtomic } from "../persistence/atomic-json-file";
+import { readJsonFile, writeJsonFileAtomic } from "../../../tools/internal/atomic";
 
 type LockRelease = () => Promise<void>;
 type LockOptions = {

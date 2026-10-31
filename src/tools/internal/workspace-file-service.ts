@@ -1,10 +1,6 @@
 import { lstatSync, realpathSync } from "node:fs";
 import { relative, resolve } from "node:path";
-import {
-  AtomicWriteConflictError,
-  withAtomicFileTransaction,
-  writeTextFileAtomic,
-} from "../../persistence/atomic-json-file";
+import { AtomicWriteConflictError, withAtomicFileTransaction, writeTextFileAtomic } from "./atomic";
 import {
   classifyWorkspaceErrorsAfterSideEffect,
   createAtomicCommitGuard,

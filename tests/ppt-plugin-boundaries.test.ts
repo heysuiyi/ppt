@@ -11,7 +11,7 @@ import { DurableRunStore } from "@main/agent/persistence/durable-run-store";
 import { AgentRunFactory } from "@main/agent/runtime/agent-run-factory";
 import { AgentRuntime } from "@main/agent/runtime/agent-runtime";
 import { workspaceFileTools as teammateFileTools } from "@main/agent/subagent/workspace-tools";
-import { WorkspaceFileService } from "@main/agent/tools/files/workspace-file-service";
+import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
 import { createHostToolRegistry } from "@main/agent/tools/host-tools";
 import type { ToolContext } from "@main/agent/tools/tool-definition";
 import { createPptFilePolicy } from "@main/plugins/ppt/file-policy";

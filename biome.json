@@ -97,6 +97,39 @@
       }
     },
     {
+      "includes": ["src/tools/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "**/main/**",
+                      "@main/**",
+                      "electron",
+                      "electron/**",
+                      "**/shared/**",
+                      "@shared/**",
+                      "**/ppt/**",
+                      "@ppt/**",
+                      "**/renderer/**",
+                      "**/design-system/**",
+                      "@design-system",
+                      "@design-system/**"
+                    ],
+                    "message": "基础工具只能依赖通用执行协议和自身实现，不能依赖宿主或业务领域。"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": [
         "src/renderer/src/components/Button.tsx",
         "src/renderer/src/components/Field.tsx",

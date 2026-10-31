@@ -8,7 +8,7 @@ import {
   type WorkspaceFileReadResult,
   type WorkspaceFileReceipt,
   WorkspaceFileService,
-} from "../agent/tools/files/workspace-file-service";
+} from "../../tools/internal/workspace-file-service";
 import type {
   ArtifactChangeObservationSource,
   ArtifactChangeObserverPort,

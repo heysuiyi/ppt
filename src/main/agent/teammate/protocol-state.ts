@@ -1,4 +1,4 @@
-import { readJsonFile, writeJsonFileAtomic } from "../persistence/atomic-json-file";
+import { readJsonFile, writeJsonFileAtomic } from "../../../tools/internal/atomic";
 import type { AgentMailboxMessage } from "./message-bus";
 
 export type ProtocolType = "shutdown" | "plan_approval";

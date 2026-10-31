@@ -24,6 +24,8 @@
     "vitest.config.ts",
     "src/main/**/*.ts",
     "src/agent/**/*.ts",
+    "src/logs/**/*.ts",
+    "src/tools/**/*.ts",
     "src/ppt/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",

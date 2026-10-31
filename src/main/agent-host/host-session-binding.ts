@@ -1,12 +1,14 @@
 import type { ModelSelection } from "../../agent/model/model-contract";
 import { AgentError, snapshot } from "../../agent/protocol-utils";
+import type { ToolsMode } from "../../tools/tools";
 
 /** 仅宿主保存的恢复边界，不进入内核协议，也不携带连接凭据或地址。 */
 export interface HostSessionBinding {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly agentId: string;
   readonly threadId: string;
   readonly workspaceRoot: string;
+  readonly toolMode: ToolsMode;
   readonly model: ModelSelection;
   readonly connectionFingerprint: string;
   readonly definition: { readonly id: string; readonly version: string };
@@ -45,21 +47,34 @@ function versioned(value: unknown): value is { readonly id: string; readonly ver
 export function snapshotHostSessionBinding(binding: HostSessionBinding): HostSessionBinding {
   const detached: unknown = snapshot(binding);
   if (
+    detached !== null &&
+    typeof detached === "object" &&
+    "schemaVersion" in detached &&
+    detached.schemaVersion !== 2
+  ) {
+    throw new AgentError(
+      "HOST_BINDING_VERSION_UNSUPPORTED",
+      "Host session binding version is unsupported; start a new thread.",
+    );
+  }
+  if (
     !objectWithKeys(detached, [
       "schemaVersion",
       "agentId",
       "threadId",
       "workspaceRoot",
+      "toolMode",
       "model",
       "connectionFingerprint",
       "definition",
       "plugins",
       "maxSteps",
     ]) ||
-    detached.schemaVersion !== 1 ||
+    detached.schemaVersion !== 2 ||
     !nonempty(detached.agentId) ||
     !nonempty(detached.threadId) ||
     !nonempty(detached.workspaceRoot) ||
+    (detached.toolMode !== "read-only" && detached.toolMode !== "read-write") ||
     !nonempty(detached.connectionFingerprint) ||
     !Number.isSafeInteger(detached.maxSteps) ||
     (detached.maxSteps as number) <= 0 ||

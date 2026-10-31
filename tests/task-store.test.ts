@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { writeTextFileAtomic } from "../src/main/agent/persistence/atomic-json-file";
+import { writeTextFileAtomic } from "../src/tools/internal/atomic";
 import {
   LEAD_TASK_PERMISSIONS,
   type PersistedTaskList,

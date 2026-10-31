@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it } from "vitest";
-import { WorkspaceFileService } from "../src/main/agent/tools/files/workspace-file-service";
+import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
 import type { ToolContext } from "../src/main/agent/tools/tool-definition";
 import { previewSvgPageTool } from "../src/main/plugins/ppt/tools/preview-svg-page";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";

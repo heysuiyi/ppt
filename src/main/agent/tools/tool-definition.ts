@@ -28,7 +28,7 @@ import type { TaskCommandPrincipal, TaskStore } from "../task/task-store";
 import type { MessageBus } from "../teammate/message-bus";
 import type { TeammateManager } from "../teammate/spawn-teammate";
 import type { WorkspaceFilePolicy } from "./files/workspace-file-policy";
-import type { WorkspaceFileService } from "./files/workspace-file-service";
+import type { WorkspaceFileService } from "../../../tools/internal/workspace-file-service";
 import type { ToolRegistry } from "./tool-registry";
 
 /**

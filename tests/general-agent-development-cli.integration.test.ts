@@ -42,6 +42,12 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
             path: "notes.txt",
             content: "revision created after approval request",
           });
+          expect(JSON.parse(messages.at(-1)!.content)).toMatchObject({
+            startOffset: 0,
+            endOffset: "revision created after approval request".length,
+            hasMore: false,
+            version: expect.any(String),
+          });
           message = { role: "assistant", content: "The approved notes.txt was read." };
         } else
           message = {
@@ -52,7 +58,7 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
               {
                 id: "read-integration",
                 type: "function",
-                function: { name: "ReadFile", arguments: JSON.stringify({ path: "notes.txt" }) },
+                function: { name: "read", arguments: JSON.stringify({ path: "notes.txt" }) },
               },
             ],
           };
@@ -191,6 +197,13 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
       expect(waiting.records).toEqual(
         expect.arrayContaining([expect.objectContaining({ type: "result", status: "waiting" })]),
       );
+      expect(waiting.records).toContainEqual(
+        expect.objectContaining({
+          type: "approval",
+          tool: "read",
+          path: "notes.txt",
+        }),
+      );
       expect(requests).toHaveLength(1);
       await writeFile(
         join(workspace, "notes.txt"),
@@ -208,7 +221,7 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
           expect.objectContaining({ type: "result", status: "completed" }),
           expect.objectContaining({
             type: "tool.completed",
-            tool: "ReadFile",
+            tool: "read",
             status: "succeeded",
             effects: "none",
           }),

@@ -1,11 +1,19 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { constants, realpathSync, type Stats } from "node:fs";
-import { link, lstat, mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
+import { link, lstat, mkdir, open, opendir, rename, unlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 
 const REPLACEMENT_MANIFEST_SUFFIX = ".atomic-replace.json";
 const REPLACEMENT_BACKUP_MARKER = ".atomic-old.";
+
+export interface AtomicIoLimits {
+  maxFileBytes: number;
+  maxScanEntries: number;
+}
+
+const atomicIoLimits = new AsyncLocalStorage<AtomicIoLimits | undefined>();
 
 type LockRelease = () => Promise<void>;
 type ProperLockfile = {
@@ -69,6 +77,8 @@ export interface AtomicCommitGuard {
   validatePath: () => Promise<void>;
   validateDisplaced: (displacedPath: string | undefined) => Promise<void>;
   validateCommitted?: (committedPath: string) => Promise<void>;
+  beforePublish?: () => void;
+  onPublished?: () => void;
 }
 
 export interface AtomicTextWriteOptions {
@@ -79,6 +89,7 @@ export interface AtomicTextWriteOptions {
    */
   temporaryDirectory?: string;
   commitGuard?: AtomicCommitGuard;
+  ioLimits?: AtomicIoLimits;
 }
 
 export class AtomicWriteConflictError extends Error {
@@ -103,6 +114,7 @@ export async function withAtomicFileTransaction<T>(
   filePath: string,
   transactionDirectory: string,
   operation: (recover: LockedRecovery) => Promise<T>,
+  ioLimits?: AtomicIoLimits,
 ): Promise<T> {
   await mkdir(transactionDirectory, { recursive: true });
   const lockTarget = replacementManifestPath(filePath, transactionDirectory);
@@ -117,9 +129,17 @@ export async function withAtomicFileTransaction<T>(
     },
   });
   try {
-    return await operation(
-      async (validatePath) =>
-        await recoverInterruptedReplacementUnlocked(filePath, transactionDirectory, validatePath),
+    return await atomicIoLimits.run(
+      ioLimits ?? atomicIoLimits.getStore(),
+      async () =>
+        await operation(
+          async (validatePath) =>
+            await recoverInterruptedReplacementUnlocked(
+              filePath,
+              transactionDirectory,
+              validatePath,
+            ),
+        ),
     );
   } finally {
     await release();
@@ -160,7 +180,7 @@ export async function readJsonFile<T>(filePath: string): Promise<T | undefined> 
  */
 export async function writeJsonFileAtomic(filePath: string, value: unknown): Promise<void> {
   try {
-    const current = await readFile(filePath, "utf8");
+    const current = (await readRegularFile(filePath)).bytes.toString("utf8");
     JSON.parse(current);
     await writeTextFileAtomic(`${filePath}.bak`, current);
   } catch (error) {
@@ -178,17 +198,22 @@ export async function writeTextFileAtomic(
   await mkdir(targetDirectory, { recursive: true });
   const temporaryDirectory = options.temporaryDirectory ?? targetDirectory;
   await mkdir(temporaryDirectory, { recursive: true });
-  await withAtomicFileTransaction(filePath, temporaryDirectory, async (recover) => {
-    const recoveredInterruptedCommit = await recover(options.commitGuard?.validatePath);
-    if (options.commitGuard && recoveredInterruptedCommit) {
-      throw new AtomicWriteConflictError(
-        "Recovered an interrupted replacement before this guarded write; re-read before retrying.",
-        undefined,
-        "uncertain",
-      );
-    }
-    await writeTextFileAtomicLocked(filePath, payload, temporaryDirectory, options);
-  });
+  await withAtomicFileTransaction(
+    filePath,
+    temporaryDirectory,
+    async (recover) => {
+      const recoveredInterruptedCommit = await recover(options.commitGuard?.validatePath);
+      if (options.commitGuard && recoveredInterruptedCommit) {
+        throw new AtomicWriteConflictError(
+          "Recovered an interrupted replacement before this guarded write; re-read before retrying.",
+          undefined,
+          "uncertain",
+        );
+      }
+      await writeTextFileAtomicLocked(filePath, payload, temporaryDirectory, options);
+    },
+    options.ioLimits,
+  );
 }
 
 async function writeTextFileAtomicLocked(
@@ -380,6 +405,7 @@ async function guardedReplace(
 
   try {
     await guard.validatePath();
+    guard.beforePublish?.();
     if (guard.expectedTargetExists) {
       await rename(targetPath, transaction.backupPath);
       displaced = true;
@@ -390,8 +416,10 @@ async function guardedReplace(
 
     await guard.validateDisplaced(displaced ? transaction.backupPath : undefined);
     await guard.validatePath();
+    guard.beforePublish?.();
     await link(sourcePath, targetPath);
     installed = true;
+    guard.onPublished?.();
     const committedFingerprint = await fingerprintPath(targetPath);
     if (!fingerprintsMatch(newFingerprint, committedFingerprint)) {
       throw new AtomicWriteConflictError(
@@ -415,6 +443,14 @@ async function guardedReplace(
     await unlink(transaction.manifestPath);
     await syncReplacementDirectories(transaction);
   } catch (error) {
+    // New tools retain a published effect even if receipt verification or cleanup fails.
+    if (installed && guard.onPublished) {
+      throw new AtomicWriteConflictError(
+        "Replacement was published but completion could not be verified.",
+        error,
+        "uncertain",
+      );
+    }
     if (commitFinalized) {
       throw new AtomicWriteConflictError(
         "Replacement committed, but durable cleanup could not be verified.",
@@ -677,7 +713,22 @@ async function findOrphanedBackups(
 ): Promise<string[]> {
   const prefix = `${basename(canonicalizeAbsolutePath(filePath))}.${replacementTargetKey(filePath)}${REPLACEMENT_BACKUP_MARKER}`;
   try {
-    return (await readdir(transactionDirectory)).filter((entry) => entry.startsWith(prefix)).sort();
+    const entries: string[] = [];
+    const directory = await opendir(transactionDirectory);
+    let scanned = 0;
+    try {
+      while (true) {
+        const entry = await directory.read();
+        if (!entry) break;
+        if (++scanned > (atomicIoLimits.getStore()?.maxScanEntries ?? Infinity)) {
+          throw recoveryAmbiguity("Atomic recovery directory exceeds its scan limit.");
+        }
+        if (entry.name.startsWith(prefix)) entries.push(entry.name);
+      }
+    } finally {
+      await directory.close();
+    }
+    return entries.sort();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
@@ -753,7 +804,18 @@ async function readRegularFile(filePath: string): Promise<StableBinaryFile> {
     if (!before.isFile()) {
       throw new Error(`Atomic replacement supports regular files only: ${filePath}`);
     }
-    const bytes = await handle.readFile();
+    const maxBytes = atomicIoLimits.getStore()?.maxFileBytes;
+    if (maxBytes !== undefined && before.size > maxBytes) {
+      throw new AtomicWriteConflictError("Atomic file exceeds its byte limit.");
+    }
+    const storage = Buffer.allocUnsafe(before.size + 1);
+    let length = 0;
+    while (length < storage.length) {
+      const { bytesRead } = await handle.read(storage, length, storage.length - length, null);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    const bytes = storage.subarray(0, length);
     const after = await handle.stat();
     const pathAfter = await lstat(filePath);
     if (
@@ -764,7 +826,8 @@ async function readRegularFile(filePath: string): Promise<StableBinaryFile> {
       !sameIdentity(after, pathAfter) ||
       before.size !== after.size ||
       before.mtimeMs !== after.mtimeMs ||
-      before.ctimeMs !== after.ctimeMs
+      before.ctimeMs !== after.ctimeMs ||
+      bytes.length !== after.size
     ) {
       throw new AtomicWriteConflictError(
         `File changed while computing an atomic fingerprint: ${filePath}`,

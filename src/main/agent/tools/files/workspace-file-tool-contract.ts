@@ -12,7 +12,7 @@ import {
   globWorkspaceFiles,
   WorkspaceFileError,
   type WorkspaceFileService,
-} from "./workspace-file-service";
+} from "../../../../tools/internal/workspace-file-service";
 
 export interface WorkspaceFileToolContext {
   readonly workspaceRoot?: string;

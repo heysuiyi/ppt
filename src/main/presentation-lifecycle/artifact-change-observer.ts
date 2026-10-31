@@ -6,7 +6,7 @@ import type {
   ArtifactRevision,
   ContentHash,
 } from "@shared/presentation-lifecycle";
-import { WorkspaceFileService } from "../agent/tools/files/workspace-file-service";
+import { WorkspaceFileService } from "../../tools/internal/workspace-file-service";
 import { loadWorkspaceSvgPage } from "../plugins/ppt/svg-page-loader";
 import type {
   ArtifactChangeObserverPort,

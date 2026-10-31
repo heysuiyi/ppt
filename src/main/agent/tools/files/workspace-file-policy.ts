@@ -1,4 +1,4 @@
-import type { WorkspaceFileService } from "./workspace-file-service";
+import type { WorkspaceFileService } from "../../../../tools/internal/workspace-file-service";
 
 /** Domain checks run inside the shared file pipeline, without replacing its safety checks. */
 export interface WorkspaceFilePolicy {

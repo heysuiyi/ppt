@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   }).catch(() => {});
 
   const moduleUrl = pathToFileURL(
-    resolve("src/main/agent/tools/files/workspace-file-service.ts"),
+    resolve("src/tools/internal/workspace-file-service.ts"),
   ).href;
   const { WorkspaceFileService } = await import(moduleUrl);
   const service = new WorkspaceFileService(workspaceRoot);

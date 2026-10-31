@@ -11,7 +11,7 @@ import type {
   AgentModelRequest,
   AgentModelResponse,
 } from "../src/main/agent/gateway/types";
-import { WorkspaceFileService } from "../src/main/agent/tools/files/workspace-file-service";
+import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { recoverInterruptedExport } from "../src/main/deck/export-recovery";
 import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";

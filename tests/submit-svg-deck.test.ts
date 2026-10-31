@@ -5,7 +5,7 @@ import { requirePresentation } from "@main/plugins/ppt/context";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { WorkspaceFileService } from "../src/main/agent/tools/files/workspace-file-service";
+import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
 import type { ToolContext } from "../src/main/agent/tools/tool-definition";
 import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";
 import { CommitGate } from "../src/main/plugins/ppt/gate/commit-gate";

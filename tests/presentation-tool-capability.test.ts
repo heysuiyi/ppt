@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ToolPreflight } from "../src/main/agent/runtime/tools/tool-preflight";
 import { executeExtraToolTool } from "../src/main/agent/tools/core/execute-extra-tool";
-import { WorkspaceFileService } from "../src/main/agent/tools/files/workspace-file-service";
+import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
 import type {
   PptLifecycleToolBridge,
   ToolContext,

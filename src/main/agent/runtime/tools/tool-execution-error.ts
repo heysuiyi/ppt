@@ -1,4 +1,4 @@
-import { WorkspaceFileError } from "../../tools/files/workspace-file-service";
+import { WorkspaceFileError } from "../../../../tools/internal/workspace-file-service";
 
 export interface ToolExecutionErrorClassification {
   message: string;

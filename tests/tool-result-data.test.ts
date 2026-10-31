@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { prepareToolResultData } from "../src/main/agent/runtime/tools/tool-result-data";
-import { WorkspaceFileService } from "../src/main/agent/tools/files/workspace-file-service";
+import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
 import { formatReadFileResultForModel } from "../src/main/agent/tools/files/workspace-file-tool-contract";
 import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
 import {

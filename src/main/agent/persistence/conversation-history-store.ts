@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { Storage } from "../../storage";
 import type { AgentModelMessage } from "../gateway";
-import { readJsonFile, writeJsonFileAtomic } from "./atomic-json-file";
+import { readJsonFile, writeJsonFileAtomic } from "../../../tools/internal/atomic";
 
 export interface ConversationHistoryStore {
   load(threadId: string): Promise<AgentModelMessage[] | undefined>;

@@ -23,7 +23,7 @@ import {
   recoverInterruptedReplacement,
   withAtomicFileTransaction,
   writeTextFileAtomic,
-} from "../src/main/agent/persistence/atomic-json-file";
+} from "../src/tools/internal/atomic";
 import { ToolPreflight } from "../src/main/agent/runtime/tools/tool-preflight";
 import {
   SUB_AGENT_TOOL_HANDLERS,
@@ -37,7 +37,7 @@ import {
   globWorkspaceFiles,
   WorkspaceFileError,
   WorkspaceFileService,
-} from "../src/main/agent/tools/files/workspace-file-service";
+} from "../src/tools/internal/workspace-file-service";
 import type { ToolContext } from "../src/main/agent/tools/tool-definition";
 import type { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";

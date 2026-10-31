@@ -18,7 +18,7 @@ import {
   assertDesignSystemMatchesTemplate,
   resolveProjectTemplate,
 } from "@shared/template-resolver";
-import type { WorkspaceFileService } from "../../../agent/tools/files/workspace-file-service";
+import type { WorkspaceFileService } from "../../../../tools/internal/workspace-file-service";
 
 export interface WorkspaceTemplateState {
   policy: ProjectTemplatePolicy;

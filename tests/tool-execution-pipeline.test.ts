@@ -12,7 +12,7 @@ import type { PreToolUseBlock } from "../src/main/agent/runtime/tools/permission
 import { ToolExecutionEngine } from "../src/main/agent/runtime/tools/tool-execution-engine";
 import { executeExtraToolTool } from "../src/main/agent/tools/core/execute-extra-tool";
 import { searchExtraToolsTool } from "../src/main/agent/tools/core/search-extra-tools";
-import { WorkspaceFileError } from "../src/main/agent/tools/files/workspace-file-service";
+import { WorkspaceFileError } from "../src/tools/internal/workspace-file-service";
 import type { ToolContext, ToolDefinition } from "../src/main/agent/tools/tool-definition";
 import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";

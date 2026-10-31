@@ -22,7 +22,7 @@ import {
   textFromContentBlocks,
   toolUseBlocksFromContent,
 } from "../gateway";
-import { readJsonFile, writeJsonFileAtomic } from "../persistence/atomic-json-file";
+import { readJsonFile, writeJsonFileAtomic } from "../../../tools/internal/atomic";
 import { ensureDefaultHooks } from "../runtime/hooks/default-hooks";
 import type { PostToolUseBlock, StopBlock } from "../runtime/hooks/hook-blocks";
 import { triggerHooks } from "../runtime/hooks/hook-registry";
@@ -39,7 +39,7 @@ import {
 } from "../subagent/workspace-tools";
 import type { TaskListSnapshotListener } from "../task/task-list-publisher";
 import { TaskStore } from "../task/task-store";
-import { WorkspaceFileService } from "../tools/files/workspace-file-service";
+import { WorkspaceFileService } from "../../../tools/internal/workspace-file-service";
 import { parseToolInput } from "../tools/tool-input";
 import { toToolInputSchema } from "../tools/tool-schema";
 import { validateToolOutput } from "../tools/tool-validation";

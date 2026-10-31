@@ -3,7 +3,7 @@ import type { WorkspaceFilePolicy } from "../../agent/tools/files/workspace-file
 import {
   WorkspaceFileError,
   type WorkspaceFileService,
-} from "../../agent/tools/files/workspace-file-service";
+} from "../../../tools/internal/workspace-file-service";
 import type { PptLifecycleToolBridge } from "../../agent/tools/tool-definition";
 import { assertDesignSpecMatchesTemplatePolicy } from "./tools/project-template-state";
 import {

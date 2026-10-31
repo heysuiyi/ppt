@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { WorkspaceFileService } from "@main/agent/tools/files/workspace-file-service";
+import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
 import { readFileContract, writeFileContract } from "@main/plugins/ppt/workspace-files";
 import { PresentationArtifactChangeObserver } from "@main/presentation-lifecycle/artifact-change-observer";
 import type { ArtifactChangeObserverPort } from "@main/presentation-lifecycle/artifact-change-observer-types";

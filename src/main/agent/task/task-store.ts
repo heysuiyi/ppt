@@ -10,7 +10,7 @@ import {
   hasDependencyCycle,
   type TaskCompletionPolicy,
 } from "@shared/agent-task-list";
-import { readJsonFile, writeJsonFileAtomic } from "../persistence/atomic-json-file";
+import { readJsonFile, writeJsonFileAtomic } from "../../../tools/internal/atomic";
 
 export type TaskPermission =
   | "task:create"

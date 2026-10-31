@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { AgentExecutionStrategy, AgentModelSelection } from "@shared/agent";
 import type { AgentConversationMessage } from "@shared/session-recovery";
 import type { Storage } from "../../storage";
-import { readJsonFile, writeJsonFileAtomic, writeTextFileAtomic } from "./atomic-json-file";
+import { readJsonFile, writeJsonFileAtomic, writeTextFileAtomic } from "../../../tools/internal/atomic";
 
 interface DurableMemoryEntry {
   threadId: string;

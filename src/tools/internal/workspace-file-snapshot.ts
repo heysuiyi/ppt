@@ -9,11 +9,17 @@ import {
 } from "./workspace-file-types";
 import { sameFileIdentity } from "./workspace-path-guard";
 
+export interface SnapshotReadBudget {
+  remaining: number;
+}
+
 export async function readSnapshotIfPresent(
   absolutePath: string,
+  maxBytes?: number,
+  signal?: AbortSignal,
 ): Promise<StableFileSnapshot | undefined> {
   try {
-    return await readStableSnapshot(absolutePath);
+    return await readStableSnapshot(absolutePath, maxBytes, signal);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
@@ -23,8 +29,11 @@ export async function readSnapshotIfPresent(
 export async function readStableSnapshot(
   absolutePath: string,
   maxBytes?: number,
+  signal?: AbortSignal,
+  budget?: SnapshotReadBudget,
 ): Promise<StableFileSnapshot> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    signal?.throwIfAborted();
     const lexicalStats = await lstat(absolutePath);
     assertRegularFile(lexicalStats, absolutePath);
     assertFileSizeWithinLimit(lexicalStats.size, maxBytes, absolutePath);
@@ -39,7 +48,22 @@ export async function readStableSnapshot(
       const before = await handle.stat();
       assertRegularFile(before, absolutePath);
       assertFileSizeWithinLimit(before.size, maxBytes, absolutePath);
-      const bytes = await handle.readFile();
+      assertFileSizeWithinLimit(before.size, budget?.remaining, absolutePath);
+      // One sentinel byte detects growth without an unbounded readFile allocation.
+      const capacity = Math.min(before.size, maxBytes ?? before.size) + 1;
+      const storage = Buffer.allocUnsafe(capacity);
+      let length = 0;
+      while (length < capacity) {
+        signal?.throwIfAborted();
+        const available = Math.min(capacity - length, budget?.remaining ?? capacity);
+        if (available === 0) break;
+        const { bytesRead } = await handle.read(storage, length, available, null);
+        if (budget) budget.remaining -= bytesRead;
+        if (bytesRead === 0) break;
+        length += bytesRead;
+      }
+      assertFileSizeWithinLimit(length, maxBytes, absolutePath);
+      const bytes = storage.subarray(0, length);
       const after = await handle.stat();
       const pathAfter = await lstat(absolutePath);
       assertRegularFile(pathAfter, absolutePath);
@@ -49,7 +73,8 @@ export async function readStableSnapshot(
         sameFileIdentity(after, pathAfter) &&
         before.mtimeMs === after.mtimeMs &&
         before.ctimeMs === after.ctimeMs &&
-        before.size === after.size
+        before.size === after.size &&
+        bytes.length === after.size
       ) {
         const content = decodeUtf8(bytes, absolutePath);
         return {
@@ -144,6 +169,7 @@ export function assertSameSnapshot(
     expected.mtimeMs !== actual.mtimeMs ||
     expected.ctimeMs !== actual.ctimeMs ||
     expected.size !== actual.size ||
+    expected.mode !== actual.mode ||
     expected.dev !== actual.dev ||
     expected.ino !== actual.ino
   ) {

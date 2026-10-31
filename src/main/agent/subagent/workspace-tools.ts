@@ -18,7 +18,7 @@ import {
   canonicalizeWorkspaceRoot,
   WorkspaceFileError,
   WorkspaceFileService,
-} from "../tools/files/workspace-file-service";
+} from "../../../tools/internal/workspace-file-service";
 import {
   editFileContract,
   globFilesContract,

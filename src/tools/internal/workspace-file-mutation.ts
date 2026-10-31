@@ -1,6 +1,6 @@
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import type { AtomicCommitGuard } from "../../persistence/atomic-json-file";
+import type { AtomicCommitGuard } from "./atomic";
 import { assertWrittenContent, readStableSnapshot } from "./workspace-file-snapshot";
 import {
   type StableFileSnapshot,
@@ -44,9 +44,14 @@ export function createAtomicCommitGuard(input: {
   current: StableFileSnapshot | undefined;
   expectedContent: string;
   onCommitted: (snapshot: StableFileSnapshot) => void;
+  maxBytes?: number;
+  signal?: AbortSignal;
+  onPublished?: () => void;
 }): AtomicCommitGuard {
   return {
     expectedTargetExists: input.current !== undefined,
+    beforePublish: () => input.signal?.throwIfAborted(),
+    ...(input.onPublished ? { onPublished: input.onPublished } : {}),
     validatePath: input.pathGuard.validate,
     async validateDisplaced(displacedPath) {
       if (!input.current) {
@@ -64,12 +69,12 @@ export function createAtomicCommitGuard(input: {
           "The destination disappeared while the write was being committed.",
         );
       }
-      const displaced = await readStableSnapshot(displacedPath);
+      const displaced = await readStableSnapshot(displacedPath, input.maxBytes);
       assertSameDisplacedSnapshot(input.current, displaced, input.path);
     },
     async validateCommitted(committedPath) {
       await input.pathGuard.validate();
-      const committed = await readStableSnapshot(committedPath);
+      const committed = await readStableSnapshot(committedPath, input.maxBytes);
       assertWrittenContent(committed, input.expectedContent, input.path);
       input.onCommitted(committed);
     },

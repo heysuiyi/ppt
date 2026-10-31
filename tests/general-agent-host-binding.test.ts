@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelMessage } from "../src/agent/model/model-contract";
 import type { HostSessionBinding } from "../src/main/agent-host/host-session-binding";
@@ -30,14 +31,15 @@ function openStores(path: string): SqliteAgentStores {
 
 function binding(overrides: Partial<HostSessionBinding> = {}): HostSessionBinding {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     agentId: "development-agent",
     threadId: "thread",
     workspaceRoot: join(tmpdir(), "bound-workspace"),
+    toolMode: "read-only",
     model: { providerId: "configured-gateway", modelId: "model", reasoningEffort: "high" },
     connectionFingerprint: "a".repeat(64),
     definition: { id: "general", version: "1" },
-    plugins: [{ id: "files", version: "1" }],
+    plugins: [{ id: "tools", version: "1" }],
     maxSteps: 12,
     ...overrides,
   };
@@ -105,6 +107,7 @@ describe("persistent host session bindings", () => {
     const changes: Partial<HostSessionBinding>[] = [
       { agentId: "other-agent" },
       { workspaceRoot: join(tmpdir(), "private-workspace") },
+      { toolMode: "read-write" },
       { model: { ...original.model, providerId: "other-provider" } },
       { model: { ...original.model, modelId: "other-model" } },
       { model: { ...original.model, reasoningEffort: "low" } },
@@ -113,7 +116,7 @@ describe("persistent host session bindings", () => {
       { definition: { ...original.definition, id: "other-definition" } },
       { definition: { ...original.definition, version: "2" } },
       { plugins: [{ id: "other-plugin", version: "1" }] },
-      { plugins: [{ id: "files", version: "2" }] },
+      { plugins: [{ id: "tools", version: "2" }] },
       { plugins: [] },
       { maxSteps: original.maxSteps + 1 },
     ];
@@ -123,6 +126,40 @@ describe("persistent host session bindings", () => {
     }
     await stores.bindings.ensure(binding({ threadId: "separate-thread", agentId: "other-agent" }));
     expect(await stores.bindings.read("separate-thread")).toMatchObject({ agentId: "other-agent" });
+  });
+
+  it("explicitly rejects a persisted legacy binding without migrating or replacing it", async () => {
+    const path = databasePath();
+    const first = openStores(path);
+    await first.dispose();
+    const database = new DatabaseSync(path);
+    try {
+      const { toolMode: _toolMode, ...fields } = binding();
+      const legacy = {
+        ...fields,
+        schemaVersion: 1,
+        definition: { id: "general-file-assistant", version: "1" },
+        plugins: [{ id: "files", version: "1" }],
+      };
+      const payload = JSON.stringify(legacy);
+      database
+        .prepare("INSERT INTO general_agent_host_bindings (thread_id, payload) VALUES (?, ?)")
+        .run("thread", payload);
+      const reopened = openStores(path);
+      const unsupported = {
+        code: "HOST_BINDING_VERSION_UNSUPPORTED",
+        message: "Host session binding version is unsupported; start a new thread.",
+      };
+      await expect(reopened.bindings.read("thread")).rejects.toMatchObject(unsupported);
+      await expect(reopened.bindings.ensure(binding())).rejects.toMatchObject(unsupported);
+      expect(
+        database
+          .prepare("SELECT payload FROM general_agent_host_bindings WHERE thread_id = ?")
+          .get("thread"),
+      ).toMatchObject({ payload });
+    } finally {
+      database.close();
+    }
   });
 
   it("refuses adoption of unbound history, including an empty committed batch", async () => {
@@ -185,10 +222,10 @@ describe("persistent host session bindings", () => {
     const invalid: unknown[] = [
       null,
       {},
-      binding({ schemaVersion: 2 as 1 }),
       binding({ agentId: " " }),
       binding({ threadId: "" }),
       binding({ workspaceRoot: " " }),
+      binding({ toolMode: "write" as HostSessionBinding["toolMode"] }),
       binding({ connectionFingerprint: "" }),
       binding({ maxSteps: 0 }),
       binding({ maxSteps: -1 }),

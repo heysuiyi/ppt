@@ -3,7 +3,7 @@ import { constants, type Stats } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import { isAbsolute, posix, relative, resolve } from "node:path";
 import type { SvgPageResource } from "@shared/presentation";
-import type { WorkspaceFileService } from "../../agent/tools/files/workspace-file-service";
+import type { WorkspaceFileService } from "../../../tools/internal/workspace-file-service";
 import { detectSupportedRasterMime, MAX_LOCAL_IMAGE_BYTES } from "../../local-image-file";
 
 export interface HydratedSvgPage {

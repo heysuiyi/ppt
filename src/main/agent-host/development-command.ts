@@ -2,11 +2,12 @@ import type { AgentRunResult } from "../../agent/agent-contract";
 import { AgentError, asProtocolError } from "../../agent/protocol-utils";
 import type { ProtocolError } from "../../agent/protocol-values";
 import type { RuntimeEvent } from "../../agent/session/session-events";
-import { FileReadError } from "../plugins/files/file-read-port";
+import { ToolsError, type ToolsMode } from "../../tools/tools";
 
 export interface DevelopmentCommand {
   readonly modelId: string;
   readonly workspaceRoot: string;
+  readonly toolMode: ToolsMode;
   readonly threadId?: string;
   readonly queryId?: string;
   readonly resumeQueryId?: string;
@@ -23,14 +24,15 @@ npm run agent:dev -- --model <已配置模型ID> --workspace <原目录> --threa
 
 选项：
   --model       应用 Settings 中的模型配置 ID，不是远程模型名称
-  --workspace   已有工作目录；只读 UTF-8 文本，单文件最多 64 KiB
+  --workspace   已有工作目录；UTF-8 文本，单文件最多 64 KiB
+  --tools       read-only（默认：read/glob/grep）或 read-write（另启用 write/edit）
   --thread      继续指定会话；省略时创建新会话并输出 ID
   --query       新请求的 Query ID；省略时生成
   --resume      恢复已有 Query，必须同时指定 --thread
   --prompt      执行单个问题；省略时从 stdin 逐行读取
   --help        显示帮助
 
-每次 ReadFile 都等待 yes/no/cancel；EOF 保留 waiting，Ctrl+C 取消当前请求。
+每次工作区工具调用都等待 yes/no/cancel，包括显式启用的写入；EOF 保留 waiting，Ctrl+C 取消当前请求。
 AGENT_PPT_DATA_DIR 可指定已有配置根；开发状态单独存入 agent-development.sqlite。
 `;
 
@@ -39,6 +41,7 @@ export function parseDevelopmentArguments(args: readonly string[]): DevelopmentA
   const allowed: Record<string, true> = {
     "--model": true,
     "--workspace": true,
+    "--tools": true,
     "--thread": true,
     "--query": true,
     "--resume": true,
@@ -68,17 +71,22 @@ export function parseDevelopmentArguments(args: readonly string[]): DevelopmentA
   const queryId = values.get("--query");
   const resumeQueryId = values.get("--resume");
   const prompt = values.get("--prompt");
+  const toolMode = values.get("--tools") ?? "read-only";
   if (!modelId || !workspaceRoot || (resumeQueryId && (!threadId || queryId || prompt))) {
     throw new AgentError(
       "CLI_ARGUMENTS_INVALID",
       "需要 --model 与 --workspace；--resume 必须带 --thread，且不能同时提交新问题。",
     );
   }
+  if (toolMode !== "read-only" && toolMode !== "read-write") {
+    throw new AgentError("CLI_ARGUMENTS_INVALID", "--tools 必须是 read-only 或 read-write。");
+  }
   return {
     help: false,
     command: {
       modelId,
       workspaceRoot,
+      toolMode,
       ...(threadId ? { threadId } : {}),
       ...(queryId ? { queryId } : {}),
       ...(resumeQueryId ? { resumeQueryId } : {}),
@@ -88,7 +96,7 @@ export function parseDevelopmentArguments(args: readonly string[]): DevelopmentA
 }
 
 export function publicDevelopmentError(error: unknown): ProtocolError {
-  if (error instanceof FileReadError) return { code: error.code, message: error.message };
+  if (error instanceof ToolsError) return { code: error.code, message: error.message };
   return asProtocolError(error);
 }
 

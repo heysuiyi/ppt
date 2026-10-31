@@ -8,7 +8,7 @@ import type {
   TokenUsageStats,
 } from "@shared/token-usage";
 import { z } from "zod";
-import { writeJsonFileAtomic, writeTextFileAtomic } from "./agent/persistence/atomic-json-file";
+import { writeJsonFileAtomic, writeTextFileAtomic } from "../tools/internal/atomic";
 
 const usageTotalsSchema = {
   inputTokens: z.number().int().nonnegative(),

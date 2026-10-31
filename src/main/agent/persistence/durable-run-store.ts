@@ -13,7 +13,7 @@ import type { DurableBackgroundTask } from "../runtime/background/background-tas
 import type { QueryId, RunId, ThreadId } from "../runtime/query/query-types";
 import { asRunId, asThreadId } from "../runtime/query/query-types";
 import type { AgentRuntimeResult } from "../runtime/runtime-types";
-import { readJsonFile, writeJsonFileAtomic } from "./atomic-json-file";
+import { readJsonFile, writeJsonFileAtomic } from "../../../tools/internal/atomic";
 
 type LockRelease = () => Promise<void>;
 type ProperLockfile = {

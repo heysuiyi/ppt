@@ -8,7 +8,7 @@ import { LEAD_TASK_PERMISSIONS } from "../task/task-store";
 import {
   canonicalizeWorkspaceRoot,
   WorkspaceFileService,
-} from "../tools/files/workspace-file-service";
+} from "../../../tools/internal/workspace-file-service";
 import type { ToolContext, ToolDiscoverySession } from "../tools/tool-definition";
 import type { ToolRegistry } from "../tools/tool-registry";
 import { toToolSchemas } from "../tools/tool-schema";

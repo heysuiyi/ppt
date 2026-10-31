@@ -234,8 +234,15 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `src/main/agent-host/`：新内核的宿主适配，不从内核反向导入业务。
   - `createSqliteAgentStores(filePath)` 使用独立 SQLite 表持久保存历史、批次收据和检查点，不迁移或替换旧生产数据库。独立 Node 运行需要支持 `node:sqlite` 的版本（Node 22.13+；项目开发使用 Node 24）。
   - `createGatewayModelFactory(resolve)` 在宿主解析凭据与连接后绑定现有 Gateway；稳定的 `replayScope` 标识连接，私有重放校验模型、连接和规范内容。旧 Gateway 流的索引无法保证最终内容位置，因此该适配仅发布权威 `completed`，不伪造实时增量；旧 Chat 图片、远程图片 URL 和不兼容的私有推理重放明确拒绝，不静默降级。
-  - `createAgentHost()` 在独立数据库中绑定会话、规范工作目录、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 复用已签发的配置计划与真实凭据解析，只绑定主模型，不自动切换备用模型。
-- `src/main/plugins/files/`：新内核的只读文件插件，仅注册 `ReadFile`；宿主适配器复用已有路径守卫与稳定快照读取，不调用会恢复写入事务的文件入口，不依赖 `SessionSnapshot` 或 PPT。
+  - `createAgentHost()` 在独立数据库中绑定会话、规范工作目录、工具模式、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 复用已签发的配置计划与真实凭据解析，只绑定主模型，不自动切换备用模型。
+- `src/tools/`：基础工具 `read`、`write`、`edit`、`glob`、`grep` 的约定、默认实现与装配。`createTools({ workspaceRoot, mode })` 返回插件，默认 `read-only`；`read-write` 再安装写入和编辑工具，不自行批准调用。各同名文件拥有输入/输出 schema、工具定义与模型投影；内部共享路径守卫、稳定快照、观察记录、有界搜索与原子发布，不依赖 PPT 或当前宿主。
+  - `read` 按 UTF-16 单元分页（默认最多 4000 单元），后续窗口必须携带 `expectedVersion`；完整观察同一文件版本后才能替换或编辑。`write` 显式区分 `create` 与带版本的 `replace`，`edit` 使用精确文本匹配。读取记录按安装隔离，重启丢失记录后要求重新读取。
+  - `glob` 支持 `*`、`**`、`?`；`grep` 只做字面量逐行搜索，不执行正则或 Shell。遍历、文件字节数、搜索总字节数与结果都有上限，未完成扫描明确报告 `truncated`，二进制/过大文件明确列为跳过；搜索不授予修改资格。
+  - `internal/` 中迁出的安全读写与原子持久化原语也继续服务旧生产调用方，没有旧路径别名；旧 PPT 工具名称和业务提交链路未切换。原子 I/O 限制只由新工具显式启用，不对旧持久化调用新增全局限制。
+  - 可用 `createTools(options, logs.getLogger("tools"))` 注入窄 Logger；省略时不创建日志实例。执行日志关联当前 Agent/Thread/Query/Run 与工具调用 ID，只记录工具名、状态、影响、耗时和分类错误码，不采集路径、正文、搜索词或编辑载荷；审批未通过时不记录“已执行”。工具释放不关闭借用的日志系统，现有开发宿主暂未传入 Logger。
+- `src/logs/`：独立诊断日志模块，尚未替换旧 logger、Harness 埋点或现有日志面板。`logs.ts` 的 `createLogs()` 接收显式输出，`node-logs.ts` 的 `createNodeLogs()` 内聚 stderr、按日 JSONL、近期环形缓冲与管理；协议在 `log-contract.ts`。
+  - Logger 只负责记录与绑定上下文；输出配置、清理与关闭归宿主。记录先做有界快照和凭据遮蔽再分发，单个输出失败不阻止其他输出，日志不能替代规范历史或检查点。
+  - 文件写入显式根下的 `<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，日期使用 UTC；保留与清理仅处理当前实例的托管旧日文件，不读写旧日志、应用设置或 Gateway 归档。
 - `src/main/agent/`：Agent runtime、工具注册、模型网关、审批门禁、子任务
 - `src/main/agent-configuration/`：通过 `createAgentConfiguration()` 提供 `management` 和 `runtime` 两套操作，不公开 Store、凭据绑定或解密接口。
   - Renderer 只使用管理 IPC：读取无密钥快照、初始化、保存/删除厂商、保存执行偏好、修改搜索凭据、发现远程模型。厂商保存完成后才发布已提交状态；历史浏览器配置只读迁移，Main 初始化成功后清理。
@@ -264,7 +271,7 @@ PPTX exporter (hybrid: SVG background + editable text)
 - 历史与检查点不假设共享事务：先保存追加意图，再按稳定批次 ID 提交历史。崩溃后先对账；工具已派发或回答已消费、但没有持久结果时记为 `unknown`，不自动重做副作用。这不承诺外部操作恰好一次。
 - 模型流必须有权威完成响应，临时增量不作为规范历史；截断、缺失完成响应、存储失败不会被报告为成功。定义、插件或续传契约改变时必须升级相应版本。
 
-新链路的回归入口为 `tests/general-agent-*.test.ts`，覆盖真实 SQLite、真实 Gateway/SDK 到本地 HTTP 的传输、生命周期、文件工具与恢复边界。远程厂商推理需要另外配置凭据；这些本地验证不代表已经完成远程 LLM 或生产 UI 的切换验证。
+新链路的回归入口为 `tests/base-tools.test.ts` 与 `tests/general-agent-*.test.ts`，覆盖真实文件、SQLite、Gateway/SDK 到本地 HTTP 的传输、生命周期、工具授权与恢复边界。远程厂商推理需要另外配置凭据；这些本地验证不代表已经完成远程 LLM 或生产 UI 的切换验证。
 
 ### 独立通用 Agent 开发入口
 
@@ -274,7 +281,11 @@ PPTX exporter (hybrid: SVG background + editable text)
 npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --prompt "读取 notes.txt 并概括内容"
 ```
 
-省略 `--prompt` 可逐行对话，输入 `/exit` 退出。每次 `ReadFile` 都要求 `yes` / `no` / `cancel`；只允许工作目录内的常规 UTF-8 文本文件，单文件最多 64 KiB，超限不截断，路径越界、链接、不安全文件类型和二进制内容明确拒绝。不会初始化 PPT 项目产物。
+省略 `--prompt` 可逐行对话，输入 `/exit` 退出。默认安装 `read/glob/grep`，每次调用都要求 `yes` / `no` / `cancel`；使用 `--tools read-write` 才额外安装 `write/edit`，写入同样逐次审批。只允许工作目录内的常规 UTF-8 文本文件，默认单文件最多 64 KiB，超限不截断；分页读取、发现和搜索不会创建目录、锁或恢复旧写入事务。不会初始化 PPT 项目产物。
+
+```powershell
+npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --tools read-write --prompt "完整读取 notes.txt，在原内容末尾增加一行说明"
+```
 
 执行事实与结果使用逐行 JSON（构建日志和交互输入回显除外），包含 thread/query/run ID、公开执行事实和最终文本；不打印原始 SDK 异常、完整工具结果、reasoning 或私有重放状态。底层 Gateway 的本地诊断仍按日志策略保存，但不复制到开发终端；此入口禁用完整 Gateway IO 归档。Node 启动器拥有终端/管道输入，通过父子进程 IPC 传入 Electron，避免 Windows Main 丢失标准输入。
 
@@ -286,7 +297,7 @@ npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes -
 
 恢复会重新展示已存储的交互，再接收回答；每次激活生成新 `runId`。Ctrl+C 取消当前请求（退出码 130）；正常关闭中断执行，已保存等待不丢失。完成/等待退出码为 0，执行失败为 1，参数错误为 2，中断为 143；退出码 0 不代表 `waiting` 已完成，应检查结果的 `status`。
 
-配置根沿用 `getApplicationDataRoot()`：默认 `~/.agent-ppt`，可通过 `AGENT_PPT_DATA_DIR` 指向独立开发配置。命令不会自动初始化配置或写入默认设置。执行历史、检查点与宿主绑定保存在该根目录的 `agent-development.sqlite`，不写生产会话库。恢复必须保持原 Agent、工作目录、模型连接、定义/插件版本和预算；同连接密钥轮换允许，连接或目录变化需新建线程。异常强杀留下的活跃租约不会被自动接管，开发命令不提供强制接管参数。
+配置根沿用 `getApplicationDataRoot()`：默认 `~/.agent-ppt`，可通过 `AGENT_PPT_DATA_DIR` 指向独立开发配置。命令不会自动初始化配置或写入默认设置。执行历史、检查点与宿主绑定保存在该根目录的 `agent-development.sqlite`，不写生产会话库。恢复必须保持原 Agent、工作目录、工具模式、模型连接、定义/插件版本和预算；恢复写入配置时也须提供 `--tools read-write`。旧版 `ReadFile` 会话绑定明确拒绝，不自动迁移，请新建线程；同连接密钥轮换允许，连接或目录变化需新建线程。异常强杀留下的活跃租约不会被自动接管，开发命令不提供强制接管参数。
 
 除 `npm run typecheck`、`npm test` 外，可单独运行真实 Electron/加密凭据/本地 HTTP 回归（不需要远程厂商 Key；Linux 需要图形环境）：
 

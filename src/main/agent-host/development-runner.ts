@@ -22,7 +22,11 @@ import {
 // 该开发入口的终端只消费公开投影；完整 Gateway IO 不进入开发归档。
 process.env.AGENT_GATEWAY_IO_LOG = "false";
 const approvalSchema = z
-  .object({ tool: z.literal("ReadFile"), path: z.string(), workspaceId: z.string() })
+  .object({
+    tool: z.enum(["read", "glob", "grep", "write", "edit"]),
+    path: z.string(),
+    workspaceId: z.string(),
+  })
   .strict();
 const writeText = (text: string): Promise<void> => {
   const pending = Promise.withResolvers<void>();
@@ -99,6 +103,7 @@ async function execute(): Promise<void> {
     configuration: configuration.runtime,
     applicationDataRoot,
     workspaceRoot: command.workspaceRoot,
+    toolMode: command.toolMode,
     modelId: command.modelId,
     threadId,
     resume: Boolean(command.resumeQueryId),
@@ -138,7 +143,7 @@ async function execute(): Promise<void> {
       const interaction = result.interaction;
       if (
         interaction.owner !== "host-permissions" ||
-        interaction.payload.type !== "host.file-read" ||
+        interaction.payload.type !== "host.workspace-tool" ||
         interaction.payload.version !== 1
       ) {
         throw new AgentError(
@@ -209,7 +214,7 @@ async function execute(): Promise<void> {
   }
   let queryId = command.queryId;
   while (!cancelled && !shutdown) {
-    await write({ type: "input", message: "输入问题，/exit 退出；文件读取需要单独审批。" });
+    await write({ type: "input", message: "输入问题，/exit 退出；工作区工具需要单独审批。" });
     const line = await lines.next();
     if (line.done) break;
     const text = line.value[0] as string;

@@ -12,6 +12,7 @@ import {
   projectDevelopmentResult,
 } from "../src/main/agent-host/development-command";
 import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
+import type { ToolsMode } from "../src/tools/tools";
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -112,7 +113,12 @@ async function fixture(
   };
   const open = async (
     configuration: AgentConfiguration,
-    overrides: { workspaceRoot?: string; resume?: boolean; modelId?: string } = {},
+    overrides: {
+      workspaceRoot?: string;
+      resume?: boolean;
+      modelId?: string;
+      toolMode?: ToolsMode;
+    } = {},
   ): Promise<AgentHost> => {
     const host = await createAgentHost({
       configuration: configuration.runtime,
@@ -154,7 +160,7 @@ const readCall = {
     {
       id: "read-1",
       type: "function",
-      function: { name: "ReadFile", arguments: JSON.stringify({ path: "notes.txt" }) },
+      function: { name: "read", arguments: JSON.stringify({ path: "notes.txt" }) },
     },
   ],
 };
@@ -186,6 +192,9 @@ describe("independent configured Agent host", () => {
       output: [{ content: [{ type: "text", text: "ordinary answer" }] }],
     });
     expect(f.requests[0]).toMatchObject({ model: "remote-model", max_tokens: 1024 });
+    expect(host.binding.toolMode).toBe("read-only");
+    const tools = f.requests[0].tools as Array<{ function: { name: string } }>;
+    expect(tools.map((tool) => tool.function.name).sort()).toEqual(["glob", "grep", "read"]);
     await expect(readFile(join(f.workspace, "deck/snapshot.json"))).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -200,6 +209,13 @@ describe("independent configured Agent host", () => {
           path: "notes.txt",
           content: "revision written after approval was requested",
         });
+        expect(JSON.parse(messages.at(-1)!.content)).toMatchObject({
+          startOffset: 0,
+          endOffset: "revision written after approval was requested".length,
+          totalCharacters: "revision written after approval was requested".length,
+          hasMore: false,
+          version: expect.any(String),
+        });
         respondChat(response, { content: "The updated file was read." });
       }
     });
@@ -207,6 +223,14 @@ describe("independent configured Agent host", () => {
     const waiting = await (await host.run(question)).completed;
     expect(waiting.status).toBe("waiting");
     if (waiting.status !== "waiting") throw new Error("Expected approval");
+    expect(waiting.interaction).toMatchObject({
+      owner: "host-permissions",
+      payload: {
+        type: "host.workspace-tool",
+        version: 1,
+        data: { tool: "read", path: "notes.txt", workspaceId: expect.any(String) },
+      },
+    });
     expect(f.requests).toHaveLength(1);
     await host.close();
     const stored = createSqliteAgentStores(join(f.directory, "agent-development.sqlite"));
@@ -259,6 +283,258 @@ describe("independent configured Agent host", () => {
     ).rejects.toMatchObject({ code: "HOST_BINDING_CHANGED" });
     expect(f.requests).toHaveLength(1);
   });
+
+  it("rejects a tool-mode change before resuming a pending call", async () => {
+    const f = await fixture((_body, response) => respondChat(response, readCall));
+    const configuration = await f.configure();
+    const host = await f.open(configuration);
+    expect((await (await host.run(question)).completed).status).toBe("waiting");
+    await host.close();
+    await expect(
+      f.open(configuration, { toolMode: "read-write", resume: true }),
+    ).rejects.toMatchObject({ code: "HOST_BINDING_CHANGED" });
+    expect(f.requests).toHaveLength(1);
+  });
+
+  it("does not install or execute a mutator in the default read-only mode", async () => {
+    const f = await fixture((body, response) => {
+      const messages = body.messages as Array<{ role: string; content: string }>;
+      if (messages.at(-1)?.role === "tool") {
+        respondChat(response, { content: "The write tool is unavailable." });
+      } else {
+        respondChat(response, {
+          tool_calls: [
+            {
+              id: "unavailable-write",
+              type: "function",
+              function: {
+                name: "write",
+                arguments: JSON.stringify({
+                  path: "created.txt",
+                  content: "not permitted",
+                  mode: "create",
+                }),
+              },
+            },
+          ],
+        });
+      }
+    });
+    const host = await f.open(await f.configure());
+    expect((await (await host.run(question)).completed).status).toBe("completed");
+    await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it.each([true, false])(
+    "gates writable creation on host approval (approve=%s)",
+    async (approve) => {
+      const content = "private approved creation content";
+      const f = await fixture((body, response) => {
+        const messages = body.messages as Array<{ role: string; content: string }>;
+        if (messages.at(-1)?.role === "tool") {
+          if (approve) {
+            expect(JSON.parse(messages.at(-1)!.content)).toMatchObject({
+              path: "created.txt",
+              operation: "created",
+              size: Buffer.byteLength(content),
+              version: expect.any(String),
+            });
+          } else {
+            expect(messages.at(-1)!.content).not.toContain(content);
+          }
+          respondChat(response, { content: approve ? "Creation succeeded." : "Creation denied." });
+        } else {
+          respondChat(response, {
+            tool_calls: [
+              {
+                id: "create-1",
+                type: "function",
+                function: {
+                  name: "write",
+                  arguments: JSON.stringify({ path: "created.txt", content, mode: "create" }),
+                },
+              },
+            ],
+          });
+        }
+      });
+      const host = await f.open(await f.configure(), { toolMode: "read-write" });
+      const waiting = await (await host.run(question)).completed;
+      if (waiting.status !== "waiting") throw new Error("Expected write approval");
+      expect(waiting.interaction.payload).toEqual({
+        type: "host.workspace-tool",
+        version: 1,
+        data: { tool: "write", path: "created.txt", workspaceId: expect.any(String) },
+      });
+      expect(JSON.stringify(waiting.interaction.payload)).not.toContain(content);
+      await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      const result = await (
+        await host.resume({
+          queryId: "query",
+          runId: "run-2",
+          response: approve
+            ? { type: "answer", interactionId: waiting.interaction.id, value: true }
+            : { type: "reject", interactionId: waiting.interaction.id },
+        })
+      ).completed;
+      expect(result.status).toBe("completed");
+      if (approve) expect(await readFile(join(f.workspace, "created.txt"), "utf8")).toBe(content);
+      else {
+        await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }
+    },
+  );
+
+  it("executes an explicit writable installation only after separate read and edit approvals", async () => {
+    const replacement = "private replacement content";
+    let editedVersion: string | undefined;
+    const f = await fixture((body, response) => {
+      const messages = body.messages as Array<{
+        role: string;
+        content: string;
+        tool_call_id?: string;
+      }>;
+      const last = messages.at(-1);
+      if (last?.role !== "tool") {
+        respondChat(response, readCall);
+      } else if (last.tool_call_id === "read-1") {
+        const output = JSON.parse(last.content) as {
+          version: string;
+          content: string;
+          hasMore: boolean;
+        };
+        expect(output.content).toBe("first file revision");
+        expect(output.hasMore).toBe(false);
+        respondChat(response, {
+          tool_calls: [
+            {
+              id: "edit-1",
+              type: "function",
+              function: {
+                name: "edit",
+                arguments: JSON.stringify({
+                  path: "notes.txt",
+                  oldText: output.content,
+                  newText: replacement,
+                  expectedVersion: output.version,
+                }),
+              },
+            },
+          ],
+        });
+      } else {
+        const output = JSON.parse(last.content) as { version: string };
+        expect(output).toMatchObject({
+          path: "notes.txt",
+          replacements: 1,
+          size: Buffer.byteLength(replacement),
+        });
+        editedVersion = output.version;
+        respondChat(response, { content: "The approved edit succeeded." });
+      }
+    });
+    const host = await f.open(await f.configure(), { toolMode: "read-write" });
+    expect(host.binding.toolMode).toBe("read-write");
+    const reading = await (await host.run(question)).completed;
+    if (reading.status !== "waiting") throw new Error("Expected read approval");
+    expect(await readFile(join(f.workspace, "notes.txt"), "utf8")).toBe("first file revision");
+    const editing = await (
+      await host.resume({
+        queryId: "query",
+        runId: "run-2",
+        response: { type: "answer", interactionId: reading.interaction.id, value: true },
+      })
+    ).completed;
+    if (editing.status !== "waiting") throw new Error("Expected edit approval");
+    expect(editing.interaction.payload).toEqual({
+      type: "host.workspace-tool",
+      version: 1,
+      data: { tool: "edit", path: "notes.txt", workspaceId: expect.any(String) },
+    });
+    expect(JSON.stringify(editing.interaction.payload)).not.toContain(replacement);
+    expect(await readFile(join(f.workspace, "notes.txt"), "utf8")).toBe("first file revision");
+    const completed = await (
+      await host.resume({
+        queryId: "query",
+        runId: "run-3",
+        response: { type: "answer", interactionId: editing.interaction.id, value: true },
+      })
+    ).completed;
+    expect(completed.status).toBe("completed");
+    expect(editedVersion).toEqual(expect.any(String));
+    expect(await readFile(join(f.workspace, "notes.txt"), "utf8")).toBe(replacement);
+    const tools = f.requests[0].tools as Array<{ function: { name: string } }>;
+    expect(tools.map((tool) => tool.function.name).sort()).toEqual([
+      "edit",
+      "glob",
+      "grep",
+      "read",
+      "write",
+    ]);
+  });
+
+  it.each([
+    { tool: "glob", input: { pattern: "*.txt" }, path: "*.txt" },
+    { tool: "grep", input: { pattern: "first file revision" }, path: "**/*" },
+  ])(
+    "approves and executes $tool without exposing search text in its payload",
+    async ({ tool, input, path }) => {
+      const f = await fixture((body, response) => {
+        const messages = body.messages as Array<{ role: string; content: string }>;
+        if (messages.at(-1)?.role === "tool") {
+          const output = JSON.parse(messages.at(-1)!.content) as {
+            matches: unknown[];
+            truncated: boolean;
+          };
+          expect(output.truncated).toBe(false);
+          expect(output.matches).toEqual(
+            tool === "glob"
+              ? ["notes.txt"]
+              : [
+                  expect.objectContaining({
+                    path: "notes.txt",
+                    line: 1,
+                    text: "first file revision",
+                  }),
+                ],
+          );
+          respondChat(response, { content: "Search completed." });
+        } else {
+          respondChat(response, {
+            tool_calls: [
+              {
+                id: "search-1",
+                type: "function",
+                function: { name: tool, arguments: JSON.stringify(input) },
+              },
+            ],
+          });
+        }
+      });
+      const host = await f.open(await f.configure());
+      const waiting = await (await host.run(question)).completed;
+      if (waiting.status !== "waiting") throw new Error("Expected search approval");
+      expect(waiting.interaction.payload).toEqual({
+        type: "host.workspace-tool",
+        version: 1,
+        data: { tool, path, workspaceId: expect.any(String) },
+      });
+      const result = await (
+        await host.resume({
+          queryId: "query",
+          runId: "run-2",
+          response: { type: "answer", interactionId: waiting.interaction.id, value: true },
+        })
+      ).completed;
+      expect(result.status).toBe("completed");
+    },
+  );
 
   it("does not turn denied approval into file contents", async () => {
     const f = await fixture((body, response) => {
@@ -363,6 +639,17 @@ describe("independent configured Agent host", () => {
     expect(f.requests).toHaveLength(1);
   });
 
+  it("defaults CLI tools to read-only and accepts only the explicit writable mode", () => {
+    expect(parseDevelopmentArguments(["--model", "m", "--workspace", "w"])).toMatchObject({
+      command: { toolMode: "read-only" },
+    });
+    expect(
+      parseDevelopmentArguments(["--model", "m", "--workspace", "w", "--tools", "read-write"]),
+    ).toMatchObject({
+      command: { toolMode: "read-write" },
+    });
+  });
+
   it("rejects contradictory CLI admission instead of silently choosing a new query", () => {
     for (const args of [
       ["--model", "m", "--workspace", "w", "--resume", "q"],
@@ -379,6 +666,7 @@ describe("independent configured Agent host", () => {
         "new input",
       ],
       ["--model", "m", "--model", "other", "--workspace", "w"],
+      ["--model", "m", "--workspace", "w", "--tools", "write"],
     ]) {
       expect(() => parseDevelopmentArguments(args)).toThrow(
         expect.objectContaining({ code: "CLI_ARGUMENTS_INVALID" }),

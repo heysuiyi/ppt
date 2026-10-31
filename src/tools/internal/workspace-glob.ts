@@ -1,7 +1,7 @@
 import type { Stats } from "node:fs";
 import { lstat, readdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { AtomicFileIdentity } from "../../persistence/atomic-json-file";
+import type { AtomicFileIdentity } from "./atomic";
 import { stalePathError, WorkspaceFileError } from "./workspace-file-types";
 import {
   assertContained,
@@ -81,7 +81,7 @@ export async function globWorkspaceFiles(
   return results.sort((left, right) => left.localeCompare(right));
 }
 
-function isAtomicInternalEntry(name: string): boolean {
+export function isAtomicInternalEntry(name: string): boolean {
   return (
     name.includes(".atomic-old.") ||
     name.includes(".atomic-replace.json") ||
@@ -114,7 +114,7 @@ function patternPrefix(pattern: string): string {
   return wildcard < 0 ? normalized : normalized.slice(0, wildcard);
 }
 
-function globToRegExp(pattern: string): RegExp {
+export function globToRegExp(pattern: string): RegExp {
   const normalized = pattern.replace(/\\/g, "/");
   let source = "^";
   for (let index = 0; index < normalized.length; index += 1) {
