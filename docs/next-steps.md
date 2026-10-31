@@ -1,6 +1,6 @@
 # 下一步计划：M1 公开面收敛与 M2-A 通用宿主装配
 
-状态：第一轮 M1 已实施并完成公开入口、依赖约束、本地回归与实际开发入口验收，证据见 M1.12；第二轮 M2-A 实施方案已设计，代码待实施与验收。M1.1–M1.11 保留为第一轮设计依据，M2-A.1–M2-A.11 是第二轮依据；MiMo、CLI 与 logs/tools 记录保留为历史。M2-A 承接 M1 的实际公开契约，独立包边界仍属后续工作。本轮未切生产入口、未改变持久化版本。整体方向见 [项目整体规划](project-plan.md)，持续约束见 [AGENTS.md](../AGENTS.md)。
+状态：第一轮 M1 的两项审核门禁缺陷已修复，补充证据见 M1.13；第二轮 M2-A 已实施并完成本地回归、实际 Node 消费和 Electron 旧 v2 会话恢复验收，证据见 M2-A.12。M1.1–M1.11、M2-A.1–M2-A.11 保留为各轮设计依据；MiMo、CLI 与 logs/tools 记录保留为历史。独立包边界仍属后续工作；本轮未切生产入口、未改变持久化版本、未调用远程厂商。整体方向见 [项目整体规划](project-plan.md)，持续约束见 [AGENTS.md](../AGENTS.md)。
 
 ## M1.1 目标、范围与非目标
 
@@ -248,7 +248,20 @@ M1 完成要求：上述功能/扩展入口可用且内部绕过受约束，全�
 
 没有读取或修改生产会话数据、没有复制或打印真实 Key、没有调用远程厂商；本地真实 SDK/SSE 结果不能作为远程模型新验收。生产打包与跨包发布未在本轮执行。临时程序使用独立数据库、工作区与构建目录，仅清理本次创建的资源。
 
-结论：M1 第一轮完成；M2-A 仍为待实施设计，M2 独立包构建消费、M3 扩展验收和 M4 生产迁移仍是后续范围。工作区宿主仍固定选择文件能力，旧生产 Agent、PPT、Gateway 保持独立运行。
+原始交付结论（修复前）：M1 当时报告完成，M2-A 尚待实施。随后审核发现导出类型图及三斜线引用两项门禁漏检；不以本节原有通过数字证明它们已覆盖，修复和补充验收见 M1.13。当前第二轮交付见 M2-A.12，旧生产 Agent、PPT、Gateway 继续独立运行。
+
+## M1.13 审核问题修复与门禁补充验收（2026-11-01）
+
+已修复审核的两项 P2：
+
+1. **白盒导出类型图遗漏**：补查导出类/接口基类型，以及未实例化泛型条件类型的判断、约束和分支；对相关 mapped/indexed 类型与泛型默认值同样沿类型来源分析。按类型、符号、声明和本地类型语法节点去重，不展开外部 Zod 声明造成无界递归。白盒导出派生内部类或条件类型别名不再通过。
+2. **三斜线依赖遗漏**：提取 SourceFile 的 types/path/lib 引用指令，按 TypeScript 实际目标解析后复用依赖规则；缺失目标在受管模块明确失败。允许合法公共路径与标准 Web/ES lib，拒绝 Node types、main 声明或私有 Agent 路径；不是一律禁用三斜线。
+
+同一检查器增加 M2-A 的精确 `src/agent-host/` 模块边界及 `session-host.ts` 入口。没有新增重复检查链、包导出白名单或扩大白盒例外。
+
+本轮临时隔离矩阵实际通过 **47 个场景**：包括两项原始漏检、合法引用、未解析引用、白盒泛型/继承/包装导出、原私有导入及反向依赖、旧同名目录，以及 host 的公共消费、私有路径、main/tools/models/logs/Node/Electron/非字面量加载正反例。矩阵调用真实边界检查器，不通过源码措辞或导入数量断言；临时脚本及其隔离目录已删除。最终 `npm.cmd run typecheck` 再次通过边界及 node/web 编译检查。
+
+本补充只证明所述静态约束，不声称能阻止任意计算值流或隔离恶意进程内插件。运行时、实际消费和恢复验证共用 M2-A.12 所列本轮证据。
 
 ## M2-A.1 第二轮目标、前置条件与非目标
 
@@ -317,7 +330,7 @@ export interface SessionHost extends Disposable {
 export function createSessionHost(options: SessionHostOptions): Promise<SessionHost>;
 ```
 
-这是拟实施签名，不是当前已可调用 API；函数声明在此仅描述签名，不是要求添加无函数体实现。
+上述签名已实施；这里的函数声明仅描述公共 API，实际入口包含完整创建与回收实现。
 
 契约要求：
 
@@ -481,7 +494,7 @@ async ensure() {
 | 工作区行为 | 两种模式下读取零审批；write/edit 批准前不写，拒绝/取消不写；未安装、越界、文件版本、UTF-8/大小校验不弱化 |
 | 平台与隐私 | 新模块实际依赖图无 Electron/main/工具等；SDK 安全错误、终端投影、密钥/reasoning/工具正文隐私保持 |
 
-实施后集中运行，以下均为待执行命令，不是本次设计证据：
+以下为实施验收命令清单，实际执行组合、结果和证据限制见 M2-A.12，不引用历史数字代替本轮结果：
 
 ```text
 npx vitest run tests/general-agent-session-host.test.ts tests/general-agent-host.test.ts tests/general-agent-host-binding.test.ts tests/general-agent-development-host.test.ts tests/general-agent-development-sessions.test.ts tests/mimo-token-plan-cn.test.ts
@@ -518,7 +531,7 @@ CLI 无参数/--prompt/--help、/model /new /resume /tools、默认只读、工�
 
 M2-A 完成要求：通用入口被当前组合根实际消费，无业务插件和显式能力配置均成立；具体配置不进入通用模块；原持久恢复与工作区行为保持，借用资源所有权正确，依赖约束和两类实际证据齐备。独立包、生产 UI/PPT 与动态装配继续列为未实施。
 
-## M2-A.11 参考取舍与本次设计记录
+## M2-A.11 参考取舍与方案设计记录（实施前）
 
 - [DeepSeek Harness 架构](https://deepseek-harness.github.io/deepseek-harness/en/reference/) 与 [固定版本生命周期实现](https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/vendor/cordis/src/fiber.ts)：借鉴注册归属、初始化完成后发布、持久事实与运行对象分离；不引入 Cordis Context、动态依赖重装、热更新或并发 disposer 完成语义。
 - [Spring Framework DI](https://docs.spring.io/spring-framework/reference/core/beans/dependencies/factory-collaborators.html)、[生命周期](https://docs.spring.io/spring-framework/reference/core/beans/factory-nature.html)、[Bean scope](https://docs.spring.io/spring-framework/reference/core/beans/factory-scopes.html)：使用显式工厂参数与闭包，区分借用和所有权，依赖者先停止；不将 Bean scope 映射为 Thread/Query/Run。
@@ -526,9 +539,43 @@ M2-A 完成要求：通用入口被当前组合根实际消费，无业务插件
 - [Fowler 配置与使用分离](https://www.martinfowler.com/articles/injection.html#SeparatingConfigurationFromUse)、[Ports & Adapters](https://alistair.cockburn.us/hexagonal-architecture)：支撑宿主配置与机制拆分，不增加空壳服务定位层。
 - [Node package exports](https://nodejs.org/docs/latest-v24.x/api/packages.html#main-entry-point-export)：独立包边界留待后续；本轮目录、静态约束和 Node 烟测不能冒充发布验收。
 
-本次只设计第二轮并更新这两份现有计划文档，未实施 SessionHost、未修改生产代码、未运行上述待执行验收。已核对实际组合根、runner、v2 绑定事务/列表、模型指纹、相关测试和 tsconfig；M1 由正在执行的任务维护，本方案只消费其落地结果，不声明 M1 已完成。语言服务状态仅列出 Biome，不作为 TypeScript 引用盘点证据。
+方案设计阶段只更新计划文档，尚未实施 SessionHost 或运行验收；当时已核对组合根、runner、v2 绑定事务/列表、模型指纹、相关测试和 tsconfig。实施阶段承接 M1 的实际公开入口，语言服务引用查询返回无可用服务，随后通过定向调用方盘点、node/web 编译、依赖检查与行为验收完成迁移；实际交付见下一节。
 
 不选择 v3 的理由是当前范围只要求宿主机制可组合，不要求统一管理任意配置的历史目录或序列化格式；保留具体适配边界比引入版本迁移更小、更可核验。若实施发现必须变更格式/权限语义/CLI 支持范围，先修订方案并明确范围，不将其作为接口提取的隐含副作用。
+
+## M2-A.12 实施与验收记录（2026-11-01）
+
+### 实际变更
+
+- 新增 `src/agent-host/session-host.ts`：复用公开 Application，await 前固定配置及端口引用，先确认必需绑定再创建 Agent；固定 Thread、显式转发 run/resume 且不接收 takeover；幂等关闭同步停止受理，只回收自建 Application，不关闭借用服务。
+- 新增 `src/main/agent-host/workspace-configuration.ts`：移动原工作区 instructions、tools、workspaceId、授权和 v1 审批解释。未改变定义 ID/version、提示词内容、插件版本或权限行为；runner 复用唯一载荷解释器。
+- 当前 `create-agent-host.ts` 已实际消费通用宿主，创建前固定选项，用同一装配产生 v2 binding 与 ensure 闭包；保留原工作区公开入口、binding 快照、模型/SQLite/日志所有权和排空后关闭顺序。原重复执行包装和无消费者 HostRunInput/HostResumeInput 删除，没有旧路径 shim。
+- 保留 `host-session-binding.ts`、SQLite 表/SQL、连接指纹、检查点 v1 与私有重放协议，无 v3、无历史迁移。CLI 命令、默认工具模式、工作区来源及生产链路不变。
+- 新增 `general-agent-session-host.test.ts`，覆盖新边界的 23 项行为；node tsconfig 明确包含新模块。边界规则同时维护平台独立性；中英文 README 补充实际公开消费与所有权说明。
+
+### 实际执行结果
+
+| 检查/场景 | 本轮观察结果 |
+| --- | --- |
+| 边界隔离矩阵 | 47 个独立场景通过；修复两项 P2 并验证 M2-A 正反向依赖 |
+| 新 SessionHost 行为回归 | 修正后 23 项全部通过；覆盖无插件/缺失工具、必需授权/绑定、ensure 等待与配置快照、审批/拒绝/取消、固定 Thread/禁止接管、创建回滚、晚到 binding 和活动关闭排空 |
+| 原相关行为回归 | 首轮 10 文件运行中原 9 文件全部通过；新增文件有两处断言错误，修正后单独及全量通过，未修改原行为以适配断言 |
+| `npm.cmd run typecheck` | 最终边界检查及 node/web 两个 TypeScript 项目通过 |
+| Biome | 本轮 7 个代码/配置文件检查通过，命令同时修复 4 个文件的格式 |
+| `npm.cmd test` | 192 个文件、1632 项通过，2 项按既有条件跳过 |
+| 两个真实 Electron CLI 集成文件 | 2 项通过、无跳过；配置/真实 safeStorage 重开、本地原生 SDK/HTTP/SSE、EOF waiting、新进程恢复、拒绝/取消、配置变更拒绝与租约释放 |
+| `npm.cmd run agent:dev -- --help` | 真实 Node 启动器构建并启动 Electron 帮助成功，未启动生产 UI |
+| 实际普通 Node 公开消费 | Vite 构建依赖图无 main/Electron；spawn(process.execPath) 完成无插件对话和非文件 ledger 能力 waiting→resume→completed，真实余额为 11；宿主关闭后借用历史仍可读取 |
+| 旧 M1 产物跨进程恢复 | 从提交 `2519fc9` 加载原 runner/组合根留下真实 v2 waiting，再由当前实现新进程批准；一次发现、三次模型请求，实际 glob/grep/read 零读取审批、写入一次审批；批准前无文件，批准后随机校验码匹配 |
+| 原 v2 权威记录不变 | 上一场景直接检查 SQLite：原 `host.workspace-tool` v1 待决交互被消费，绑定 payload 原文字节不变、Query 不变而 Run 更新，最终检查点 completed 且无活动租约 |
+
+新增测试首轮的两处错误断言没有驱动生产行为变更：工具结果应核对规范历史，不能误认为 assistant 输出投影包含工具消息；创建取消不锁定内部异常码，改为验证不发布实例、已取得资源释放且借用端口仍可用。不重新钉住工具错误措辞或内部取消表示。
+
+Node 烟测使用确定性模型与有比较/回执/CAS/围栏语义的进程内夹具，只证明通用源码装配；不声称内存端口具有跨进程持久性。持久恢复证据来自真实 Electron/原生 SDK 到本地 HTTP/SSE 及真实 SQLite，包括旧提交留下的权威记录。上述本地证据均不代表远程模型新验收。
+
+临时边界矩阵、Node 入口/构建、旧版消费脚本、子进程、临时工作区与数据库均已清理；没有访问或迁移生产会话，没有打印真实凭据、没有调用远程厂商，未将夹具写入生产 out/**。
+
+结论：两项 M1 审核缺陷已修复，M2-A 源码级通用装配切片完成。M2 的独立包构建、受控 exports、脱离仓库安装消费仍未实施；M3 扩展通用验收与 M4 生产/PPT 消费迁移不由本轮宣布完成。宿主绑定端口是受信任组合根的校验责任，不是恶意插件沙箱。
 
 以下为历史记录，不构成本轮实施验收。
 

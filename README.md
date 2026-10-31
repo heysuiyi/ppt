@@ -267,9 +267,11 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 宿主显式装配 `AgentServices`（模型工厂、授权策略、历史和检查点），调用 `createAgentApplication(services)`，通过 `application.agents.create()` 提供定义、模型选择、步数预算和插件。业务工具在插件 `setup()` 中注册；内核只调用协议，不读取 Presentation、workspace 服务或厂商配置。关闭顺序为先 `application.close()`，再关闭宿主拥有的存储和连接。
 
+需要固定 Thread 并校验宿主恢复边界时，使用 `src/agent-host/session-host.ts` 的 `createSessionHost({ services, agent, threadId, binding })`：先等待必需的 `binding.ensure()`，再从公开 Application 创建 Agent。定义、模型、插件和授权均显式提供；`plugins: []` 不依赖工作区或 Electron。SessionHost 只拥有自己的 Application，关闭后不释放借用端口，`resume()` 不接受接管租约。当前 Electron 组合根通过 `workspace-configuration.ts` 选择文件能力、指令和审批策略，继续保存原 v2 绑定；CLI 使用方式与生产 PPT 链路不变。
+
 支持的功能与协议路径见 [M1 公开面清单](docs/next-steps.md#m13-公开路径与协议闭包)。`PluginContext.scope` 只提供 `PluginScope.signal/own()`，不暴露内部资源树的创建与关闭；错误使用 `protocol-errors.ts` 的同一 `AgentError`，无损 JSON 快照与值比较由 `protocol-values.ts` 提供。`ToolCompletion` 是事件/存储公共数据，`ToolExecutor` 与执行管线仍为内部协议。旧 `protocol-utils.ts` 已移除，不提供兼容导出。
 
-`npm run check:agent-boundaries` 按 node/web tsconfig 的实际模块解析检查公开入口、协议闭包和反向依赖，允许精确的内部行为测试例外；`typecheck` 和 `build` 自动包含该检查。它是源码依赖约束，不是任意计算加载或恶意插件的安全沙箱；本模块尚未拆成独立发布包。
+`npm run check:agent-boundaries` 按 node/web tsconfig 的实际模块解析检查公开入口、协议闭包和反向依赖，允许精确的内部行为测试例外；同时检查三斜线 types/path/lib 引用，以及白盒导出中的继承、泛型条件类型等来源。`src/agent-host/` 只允许自身与 Agent 公开入口，外部只通过 `session-host.ts` 消费。`typecheck` 和 `build` 自动包含该检查。它是源码依赖约束，不是任意计算加载或恶意插件的安全沙箱；模块尚未拆成独立发布包。
 
 - 同一 Agent 同时只接受一次 `run()` 或 `resume()`，不隐式排队。`handle.events` 仅供单消费者观察；不消费或退出事件流都不会取消执行。
 - `waiting` 会保存交互和续传数据，结束本次 Run 并释放租约。回答只能匹配持久化交互，恢复必须提供新的 `runId`；不接收前端重建的执行快照。线程有未完成 Query 时，新请求不能越过它。

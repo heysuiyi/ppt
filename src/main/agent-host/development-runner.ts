@@ -25,14 +25,8 @@ import {
 } from "./development-command";
 import { listDevelopmentSessions } from "./development-sessions";
 import { type DevelopmentSetupIO, ensureDevelopmentModel } from "./development-setup";
+import { parseWorkspaceApproval } from "./workspace-configuration";
 
-const approvalSchema = z
-  .object({
-    tool: z.enum(["read", "glob", "grep", "write", "edit"]),
-    path: z.string(),
-    workspaceId: z.string(),
-  })
-  .strict();
 const writeText = (text: string): Promise<void> => {
   const pending = Promise.withResolvers<void>();
   process.stdout.write(text, (error) => (error ? pending.reject(error) : pending.resolve()));
@@ -200,17 +194,7 @@ async function execute(): Promise<void> {
       await write(projectDevelopmentResult(result));
       if (result.status !== "waiting" || shutdown) return result;
       const interaction = result.interaction;
-      if (
-        interaction.owner !== "host-permissions" ||
-        interaction.payload.type !== "host.workspace-tool" ||
-        interaction.payload.version !== 1
-      ) {
-        throw new AgentError(
-          "CLI_INTERACTION_UNSUPPORTED",
-          "无法解释已保存的宿主交互，等待状态保持不变。",
-        );
-      }
-      const approval = approvalSchema.parse(interaction.payload.data);
+      const approval = parseWorkspaceApproval(interaction);
       let response: InteractionResponse | undefined;
       while (!response) {
         if (cancelled) {

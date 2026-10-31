@@ -24,6 +24,7 @@
     "vitest.config.ts",
     "src/main/**/*.ts",
     "src/agent/**/*.ts",
+    "src/agent-host/**/*.ts",
     "src/logs/**/*.ts",
     "src/models/**/*.ts",
     "src/tools/**/*.ts",

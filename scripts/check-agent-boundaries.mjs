@@ -90,6 +90,22 @@ function dependencies(source) {
     }
     ts.forEachChild(node, visit);
   }
+  for (const [kind, references] of [
+    ["types", source.typeReferenceDirectives],
+    ["path", source.referencedFiles],
+    ["lib", source.libReferenceDirectives],
+  ]) {
+    for (const reference of references) {
+      result.push({
+        node: { getStart: () => reference.pos },
+        reference,
+        kind,
+        specifier: reference.fileName,
+        typeOnly: true,
+        reexport: false,
+      });
+    }
+  }
   visit(source);
   return result;
 }
@@ -106,6 +122,7 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
   }
   const root = identity(rootDir);
   const agentRoot = identity(path.join(root, "src/agent"));
+  const hostRoot = identity(path.join(root, "src/agent-host"));
   function within(directory, file) {
     const relative = path.relative(directory, file);
     return (
@@ -114,6 +131,8 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
     );
   }
   const isAgent = (file) => within(agentRoot, file);
+  const isHost = (file) => within(hostRoot, file);
+  const hostEntry = identity(path.join(hostRoot, "session-host.ts"));
   const entry = (file) => identity(path.join(agentRoot, file));
   const publicPaths = new Set(publicEntries.map(entry));
   const application = entry("application/agent-application.ts");
@@ -196,11 +215,60 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
     });
     const checker = program.getTypeChecker();
     const cache = ts.createModuleResolutionCache(root, identity, parsed.options);
+    const standardLibraryRoot = identity(path.dirname(ts.getDefaultLibFilePath(parsed.options)));
+
+    function resolveDependency(source, dependency) {
+      const { kind, specifier, reference } = dependency;
+      if (kind === "types") {
+        const resolution = ts.resolveTypeReferenceDirective(
+          specifier,
+          source.fileName,
+          parsed.options,
+          ts.sys,
+          undefined,
+          undefined,
+          reference.resolutionMode ?? source.impliedNodeFormat,
+        );
+        return {
+          ...resolution,
+          resolvedModule: resolution.resolvedTypeReferenceDirective,
+        };
+      }
+      if (kind === "path") {
+        const fileName = ts.resolveTripleslashReference(specifier, source.fileName);
+        return {
+          resolvedModule: ts.sys.fileExists(fileName) ? { resolvedFileName: fileName } : undefined,
+          failedLookupLocations: [fileName],
+        };
+      }
+      if (kind === "lib") {
+        // Use the compiler's actual lib resolution, including @typescript/lib-*
+        // replacements, rather than assuming a lib name denotes a built-in file.
+        const library = program.getLibFileFromReference(reference);
+        return {
+          resolvedModule: library ? { resolvedFileName: library.fileName } : undefined,
+          standardLibrary:
+            library &&
+            within(standardLibraryRoot, identity(library.fileName)) &&
+            program.isSourceFileDefaultLibrary(library),
+        };
+      }
+      return ts.resolveModuleName(
+        specifier,
+        source.fileName,
+        parsed.options,
+        ts.sys,
+        cache,
+        undefined,
+        program.getModeForUsageLocation(source, dependency.argument),
+      );
+    }
 
     for (const source of program.getSourceFiles()) {
       const sourcePath = identity(source.fileName);
       if (!within(root, sourcePath) || program.isSourceFileFromExternalLibrary(source)) continue;
       const internal = isAgent(sourcePath);
+      const host = isHost(sourcePath);
       const pure = purePaths.has(sourcePath);
       const controlled = sourcePath === values || sourcePath === errors;
 
@@ -233,49 +301,63 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
       for (const dependency of dependencies(source)) {
         const { node, specifier, typeOnly, reexport } = dependency;
         if (specifier === undefined) {
-          if (internal) {
+          if (internal || host) {
             report(
               configPath,
               source,
               node,
               "<non-literal module>",
               "literal-loading",
-              "Agent module loading must use a resolvable string literal.",
+              "Agent and session-host module loading must use a resolvable string literal.",
             );
           }
           continue;
         }
-        const mode = program.getModeForUsageLocation(source, dependency.argument);
-        const resolution = ts.resolveModuleName(
-          specifier,
-          source.fileName,
-          parsed.options,
-          ts.sys,
-          cache,
-          undefined,
-          mode,
-        );
+        const resolution = resolveDependency(source, dependency);
         const resolved = resolution.resolvedModule;
         if (!resolved) {
           // Failed lookup paths include relative and paths/baseUrl candidates, so
           // missing Agent files and unresolved Agent aliases cannot be skipped.
-          const agentLookup = (resolution.failedLookupLocations ?? []).some((file) =>
-            isAgent(identity(file)),
-          );
-          if (internal || agentLookup) {
+          const boundaryLookup = (resolution.failedLookupLocations ?? []).some((file) => {
+            const candidate = identity(file);
+            return isAgent(candidate) || isHost(candidate);
+          });
+          if (internal || host || boundaryLookup) {
             report(
               configPath,
               source,
               node,
               `<unresolved: ${specifier}>`,
               "resolved-agent-dependency",
-              "Agent dependencies and public protocol closures must resolve in this compiler project.",
+              "Agent and session-host dependencies must resolve in this compiler project.",
             );
           }
           continue;
         }
         const target = identity(resolved.resolvedFileName);
         const targetInternal = isAgent(target);
+        const targetHost = isHost(target);
+        if (resolution.standardLibrary) continue;
+        if (host && !targetHost && !(targetInternal && publicPaths.has(target))) {
+          report(
+            configPath,
+            source,
+            node,
+            target,
+            "session-host-dependency",
+            "Session host may depend only on its own modules and exact public Agent entries.",
+          );
+        }
+        if (!host && targetHost && target !== hostEntry) {
+          report(
+            configPath,
+            source,
+            node,
+            target,
+            "private-host-entry",
+            "External code must use the exact session-host.ts entry.",
+          );
+        }
         const zod = specifier === "zod" && resolved.packageId?.name === "zod";
         if (internal) {
           if (!targetInternal && !zod) {
@@ -354,6 +436,7 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
           const visitedTypes = new Set();
           const visitedSymbols = new Set();
           const visitedDeclarations = new Set();
+          const visitedTypeNodes = new Set();
           function localDeclaration(declaration) {
             const file = declaration.getSourceFile();
             return (
@@ -371,6 +454,12 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
             visitedDeclarations.add(declaration);
             return true;
           }
+          function collectTypeNodeOrigins(node) {
+            if (!node || visitedTypeNodes.has(node) || !localDeclaration(node)) return;
+            visitedTypeNodes.add(node);
+            if (ts.isTypeNode(node)) collectTypeOrigins(checker.getTypeFromTypeNode(node));
+            ts.forEachChild(node, collectTypeNodeOrigins);
+          }
           function collectTypeOrigins(type) {
             if (!type || visitedTypes.has(type)) return;
             visitedTypes.add(type);
@@ -383,7 +472,10 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
             // Type arguments remain relevant even when the generic is external
             // or an earlier instantiation was already visited.
             for (const argument of type.aliasTypeArguments ?? []) collectTypeOrigins(argument);
-            if (type.flags & ts.TypeFlags.TypeParameter) collectTypeOrigins(type.getConstraint());
+            if (type.flags & ts.TypeFlags.TypeParameter) {
+              collectTypeOrigins(type.getConstraint());
+              collectTypeOrigins(type.getDefault());
+            }
             if (type.flags & ts.TypeFlags.Object && type.objectFlags & ts.ObjectFlags.Reference) {
               for (const argument of checker.getTypeArguments(type)) collectTypeOrigins(argument);
             }
@@ -391,7 +483,32 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
               symbols.length > 0 && symbols.every((item) => visitedSymbols.has(item));
             for (const item of symbols) visitedSymbols.add(item);
             if (repeated || (declarations.length && !declarations.some(localDeclaration))) return;
+            for (const declaration of declarations) {
+              if (ts.isTypeAliasDeclaration(declaration)) collectTypeNodeOrigins(declaration.type);
+              if (ts.isClassDeclaration(declaration) || ts.isInterfaceDeclaration(declaration)) {
+                for (const clause of declaration.heritageClauses ?? []) {
+                  for (const base of clause.types) collectTypeNodeOrigins(base);
+                }
+              }
+            }
             for (const part of type.types ?? []) collectTypeOrigins(part);
+            // Uninstantiated conditional types do not expose either branch through
+            // properties/signatures. Resolve their syntax once, including nested
+            // conditional, mapped and indexed-access type operands.
+            if (type.flags & ts.TypeFlags.Conditional && localDeclaration(type.root.node)) {
+              collectTypeOrigins(type.checkType);
+              collectTypeOrigins(type.extendsType);
+              collectTypeNodeOrigins(type.root.node);
+            }
+            if (type.flags & ts.TypeFlags.IndexedAccess) {
+              collectTypeOrigins(type.objectType);
+              collectTypeOrigins(type.indexType);
+            }
+            if (type.flags & ts.TypeFlags.Index) collectTypeOrigins(type.type);
+            if (type.flags & ts.TypeFlags.Substitution) {
+              collectTypeOrigins(type.baseType);
+              collectTypeOrigins(type.constraint);
+            }
             if (
               typeOrigins.some(
                 (origin) => isAgent(origin) && !publicPaths.has(origin) && origin !== sourcePath,
@@ -399,6 +516,12 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
             )
               return;
             if (!(type.flags & ts.TypeFlags.Object)) return;
+            if (type.objectFlags & ts.ObjectFlags.Mapped) collectTypeNodeOrigins(type.declaration);
+            // A subclass may inherit no observable members at all, but its base
+            // declaration is still part of the exported type's origin.
+            if (type.objectFlags & ts.ObjectFlags.ClassOrInterface) {
+              for (const base of checker.getBaseTypes(type) ?? []) collectTypeOrigins(base);
+            }
             for (const info of checker.getIndexInfosOfType(type)) {
               if (firstLocalDeclaration(info.declaration)) collectTypeOrigins(info.type);
             }
