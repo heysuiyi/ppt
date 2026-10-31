@@ -82,6 +82,10 @@ export const submitAgentRequestSchema = z
     ]),
     prompt: z.string().trim().min(1),
     modelId: z.string().trim().min(1),
+    reasoningEffort: z
+      .string()
+      .regex(/^(none|minimal|low|medium|high|xhigh)$/)
+      .optional(),
     executionStrategy: z.enum(["AUTO", "REQUEST_APPROVAL"]).optional(),
     editorContext: agentEditorContextSchema.optional(),
     action: z.discriminatedUnion("type", [

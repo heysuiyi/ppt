@@ -86,15 +86,6 @@ export const agentSettingsSchema = z
   })
   .strict()
   .superRefine((settings, context) => {
-    if (
-      settings.vendors.some((vendor) => vendor.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID) &&
-      settings.gateway.maxOutputTokens > 131_072
-    )
-      context.addIssue({
-        code: "custom",
-        path: ["gateway", "maxOutputTokens"],
-        message: "MiMo maxOutputTokens must be between 1 and 131072.",
-      });
     const vendorIds = new Set<string>();
     const modelIds = new Set<string>();
     for (const vendor of settings.vendors) {

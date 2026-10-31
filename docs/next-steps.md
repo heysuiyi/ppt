@@ -8,6 +8,8 @@
 2. 连接预设、发现选择、模型级 `reasoningEffort`、签发 adapter/effort 与生产受理前保护贯通；真实 Electron 设置组件经管理 IPC/safeStorage 验证本地与实际 CN 发现、保存及重开。
 3. 开发宿主显式路由 MiMo，模型/tools 借用 Logger；真实 Electron 本地入口覆盖 EOF waiting、审批、新进程恢复、拒绝/取消、预算/强度变更拒绝与租约释放。
 4. 实际 CN 仅验收 `mimo-v2.6-flash` / `high`：普通问答、流式取消、文件工具等待后新进程恢复与取消；`/models` 返回 6 项，ASR/TTS 明确未支持。Pro 与其他 effort 的远程行为未验收。
+5. 审核发现的三项 Bug 已修复：旧配置不按 URL 隐式升级原生 MiMo，宿主保留安全模型错误分类，MiMo 预算上限不影响其他厂商。修复与本地/CLI 验证证据见[审核后修复](mimo-token-plan-cn.md#115-审核后修复)；本轮未切换 UI 或移除旧 Gateway。
+6. 新执行链已删除 Gateway 桥接工厂及兼容执行、日志包装和归档开关；仅支持显式原生适配器，未接入配置在解析凭据前以 `MODEL_ADAPTER_UNSUPPORTED` 拒绝。开发宿主与 Electron 集成的文件/审批/恢复场景迁到原生 SDK/本地 SSE，旧生产链路保持独立；本次证据见[删除 Gateway 兼容路径](mimo-token-plan-cn.md#116-删除-gateway-兼容路径)。
 
 范围、具名接口、文件落点、请求与流式映射、重放载荷及恢复兼容性仍以[完整实施方案](mimo-token-plan-cn.md)为准。后续业务切片不由本轮自动授权；M1 公开面整轮收敛不是此次前置条件。以下第 1–11 节保留 logs/tools 切片的设计和历史证据，不扩大本次迁移范围。
 
@@ -38,7 +40,7 @@ Harness 公开面收敛仍是整体规划 M1 的目标，但不作为日志设�
 | `src/main/agent/logger.ts` | 模块级单例，包含异步上下文、过滤、序列化、控制台、按日文件、近期记录、设置与清理 | 不能只搬目录；需要区分通用机制和宿主配置，但现在保持不动 |
 | `src/shared/logging.ts` | 日志面板使用的平铺条目、设置、状态与 Renderer 上报协议 | 是现有应用协议，不直接充当新模块的通用记录协议 |
 | `src/main/index.ts`、`src/preload/index.ts`、日志面板 | 日志管理 IPC、Renderer 上报、查看、设置与清理 | 属于未来消费侧切片，不是本次设计的实现项 |
-| `src/main/agent-host/configured-model-factory.ts` | 用 `withLogContext({ console: false })` 避免旧 Gateway 日志干扰开发终端 | 新设计将终端路由放到输出配置，不把开关放进执行身份 |
+| `src/main/agent-host/configured-model-factory.ts` | 只创建已接入的原生模型，并借用 models Logger；已删除旧 Gateway 日志包装 | 不再需要旧日志上下文或 Gateway IO 开关 |
 | `src/main/agent/gateway/gateway-io-log.ts` | 独立请求/响应正文归档，默认开启，与日志目录和上下文耦合 | 正文归档不能直接塞进普通 LogRecord；本轮不改变其行为 |
 | `src/agent/session/session-events.ts` | 区分执行观察事件与临时模型增量，不承诺每个 fact 已持久提交 | 不把事件流原样转成日志，更不能用日志恢复执行 |
 

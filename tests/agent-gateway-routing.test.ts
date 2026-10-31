@@ -58,6 +58,59 @@ describe("AgentGateway", () => {
     expect(selection).not.toHaveProperty("apiKey");
   });
 
+  it("keeps the registered reasoning effort through narrow model selection copies", async () => {
+    providerMocks.openai.mockResolvedValue({
+      provider: "openai",
+      model: "gpt-5-mini",
+      content: [{ type: "text", text: "hello" }],
+    });
+    const gateway = new AgentGateway();
+    const selection = gateway.configure({
+      configurationId: "reasoning-model",
+      provider: "openai",
+      model: "gpt-5-mini",
+      apiKey: "secret",
+      openaiApiMode: "responses",
+      reasoningEffort: "low",
+    });
+    expect(selection.reasoningEffort).toBe("low");
+    await gateway.queryModel(
+      { prompt: "test" },
+      {
+        configurationId: selection.configurationId,
+        provider: selection.provider,
+        model: selection.model,
+      },
+    );
+    expect(providerMocks.openai).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoningEffort: "low", callPath: "responses" }),
+      expect.anything(),
+    );
+  });
+
+  it.each([
+    { provider: "openai" as const, model: "mimo-v2.5-pro", openaiApiMode: "responses" as const },
+    {
+      provider: "openai" as const,
+      model: "gpt-5-mini",
+      openaiApiMode: "chat-completions" as const,
+    },
+    { provider: "anthropic" as const, model: "claude-test" },
+  ])("does not add reasoning effort to unsupported Gateway paths: %j", async (model) => {
+    const response = {
+      provider: model.provider,
+      model: model.model,
+      content: [{ type: "text", text: "hello" }],
+    };
+    providerMocks.openai.mockResolvedValue(response);
+    providerMocks.anthropic.mockResolvedValue(response);
+    const gateway = new AgentGateway();
+    const selection = gateway.configure({ ...model, apiKey: "secret", reasoningEffort: "high" });
+    await gateway.queryModel({ prompt: "test" }, selection);
+    const driver = model.provider === "openai" ? providerMocks.openai : providerMocks.anthropic;
+    expect(driver.mock.calls[0]![0]).not.toHaveProperty("reasoningEffort");
+  });
+
   it("routes an OpenAI selection to the OpenAI adapter", async () => {
     providerMocks.openai.mockResolvedValue({
       provider: "openai",

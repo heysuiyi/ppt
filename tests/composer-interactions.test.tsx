@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { ComponentProps } from "react";
+import { type ComponentProps, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatWorkspaceComposer } from "../src/renderer/src/components/ChatWorkspaceComposer";
 import {
@@ -37,6 +37,7 @@ function props(): ComponentProps<typeof ChatWorkspaceComposer> {
       ],
       selectedModelId: "model",
       onSelectModel: vi.fn(),
+      onReasoningEffortChange: vi.fn(),
       workspacePath: "",
       onPrepareWorkspace: vi.fn(),
       onProposePrompt: vi.fn(),
@@ -172,7 +173,7 @@ describe("composer interactions", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送指令" }));
     fireEvent.click(screen.getByRole("button", { name: "选择项目目录" }));
-    expect(screen.getByRole("combobox", { name: "选择智能体模型" }).hasAttribute("disabled")).toBe(
+    expect(screen.getByRole("button", { name: "选择智能体模型" }).hasAttribute("disabled")).toBe(
       true,
     );
     expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
@@ -206,16 +207,75 @@ describe("composer interactions", () => {
     expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
   });
 
-  it("selects a model using the shared keyboard listbox", () => {
+  it("returns to thinking after model selection, preserves intensity, and unwinds Escape", () => {
     const input = props();
+    input.composer.models[0] = {
+      ...input.composer.models[0],
+      model: "gpt-5.2",
+      openaiApiMode: "responses",
+    };
     input.composer.models.push({ ...input.composer.models[0], id: "second", name: "Second" });
-    render(<ChatWorkspaceComposer {...input} />);
-    const trigger = screen.getByRole("combobox", { name: "选择智能体模型" });
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    fireEvent.keyDown(trigger, { key: "Enter" });
-    expect(input.composer.onSelectModel).toHaveBeenCalledWith("second");
-    expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
+    function Harness() {
+      const [modelId, setModelId] = useState("model");
+      const [efforts, setEfforts] = useState<Record<string, string | undefined>>({});
+      return (
+        <ChatWorkspaceComposer
+          {...input}
+          composer={{
+            ...input.composer,
+            selectedModelId: modelId,
+            onSelectModel: setModelId,
+            reasoningEffort: efforts[modelId],
+            onReasoningEffortChange: (effort) =>
+              setEfforts((current) => ({ ...current, [modelId]: effort })),
+          }}
+        />
+      );
+    }
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: "选择智能体模型" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const slider = screen.getByRole("slider", { name: "思考强度" });
+    fireEvent.change(slider, { target: { value: "5" } });
+    expect(slider.getAttribute("aria-valuetext")).toBe("极高");
+    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    fireEvent.keyDown(screen.getByRole("option", { name: /Model/ }), { key: "ArrowDown" });
+    const second = screen.getByRole("option", { name: /Second/ });
+    expect(document.activeElement).toBe(second);
+    fireEvent.click(second);
     expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getByRole("slider").getAttribute("aria-valuetext")).toBe("默认");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Second" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second" }));
+    fireEvent.click(screen.getByRole("option", { name: /Model/ }));
+    expect(screen.getByRole("slider").getAttribute("aria-valuetext")).toBe("极高");
+    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "模型与思考强度" })).toBeTruthy();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    fireEvent.click(trigger);
+    expect(screen.getByRole("slider")).toBeTruthy();
+    expect(input.composer.onSubmitRequest).not.toHaveBeenCalled();
+  });
+
+  it("allows switching unsupported models and closes the full stack outside or when busy", () => {
+    const input = props();
+    const { rerender } = render(<ChatWorkspaceComposer {...input} />);
+    const trigger = screen.getByRole("button", { name: "选择智能体模型" });
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("slider")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: "模型与思考强度" })).toBeTruthy();
+    input.run.busy = true;
+    rerender(<ChatWorkspaceComposer {...input} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(trigger.hasAttribute("disabled")).toBe(true);
   });
 });

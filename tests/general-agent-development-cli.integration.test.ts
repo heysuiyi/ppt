@@ -18,7 +18,7 @@ const desktopAvailable =
   process.platform === "win32" || process.platform === "darwin" || Boolean(process.env.DISPLAY);
 
 describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
-  it("starts without an ESM-ready deadlock and consumes piped approval after reopening real encrypted configuration", async () => {
+  it("starts the real runner without an ESM-ready deadlock and consumes IPC approval after reopening encrypted configuration", async () => {
     const directory = await mkdtemp(join(tmpdir(), "general-agent-cli-"));
     const dataRoot = join(directory, "data");
     const workspace = join(directory, "workspace");
@@ -28,52 +28,96 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
     const key = "isolated-cli-integration-credential";
     const requests: Array<Record<string, unknown>> = [];
     const serverErrors: string[] = [];
+    const reasoning = {
+      id: "reasoning-integration",
+      type: "reasoning",
+      summary: [],
+      content: [{ type: "reasoning_text", text: "private-replay-marker" }],
+    };
+    const call = {
+      id: "function-integration",
+      type: "function_call",
+      call_id: "read-integration",
+      name: "read",
+      arguments: JSON.stringify({ path: "notes.txt" }),
+      status: "completed",
+    };
     const server = createServer((request, response) => {
       void (async () => {
         const chunks: Buffer[] = [];
         for await (const chunk of request) chunks.push(Buffer.from(chunk));
         expect(request.headers.authorization).toBe(`Bearer ${key}`);
+        expect(request.method).toBe("POST");
+        expect(request.url).toBe("/v1/responses");
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
         requests.push(body);
-        const messages = body.messages as Array<{ role: string; content: string }>;
-        let message: Record<string, unknown>;
-        if (messages.at(-1)?.role === "tool") {
-          expect(JSON.parse(messages.at(-1)!.content)).toMatchObject({
+        expect(body.model).toBe("mimo-v2.6-flash");
+        expect(body.stream).toBe(true);
+        expect(body.reasoning).toEqual({ effort: "high" });
+        const input = body.input as Array<Record<string, unknown>>;
+        const result = input.at(-1)?.type === "function_call_output" ? input.at(-1) : undefined;
+        let output: Record<string, unknown>[];
+        if (result) {
+          expect(input).toContainEqual(reasoning);
+          expect(input).toContainEqual(call);
+          expect(input.slice(-3)).toEqual([reasoning, call, result]);
+          expect(result.call_id).toBe(call.call_id);
+          const text = Array.isArray(result.output)
+            ? result.output.map((part) => String((part as Record<string, unknown>).text)).join("\n")
+            : String(result.output);
+          expect(JSON.parse(text)).toMatchObject({
             path: "notes.txt",
             content: "revision created after approval request",
-          });
-          expect(JSON.parse(messages.at(-1)!.content)).toMatchObject({
             startOffset: 0,
             endOffset: "revision created after approval request".length,
             hasMore: false,
             version: expect.any(String),
           });
-          message = { role: "assistant", content: "The approved notes.txt was read." };
-        } else
-          message = {
-            role: "assistant",
-            content: "Need read approval.",
-            reasoning_content: "private-replay-marker",
-            tool_calls: [
-              {
-                id: "read-integration",
-                type: "function",
-                function: { name: "read", arguments: JSON.stringify({ path: "notes.txt" }) },
-              },
-            ],
+          expect(text).not.toContain("before approval");
+          output = [
+            {
+              id: "message-integration",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "The approved notes.txt was read.",
+                  annotations: [],
+                },
+              ],
+            },
+          ];
+        } else output = [reasoning, call];
+        const final = {
+          id: `resp-${requests.length}`,
+          object: "response",
+          status: "completed",
+          model: "mimo-v2.6-flash",
+          output,
+          usage: {
+            input_tokens: 8,
+            output_tokens: 4,
+            output_tokens_details: { reasoning_tokens: 2 },
+          },
+        };
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        for (const [index, item] of output.entries()) {
+          const initial = {
+            ...item,
+            status: "in_progress",
+            ...(item.type === "message" || item.type === "reasoning" ? { content: [] } : {}),
+            ...(item.type === "function_call" ? { arguments: "" } : {}),
           };
-        response.writeHead(200, { "content-type": "application/json" });
+          for (const event of [
+            { type: "response.output_item.added", output_index: index, item: initial },
+            { type: "response.output_item.done", output_index: index, item },
+          ])
+            response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+        }
         response.end(
-          JSON.stringify({
-            id: `chat-${requests.length}`,
-            object: "chat.completion",
-            created: 1,
-            model: "integration-remote",
-            choices: [
-              { index: 0, message, finish_reason: message.tool_calls ? "tool_calls" : "stop" },
-            ],
-            usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 },
-          }),
+          `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: final })}\n\ndata: [DONE]\n\n`,
         );
       })().catch((error: unknown) => {
         serverErrors.push(error instanceof Error ? error.message : "HTTP assertion failed");
@@ -90,12 +134,11 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("Expected local HTTP address");
       const endpoint = `http://127.0.0.1:${address.port}/v1`;
-      const environment = {
+      const environment: NodeJS.ProcessEnv = {
         ...process.env,
         AGENT_PPT_DATA_DIR: dataRoot,
         AGENT_DEV_TEST_ENDPOINT: endpoint,
         AGENT_DEV_TEST_KEY: key,
-        AGENT_LOG_FILE: "false",
       };
       for (const name of [
         "ELECTRON_RUN_AS_NODE",
@@ -105,29 +148,35 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
         "ANTHROPIC_BASE_URL",
       ])
         delete environment[name as keyof typeof environment];
-      const run = async (
-        executable: string,
-        args: readonly string[],
-        input = "",
-      ): Promise<ProcessOutput> => {
+      const run = async (args: readonly string[], input = ""): Promise<ProcessOutput> => {
         // 原生期限只回收卡住的真实 Electron 子进程；正常路径等待 exit，不依赖睡眠。
-        const child = spawn(executable, [...args], {
+        const child = spawn(electron, [join(seedBuild!, "integration-seed.mjs"), ...args], {
           cwd: process.cwd(),
           env: environment,
-          stdio: ["pipe", "pipe", "pipe"],
+          stdio: ["ignore", "pipe", "pipe", "ipc"],
           timeout: 15000,
         });
         let stdout = "";
         let stderr = "";
-        child.stdout.setEncoding("utf8");
-        child.stderr.setEncoding("utf8");
-        child.stdout.on("data", (part: string) => {
+        child.stdout!.setEncoding("utf8");
+        child.stderr!.setEncoding("utf8");
+        child.stdout!.on("data", (part: string) => {
           stdout += part;
         });
-        child.stderr.on("data", (part: string) => {
+        child.stderr!.on("data", (part: string) => {
           stderr += part;
         });
-        child.stdin.end(input);
+        child.on("message", (message) => {
+          if (
+            message &&
+            typeof message === "object" &&
+            "type" in message &&
+            message.type === "agent-dev.ready"
+          ) {
+            if (input) child.send({ type: "agent-dev.input", text: input });
+            child.send({ type: "agent-dev.end" });
+          }
+        });
         const [code] = (await once(child, "exit")) as [number | null];
         return {
           code,
@@ -173,12 +222,11 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
           },
         },
       });
-      const seed = await run(electron, [join(seedBuild, "integration-seed.mjs")]);
+      const seed = await run(["seed"]);
       expect(seed.code, seed.stderr + seed.stdout).toBe(0);
       expect(seed.records).toContainEqual({ type: "seeded", configured: true });
       expect(await readFile(join(dataRoot, "credentials.v2.json"), "utf8")).not.toContain(key);
       const common = [
-        "scripts/run-agent.mjs",
         "--model",
         "integration-configured",
         "--workspace",
@@ -186,7 +234,8 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
         "--thread",
         "integration-thread",
       ];
-      const waiting = await run(process.execPath, [
+      // 直接运行真实 Electron runner，使用 launcher 的 ready/input/end 协议模拟管道 EOF。
+      const waiting = await run([
         ...common,
         "--prompt",
         "Read notes.txt",
@@ -205,16 +254,13 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
         }),
       );
       expect(requests).toHaveLength(1);
+      expect(waiting.records.some((record) => record.type === "tool.completed")).toBe(false);
       await writeFile(
         join(workspace, "notes.txt"),
         "revision created after approval request",
         "utf8",
       );
-      const resumed = await run(
-        process.execPath,
-        [...common, "--resume", "integration-query"],
-        "yes\n",
-      );
+      const resumed = await run([...common, "--resume", "integration-query"], "yes\n");
       expect(resumed.code, resumed.stderr + resumed.stdout).toBe(0);
       expect(resumed.records).toEqual(
         expect.arrayContaining([
@@ -227,6 +273,22 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
           }),
         ]),
       );
+      const waitingResult = waiting.records.find((record) => record.type === "result");
+      const completed = resumed.records.filter((record) => record.type === "result").at(-1);
+      if (!waitingResult || !completed) throw new Error("Expected both execution results");
+      expect(waitingResult).toMatchObject({
+        status: "waiting",
+        queryId: "integration-query",
+      });
+      expect(completed).toMatchObject({
+        status: "completed",
+        queryId: "integration-query",
+      });
+      expect((completed.messages as Record<string, unknown>[]).at(-1)).toEqual({
+        role: "assistant",
+        text: "The approved notes.txt was read.",
+      });
+      expect(completed.runId).not.toBe(waitingResult.runId);
       expect(requests).toHaveLength(2);
       for (const output of [waiting, resumed]) {
         expect(output.stdout + output.stderr).not.toContain(key);

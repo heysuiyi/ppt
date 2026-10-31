@@ -36,7 +36,11 @@ function binding(overrides: Partial<HostSessionBinding> = {}): HostSessionBindin
     threadId: "thread",
     workspaceRoot: join(tmpdir(), "bound-workspace"),
     toolMode: "read-only",
-    model: { providerId: "configured-gateway", modelId: "model", reasoningEffort: "high" },
+    model: {
+      providerId: "mimo-token-plan-cn",
+      modelId: "mimo-v2.6-flash",
+      reasoningEffort: "high",
+    },
     connectionFingerprint: "a".repeat(64),
     definition: { id: "general", version: "1" },
     plugins: [{ id: "tools", version: "1" }],
@@ -71,7 +75,11 @@ describe("persistent host session bindings", () => {
     // JSON 字段顺序不构成配置变化；有绑定的历史允许恢复。
     await reopened.bindings.ensure({
       ...original,
-      model: { reasoningEffort: "high", modelId: "model", providerId: "configured-gateway" },
+      model: {
+        reasoningEffort: "high",
+        modelId: "mimo-v2.6-flash",
+        providerId: "mimo-token-plan-cn",
+      },
     });
     expect(await reopened.history.read(original.threadId)).toMatchObject({
       revision: 1,

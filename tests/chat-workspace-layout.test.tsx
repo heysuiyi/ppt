@@ -45,6 +45,7 @@ function workspaceProps(isNewChat: boolean): ChatWorkspaceProps {
       models: [],
       selectedModelId: "",
       onSelectModel: vi.fn(),
+      onReasoningEffortChange: vi.fn(),
       workspacePath: "",
       onPrepareWorkspace: vi.fn(),
       onProposePrompt: vi.fn(),

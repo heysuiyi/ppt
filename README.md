@@ -21,6 +21,8 @@ Agent PPT 是一个本地优先的 AI 演示文稿工作台。它按任务需要
 
 三栏工作台：左侧管理会话与项目文件，中间查看 Agent 过程与审批，右侧实时预览幻灯片。Agent 生成的演示可直接进入放映，预览与导出共用同一套 SVG 视觉源；设置台可管理模型、搜索与联网、提交与审批、用量与费用等。下方样张为默认界面与 Agent 产出示例。
 
+输入框右下角的模型名称同时是思考设置入口：点击先打开思考强度卡片，点击卡片中的模型名称进入模型列表，选中后返回思考卡片而不关闭浮层。滑块使用模型支持的离散档位；“默认”沿用模型配置及现有网关默认值。覆盖值按模型在当前页面内保留，仅用于后续请求，不修改厂商配置，重载页面后重置。模型页按 Esc 返回思考页，再按 Esc 关闭；点击浮层外部直接关闭全部层级。不支持调节的模型显示说明，仍可进入模型列表。当前调节限于已识别的 OpenAI Responses 推理模型，不代表所有兼容端点均已验收；原生 MiMo 仍未接入生产聊天。
+
 <table>
   <tr>
     <td width="50%"><img src="./images/首页.png" alt="工作台" /><br/><sub>三栏工作台</sub></td>
@@ -233,8 +235,7 @@ PPTX exporter (hybrid: SVG background + editable text)
   - `session/`：历史条件追加与幂等批次收据、版本化检查点、写租约、世代围栏和显式接管；`extensions/`：插件安装、模型/工具/提示词贡献及作用域清理。
 - `src/main/agent-host/`：新内核的宿主适配，不从内核反向导入业务。
   - `createSqliteAgentStores(filePath)` 使用独立 SQLite 表持久保存历史、批次收据和检查点，不迁移或替换旧生产数据库。独立 Node 运行需要支持 `node:sqlite` 的版本（Node 22.13+；项目开发使用 Node 24）。
-  - `createGatewayModelFactory(resolve)` 在宿主解析凭据与连接后绑定现有 Gateway；稳定的 `replayScope` 标识连接，私有重放校验模型、连接和规范内容。旧 Gateway 流的索引无法保证最终内容位置，因此该适配仅发布权威 `completed`，不伪造实时增量；旧 Chat 图片、远程图片 URL 和不兼容的私有推理重放明确拒绝，不静默降级。
-  - `createAgentHost()` 在独立数据库中绑定会话、规范工作目录、工具模式、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 复用已签发的配置计划与真实凭据解析，只绑定主模型，不自动切换备用模型。
+  - `createAgentHost()` 在独立数据库中绑定会话、规范工作目录、工具模式、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 只接受已签发且已接入的原生适配器，当前为 `mimo-token-plan-cn`。其他配置在凭据解析前以 `MODEL_ADAPTER_UNSUPPORTED` 拒绝，不再提供 Gateway 桥接或备用模型回退。
 - `src/models/`：`createMimoTokenPlanCN()` 提供固定中国 Token Plan 连接的原生 Responses、模型发现、真实流式、工具和版本化私有重放，不依赖旧 Gateway。已知对话能力覆盖 `mimo-v2.6-flash`、`mimo-v2.6-pro`、`mimo-v2.6-pro-ultraspeed`；其他发现项显示未支持，不按名称猜能力。
 - `src/tools/`：基础工具 `read`、`write`、`edit`、`glob`、`grep` 的约定、默认实现与装配。`createTools({ workspaceRoot, mode })` 返回插件，默认 `read-only`；`read-write` 再安装写入和编辑工具，不自行批准调用。各同名文件拥有输入/输出 schema、工具定义与模型投影；内部共享路径守卫、稳定快照、观察记录、有界搜索与原子发布，不依赖 PPT 或当前宿主。
   - `read` 按 UTF-16 单元分页（默认最多 4000 单元），后续窗口必须携带 `expectedVersion`；完整观察同一文件版本后才能替换或编辑。`write` 显式区分 `create` 与带版本的 `replace`，`edit` 使用精确文本匹配。读取记录按安装隔离，重启丢失记录后要求重新读取。
@@ -272,11 +273,11 @@ PPTX exporter (hybrid: SVG background + editable text)
 - 历史与检查点不假设共享事务：先保存追加意图，再按稳定批次 ID 提交历史。崩溃后先对账；工具已派发或回答已消费、但没有持久结果时记为 `unknown`，不自动重做副作用。这不承诺外部操作恰好一次。
 - 模型流必须有权威完成响应，临时增量不作为规范历史；截断、缺失完成响应、存储失败不会被报告为成功。定义、插件或续传契约改变时必须升级相应版本。
 
-新链路的回归入口为 `tests/base-tools.test.ts` 与 `tests/general-agent-*.test.ts`，覆盖真实文件、SQLite、Gateway/SDK 到本地 HTTP 的传输、生命周期、工具授权与恢复边界。远程厂商推理需要另外配置凭据；这些本地验证不代表已经完成远程 LLM 或生产 UI 的切换验证。
+新链路的回归入口为 `tests/base-tools.test.ts`、`tests/mimo-token-plan-cn.test.ts` 与 `tests/general-agent-*.test.ts`，覆盖真实文件、SQLite、原生 SDK 到本地 HTTP/SSE 的传输、生命周期、工具授权与恢复边界。远程厂商推理需要另外配置凭据；这些本地验证不代表已经完成远程 LLM 或生产 UI 的切换验证。
 
 ### 独立通用 Agent 开发入口
 
-先在应用 Settings 中保存一个支持工具调用的模型。`--model` 使用 `agent-settings.json` 中的模型配置 ID，不是远程模型名称。启动器单独构建 Electron Main，不创建窗口，也不启动旧 Agent、Renderer 或 PPT 服务：
+先在应用 Settings 中保存已接入原生适配器的模型，当前仅支持“MiMo Token Plan 中国”预设。其他连接（包括相同 CN URL 的 custom 配置）不会自动升级，也不再通过 Gateway 兼容执行。`--model` 使用 `agent-settings.json` 中的模型配置 ID，不是远程模型名称。启动器单独构建 Electron Main，不创建窗口，也不启动旧 Agent、Renderer 或 PPT 服务：
 
 MiMo 请选择“MiMo Token Plan 中国”预设，使用其已保存凭据获取模型、勾选保存，并在高级设置选择思考强度。默认省略 `reasoning`，显式档位原样发送；固定使用 `https://token-plan-cn.xiaomimimo.com/v1`，不使用其他厂商的环境 Key。已有自定义连接不会自动升级为原生连接。原生 MiMo 仅供此开发宿主使用，旧生产聊天会在受理前明确拒绝，不创建会话或回落旧 Gateway。
 
@@ -292,7 +293,7 @@ npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes -
 npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --tools read-write --prompt "完整读取 notes.txt，在原内容末尾增加一行说明"
 ```
 
-执行事实与结果使用逐行 JSON（构建日志和交互输入回显除外），包含 thread/query/run ID、公开执行事实和最终文本；不打印原始 SDK 异常、完整工具结果、reasoning 或私有重放状态。底层 Gateway 的本地诊断仍按日志策略保存，但不复制到开发终端；此入口禁用完整 Gateway IO 归档。Node 启动器拥有终端/管道输入，通过父子进程 IPC 传入 Electron，避免 Windows Main 丢失标准输入。
+执行事实与结果使用逐行 JSON（构建日志和交互输入回显除外），包含 thread/query/run ID、公开执行事实和最终文本；不打印原始 SDK 异常、完整工具结果、reasoning 或私有重放状态。新链路不再加载旧 Gateway、旧 logger 或 Gateway IO 归档。Node 启动器拥有终端/管道输入，通过父子进程 IPC 传入 Electron，避免 Windows Main 丢失标准输入。
 
 宿主拥有 `NodeLogs`，模型与 tools 仅借用 Logger；按 Agent 排空 → provider → stores → Logs 顺序关闭。新诊断写入配置根下 `agent-development-logs/<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，不记录模型正文、工具载荷或凭据，且遮蔽 `tp-` / `ttp-` 形态。模型日志通过 `ModelCallContext` 关联 Run/request/step，不将诊断上下文写进请求体或检查点。
 

@@ -33,6 +33,8 @@
 
 ## 3. 当前代码缺口
 
+本节为首次接入前的历史基线；当前原生执行边界及后续兼容路径删除见第 11 节，不表示以下缺口仍全部存在。
+
 | 已有位置 | 已有事实 | 本轮处理 |
 | --- | --- | --- |
 | `src/agent/model/model-contract.ts` | 已有 ModelClientFactory、ModelClient、ModelSelection.reasoningEffort、增量、完成响应和私有 replayState | 明确为模型适配器支持的协议路径，复用而不重写 Loop；只补通用调用诊断上下文 |
@@ -125,18 +127,18 @@ export declare function createMimoTokenPlanCN(
 1. VendorKind / schema / 设置页预设增加 `mimo-token-plan-cn`。protocol 仍为 openai，模型 API 模式固定 responses，预设地址固定 CN Base URL；该预设不展示切协议/区域的控件。
 2. ModelCatalogEntry、模型 schema、ManagedModel、模型草稿和 AgentModelSettings/Selection 增加可选 reasoningEffort。缺省表示默认，持久化时省略；不保存空字符串或自造 default 字符串。
 3. MiMo 的强度下拉包含默认与全部合法 effort；保存、重新打开、启用切换、从远程 ID 创建模型、flatten 和配置解析都不得丢失字段。其他厂商不因这次新增字段被统一套用 MiMo 的档位集合。
-4. 超过 API 范围的 maxOutputTokens、MiMo 连接与非 responses 的组合、未知 effort，在 Main 配置/适配边界明确拒绝，不能等到 SDK 报不透明错误。现有旧配置无新增字段时继续可读，不批量改写用户配置。
+4. MiMo 连接与非 responses 的组合、未知 effort 在配置边界明确拒绝；原生 provider 创建时校验 maxOutputTokens 为 1–131072，不等到 SDK 请求才失败。共享预算只做通用数值校验，不能因存在 MiMo 连接就限制其他厂商，即使该连接已启用。现有旧配置无新增字段时继续可读，不批量改写用户配置。
 5. 现有环境凭据策略不增加全局 MIMO_API_KEY 自动兜底；本连接使用现有连接绑定的已保存凭据，不把另一厂商的环境 Key 发到 CN。Key 前缀不代替服务端鉴权，也不据前缀自动换地址。
 
 建议把合法 effort 和连接元数据放在 models 的纯 contract 文件，供配置校验和 Renderer 使用；该文件不反向依赖 shared，不携带 SDK 或 Node 代码。node tsconfig 包含 models 全部，web tsconfig 只包含需要的纯 contract 依赖。实际构建核验 Renderer 不引入执行实现，而不是用源码字符串测试导入次数。
 
 ### 5.2 明确路由，不猜测厂商
 
-在 `ExecutionPlan` 与 `ResolvedRunConfiguration` 增加可选的具名 `modelAdapter`，当前新值为 `mimo-token-plan-cn`；未声明表示已有旧执行适配，不新增兼容别名。
+在 `ExecutionPlan` 与 `ResolvedRunConfiguration` 使用可选的具名 `modelAdapter`，当前原生值为 `mimo-token-plan-cn`。未声明的旧配置仍可供旧生产入口使用，但不再被新宿主接受；不新增兼容别名。
 
 loadExecutionPlan 根据已保存 vendor.kind 固化 modelAdapter 和 reasoningEffort，resolveRuntime 只接受同一运行时签发的原计划对象并返回对应配置。前端不能通过执行请求临时指定 adapter、endpoint、Key 或自造恢复快照。实际公开字段变更前须检查全部引用与签名消费方。
 
-新宿主按签发的 modelAdapter 明确选择 factory。旧路径只服务尚未迁移的配置；新 MiMo 连接绝不因原生适配失败而回落到 configured-gateway，也不靠 model.includes("mimo") 或 URL 子串判断。
+新宿主只按签发的 modelAdapter 创建已接入的原生 factory。未声明或未接入的适配器在解析凭据前以 MODEL_ADAPTER_UNSUPPORTED 拒绝；不再存在 configured-gateway 兼容执行，也不靠 model.includes("mimo") 或 URL 子串判断。
 
 ### 5.3 模型获取端到端
 
@@ -222,6 +224,8 @@ MiMo 路径摘要包含固定连接、适配器与重放版本、vendor/configur
 
 模块提供具名 MimoModelError/稳定 code，覆盖配置、模型能力、认证、访问、限流或额度、超时、网络、流不完整、截断、无效响应与重放不兼容。公开消息不拼接 SDK 原文；终端不直接序列化 SDK 异常。
 
+configured-model-factory 在 provider 创建、模型绑定、generate 和 stream 的实际异步迭代边界，将已脱敏的 MimoModelError 转成通用 AgentError，保留安全 code/message 到运行结果和失败检查点。独立 provider 的错误类型不变；内核不识别厂商类型，也不信任任意对象自带的 code/message。
+
 429 在缺少可靠服务错误标识时只报告“限流或额度受限”，不猜为单一原因。401、403、402、421、5xx 等按协议分类。应用层与 SDK 不自动重试、不换连接、不切普通按量 API；Node Fetch 按 HTTP 规范可能内部重传 421，该限制见第 11 节。用户取消保留现有 cancelled，应用/绑定关闭仍按 interrupted 的既有语义处理，不用统一 failed 覆盖取消。
 
 ## 9. 实施切片与改动落点
@@ -300,5 +304,24 @@ P2 的管理验证需使用真实 Electron safeStorage 能力时，按现有集�
 - 无应用层或 SDK 重试（`maxRetries=0`），无域名/区域/按量 API 回退。Node Fetch/Undici 按 WHATWG Fetch 规则可能对 421 内部重新建连重传，不能承诺底层 HTTP 从不重传。回归区分一次 SDK fetch 与两次底层 HTTP 421，并单独验证 SDK 边界的安全错误分类；未为绕过标准行为新增 transport 框架。
 - 已知对话能力元数据还包含官方文档列出的 `mimo-v2.6-pro-ultraspeed`，但本次实际 `/models` 未返回该项。Pro、ultraspeed 与除 high 外其他 effort 的远程执行未验收；全部合法 effort 的原值传递由本地请求证据覆盖。
 - 真实远程恢复通过宿主公开创建/运行/恢复入口验收；真实开发 CLI 的 EOF/管道输入、拒绝/取消及跨进程机制由本地 HTTP 集成覆盖，不混称为完整真实远程 CLI 验收。写入/编辑业务没有另做本次远程调用，现有五工具回归保持通过。
-- 生产聊天/PPT/生产会话与旧 Gateway 未迁移。原有 custom 连接仍按原 kind 路由；需在设置中明确选择原生 MiMo 预设，不能仅凭 URL 或模型名称隐式升级。
+- 生产聊天/PPT/生产会话与旧 Gateway 未迁移。原有 custom 连接在旧生产入口仍按原 kind 路由，在新开发宿主则明确拒绝；需在设置中选择已接入的原生 MiMo 预设，不能仅凭 URL 或模型名称隐式升级。
 - 本次临时窗口、Vite 服务、HTTP 服务、脚本、独立构建、加密开发配置、SQLite 和工作区均已清理；未删除共享数据库、源配置或旧日志。
+
+### 11.5 审核后修复
+
+- 旧 v1/v2 浏览器模型目录迁移排除原生 MiMo 的 URL 自动推断，Chat 与 Responses 连接都保持 custom；显式保存的原生预设保持原身份。
+- 宿主错误转换覆盖创建、绑定、非流式与真实流式执行。新增本地 HTTP 401/429 回归直接核验公开运行结果、失败检查点和租约释放；不暴露 SDK 原文或凭据。无效预算与不支持模型在 HTTP 请求前被安全拒绝。
+- 移除共享设置中 MiMo 专属的全局预算上限；管理回归覆盖空、禁用和启用的 MiMo 连接与其他厂商共存，预算保存、重开与其他模型配置解析不受影响。实际执行 MiMo 仍使用 provider 原有预算校验。
+- 临时烟测调用实际 initializeAgentSettings，desktopApi 管理边界受控并使用真实设置 Schema：旧 Chat/Responses 均初始化成功，保留 custom 和配置 ID。真实 SDK 到本地 HTTP 的宿主烟测确认 AUTHENTICATION 贯通，超限 MiMo 预算在请求前拒绝；临时构建、服务和数据已清理。
+- 本次验证：npm run typecheck 通过；7 个受影响代码文件通过 Biome；npm test 为 189 个文件、1541 项通过，2 项按现有条件跳过，其中 MiMo 回归为 57 项。mimo-development-cli 与 general-agent-development-cli 两个实际 Electron 集成通过。
+- 本次未调用远程模型，未切换生产 UI、移除旧 Gateway 或扩展宿主状态管理；不扩大第 11.3 节的实际 CN 验收范围。
+
+### 11.6 删除 Gateway 兼容路径
+
+- 删除 `src/main/agent-host/gateway-model-factory.ts`，以及 configured-model-factory 中的旧 Gateway 创建、消息/重放桥接、日志上下文包装和兼容模型生命周期；开发 runner 不再设置旧 Gateway IO 归档开关。
+- 原生准备入口在签发计划检查后、resolveRuntime 之前拒绝不支持的配置。包括相同 CN URL/模型名的 custom Responses、Chat 和 Anthropic 配置，均不解析凭据、不发 HTTP，不隐式升级或回退。
+- 删除只覆盖已移除桥接实现的网络测试，保留通用 SQLite/CAS/租约行为测试。开发宿主的既有文件读写、搜索、逐次审批、拒绝、模型/工作区绑定、密钥轮换、关闭中断与恢复场景迁到原生 MiMo SDK/本地 HTTP/SSE。
+- 两个 Electron 集成使用测试专用入口，在加载真实 development-runner 前安装固定 CN 到 loopback 的失败关闭转发。保留真实 safeStorage、EOF waiting、新进程批准与私有 output 重放验证；general CLI 集成不再通过 Node 启动器的实际 stdin 管道运行，覆盖的是 runner 的 ready/input/end IPC。实际 Node 启动器另运行 agent:dev -- --help，只证明构建、加载和帮助退出，不将其称为完整管道验收。
+- 独立宿主烟测确认：不支持配置在凭据解析前拒绝；原生文件调用落 waiting，重建宿主后以同 Query/新 Run 批准完成，最终检查点 completed、待决状态清空且租约释放。
+- 本次验证：npm run typecheck 通过，9 个受影响代码文件通过 Biome；npm test 为 189 个文件、1585 项通过，2 项按现有条件跳过。两个真实 Electron 集成通过，实际 Node 启动器帮助烟测正常退出；临时宿主、工作区、HTTP 服务和构建目录已清理。
+- 本轮不切换生产 UI，不删除旧生产 Agent/Gateway，不迁移其历史会话；也不增加其他厂商适配器或调用远程模型。

@@ -169,6 +169,39 @@ describe("model catalog", () => {
     expect(window.localStorage.getItem(CREDENTIAL_REENTRY_NOTICE_STORAGE_KEY)).toBe("1");
   });
 
+  it.each([LEGACY_MODEL_STORAGE_KEY, LEGACY_MODEL_STORAGE_KEY_V2])(
+    "keeps CN connections in %s custom until the native adapter is explicitly selected",
+    (storageKey) => {
+      const baseURL = "https://token-plan-cn.xiaomimimo.com/v1";
+      const models = (["chat-completions", "responses"] as const).map((openaiApiMode) => ({
+        id: `legacy-${openaiApiMode}`,
+        name: openaiApiMode,
+        provider: "openai",
+        model: "mimo-v2.6-flash",
+        baseURL,
+        openaiApiMode,
+        enabled: true,
+      }));
+      window.localStorage.setItem(storageKey, JSON.stringify(models));
+      const vendors = loadManagedVendors();
+      expect(
+        vendors.map(({ kind, baseURL: url, models: entries }) => ({
+          kind,
+          baseURL: url,
+          mode: entries[0]?.openaiApiMode,
+          modelId: entries[0]?.id,
+        })),
+      ).toEqual(
+        models.map((model) => ({
+          kind: "custom",
+          baseURL,
+          mode: model.openaiApiMode,
+          modelId: model.id,
+        })),
+      );
+    },
+  );
+
   it("drops unconfigured v1 presets but keeps configured metadata and original storage", () => {
     const raw = JSON.stringify([
       presetModel("openai"),

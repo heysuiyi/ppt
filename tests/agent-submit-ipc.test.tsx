@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRunAccepted, AgentStreamEvent, SubmitAgentRequest } from "../src/shared/ipc";
+import { submitAgentRequestSchema } from "../src/shared/ipc";
 
 // Reload the modules under test to isolate their pending-save queue between test cases.
 afterEach(() => vi.resetModules());
@@ -19,6 +20,7 @@ describe("Renderer submit boundary", () => {
       target: { type: "new-session" },
       prompt: "做演示文稿",
       modelId: "saved-model",
+      reasoningEffort: "high",
       action: { type: "message" },
     };
     const submit = vi.fn(async () => {
@@ -57,6 +59,27 @@ describe("Renderer submit boundary", () => {
     expect(onRunning).toHaveBeenCalledTimes(1);
     expect(stopAccepted).toHaveBeenCalledOnce();
     expect(stopStream).toHaveBeenCalledOnce();
+  });
+
+  it("validates optional request reasoning effort without null reset semantics", () => {
+    const request = {
+      requestId: crypto.randomUUID(),
+      userMessageId: crypto.randomUUID(),
+      assistantMessageId: crypto.randomUUID(),
+      target: { type: "new-session" },
+      prompt: "test",
+      modelId: "saved-model",
+      action: { type: "message" },
+    };
+    expect(submitAgentRequestSchema.parse(request)).not.toHaveProperty("reasoningEffort");
+    for (const reasoningEffort of ["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(submitAgentRequestSchema.parse({ ...request, reasoningEffort }).reasoningEffort).toBe(
+        reasoningEffort,
+      );
+    for (const reasoningEffort of [null, "", "HIGH", "ultra", 3])
+      expect(submitAgentRequestSchema.safeParse({ ...request, reasoningEffort }).success).toBe(
+        false,
+      );
   });
 
   it("does not submit using stale settings after a failed settings save", async () => {

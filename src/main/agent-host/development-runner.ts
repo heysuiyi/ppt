@@ -19,8 +19,6 @@ import {
   publicDevelopmentError,
 } from "./development-command";
 
-// 该开发入口的终端只消费公开投影；完整 Gateway IO 不进入开发归档。
-process.env.AGENT_GATEWAY_IO_LOG = "false";
 const approvalSchema = z
   .object({
     tool: z.enum(["read", "glob", "grep", "write", "edit"]),

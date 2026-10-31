@@ -1169,7 +1169,10 @@ app.whenReady().then(async () => {
     let sessionId: string | undefined;
     let accepted = false;
     try {
-      const plan = await agentConfiguration.runtime.loadExecutionPlan(request.modelId);
+      const plan = await agentConfiguration.runtime.loadExecutionPlan(
+        request.modelId,
+        request.reasoningEffort,
+      );
       controller.signal.throwIfAborted();
       assertProductionModelAdapter(plan);
       const admission = await acceptAgentRequest(sessionStore, plan, request);

@@ -423,6 +423,8 @@ function inferVendorKind(
   modelId: string,
 ): PresetVendorKind | "custom" {
   for (const preset of MODEL_VENDOR_PRESETS) {
+    // 原生适配器必须显式选择，旧兼容连接不能因 URL 相同而改变执行协议。
+    if (preset.id === MIMO_TOKEN_PLAN_CN_PROVIDER_ID) continue;
     if (preset.models.some((model) => model.id === modelId)) return preset.id;
     for (const candidate of Object.values(preset.baseURLs)) {
       if (candidate && normalizedBaseURL(candidate) === normalizedBaseURL(baseURL)) {

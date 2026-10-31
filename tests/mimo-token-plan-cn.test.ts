@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ModelAssistantMessage,
@@ -7,7 +10,13 @@ import type {
   ModelRequest,
   ModelStreamEvent,
 } from "../src/agent/model/model-contract";
+import { AgentError } from "../src/agent/protocol-utils";
 import type { Logger, LogInput } from "../src/logs/log-contract";
+import type { AgentConfiguration, ExecutionPlan } from "../src/main/agent-configuration";
+import { prepareConfiguredModel } from "../src/main/agent-host/configured-model-factory";
+import { createAgentHost } from "../src/main/agent-host/create-agent-host";
+import { publicDevelopmentError } from "../src/main/agent-host/development-command";
+import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
 import { createMimoTokenPlanCN, MimoModelError } from "../src/models/mimo-token-plan-cn";
 import {
   MIMO_REASONING_EFFORTS,
@@ -134,6 +143,7 @@ let handlers: ((
 let observed: ObservedRequest[];
 let publicURLs: string[];
 let providers: MimoTokenPlanCN[];
+let hostCleanup: Array<() => Promise<unknown>>;
 const nativeFetch = globalThis.fetch;
 
 function provider(overrides: Partial<MimoTokenPlanCNOptions> = {}) {
@@ -159,6 +169,7 @@ beforeEach(async () => {
   observed = [];
   publicURLs = [];
   providers = [];
+  hostCleanup = [];
   server = createServer(async (req, res) => {
     let body = "";
     for await (const chunk of req) body += chunk;
@@ -187,6 +198,7 @@ beforeEach(async () => {
   });
 });
 afterEach(async () => {
+  for (const close of hostCleanup.reverse()) await close();
   await Promise.all(providers.map((value) => value.dispose()));
   server.closeAllConnections();
   const closed = Promise.withResolvers<void>();
@@ -866,4 +878,135 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
     logger.info("still.borrowed");
     expect(records.at(-1)?.event).toBe("still.borrowed");
   });
+});
+
+function configuredRuntime(
+  maxOutputTokens = 321,
+  modelId = selection.modelId,
+): AgentConfiguration["runtime"] {
+  const plan: ExecutionPlan = {
+    modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+    model: {
+      provider: "openai",
+      model: modelId,
+      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      openaiApiMode: "responses",
+    },
+    services: { timeoutMs: 2000, maxOutputTokens },
+    stepLimits: { enabled: true, mainMaxSteps: 4, subMaxSteps: 2 },
+    executionStrategy: "REQUEST_APPROVAL",
+    defaultTemplateId: "builtin/swiss-minimal",
+  };
+  return {
+    async loadExecutionPlan() {
+      return plan;
+    },
+    async resolveRuntime() {
+      return {
+        modelAdapter: plan.modelAdapter,
+        primary: { ...plan.model, apiKey: "tp-synthetic-test-only" },
+        gateway: plan.services,
+        search: {},
+      };
+    },
+  };
+}
+
+describe("MiMo configured host error boundary", () => {
+  it.each(["responses", "chat-completions", "anthropic"] as const)(
+    "rejects an unregistered %s connection before resolving credentials or dispatching HTTP",
+    async (protocol) => {
+      const runtime = configuredRuntime();
+      const { modelAdapter: _adapter, ...plan } =
+        await runtime.loadExecutionPlan("configured-mimo");
+      if (protocol === "anthropic") plan.model.provider = "anthropic";
+      else plan.model.openaiApiMode = protocol;
+      const resolveRuntime = vi.fn(runtime.resolveRuntime);
+      await expect(
+        prepareConfiguredModel(
+          { loadExecutionPlan: async () => plan, resolveRuntime },
+          "configured-mimo",
+          signal(),
+        ),
+      ).rejects.toMatchObject({ name: "AgentError", code: "MODEL_ADAPTER_UNSUPPORTED" });
+      expect(resolveRuntime).not.toHaveBeenCalled();
+      expect(observed).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    [401, "AUTHENTICATION", "MiMo 身份认证失败。"],
+    [429, "RATE_LIMIT_OR_QUOTA", "MiMo 限流或额度受限。"],
+  ] as const)(
+    "retains HTTP %s classification in the run result and durable checkpoint",
+    async (status, code, message) => {
+      handlers.push((_req, res) =>
+        json(res, { error: { message: "private SDK diagnostic tp-synthetic-test-only" } }, status),
+      );
+      const directory = await mkdtemp(join(tmpdir(), "mimo-host-error-"));
+      hostCleanup.push(() => rm(directory, { recursive: true, force: true }));
+      const host = await createAgentHost({
+        configuration: configuredRuntime(),
+        applicationDataRoot: directory,
+        workspaceRoot: directory,
+        modelId: "configured-mimo",
+        threadId: "thread",
+      });
+      hostCleanup.push(() => host.close());
+      const handle = await host.run({
+        queryId: "query",
+        runId: "run",
+        input: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
+      });
+      const result = await handle.completed;
+      expect(result).toMatchObject({ status: "failed", error: { code, message } });
+      expect(JSON.stringify(result)).not.toMatch(/private SDK|tp-synthetic/u);
+      await host.close();
+      const stores = createSqliteAgentStores(join(directory, "agent-development.sqlite"));
+      hostCleanup.push(() => stores.dispose());
+      const saved = await stores.checkpoints.acquire(
+        { agentId: "development-agent", threadId: "thread", queryId: "query" },
+        "inspector",
+      );
+      if (saved.status !== "acquired") throw new Error("Expected released execution lease");
+      expect(saved.checkpoint).toMatchObject({ status: "failed", error: { code, message } });
+      await stores.checkpoints.release(saved.lease);
+    },
+  );
+
+  it("retains safe non-streaming model errors at the configured factory boundary", async () => {
+    handlers.push((_req, res) => json(res, { error: { message: "private SDK diagnostic" } }, 401));
+    const prepared = await prepareConfiguredModel(configuredRuntime(), "configured-mimo", signal());
+    hostCleanup.push(() => prepared.dispose());
+    const selected = await prepared.models.create(prepared.selection, signal());
+    await expect(selected.client.generate(request, signal())).rejects.toEqual(
+      new AgentError("AUTHENTICATION", "MiMo 身份认证失败。"),
+    );
+    await selected.dispose();
+  });
+
+  it.each([
+    [131_073, selection.modelId, "CONFIGURATION"],
+    [321, "mimo-v2.5-tts", "MODEL_CAPABILITY"],
+  ] as const)(
+    "keeps preparation/binding errors safe and rejects before HTTP (%s, %s)",
+    async (budget, modelId, code) => {
+      let failure: unknown;
+      try {
+        const prepared = await prepareConfiguredModel(
+          configuredRuntime(budget, modelId),
+          "configured-mimo",
+          signal(),
+        );
+        hostCleanup.push(() => prepared.dispose());
+        await prepared.models.create(prepared.selection, signal());
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(AgentError);
+      expect(publicDevelopmentError(failure)).toMatchObject({ code });
+      expect(JSON.stringify(publicDevelopmentError(failure))).not.toContain("tp-synthetic");
+      expect(observed).toHaveLength(0);
+    },
+  );
 });

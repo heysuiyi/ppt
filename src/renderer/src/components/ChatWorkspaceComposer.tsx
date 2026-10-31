@@ -23,10 +23,10 @@ import type {
 } from "./chat-workspace-types";
 import { Textarea } from "./Field";
 import { FolderIcon, SendIcon, StopIcon } from "./Icons";
+import { ModelThinkingPopover } from "./ModelThinkingPopover";
 import { useOverlayOwner } from "./overlay-lifecycle";
 import { usePopoverPosition } from "./popover-position";
 import { RunStatusIndicator } from "./RunStatusIndicator";
-import { Select } from "./Select";
 
 interface ChatWorkspaceComposerProps {
   state: ChatRegionState;
@@ -341,15 +341,14 @@ export function ChatWorkspaceComposer({
                   </div>
 
                   <div className="functional-right">
-                    <Select
-                      variant="compact"
+                    <ModelThinkingPopover
                       placement={centered ? "below" : "above"}
                       value={selectedModelId}
                       onChange={setSelectedModelId}
-                      options={models.map((model) => ({ value: model.id, label: model.name }))}
-                      placeholder="选择模型"
+                      models={models}
+                      reasoningEffort={composer.reasoningEffort}
+                      onReasoningEffortChange={composer.onReasoningEffortChange}
                       disabled={locked || models.length === 0}
-                      ariaLabel="选择智能体模型"
                     />
 
                     <IconButton

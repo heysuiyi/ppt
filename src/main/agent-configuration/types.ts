@@ -30,7 +30,7 @@ export interface ResolvedRunConfiguration {
 export interface AgentConfiguration {
   management: ConfigurationManagement;
   runtime: {
-    loadExecutionPlan(modelId: string): Promise<ExecutionPlan>;
+    loadExecutionPlan(modelId: string, reasoningEffort?: string): Promise<ExecutionPlan>;
     resolveRuntime(plan: ExecutionPlan): Promise<ResolvedRunConfiguration>;
   };
 }

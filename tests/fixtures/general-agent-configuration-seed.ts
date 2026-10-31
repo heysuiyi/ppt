@@ -2,60 +2,99 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { app, safeStorage } from "electron";
 import { createAgentConfiguration } from "../../src/main/agent-configuration";
+import { MIMO_TOKEN_PLAN_CN_BASE_URL } from "../../src/models/mimo-token-plan-cn-contract";
 
 const root = process.env.AGENT_PPT_DATA_DIR;
 const endpoint = process.env.AGENT_DEV_TEST_ENDPOINT;
 const apiKey = process.env.AGENT_DEV_TEST_KEY;
 if (!root || !endpoint || !apiKey)
   throw new Error("Isolated integration configuration is required.");
-app.setName("agent-ppt");
-mkdirSync(join(root, "electron"), { recursive: true });
-app.setPath("userData", join(root, "electron"));
-// 与开发入口一样，先完成 ESM 加载，再等待 Electron 就绪。
-void app.whenReady().then(async () => {
-  try {
-    const configuration = createAgentConfiguration({
-      applicationDataRoot: root,
-      safeStorage,
-      environment: {},
-    });
-    const vendor = {
-      id: "integration",
-      kind: "custom" as const,
-      label: "Isolated integration endpoint",
-      protocol: "openai" as const,
-      baseURL: endpoint,
-      enabled: true,
-      models: [
-        {
-          id: "integration-configured",
-          name: "Integration",
-          model: "integration-remote",
-          enabled: true,
-          openaiApiMode: "chat-completions" as const,
-        },
-      ],
-    };
-    await configuration.management.initialize({
-      vendors: [vendor],
-      gateway: { timeoutMs: 5000, maxOutputTokens: 1024 },
-      stepLimits: { enabled: true, mainMaxSteps: 4, subMaxSteps: 2 },
-      executionStrategy: "REQUEST_APPROVAL",
-      defaultTemplateId: "builtin/swiss-minimal",
-    });
-    const snapshot = await configuration.management.saveVendor({
-      vendor,
-      credential: { type: "replace", apiKey },
-    });
-    const written = Promise.withResolvers<void>();
-    process.stdout.write(
-      `${JSON.stringify({ type: "seeded", configured: snapshot.credentials.models[0]?.configured })}\n`,
-      (error) => (error ? written.reject(error) : written.resolve()),
-    );
-    await written.promise;
-    app.exit(0);
-  } catch {
-    console.error("Isolated safeStorage integration setup failed.");
-    app.exit(1);
-  }
-});
+const local = new URL(endpoint);
+if (
+  local.protocol !== "http:" ||
+  local.hostname !== "127.0.0.1" ||
+  !local.port ||
+  local.pathname !== "/v1" ||
+  local.search ||
+  local.hash ||
+  local.username ||
+  local.password
+)
+  throw new Error("Isolated integration transport must use local HTTP.");
+const native = new URL(MIMO_TOKEN_PLAN_CN_BASE_URL);
+const transport = globalThis.fetch;
+// 测试专用且失败关闭：真实 SDK 只能将固定 CN Responses 请求转发至本地服务。
+globalThis.fetch = (input, init) => {
+  const url = new URL(input instanceof Request ? input.url : String(input));
+  if (
+    url.origin !== native.origin ||
+    url.pathname !== `${native.pathname}/responses` ||
+    url.search ||
+    url.hash ||
+    url.username ||
+    url.password
+  )
+    throw new Error("Unexpected native integration destination.");
+  const target = `${local.href}/responses`;
+  return transport(input instanceof Request ? new Request(target, input) : target, {
+    ...init,
+    redirect: "error",
+  });
+};
+if (process.argv[2] === "seed") {
+  app.setName("agent-ppt");
+  mkdirSync(join(root, "electron"), { recursive: true });
+  app.setPath("userData", join(root, "electron"));
+  // 与开发入口一样，先完成 ESM 加载，再等待 Electron 就绪。
+  void app.whenReady().then(async () => {
+    try {
+      const configuration = createAgentConfiguration({
+        applicationDataRoot: root,
+        safeStorage,
+        environment: {},
+      });
+      const vendor = {
+        id: "integration",
+        kind: "mimo-token-plan-cn" as const,
+        label: "Isolated native MiMo integration",
+        protocol: "openai" as const,
+        baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+        enabled: true,
+        models: [
+          {
+            id: "integration-configured",
+            name: "MiMo Flash",
+            model: "mimo-v2.6-flash",
+            enabled: true,
+            openaiApiMode: "responses" as const,
+            reasoningEffort: "high",
+          },
+        ],
+      };
+      await configuration.management.initialize({
+        vendors: [vendor],
+        gateway: { timeoutMs: 5000, maxOutputTokens: 1024 },
+        stepLimits: { enabled: true, mainMaxSteps: 4, subMaxSteps: 2 },
+        executionStrategy: "REQUEST_APPROVAL",
+        defaultTemplateId: "builtin/swiss-minimal",
+      });
+      const snapshot = await configuration.management.saveVendor({
+        vendor,
+        credential: { type: "replace", apiKey },
+      });
+      const written = Promise.withResolvers<void>();
+      process.stdout.write(
+        `${JSON.stringify({ type: "seeded", configured: snapshot.credentials.models[0]?.configured })}\n`,
+        (error) => (error ? written.reject(error) : written.resolve()),
+      );
+      await written.promise;
+      app.exit(0);
+    } catch {
+      console.error("Isolated safeStorage integration setup failed.");
+      app.exit(1);
+    }
+  });
+} else {
+  // 必须先安装本地 transport，再加载实际 runner；不复制执行、审批或关闭逻辑。
+  void import("../../src/main/agent-host/development-runner");
+}

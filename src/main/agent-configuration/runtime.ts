@@ -1,6 +1,7 @@
 import type { AgentModelSelection, AgentModelSettings } from "@shared/agent";
 import { DEFAULT_WEB_SEARCH_ENDPOINT } from "@shared/agent-gateway-config";
 import { normalizeCredentialUrl } from "@shared/credentials";
+import { getModelReasoningEfforts } from "@shared/model-reasoning";
 import { MIMO_TOKEN_PLAN_CN_PROVIDER_ID } from "../../models/mimo-token-plan-cn-contract";
 import { type CredentialStore, CredentialStoreError } from "./internal/credential-store";
 import { modelCredentialBindingFromSelection } from "./internal/credential-types";
@@ -76,7 +77,7 @@ export function createRuntime(
     };
   }
   return {
-    loadExecutionPlan: (modelId) =>
+    loadExecutionPlan: (modelId, reasoningEffort) =>
       exclusive(async () => {
         const settings = await settingsStore.get();
         if (!settings) throw new Error("Execution settings have not been initialized.");
@@ -86,6 +87,11 @@ export function createRuntime(
           MIMO_TOKEN_PLAN_CN_PROVIDER_ID
             ? MIMO_TOKEN_PLAN_CN_PROVIDER_ID
             : undefined;
+        if (reasoningEffort !== undefined) {
+          if (modelAdapter || !getModelReasoningEfforts(model).includes(reasoningEffort))
+            throw new Error("Unsupported reasoning effort for the selected model.");
+          model.reasoningEffort = reasoningEffort;
+        }
         const env = { ...environment };
         const fallbackId = settings.gateway.fallbackModelId;
         const fallbackEnabled = settings.vendors.some(

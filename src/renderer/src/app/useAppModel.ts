@@ -334,6 +334,8 @@ export function useAppModel(bootstrap: AppBootstrapSnapshot): AppModel {
                   models: enabledModels,
                   selectedModelId,
                   onSelectModel: setSelectedModelId,
+                  reasoningEffort: settings.selectedReasoningEffort,
+                  onReasoningEffortChange: settings.setReasoningEffort,
                   workspacePath: localStoragePath,
                   onPrepareWorkspace: () => void selectWorkspaceFolder(),
                   onProposePrompt: suggestPrompt,

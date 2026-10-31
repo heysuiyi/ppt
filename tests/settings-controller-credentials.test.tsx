@@ -94,6 +94,30 @@ afterEach(() => {
 });
 
 describe("configuration-backed settings controller", () => {
+  it("keeps request intensity per model without changing catalog configuration", async () => {
+    const api = installApi();
+    const initial = bootstrap();
+    const vendor = initial.vendors[0]!;
+    vendor.models[0]!.model = "gpt-5.2";
+    vendor.models.push({ ...vendor.models[0]!, id: "model-two", model: "gpt-5-mini" });
+    const notify = vi.fn();
+    const { result } = renderHook(() => useSettingsController(initial, undefined, notify));
+    await act(async () => result.current.setReasoningEffort("xhigh"));
+    expect(result.current.selectedReasoningEffort).toBe("xhigh");
+    act(() => result.current.selectModel("model-two"));
+    expect(result.current.selectedReasoningEffort).toBeUndefined();
+    act(() => result.current.setReasoningEffort("xhigh"));
+    expect(result.current.selectedReasoningEffort).toBeUndefined();
+    act(() => result.current.setReasoningEffort("low"));
+    expect(result.current.selectedReasoningEffort).toBe("low");
+    act(() => result.current.selectModel("model-one"));
+    expect(result.current.selectedReasoningEffort).toBe("xhigh");
+    act(() => result.current.setReasoningEffort(undefined));
+    expect(result.current.selectedReasoningEffort).toBeUndefined();
+    expect(result.current.models.every((model) => model.reasoningEffort === undefined)).toBe(true);
+    expect(api.saveAgentVendor).not.toHaveBeenCalled();
+  });
+
   it("uses Main credential status and waits for the vendor commit before reporting success", async () => {
     const commit = deferred<AgentConfigurationSnapshot>();
     const saveAgentVendor = vi.fn().mockReturnValue(commit.promise);

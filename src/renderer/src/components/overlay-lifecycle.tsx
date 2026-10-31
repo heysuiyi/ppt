@@ -14,6 +14,7 @@ interface Layer {
   trigger?: () => HTMLElement | null;
   modal?: boolean;
   dismiss: () => void;
+  escape?: () => void;
   outside?: boolean;
   keydown?: (event: KeyboardEvent) => void;
   tab?: () => void;
@@ -82,7 +83,7 @@ function onKeyDown(event: KeyboardEvent) {
   if (event.key === "Escape") {
     event.preventDefault();
     event.stopImmediatePropagation();
-    top.dismiss();
+    (top.escape ?? top.dismiss)();
     return;
   }
   if (event.key === "Tab") {
@@ -149,6 +150,7 @@ export function useOverlayLayer(open: boolean, options: Layer) {
       root: () => latest.current.root(),
       trigger: () => latest.current.trigger?.() ?? null,
       dismiss: () => latest.current.dismiss(),
+      escape: () => (latest.current.escape ?? latest.current.dismiss)(),
       get outside() {
         return latest.current.outside;
       },

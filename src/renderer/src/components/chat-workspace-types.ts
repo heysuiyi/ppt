@@ -45,6 +45,8 @@ export interface ChatWorkspaceComposer {
   models: ManagedModel[];
   selectedModelId: string;
   onSelectModel: (value: string) => void;
+  reasoningEffort?: string;
+  onReasoningEffortChange: (effort: string | undefined) => void;
   workspacePath: string;
   onPrepareWorkspace: () => void;
   onProposePrompt: (prompt: string) => void;

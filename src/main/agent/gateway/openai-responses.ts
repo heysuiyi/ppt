@@ -164,7 +164,10 @@ function responsesRequestBase(
     instructions: request.systemPrompt,
     input: toResponsesInput(request.messages),
     max_output_tokens: request.maxOutputTokens,
-    reasoning: { effort: "medium", summary: "auto" },
+    reasoning: {
+      effort: (config.reasoningEffort ?? "medium") as OpenAI.ReasoningEffort,
+      summary: "auto",
+    },
     ...(request.tools?.length
       ? {
           tools: request.tools.map((tool) => ({

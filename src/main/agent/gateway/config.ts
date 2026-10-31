@@ -3,6 +3,7 @@ import {
   type AgentGatewayConfig,
   DEFAULT_AGENT_GATEWAY_CONFIG,
 } from "@shared/agent-gateway-config";
+import { getModelReasoningEfforts } from "@shared/model-reasoning";
 import { AgentGatewayError } from "./errors";
 import type { ResolvedAgentModelConfig } from "./types";
 
@@ -147,6 +148,9 @@ export function resolveFallbackModelSelection(
     ...(configured.vendorId ? { vendorId: configured.vendorId } : {}),
     provider: configured.provider,
     model: configured.model,
+    ...(configured.reasoningEffort !== undefined
+      ? { reasoningEffort: configured.reasoningEffort }
+      : {}),
     ...(configured.supports1MContext ? { supports1MContext: true } : {}),
   };
 }
@@ -173,6 +177,14 @@ export function resolveAgentModelConfig(
   }
 
   const baseURL = runtime?.baseURL;
+  const reasoningEffort = runtime?.reasoningEffort;
+  const supportedEffort =
+    reasoningEffort !== undefined &&
+    getModelReasoningEfforts({
+      provider,
+      model,
+      openaiApiMode: runtime?.openaiApiMode ?? (baseURL ? "chat-completions" : "responses"),
+    }).includes(reasoningEffort);
 
   return {
     ...((selection?.configurationId ?? runtime?.configurationId)
@@ -183,6 +195,7 @@ export function resolveAgentModelConfig(
       : {}),
     provider,
     model,
+    ...(supportedEffort ? { reasoningEffort } : {}),
     apiKey,
     baseURL,
     callPath: resolveCallPath(provider, baseURL, runtime?.openaiApiMode),

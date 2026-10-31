@@ -34,6 +34,7 @@ npm run agent:dev -- --model <已配置模型ID> --workspace <原目录> --threa
 
 每次工作区工具调用都等待 yes/no/cancel，包括显式启用的写入；EOF 保留 waiting，Ctrl+C 取消当前请求。
 AGENT_PPT_DATA_DIR 可指定已有配置根；开发状态单独存入 agent-development.sqlite。
+仅支持已接入的原生模型适配器；当前为 MiMo Token Plan 中国预设，其他连接明确拒绝，不回退旧执行链。
 `;
 
 export function parseDevelopmentArguments(args: readonly string[]): DevelopmentArguments {

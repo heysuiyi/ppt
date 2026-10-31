@@ -8,6 +8,7 @@ import {
 import type { AgentStepLimits } from "@shared/agent-step-limits";
 import type { CredentialStorageStatus } from "@shared/credentials";
 import type { UiThemeSummary } from "@shared/ipc";
+import { getModelReasoningEfforts } from "@shared/model-reasoning";
 import type { Presentation } from "@shared/presentation";
 import { getBuiltinTemplate } from "@shared/template-catalog";
 import { APPLICATION_DEFAULT_TEMPLATE_ID, isUploadedTemplateId } from "@shared/template-protocol";
@@ -45,6 +46,8 @@ export interface SettingsController {
   selectedModel?: ManagedModel;
   selectedModelId: string;
   selectModel: (id: string) => void;
+  selectedReasoningEffort?: string;
+  setReasoningEffort: (effort: string | undefined) => void;
   saveVendor: (vendor: ModelVendorConnection, apiKey?: string) => Promise<boolean>;
   deleteVendor: (vendorId: string) => Promise<boolean>;
   deleteModel: (modelId: string) => Promise<boolean>;
@@ -162,6 +165,8 @@ export function useSettingsController(
   );
   const credentialRefreshIdRef = useRef(0);
   const [selectedModelId, setSelectedModelId] = useState(() => bootstrap.selectedModelId);
+  // 输入框覆盖值按模型保留，仅影响后续请求，不写回厂商配置。
+  const [reasoningOverrides, setReasoningOverrides] = useState<Record<string, string>>({});
   const credentialStatusLoaded = credentialStorageStatus !== null;
   const enabledModels = useMemo(
     () =>
@@ -177,6 +182,16 @@ export function useSettingsController(
   );
   const selectedModel =
     visibleModels.find((model) => model.id === selectedModelId) ?? visibleModels[0];
+  const override = selectedModel ? reasoningOverrides[selectedModel.id] : undefined;
+  const selectedReasoningEffort =
+    selectedModel && override && getModelReasoningEfforts(selectedModel).includes(override)
+      ? override
+      : undefined;
+  const setReasoningEffort = (effort: string | undefined) => {
+    if (!selectedModel) return;
+    if (effort !== undefined && !getModelReasoningEfforts(selectedModel).includes(effort)) return;
+    setReasoningOverrides((current) => ({ ...current, [selectedModel.id]: effort ?? "" }));
+  };
   const computedScheme = useComputedScheme(colorScheme);
 
   const markSaving = useCallback(() => {
@@ -573,6 +588,8 @@ export function useSettingsController(
     selectedModel,
     selectedModelId,
     selectModel,
+    selectedReasoningEffort,
+    setReasoningEffort,
     saveVendor,
     deleteVendor,
     deleteModel,

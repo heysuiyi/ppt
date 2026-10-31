@@ -91,6 +91,9 @@ export class AgentGateway implements AgentModelGateway {
       ...(settings.vendorId ? { vendorId: settings.vendorId } : {}),
       provider: settings.provider,
       model: settings.model,
+      ...(settings.reasoningEffort !== undefined
+        ? { reasoningEffort: settings.reasoningEffort }
+        : {}),
       ...(settings.supports1MContext ? { supports1MContext: true } : {}),
     };
   }

@@ -33,7 +33,10 @@ interface UseAgentRunControllerOptions {
   setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>;
   applySessionState: SessionController["applySessionState"];
   syncPresentation: PresentationController["syncPresentation"];
-  settings: Pick<SettingsController, "enabledModels" | "selectedModel" | "executionStrategy">;
+  settings: Pick<
+    SettingsController,
+    "enabledModels" | "selectedModel" | "selectedReasoningEffort" | "executionStrategy"
+  >;
   activity: AgentActivityStreamController;
   notify: (message: string) => void;
 }
@@ -87,7 +90,7 @@ export function useAgentRunController({
     finishRunActivity,
     waitForRunStreamCompletion,
   } = activity;
-  const { enabledModels, selectedModel, executionStrategy } = settings;
+  const { enabledModels, selectedModel, selectedReasoningEffort, executionStrategy } = settings;
   const runLockRef = useRef(createAgentRunLock());
 
   const applyAgentResult = useAgentResultHandler({
@@ -168,6 +171,7 @@ export function useAgentRunController({
                 },
             prompt: activeRequest,
             modelId: selectedModel.id,
+            ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {}),
             executionStrategy,
             editorContext: { currentSlideId: selectedSlideId || undefined, selectedElementIds: [] },
             action: isSidechain
@@ -231,6 +235,7 @@ export function useAgentRunController({
       notify,
       request,
       selectedModel,
+      selectedReasoningEffort,
       selectedSlideId,
       setBusy,
       setChatMessages,

@@ -359,6 +359,22 @@ describe("OpenAI driver", () => {
     });
   });
 
+  it.each(["none", "minimal", "low", "medium", "high", "xhigh"])(
+    "sends explicit Responses reasoning effort %s instead of medium",
+    async (reasoningEffort) => {
+      openAIMock.responsesCreate.mockResolvedValue({
+        output_text: "answer",
+        output: [],
+        status: "completed",
+      });
+      await responsesDriver.generate({ ...baseConfig, reasoningEffort }, preparedRequest("prompt"));
+      expect(openAIMock.responsesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ reasoning: { effort: reasoningEffort, summary: "auto" } }),
+        expect.anything(),
+      );
+    },
+  );
+
   it("preserves malformed Chat tool arguments as a non-executable block", async () => {
     openAIMock.chatCreate.mockResolvedValue({
       choices: [
@@ -590,7 +606,7 @@ describe("OpenAI driver", () => {
 
     const chunks = [];
     for await (const chunk of responsesDriver.generateStream(
-      baseConfig,
+      { ...baseConfig, reasoningEffort: "high" },
       preparedRequest("prompt", {
         signal: controller.signal,
         tools: [{ name: "Read", description: "Read", inputSchema: { type: "object" } }],
@@ -607,7 +623,7 @@ describe("OpenAI driver", () => {
         instructions: undefined,
         input: [{ role: "user", content: "prompt" }],
         max_output_tokens: 321,
-        reasoning: { effort: "medium", summary: "auto" },
+        reasoning: { effort: "high", summary: "auto" },
         tools: [
           {
             type: "function",

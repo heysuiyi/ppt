@@ -2,6 +2,15 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const openAIMock = vi.hoisted(() => ({ responsesCreate: vi.fn() }));
+vi.mock("openai", () => ({
+  default: class OpenAI {
+    responses = { create: openAIMock.responsesCreate };
+  },
+}));
+
+import { AgentGateway } from "../src/main/agent/gateway";
 import {
   createAgentConfiguration,
   registerAgentConfigurationIpc,
@@ -342,29 +351,35 @@ describe("native MiMo execution configuration", () => {
     ).rejects.toThrow(/credential/i);
   });
 
-  it("validates MiMo budgets before persistence while retaining the old vendor budget range", async () => {
-    const config = await configuration();
-    await config.management.initialize(settings([mimoVendor()]));
-    for (const maxOutputTokens of [1, 131_072]) {
+  it.each(["empty", "disabled", "enabled"] as const)(
+    "preserves other vendors' budgets when a MiMo connection is %s",
+    async (state) => {
+      const config = await configuration();
+      const native = mimoVendor();
+      if (state === "empty") native.models = [];
+      if (state === "disabled") native.enabled = false;
+      const initial = settings([vendor(), native]);
+      initial.gateway.maxOutputTokens = 200_000;
+      const initialized = await config.management.initialize(initial);
+      expect(initialized.settings.gateway.maxOutputTokens).toBe(200_000);
       await config.management.savePreferences({
-        ...preferences(settings()),
-        gateway: { timeoutMs: 180_000, maxOutputTokens },
+        ...preferences(initial),
+        gateway: { timeoutMs: 180_000, maxOutputTokens: 210_000 },
       });
-    }
-    await expect(
-      config.management.savePreferences({
-        ...preferences(settings()),
-        gateway: { timeoutMs: 180_000, maxOutputTokens: 131_073 },
-      }),
-    ).rejects.toThrow(/131072/);
-    expect((await config.management.getSnapshot())!.settings.gateway.maxOutputTokens).toBe(131_072);
-    const legacy = await configuration();
-    const initial = settings();
-    initial.gateway.maxOutputTokens = 200_000;
-    await expect(legacy.management.initialize(initial)).resolves.toMatchObject({
-      settings: { gateway: { maxOutputTokens: 200_000 } },
-    });
-  });
+      const reopened = createAgentConfiguration({
+        applicationDataRoot: config.directory,
+        safeStorage: config.safeStorage,
+        environment: {},
+      });
+      expect((await reopened.management.getSnapshot())!.settings.gateway.maxOutputTokens).toBe(
+        210_000,
+      );
+      const plan = await reopened.runtime.loadExecutionPlan("primary-model");
+      const resolved = await reopened.runtime.resolveRuntime(plan);
+      expect(resolved.primary.model).toBe("primary-remote");
+      expect(resolved.gateway.maxOutputTokens).toBe(210_000);
+    },
+  );
 
   it("refuses native MiMo as a legacy gateway fallback rather than routing it through the gateway", async () => {
     const config = await configuration();
@@ -408,6 +423,82 @@ describe("agent execution configuration", () => {
     expect(runtime.primary.apiKey).toBe("primary-secret");
     expect(runtime.gateway.fallbackModel?.apiKey).toBe("fallback-secret");
     expect(runtime.search.webSearchApiKey).toBe("search-secret");
+  });
+
+  it("snapshots a request override through runtime and the production Responses payload", async () => {
+    const config = await configuration({ OPENAI_API_KEY: "environment-key" });
+    const selected = vendor("primary", "https://api.openai.com/v1");
+    selected.models[0]!.model = "gpt-5.5";
+    selected.models[0]!.reasoningEffort = "low";
+    await config.management.initialize(settings([selected]));
+    const before = await config.management.getSnapshot();
+    const plan = await config.runtime.loadExecutionPlan("primary-model", "xhigh");
+    expect(plan.model.reasoningEffort).toBe("xhigh");
+    expect(await config.management.getSnapshot()).toEqual(before);
+    plan.model.reasoningEffort = "none";
+    await config.management.saveVendor({
+      vendor: {
+        ...selected,
+        models: [{ ...selected.models[0]!, model: "gpt-5-mini", reasoningEffort: "medium" }],
+      },
+      credential: { type: "keep" },
+    });
+    const resolved = await config.runtime.resolveRuntime(plan);
+    expect(resolved.primary).toMatchObject({ model: "gpt-5.5", reasoningEffort: "xhigh" });
+    const gateway = new AgentGateway();
+    const selection = gateway.configure(resolved.primary, resolved.gateway, resolved.search);
+    expect(selection.reasoningEffort).toBe("xhigh");
+    openAIMock.responsesCreate.mockResolvedValue({
+      output_text: "answer",
+      output: [],
+      status: "completed",
+    });
+    await gateway.queryModel({ prompt: "test" }, selection);
+    expect(openAIMock.responsesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-5.5",
+        reasoning: { effort: "xhigh", summary: "auto" },
+      }),
+      expect.anything(),
+    );
+  });
+
+  it.each([undefined, "low"])("preserves catalog effort %s without an override", async (effort) => {
+    const config = await configuration();
+    const selected = vendor();
+    selected.models[0]!.model = "gpt-5-mini";
+    if (effort !== undefined) selected.models[0]!.reasoningEffort = effort;
+    await config.management.initialize(settings([selected]));
+    const plan = await config.runtime.loadExecutionPlan("primary-model");
+    expect(plan.model.reasoningEffort).toBe(effort);
+    expect((await config.runtime.resolveRuntime(plan)).primary.reasoningEffort).toBe(effort);
+    if (effort === undefined) expect(plan.model).not.toHaveProperty("reasoningEffort");
+  });
+
+  it.each([
+    { model: "gpt-5", effort: "none" },
+    { model: "gpt-5-mini", effort: "xhigh" },
+    { model: "gpt-5.5", effort: "ultra" },
+    { model: "gpt-5.5", effort: "" },
+    { model: "unknown", effort: "high" },
+    { model: "gpt-5.5", effort: "high", mode: "chat-completions" as const },
+    { model: "gpt-5.5", effort: "high", protocol: "anthropic" as const },
+    { model: "gpt-5.5", effort: "high", native: true },
+  ])("rejects unsupported request effort before issuing a plan: %j", async (input) => {
+    const config = await configuration();
+    const selected = input.native ? mimoVendor() : vendor();
+    selected.models[0]!.model = input.model;
+    if (input.mode) selected.models[0]!.openaiApiMode = input.mode;
+    if (input.protocol) selected.protocol = input.protocol;
+    await config.management.initialize(settings([selected]));
+    const before = await config.management.getSnapshot();
+    const disk = await readFile(join(config.directory, "agent-settings.json"), "utf8");
+    await expect(
+      config.runtime.loadExecutionPlan(selected.models[0]!.id, input.effort),
+    ).rejects.toThrow(/Unsupported reasoning effort/);
+    expect(await config.management.getSnapshot()).toEqual(before);
+    expect(await readFile(join(config.directory, "agent-settings.json"), "utf8")).toBe(disk);
+    expect(config.safeStorage.decryptCalls).toBe(0);
   });
 
   it("rejects missing/disabled models without modifying the catalog", async () => {

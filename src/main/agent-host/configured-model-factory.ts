@@ -3,28 +3,30 @@ import type {
   ModelBinding,
   ModelClientFactory,
   ModelSelection,
-  ModelStreamEvent,
 } from "../../agent/model/model-contract";
-import { AgentError, sameValue, snapshot } from "../../agent/protocol-utils";
+import { AgentError, sameValue } from "../../agent/protocol-utils";
 import type { Disposable } from "../../agent/protocol-values";
 import type { Logger } from "../../logs/log-contract";
-import { createMimoTokenPlanCN } from "../../models/mimo-token-plan-cn";
+import { createMimoTokenPlanCN, MimoModelError } from "../../models/mimo-token-plan-cn";
 import {
   MIMO_TOKEN_PLAN_CN_BASE_URL,
   MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+  type MimoTokenPlanCN,
 } from "../../models/mimo-token-plan-cn-contract";
 import type { AgentModelSettings } from "../../shared/agent";
 import { getEffectiveMainMaxSteps } from "../../shared/agent-step-limits";
-import { AgentGateway } from "../agent/gateway";
-import { withLogContext } from "../agent/logger";
 import type { AgentConfiguration } from "../agent-configuration";
-import { createGatewayModelFactory } from "./gateway-model-factory";
 
 export interface PreparedConfiguredModel extends Disposable {
   readonly models: ModelClientFactory;
   readonly selection: ModelSelection;
   readonly connectionFingerprint: string;
   readonly maxSteps: number;
+}
+
+// 只转换适配器已脱敏的具名错误，未知异常仍由通用执行边界隐藏。
+function mimoAgentError(error: unknown): unknown {
+  return error instanceof MimoModelError ? new AgentError(error.code, error.message) : error;
 }
 
 /** 只绑定已签发计划的主模型；凭据、搜索和备用模型均不进入通用内核。 */
@@ -44,6 +46,13 @@ export async function prepareConfiguredModel(
     // resolveRuntime 用 WeakMap 识别计划；必须传回原对象，不能 JSON 重建。
     const plan = await runtime.loadExecutionPlan(configuredModelId);
     signal.throwIfAborted();
+    // 先检查签发的适配器身份，不为不支持的配置解析凭据或创建旧执行路径。
+    if (plan.modelAdapter !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID) {
+      throw new AgentError(
+        "MODEL_ADAPTER_UNSUPPORTED",
+        "所选模型尚无可用的原生适配器，请选择已接入的原生模型配置。",
+      );
+    }
     const resolved = await runtime.resolveRuntime(plan);
     signal.throwIfAborted();
     settings = { ...resolved.primary };
@@ -51,8 +60,9 @@ export async function prepareConfiguredModel(
     timeoutMs = resolved.gateway.timeoutMs;
     maxOutputTokens = resolved.gateway.maxOutputTokens;
     maxSteps = getEffectiveMainMaxSteps(plan.stepLimits);
-  } catch {
+  } catch (error) {
     signal.throwIfAborted();
+    if (error instanceof AgentError && error.code === "MODEL_ADAPTER_UNSUPPORTED") throw error;
     throw new AgentError(
       "MODEL_CONFIGURATION_FAILED",
       "无法解析已配置模型，请在应用设置中检查模型与凭据。",
@@ -94,129 +104,57 @@ export async function prepareConfiguredModel(
         }),
       )
       .digest("hex");
-    const provider = createMimoTokenPlanCN({
-      apiKey: settings.apiKey,
-      connectionFingerprint,
-      timeoutMs,
-      maxOutputTokens,
-      ...(logger ? { logger } : {}),
-    });
+    let provider: MimoTokenPlanCN;
+    try {
+      provider = createMimoTokenPlanCN({
+        apiKey: settings.apiKey,
+        connectionFingerprint,
+        timeoutMs,
+        maxOutputTokens,
+        ...(logger ? { logger } : {}),
+      });
+    } catch (error) {
+      throw mimoAgentError(error);
+    }
     settings = undefined;
     return {
       selection,
       connectionFingerprint,
       maxSteps,
       models: {
-        create(requested, bindingSignal) {
+        async create(requested, bindingSignal): Promise<ModelBinding> {
           if (!sameValue(requested, selection))
             throw new AgentError("MODEL_SELECTION_CHANGED", "模型绑定与已准备配置不一致。");
-          return provider.create(requested, bindingSignal);
+          try {
+            const binding = await provider.create(requested, bindingSignal);
+            return {
+              dispose: () => binding.dispose(),
+              client: {
+                selection: binding.client.selection,
+                capabilities: binding.client.capabilities,
+                async generate(request, requestSignal, context) {
+                  try {
+                    return await binding.client.generate(request, requestSignal, context);
+                  } catch (error) {
+                    throw mimoAgentError(error);
+                  }
+                },
+                async *stream(request, requestSignal, context) {
+                  try {
+                    yield* binding.client.stream(request, requestSignal, context);
+                  } catch (error) {
+                    throw mimoAgentError(error);
+                  }
+                },
+              },
+            };
+          } catch (error) {
+            throw mimoAgentError(error);
+          }
         },
       },
       dispose: () => provider.dispose(),
     };
   }
-  const callPath =
-    settings.provider === "anthropic"
-      ? "anthropic"
-      : settings.openaiApiMode === "chat-completions"
-        ? "chat"
-        : "responses";
-  // 恢复校验连接身份而不是密钥值：同一连接可轮换凭据，换 endpoint 则不能沿用旧状态。
-  const connectionFingerprint = createHash("sha256")
-    .update(
-      JSON.stringify({
-        configuredModelId,
-        provider: settings.provider,
-        model: settings.model,
-        configurationId: settings.configurationId ?? null,
-        vendorId: settings.vendorId ?? null,
-        baseURL: settings.baseURL ?? null,
-        callPath,
-        supports1MContext: settings.supports1MContext ?? false,
-      }),
-    )
-    .digest("hex");
-  // 内核用配置 ID 选模；远程模型名、协议路径和凭据的解析由适配边界负责。
-  const selection: ModelSelection = Object.freeze({
-    providerId: "configured-gateway",
-    modelId: configuredModelId,
-  });
-  const lifetime = new AbortController();
-  const gateways = new Set<AgentGateway>();
-  let disposed = false;
-  const delegate = createGatewayModelFactory((requested, bindingSignal) => {
-    bindingSignal.throwIfAborted();
-    if (disposed || !settings) throw new AgentError("MODEL_FACTORY_CLOSED", "模型工厂已关闭。");
-    if (!sameValue(requested, selection))
-      throw new AgentError("MODEL_SELECTION_CHANGED", "模型绑定与已准备配置不一致。");
-    const gateway = new AgentGateway();
-    const legacy = gateway.configure(settings, { timeoutMs, maxOutputTokens });
-    gateways.add(gateway);
-    return {
-      gateway,
-      selection: {
-        ...legacy,
-        ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
-        ...(settings.openaiApiMode ? { openaiApiMode: settings.openaiApiMode } : {}),
-      },
-      // 本入口只承诺文本与工具；旧网关不能提供规范索引的实时增量。
-      capabilities: { streaming: false, toolCalls: true, images: false, reasoning: true },
-      callPath,
-      replayScope: connectionFingerprint,
-      async dispose() {
-        gateway.clearPrimarySettings();
-        gateways.delete(gateway);
-      },
-    };
-  });
-  return {
-    selection,
-    connectionFingerprint,
-    maxSteps,
-    models: {
-      async create(requested, bindingSignal): Promise<ModelBinding> {
-        if (disposed) throw new AgentError("MODEL_FACTORY_CLOSED", "模型工厂已关闭。");
-        const combined = AbortSignal.any([bindingSignal, lifetime.signal]);
-        const binding = await delegate.create(snapshot(requested), combined);
-        return {
-          dispose: () => binding.dispose(),
-          client: {
-            get selection() {
-              return binding.client.selection;
-            },
-            get capabilities() {
-              return binding.client.capabilities;
-            },
-            generate: (request, requestSignal, context) =>
-              withLogContext({ console: false }, () =>
-                binding.client.generate(request, requestSignal, context),
-              ),
-            async *stream(request, requestSignal, context): AsyncGenerator<ModelStreamEvent> {
-              const iterator = binding.client
-                .stream(request, requestSignal, context)
-                [Symbol.asyncIterator]();
-              try {
-                while (true) {
-                  const next = await withLogContext({ console: false }, () => iterator.next());
-                  if (next.done) return;
-                  yield next.value;
-                }
-              } finally {
-                await withLogContext({ console: false }, () => iterator.return?.());
-              }
-            },
-          },
-        };
-      },
-    },
-    async dispose() {
-      if (disposed) return;
-      disposed = true;
-      lifetime.abort();
-      for (const gateway of gateways) gateway.clearPrimarySettings();
-      gateways.clear();
-      settings = undefined;
-    },
-  };
+  throw new AgentError("MODEL_ADAPTER_UNSUPPORTED", "运行配置没有可用的原生模型适配器。");
 }

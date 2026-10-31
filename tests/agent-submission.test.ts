@@ -157,6 +157,38 @@ describe("Main-owned Agent submission", () => {
     expect(store.getBootstrap().sessions).toHaveLength(0);
   });
 
+  it("rejects an unsupported effort before any new or existing session admission", async () => {
+    const { store, directory } = await fixture();
+    const config = configurationAt(directory);
+    const configured = structuredClone(settings);
+    configured.vendors[0]!.models[0]!.model = "gpt-5-mini";
+    await config.management.initialize(configured);
+    const existing = await store.createSession();
+    const sessionId = existing.activeSession!.session.id;
+    const prepare = vi.spyOn(store, "prepareSession");
+    const accept = vi.spyOn(store, "acceptAgentRun");
+    const before = await config.management.getSnapshot();
+    for (const command of [
+      request({ reasoningEffort: "xhigh" }),
+      request({ reasoningEffort: "xhigh", target: { type: "session", sessionId } }),
+    ]) {
+      const submit = async () => {
+        const executionPlan = await config.runtime.loadExecutionPlan(
+          command.modelId,
+          command.reasoningEffort,
+        );
+        return acceptAgentRequest(store, executionPlan, command);
+      };
+      await expect(submit()).rejects.toThrow(/Unsupported reasoning effort/);
+      expect(store.conversationDatabase.hasRun(command.requestId)).toBe(false);
+    }
+    expect(prepare).not.toHaveBeenCalled();
+    expect(accept).not.toHaveBeenCalled();
+    expect(store.getBootstrap().sessions).toHaveLength(1);
+    expect(store.getSession(sessionId).messages).toEqual([]);
+    expect(await config.management.getSnapshot()).toEqual(before);
+  });
+
   it("rejects native adapters before preparing or writing either new or existing sessions", async () => {
     const { store } = await fixture();
     const existing = await store.createSession();

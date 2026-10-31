@@ -11,6 +11,7 @@ import {
 } from "../src/shared/agent-configuration";
 import { agentSettingsSchema } from "../src/shared/agent-settings";
 import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
+import { getModelReasoningEfforts, getModelReasoningLabel } from "../src/shared/model-reasoning";
 
 const vendor = {
   id: "vendor-a",
@@ -31,6 +32,54 @@ const vendor = {
 };
 
 describe("agent configuration management boundary", () => {
+  it.each([
+    ["gpt-5", ["minimal", "low", "medium", "high"]],
+    ["gpt-5-mini-2025-08-07", ["minimal", "low", "medium", "high"]],
+    ["gpt-5-nano", ["minimal", "low", "medium", "high"]],
+    ["gpt-5.1", ["none", "low", "medium", "high"]],
+    ["gpt-5.2-2025-12-11", ["none", "low", "medium", "high", "xhigh"]],
+    ["gpt-5.4", ["none", "low", "medium", "high", "xhigh"]],
+    ["gpt-5.5", ["none", "low", "medium", "high", "xhigh"]],
+    ["o1", ["low", "medium", "high"]],
+    ["o3-2025-04-16", ["low", "medium", "high"]],
+    ["o3-mini", ["low", "medium", "high"]],
+    ["o4-mini", ["low", "medium", "high"]],
+  ] as const)("offers only supported Responses efforts for %s", (model, efforts) => {
+    expect(
+      getModelReasoningEfforts({ provider: "openai", model, openaiApiMode: "responses" }),
+    ).toEqual(efforts);
+  });
+
+  it.each([
+    { model: "gpt-4.1" },
+    { model: "gpt-5-chat-latest" },
+    { model: "gpt-5.2-pro" },
+    { model: "gpt-5-codex" },
+    { model: "gpt-5.9" },
+    { model: "o1-mini" },
+    { model: "mimo-v2.6-flash" },
+    { model: "gpt-5.5", provider: "anthropic" },
+    { model: "gpt-5.5", openaiApiMode: "chat-completions" },
+    { model: "gpt-5.5", openaiApiMode: undefined },
+    { model: "gpt-5.5", vendorKind: "mimo-token-plan-cn" },
+  ])("does not claim reasoning override support for %j", (patch) => {
+    expect(
+      getModelReasoningEfforts({
+        provider: "openai",
+        openaiApiMode: "responses",
+        ...patch,
+      }),
+    ).toEqual([]);
+  });
+
+  it("uses Chinese labels including the omitted default", () => {
+    expect(
+      [undefined, "", "none", "minimal", "low", "medium", "high", "xhigh"].map(
+        getModelReasoningLabel,
+      ),
+    ).toEqual(["默认", "默认", "关闭", "极低", "低", "中", "高", "极高"]);
+  });
+
   const mimoVendor = {
     ...vendor,
     kind: "mimo-token-plan-cn",
@@ -82,8 +131,8 @@ describe("agent configuration management boundary", () => {
     ).toBe(false);
   });
 
-  it.each([0, -1, 1.5, 131_073, Number.POSITIVE_INFINITY])(
-    "rejects MiMo output budget %s at the settings boundary",
+  it.each([0, -1, 1.5, Number.POSITIVE_INFINITY])(
+    "rejects invalid shared output budget %s",
     (maxOutputTokens) => {
       expect(
         agentSettingsSchema.safeParse({
