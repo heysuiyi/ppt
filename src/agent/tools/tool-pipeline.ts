@@ -1,17 +1,21 @@
 import { z } from "zod";
 import type { ModelToolCallContent } from "../model/model-contract";
-import { AgentError, asProtocolError, sameValue, snapshot } from "../protocol-utils";
-import type { InteractionResponse, VersionedData } from "../protocol-values";
+import { AgentError, asProtocolError } from "../protocol-errors";
+import {
+  type InteractionResponse,
+  sameValue,
+  snapshot,
+  type VersionedData,
+} from "../protocol-values";
 import type {
   ToolAuthorizationPolicy,
   ToolCompletion,
   ToolExecutionContext,
-  ToolExecutionResult,
-  ToolExecutor,
   ToolResult,
   ToolSideEffects,
   ToolSuspension,
 } from "./tool-contract";
+import type { ToolExecutionResult, ToolExecutor } from "./tool-executor";
 import type { BoundToolDefinition, ToolRegistry } from "./tool-registry";
 
 const effectsSchema = z.enum(["none", "applied", "unknown"]);

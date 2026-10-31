@@ -1,9 +1,9 @@
 import type { ModelRegistry } from "../model/model-registry";
-import { AgentError } from "../protocol-utils";
+import { AgentError } from "../protocol-errors";
 import type { Disposable } from "../protocol-values";
 import type { ResourceScope } from "../scope/resource-scope";
 import type { ToolRegistry } from "../tools/tool-registry";
-import type { AgentPlugin } from "./plugin-contract";
+import type { AgentPlugin, PluginScope } from "./plugin-contract";
 import type { PromptRegistry } from "./prompt-registry";
 
 export async function installPlugins(
@@ -25,6 +25,12 @@ export async function installPlugins(
     for (const plugin of plugins) {
       installation.signal.throwIfAborted();
       const scope = installation.child();
+      const pluginScope: PluginScope = {
+        signal: scope.signal,
+        own(resource) {
+          scope.own(resource);
+        },
+      };
       const own = (registration: Disposable): Disposable => {
         try {
           scope.own(registration);
@@ -36,7 +42,7 @@ export async function installPlugins(
         return registration;
       };
       await plugin.setup({
-        scope,
+        scope: pluginScope,
         models: {
           register(providerId, factory) {
             scope.signal.throwIfAborted();

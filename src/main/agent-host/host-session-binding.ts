@@ -1,5 +1,6 @@
 import type { ModelSelection } from "../../agent/model/model-contract";
-import { AgentError, snapshot } from "../../agent/protocol-utils";
+import { AgentError } from "../../agent/protocol-errors";
+import { snapshot } from "../../agent/protocol-values";
 import type { ToolsMode } from "../../tools/tools";
 
 /** 仅宿主保存的恢复边界，不进入内核协议，也不携带连接凭据或地址。 */

@@ -1,5 +1,5 @@
-import { AgentError, snapshot } from "../protocol-utils";
-import type { Disposable } from "../protocol-values";
+import { AgentError } from "../protocol-errors";
+import { type Disposable, snapshot } from "../protocol-values";
 import { RegistrationStore } from "../scope/registration-store";
 import type {
   ModelBinding,

@@ -1,5 +1,6 @@
 import type { ModelRequest, ModelResponse } from "../../model/model-contract";
-import { AgentError, snapshot } from "../../protocol-utils";
+import { AgentError } from "../../protocol-errors";
+import { snapshot } from "../../protocol-values";
 import type { RunEnvironment } from "../run-controller";
 
 /** 增量不驱动状态提交；完整响应通过后才允许进入工具派发。 */

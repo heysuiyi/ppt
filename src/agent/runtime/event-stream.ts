@@ -1,4 +1,4 @@
-import { AgentError } from "../protocol-utils";
+import { AgentError } from "../protocol-errors";
 import type { RuntimeEvent } from "../session/session-events";
 
 /** 单消费者的观察通道；执行方从不等待消费者，也不由退订触发取消。 */

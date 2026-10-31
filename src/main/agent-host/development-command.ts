@@ -1,5 +1,5 @@
 import type { AgentRunResult } from "../../agent/agent-contract";
-import { AgentError, asProtocolError } from "../../agent/protocol-utils";
+import { AgentError, asProtocolError } from "../../agent/protocol-errors";
 import type { ProtocolError } from "../../agent/protocol-values";
 import type { RuntimeEvent } from "../../agent/session/session-events";
 import {

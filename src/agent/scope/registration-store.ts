@@ -1,4 +1,4 @@
-import { AgentError } from "../protocol-utils";
+import { AgentError } from "../protocol-errors";
 import type { Disposable } from "../protocol-values";
 
 /** 注册句柄绑定条目身份；旧句柄不能移除同名的新注册。 */

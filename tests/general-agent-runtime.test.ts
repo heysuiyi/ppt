@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { AgentServices } from "../src/agent/agent-factory";
-import { createDefaultAgentFactory } from "../src/agent/application/default-agent-factory";
+import { createAgentApplication } from "../src/agent/application/agent-application";
 import type { AgentPlugin } from "../src/agent/extensions/plugin-contract";
 import type {
   ModelClientFactory,
@@ -225,23 +225,27 @@ describe("general Agent execution and recovery", () => {
       const stores = own(createSqliteAgentStores(join(directory, "state.sqlite")));
       const counters = { execute: 0, resume: 0 };
       let requests = 0;
-      const factory = createDefaultAgentFactory(
-        services(
-          stores,
-          models((request) => {
-            requests += 1;
-            if (requests === 1) return call();
-            expect(request.messages.at(-1)).toMatchObject({
-              role: "tool",
-              content: [{ type: "tool-result", callId: "write-1" }],
-            });
-            expect(request.messages.find((message) => message.role === "assistant")).toMatchObject({
-              replayState: { data: { signature: "retained-by-adapter" } },
-            });
-            return answer("Document ready");
-          }),
+      const factory = own(
+        createAgentApplication(
+          services(
+            stores,
+            models((request) => {
+              requests += 1;
+              if (requests === 1) return call();
+              expect(request.messages.at(-1)).toMatchObject({
+                role: "tool",
+                content: [{ type: "tool-result", callId: "write-1" }],
+              });
+              expect(
+                request.messages.find((message) => message.role === "assistant"),
+              ).toMatchObject({
+                replayState: { data: { signature: "retained-by-adapter" } },
+              });
+              return answer("Document ready");
+            }),
+          ),
         ),
-      );
+      ).agents;
       const agent = own(
         await factory.create(options([writer(join(directory, "result.txt"), counters)])),
       );
@@ -272,12 +276,14 @@ describe("general Agent execution and recovery", () => {
       const counters = { execute: 0, resume: 0 };
       let stores = own(createSqliteAgentStores(db));
       let agent = own(
-        await createDefaultAgentFactory(
-          services(
-            stores,
-            models(() => call()),
+        await own(
+          createAgentApplication(
+            services(
+              stores,
+              models(() => call()),
+            ),
           ),
-        ).create(options([writer(file, counters, true)])),
+        ).agents.create(options([writer(file, counters, true)])),
       );
       const waiting = await (await agent.run(input("query", "run-1"))).completed;
       expect(waiting.status).toBe("waiting");
@@ -289,12 +295,14 @@ describe("general Agent execution and recovery", () => {
       await stores.dispose();
       stores = own(createSqliteAgentStores(db));
       agent = own(
-        await createDefaultAgentFactory(
-          services(
-            stores,
-            models(() => answer("Approved write complete")),
+        await own(
+          createAgentApplication(
+            services(
+              stores,
+              models(() => answer("Approved write complete")),
+            ),
           ),
-        ).create(options([writer(file, counters, true)])),
+        ).agents.create(options([writer(file, counters, true)])),
       );
       try {
         const resumed = await agent.resume({
@@ -338,13 +346,15 @@ describe("general Agent execution and recovery", () => {
         return false;
       });
       let agent = own(
-        await createDefaultAgentFactory(
-          services(
-            stores,
-            models(() => call()),
-            checkpoint,
+        await own(
+          createAgentApplication(
+            services(
+              stores,
+              models(() => call()),
+              checkpoint,
+            ),
           ),
-        ).create(options([writer(join(directory, "result.txt"), counters)])),
+        ).agents.create(options([writer(join(directory, "result.txt"), counters)])),
       );
       await expect((await agent.run(input("query", "run-1"))).completed).rejects.toMatchObject({
         code: "PERSISTENCE_FAILED",
@@ -352,24 +362,26 @@ describe("general Agent execution and recovery", () => {
       expect(await readFile(join(directory, "result.txt"), "utf8")).toBe("persistent document");
       await agent.dispose();
       agent = own(
-        await createDefaultAgentFactory(
-          services(
-            stores,
-            models((request) => {
-              expect(request.messages.at(-1)).toMatchObject({
-                role: "tool",
-                content: [
-                  {
-                    callId: "write-1",
-                    isError: true,
-                    content: [{ text: expect.stringContaining("unknown") }],
-                  },
-                ],
-              });
-              return answer("External effect requires verification");
-            }),
+        await own(
+          createAgentApplication(
+            services(
+              stores,
+              models((request) => {
+                expect(request.messages.at(-1)).toMatchObject({
+                  role: "tool",
+                  content: [
+                    {
+                      callId: "write-1",
+                      isError: true,
+                      content: [{ text: expect.stringContaining("unknown") }],
+                    },
+                  ],
+                });
+                return answer("External effect requires verification");
+              }),
+            ),
           ),
-        ).create(options([writer(join(directory, "result.txt"), counters)])),
+        ).agents.create(options([writer(join(directory, "result.txt"), counters)])),
       );
       try {
         expect(
@@ -406,13 +418,13 @@ describe("general Agent execution and recovery", () => {
         },
       };
       let agent = own(
-        await createDefaultAgentFactory({ ...dependency, history }).create(options([])),
+        await own(createAgentApplication({ ...dependency, history })).agents.create(options([])),
       );
       await expect((await agent.run(input("query", "run-1"))).completed).rejects.toMatchObject({
         code: "PERSISTENCE_FAILED",
       });
       await agent.dispose();
-      agent = own(await createDefaultAgentFactory(dependency).create(options([])));
+      agent = own(await own(createAgentApplication(dependency)).agents.create(options([])));
       try {
         expect(
           (
@@ -436,15 +448,17 @@ describe("general Agent execution and recovery", () => {
       const counters = { execute: 0, resume: 0 };
       let modelCalls = 0;
       const agent = own(
-        await createDefaultAgentFactory(
-          services(
-            stores,
-            models(() => {
-              modelCalls += 1;
-              return call();
-            }),
+        await own(
+          createAgentApplication(
+            services(
+              stores,
+              models(() => {
+                modelCalls += 1;
+                return call();
+              }),
+            ),
           ),
-        ).create(options([writer(join(directory, "result.txt"), counters)], 1)),
+        ).agents.create(options([writer(join(directory, "result.txt"), counters)], 1)),
       );
       try {
         expect(await (await agent.run(input("query", "run-1"))).completed).toMatchObject({
@@ -477,13 +491,15 @@ describe("general Agent execution and recovery", () => {
         return false;
       });
       let agent = own(
-        await createDefaultAgentFactory(
-          services(
-            stores,
-            models(() => call()),
-            checkpoints,
+        await own(
+          createAgentApplication(
+            services(
+              stores,
+              models(() => call()),
+              checkpoints,
+            ),
           ),
-        ).create(options([writer(file, counters, true)])),
+        ).agents.create(options([writer(file, counters, true)])),
       );
       const waiting = await (await agent.run(input("query", "run-1"))).completed;
       if (waiting.status !== "waiting") throw new Error("Expected saved interaction");
@@ -500,18 +516,20 @@ describe("general Agent execution and recovery", () => {
       expect(await readFile(file, "utf8")).toBe("persistent document");
       await agent.dispose();
       agent = own(
-        await createDefaultAgentFactory(
-          services(
-            stores,
-            models((request) => {
-              expect(request.messages.at(-1)).toMatchObject({
-                role: "tool",
-                content: [{ callId: "write-1", isError: true }],
-              });
-              return answer("Verify the uncertain external outcome");
-            }),
+        await own(
+          createAgentApplication(
+            services(
+              stores,
+              models((request) => {
+                expect(request.messages.at(-1)).toMatchObject({
+                  role: "tool",
+                  content: [{ callId: "write-1", isError: true }],
+                });
+                return answer("Verify the uncertain external outcome");
+              }),
+            ),
           ),
-        ).create(options([writer(file, counters, true)])),
+        ).agents.create(options([writer(file, counters, true)])),
       );
       expect(
         (
@@ -547,7 +565,7 @@ describe("general Agent execution and recovery", () => {
         },
       };
       const agent = own(
-        await createDefaultAgentFactory(services(stores, streaming)).create(options([])),
+        await own(createAgentApplication(services(stores, streaming))).agents.create(options([])),
       );
       expect(await (await agent.run(input("query", "run-1"))).completed).toMatchObject({
         status: "failed",
@@ -562,14 +580,16 @@ describe("general Agent execution and recovery", () => {
     fixture(async (directory, own) => {
       const stores = own(createSqliteAgentStores(join(directory, "state.sqlite")));
       const agent = own(
-        await createDefaultAgentFactory(
-          services(
-            stores,
-            models(() => {
-              throw new Error("private-key-in-native-provider-diagnostic");
-            }),
+        await own(
+          createAgentApplication(
+            services(
+              stores,
+              models(() => {
+                throw new Error("private-key-in-native-provider-diagnostic");
+              }),
+            ),
           ),
-        ).create(options([])),
+        ).agents.create(options([])),
       );
       const result = await (await agent.run(input("query", "run-1"))).completed;
       expect(result).toMatchObject({
@@ -592,15 +612,17 @@ describe("general Agent execution and recovery", () => {
       const stores = own(createSqliteAgentStores(join(directory, "state.sqlite")));
       let calls = 0;
       const agent = own(
-        await createDefaultAgentFactory(
-          services(
-            stores,
-            models(() => {
-              calls += 1;
-              return answer("admitted");
-            }),
+        await own(
+          createAgentApplication(
+            services(
+              stores,
+              models(() => {
+                calls += 1;
+                return answer("admitted");
+              }),
+            ),
           ),
-        ).create(options([])),
+        ).agents.create(options([])),
       );
       const cancelled = new AbortController();
       cancelled.abort();

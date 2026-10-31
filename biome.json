@@ -8,6 +8,7 @@
   "files": {
     "includes": [
       "**/*.{js,jsx,ts,tsx,json,css}",
+      "scripts/check-agent-boundaries.mjs",
       "!**/node_modules",
       "!**/dist",
       "!**/out",

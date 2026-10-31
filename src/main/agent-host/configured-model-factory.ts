@@ -4,8 +4,8 @@ import type {
   ModelClientFactory,
   ModelSelection,
 } from "../../agent/model/model-contract";
-import { AgentError, sameValue } from "../../agent/protocol-utils";
-import type { Disposable } from "../../agent/protocol-values";
+import { AgentError } from "../../agent/protocol-errors";
+import { type Disposable, sameValue } from "../../agent/protocol-values";
 import type { Logger } from "../../logs/log-contract";
 import { createMimoTokenPlanCN, MimoModelError } from "../../models/mimo-token-plan-cn";
 import {

@@ -1,16 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { z } from "zod";
 import type { AgentRunInput } from "../src/agent/agent-contract";
 import type { AgentCreationOptions, AgentServices } from "../src/agent/agent-factory";
 import { createAgentApplication } from "../src/agent/application/agent-application";
-import { createDefaultAgentFactory } from "../src/agent/application/default-agent-factory";
+import type { AgentPlugin, PluginScope } from "../src/agent/extensions/plugin-contract";
 import type {
   ModelBinding,
   ModelClient,
   ModelRequest,
   ModelResponse,
 } from "../src/agent/model/model-contract";
-import { sameValue, snapshot } from "../src/agent/protocol-utils";
+import { sameValue, snapshot } from "../src/agent/protocol-values";
 import { RuntimeEventStream } from "../src/agent/runtime/event-stream";
 import type { CheckpointKey, CheckpointLease } from "../src/agent/session/checkpoint-contract";
 import type { AgentCheckpoint, SessionHistory } from "../src/agent/session/session-contract";
@@ -314,6 +314,41 @@ describe("general agent creation ownership", () => {
     expect(f.bind).not.toHaveBeenCalled();
     expect(f.borrowedDisposed).not.toHaveBeenCalled();
   });
+
+  it("keeps each installation's resource ownership and cancellation independent", async () => {
+    const f = fixture();
+    const app = createAgentApplication(f.services);
+    onTestFinished(() => app.close());
+    const scopes: PluginScope[] = [];
+    const disposed: number[] = [];
+    const plugin: AgentPlugin = {
+      id: "shared-definition",
+      version: "1",
+      setup({ scope }) {
+        const installation = scopes.length;
+        scopes.push(scope);
+        scope.own({
+          async dispose() {
+            disposed.push(installation);
+          },
+        });
+      },
+    };
+    const first = await app.agents.create(creation({ agentId: "first", plugins: [plugin] }));
+    const second = await app.agents.create(creation({ agentId: "second", plugins: [plugin] }));
+    await first.dispose();
+    expect(scopes[0].signal.aborted).toBe(true);
+    expect(scopes[1].signal.aborted).toBe(false);
+    expect(disposed).toEqual([0]);
+    const lateResource = { dispose: vi.fn(async () => {}) };
+    expect(() => scopes[0].own(lateResource)).toThrow();
+    expect(lateResource.dispose).not.toHaveBeenCalled();
+    expect((await (await second.run(activation())).completed).status).toBe("completed");
+    await app.close();
+    expect(scopes[1].signal.aborted).toBe(true);
+    expect(disposed).toEqual([0, 1]);
+    expect(f.borrowedDisposed).not.toHaveBeenCalled();
+  });
 });
 
 describe("general agent activation lifecycle", () => {
@@ -340,7 +375,9 @@ describe("general agent activation lifecycle", () => {
       ...f.services,
       authorizeTool: () => ({ type: "approval", interaction }),
     };
-    const agent = await createDefaultAgentFactory(services).create(
+    const app = createAgentApplication(services);
+    onTestFinished(() => app.close());
+    const agent = await app.agents.create(
       creation({
         plugins: [
           {
@@ -393,7 +430,9 @@ describe("general agent activation lifecycle", () => {
       modelEntered.resolve();
       return modelReady.promise;
     });
-    const agent = await createDefaultAgentFactory(f.services).create(creation());
+    const app = createAgentApplication(f.services);
+    onTestFinished(() => app.close());
+    const agent = await app.agents.create(creation());
     const content = { type: "text" as const, text: "original" };
     const pending = agent.run({ ...activation(), input: [{ role: "user", content: [content] }] });
     content.text = "mutated after run returned";
@@ -422,7 +461,9 @@ describe("general agent activation lifecycle", () => {
       releasing.resolve();
       await release.promise;
     };
-    const agent = await createDefaultAgentFactory(f.services).create(creation());
+    const app = createAgentApplication(f.services);
+    onTestFinished(() => app.close());
+    const agent = await app.agents.create(creation());
     const handle = await agent.run(activation());
     const observer = handle.events[Symbol.asyncIterator]();
     await observer.return?.();
@@ -453,7 +494,9 @@ describe("general agent activation lifecycle", () => {
       return snapshot(response);
     });
     const pluginDisposed = vi.fn(async () => {});
-    const agent = await createDefaultAgentFactory(f.services).create(
+    const app = createAgentApplication(f.services);
+    onTestFinished(() => app.close());
+    const agent = await app.agents.create(
       creation({
         plugins: [
           {
@@ -495,7 +538,9 @@ describe("general agent activation lifecycle", () => {
       entered.resolve();
       return aborted.promise;
     });
-    const agent = await createDefaultAgentFactory(f.services).create(creation());
+    const app = createAgentApplication(f.services);
+    onTestFinished(() => app.close());
+    const agent = await app.agents.create(creation());
     const handle = await agent.run(activation());
     await entered.promise;
     handle.cancel("stop");

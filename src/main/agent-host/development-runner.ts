@@ -7,7 +7,7 @@ import { PassThrough } from "node:stream";
 import { app, safeStorage } from "electron";
 import { z } from "zod";
 import type { AgentRunHandle, AgentRunResult } from "../../agent/agent-contract";
-import { AgentError } from "../../agent/protocol-utils";
+import { AgentError } from "../../agent/protocol-errors";
 import type { InteractionResponse } from "../../agent/protocol-values";
 import type { ToolsMode } from "../../tools/tools";
 import { createAgentConfiguration } from "../agent-configuration";

@@ -6,12 +6,12 @@ import type {
 } from "../agent-contract";
 import type { PromptContext } from "../extensions/plugin-contract";
 import type { ModelClient, ModelRequest, ModelToolCallContent } from "../model/model-contract";
-import { AgentError, asProtocolError, sameValue, snapshot } from "../protocol-utils";
-import type { RunIdentity } from "../protocol-values";
+import { AgentError, asProtocolError } from "../protocol-errors";
+import { type RunIdentity, sameValue, snapshot } from "../protocol-values";
 import type { CheckpointStore } from "../session/checkpoint-contract";
 import type { AgentCheckpoint, SessionHistoryStore } from "../session/session-contract";
 import type { RuntimeEvent } from "../session/session-events";
-import type { ToolExecutor } from "../tools/tool-contract";
+import type { ToolExecutor } from "../tools/tool-executor";
 import { CheckpointSession, checkpointData, running } from "./query/checkpoint-session";
 import { executeModelTurn } from "./turns/model-turn";
 import { executeToolTurn, resumeTool } from "./turns/tool-turn";

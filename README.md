@@ -227,7 +227,7 @@ PPTX exporter (hybrid: SVG background + editable text)
   - 布局由容器分配空间：根节点限定窗口高度，主体通过 Flex/Grid 伸展；栏宽由 `useWorkbenchLayout` 的 CSS 变量统一控制，并通过 `ResizeObserver` 按实际容器尺寸适配。内部面板独立滚动，局部响应式使用容器查询；窗口缩小时不会覆盖用户保存的预览宽度。SVG 预览保持 16:9，作者坐标仍为 1280×720。
   - 面板尺寸拖拽统一使用 `src/renderer/src/components/ResizeHandle.tsx`：受控 `value/min/max/onValueChange`，`axis` 选择左右或上下拖动，`direction` 决定增减方向。组件统一管理 idle/hover/dragging/disabled、指针捕获、全局光标和清理；支持方向键（10px）、Home/End。取消保留最后尺寸，禁用、失焦、失去捕获、卸载或边界变化时结束拖拽；尺寸约束和持久化仍由布局层负责。
 - `src/agent/`：独立的通用 Agent 协议与默认执行实现，尚未接入生产 UI；现有 `src/main/agent/` 继续运行。这里不依赖 PPT、Electron、应用存储或厂商 SDK，也不使用 `index.ts` 聚合入口。
-  - `application/`：`createAgentApplication()` 组合根与 `createDefaultAgentFactory()`；安装插件、绑定模型、就绪后发布实例，失败回滚。应用关闭先拒绝新创建、打断并排空执行，再释放拥有的资源。
+  - `application/agent-application.ts`：受支持的 `createAgentApplication()` 入口；内部默认工厂安装插件、绑定模型、就绪后发布实例，失败回滚。应用关闭先拒绝新创建、打断并排空执行，再释放拥有的资源；调用方不直接使用默认工厂。
   - `scope/`：Application → Agent → Run 的资源所有权、逆序释放与注册句柄；借用的宿主服务不随 Agent 关闭。
   - `runtime/`：单实例单激活的 `run/resume`、独立事件观察通道、Query 检查点协调，以及模型步/工具步。新请求只接收用户消息，不强制转换为业务 Task；Step 在提交边界更新快照。
   - `model/`：模型中立消息、能力声明、私有重放状态、按 provider ID 注册的模型工厂；增加厂商不在循环中新增分支。
@@ -266,6 +266,10 @@ PPTX exporter (hybrid: SVG background + editable text)
 ### 通用 Agent 的生命周期约定
 
 宿主显式装配 `AgentServices`（模型工厂、授权策略、历史和检查点），调用 `createAgentApplication(services)`，通过 `application.agents.create()` 提供定义、模型选择、步数预算和插件。业务工具在插件 `setup()` 中注册；内核只调用协议，不读取 Presentation、workspace 服务或厂商配置。关闭顺序为先 `application.close()`，再关闭宿主拥有的存储和连接。
+
+支持的功能与协议路径见 [M1 公开面清单](docs/next-steps.md#m13-公开路径与协议闭包)。`PluginContext.scope` 只提供 `PluginScope.signal/own()`，不暴露内部资源树的创建与关闭；错误使用 `protocol-errors.ts` 的同一 `AgentError`，无损 JSON 快照与值比较由 `protocol-values.ts` 提供。`ToolCompletion` 是事件/存储公共数据，`ToolExecutor` 与执行管线仍为内部协议。旧 `protocol-utils.ts` 已移除，不提供兼容导出。
+
+`npm run check:agent-boundaries` 按 node/web tsconfig 的实际模块解析检查公开入口、协议闭包和反向依赖，允许精确的内部行为测试例外；`typecheck` 和 `build` 自动包含该检查。它是源码依赖约束，不是任意计算加载或恶意插件的安全沙箱；本模块尚未拆成独立发布包。
 
 - 同一 Agent 同时只接受一次 `run()` 或 `resume()`，不隐式排队。`handle.events` 仅供单消费者观察；不消费或退出事件流都不会取消执行。
 - `waiting` 会保存交互和续传数据，结束本次 Run 并释放租约。回答只能匹配持久化交互，恢复必须提供新的 `runId`；不接收前端重建的执行快照。线程有未完成 Query 时，新请求不能越过它。

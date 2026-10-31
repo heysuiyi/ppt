@@ -1,8 +1,540 @@
-# 下一步计划：mimo-token-plan-cn
+# 下一步计划：M1 公开面收敛与 M2-A 通用宿主装配
 
-状态：MiMo 原生接入已实现并完成本地协议、真实 Electron 设置组件/开发入口及小范围实际 CN 验收；完整方案与分层证据见 [mimo-token-plan-cn 具体实施方案](mimo-token-plan-cn.md#11-实施与验收记录2026-10-31)。未切换生产聊天或迁移 PPT 能力、生产会话；已有自定义连接不自动升级。整体方向见 [项目整体规划](project-plan.md)，持续约束见 [AGENTS.md](../AGENTS.md)。
+状态：第一轮 M1 已实施并完成公开入口、依赖约束、本地回归与实际开发入口验收，证据见 M1.12；第二轮 M2-A 实施方案已设计，代码待实施与验收。M1.1–M1.11 保留为第一轮设计依据，M2-A.1–M2-A.11 是第二轮依据；MiMo、CLI 与 logs/tools 记录保留为历史。M2-A 承接 M1 的实际公开契约，独立包边界仍属后续工作。本轮未切生产入口、未改变持久化版本。整体方向见 [项目整体规划](project-plan.md)，持续约束见 [AGENTS.md](../AGENTS.md)。
 
-## 本轮已完成切片
+## M1.1 目标、范围与非目标
+
+本轮将现有 `src/agent/` 收敛为可受控消费的公开功能与扩展协议，不重新实现运行时，不新建 `Harness` 或 `Assistant` 空壳，不引入 IoC 容器。交付同时包含公开面、调用方迁移、资源能力收窄、静态依赖约束和运行证据；只有入口文件而没有约束与实际消费，不算完成。
+
+纳入范围：
+
+1. 明确现有具名入口及其公开符号，拆开公共协议与内部执行协议。
+2. `PluginContext.scope` 改为公开的窄 `PluginScope`，安装器不再传出完整资源树对象。
+3. 明确错误、无损协议快照和值比较的公共语义，迁移全部新内核相关调用方，删除失效路径。
+4. 用解析到真实目标文件的静态检查维护内外依赖方向，并接入现有类型检查与构建链。
+5. 迁移外部消费测试，保留有明确目的的白盒覆盖；运行公开入口消费烟测与现有恢复回归。
+
+不纳入范围：
+
+- 不分离工作区指令、插件选择、按工具名授权和宿主生命周期；这是第二轮装配工作。
+- 不改变 `HostSessionBinding` v2、检查点 v1、数据库结构、模型重放格式、交互载荷及定义/插件版本。
+- 不切生产 UI，不迁移生产历史，不删除旧 Agent/Gateway，不迁移 PPT、Skill 或子 Agent。
+- 不新增 provider、重试、并行调度、压缩、动态插件依赖、热更新、服务定位器、扫描或配置语言。
+- 不新增包/workspace，不承诺可独立发布；Node `exports` 和独立消费属于 M2。本轮不批量搬目录或改名。
+
+## M1.2 实施前现状与必须保留的机制
+
+| 代码位置 | 已核实事实 | 本轮处理 |
+| --- | --- | --- |
+| `application/agent-application.ts`、`application/default-agent-factory.ts` | 默认装配已在 Agent 内部；顺序安装插件、绑定模型、seal 后发布，失败回收 | 保留实现和顺序，只明确前者为受支持功能入口、后者为内部实现 |
+| `extensions/plugin-contract.ts`、`extensions/plugin-manager.ts` | 插件拿到具体 `ResourceScope`，可见 `child()`、`dispose()` | 改公开能力协议与传入对象，不改资源树算法 |
+| `tools/tool-contract.ts` | 工具扩展定义与 `ToolExecutor` 混在同一文件；`ToolCompletion` 被公开事件与持久数据引用 | 只拆出内部执行协议，公共类型依赖保持闭合 |
+| `protocol-utils.ts` | 同时承担具名错误、安全投影、JSON 快照与值比较；宿主确实使用这些语义 | 分到具名公共协议文件，不复制、不静默替换算法 |
+| `src/main/agent-host/` | 七个文件消费 `protocol-utils`；通过 Application 创建 Agent | 迁移公共操作的来源，不改变宿主行为 |
+| `src/models/`、`src/tools/` | 已消费具名模型、插件和工具协议 | 合法入口保持原路径；只随协议拆分调整受影响处 |
+| `biome.json`、node/web tsconfig | 有部分导入限制，但没有基于目标文件的 Agent 封装门槛 | 增加一个定向依赖检查，不将目录或 tsconfig include 冒充访问控制 |
+| 现有测试 | 恢复测试仍直接用默认工厂；基础工具取消测试需观察工具完成而非 Agent 终态 | 前者改公开 Application；后者保留精确白盒例外 |
+
+资源所有权仍按 Application → Agent → Run 管理；宿主提供的模型工厂、历史与检查点端口是借用对象。Agent 拥有模型 binding、插件资源和注册；Run 拥有本次取消及临时资源。Thread/Query/Step 的持久事实不进入资源树。
+
+## M1.3 公开路径与协议闭包
+
+下表是实施后的完整受支持源码入口集合，不是待新增的一组转发文件。路径均相对 `src/agent/`；已有入口保持位置。第一轮以这些精确路径维护边界，不允许按整个目录开放。
+
+| 受支持入口 | 公开内容 | 运行时属性 |
+| --- | --- | --- |
+| `application/agent-application.ts` | `createAgentApplication`、`AgentApplication` | 功能入口，内部拥有默认创建/关闭装配；不转导出默认工厂 |
+| `agent-contract.ts` | `Agent`、`AgentDefinition`、`AgentRunInput`、`AgentResumeInput`、`AgentRunHandle`、`AgentRunResult` | 纯类型 |
+| `agent-factory.ts` | `AgentCreationOptions`、`AgentServices`、`AgentFactory` | 纯类型，保留具名端口，不引用具体内部类 |
+| `protocol-values.ts` | 现有 JSON、版本载荷、身份、交互、`Disposable` 类型；移入 `snapshot`、`sameValue` | 无宿主依赖的值操作；校验函数不导出 |
+| `protocol-errors.ts`（新增） | 从旧文件移动 `AgentError`、`asProtocolError` | 唯一公共错误实现，纯平台无关运行时代码 |
+| `extensions/plugin-contract.ts` | `AgentPlugin`、`PluginContext`、`PluginScope`、`PromptContext`、`PromptContribution`、`PromptRegistrar` | 纯类型，不再引用资源树类 |
+| `model/model-contract.ts` | 现有模型选择、内容、消息、请求/响应/流、能力、调用上下文、client/binding/factory/registrar 全部导出类型 | 纯类型，重放状态仍对内核不透明 |
+| `tools/tool-contract.ts` | 上下文、授权、影响、结果、挂起、即时/可恢复工具定义、工具联合与 registrar，以及 `ToolCompletion` | 纯类型；保留 `ZodType` 的 type-only 依赖 |
+| `session/session-contract.ts` | 现有历史与存储、工具调用/完成持久记录、inflight/pending 数据、`AgentCheckpoint` 全部导出类型 | 存储适配扩展协议，不是允许宿主覆盖恢复快照 |
+| `session/checkpoint-contract.ts` | 现有 key/lease/acquire/save/store 全部导出类型 | 纯类型，保留 CAS、围栏和显式接管语义 |
+| `session/session-events.ts` | `RuntimeFactEvent`、`RuntimeStreamEvent`、`RuntimeEvent` | 纯类型，观察事件不升级为持久事件日志 |
+
+其中 `ToolCompletion` 必须公开：`RuntimeEvent` 和 `StoredToolCompletion` 都引用它。检查点及其嵌套记录必须可由存储适配器表达；不能为了缩小导出数量而隐藏这些协议，或将其改为 `unknown`。公开不意味着可向终端直接序列化私有重放状态。
+
+`ToolExecutor` 与 `ToolExecutionResult` 移到新内部文件 `tools/tool-executor.ts`；该文件只含内部协议。`tool-pipeline.ts`、`DefaultAgent`、运行控制器和必要白盒测试改用新来源。旧 `tool-contract.ts` 不保留重导出、兼容别名或重复定义。
+
+`ToolDefinitionFields`、`AgentCheckpointBase` 等未导出的组成类型无需机械改成导出。公共签名的类型依赖可以在同一受支持协议模块内表达，但不得沿声明依赖链进入资源树、Registry、管线或默认实现。
+
+## M1.4 插件生命周期能力
+
+在 `extensions/plugin-contract.ts` 定义：
+
+```ts
+export interface PluginScope {
+  readonly signal: AbortSignal;
+  own(resource: Disposable): void;
+}
+```
+
+`PluginContext.scope` 使用该接口；`models/tools/prompts` 三个 registrar 保持现状。不新增服务获取、父作用域访问、子作用域创建或容器管理方法。
+
+安装器为每次插件安装创建独立窄对象：
+
+```ts
+const pluginScope: PluginScope = {
+  signal: scope.signal,
+  own(resource) {
+    scope.own(resource);
+  },
+};
+```
+
+`setup()` 接收 `scope: pluginScope`，而不是将 `ResourceScope` 仅做类型断言后原样传入。每次安装只构造一次能力对象，不在工具调用热路径上包装或分配。
+
+保持以下契约：
+
+- 插件可以托管其已经取得所有权的资源；不能通过注入就接管共享宿主服务。
+- 插件仍可取得注册返回的 `Disposable`，仅撤销自己的注册；整个插件作用域由安装器管理。
+- 同一插件对象的不同安装具有独立资源归属，不能共享可变作用域。
+- setup 失败回收整次安装已取得的资源；setup 中取消、关闭重入、晚到模型绑定的处理不退化。
+- scope 已关闭时 `own()` 继续拒绝；不得改成静默接受或替插件自动关闭未知借用对象。
+- 关闭前先中断并排空执行，再释放依赖；不照搬上游并发 disposer 完成顺序。
+- 窄对象不是恶意插件沙箱，不阻止受信任进程内代码通过其他引用执行操作。
+
+不增加插件生命周期状态机或 `start/stop/refresh` 钩子；保留“安装贡献 → 绑定模型 → seal → 发布”和创建失败回滚。
+
+## M1.5 错误与协议值操作的迁移
+
+从 `protocol-utils.ts` 移动实现，不重新实现：
+
+- `AgentError`、`asProtocolError` → `protocol-errors.ts`；所有内外调用方使用同一个类。未知原生异常仍投影为既有通用失败，不泄露 SDK 异常、路径、密钥或堆栈。
+- `snapshot`、`sameValue` 及私有校验辅助函数 → `protocol-values.ts`；后者可值导入 `AgentError`，`protocol-errors.ts` 仅 type-import `ProtocolError`，不形成值循环。
+- `snapshot` 保留既有无损 JSON 拒绝规则及 detached snapshot 行为；`sameValue` 保留现有比较语义，不改成直接 `JSON.stringify` 比较。使用方仍需满足协议值前提，不新增一套任意 JavaScript 对象比较规范。
+
+迁移完全部引用后删除 `protocol-utils.ts`，不保留旧路径重导出。凭据解析、MiMo 安全错误转换、历史批次去重与绑定比较只改 import，不改变行为和错误码。
+
+## M1.6 调用方与测试迁移
+
+| 消费侧 | 实施动作 |
+| --- | --- |
+| `src/agent/**` | 错误/值操作切换来源；内部执行协议切换；插件管理器使用窄对象 |
+| `src/main/agent-host/` | `configured-model-factory`、`create-agent-host`、`development-command`、`development-runner`、`development-setup`、`host-session-binding`、`sqlite-agent-stores` 迁移错误/值操作 import；保留现有 Application 入口 |
+| `src/models/**`、`src/tools/**` | 已合法的协议路径不改；工具资源清理继续经 `scope.own()`，不要求新工厂或别名 |
+| shared/Renderer/preload 的间接类型消费 | 保持模型及值协议无 Node/Electron/SDK 依赖；核验 web 类型检查，不把功能入口引入浏览器协议链 |
+| `general-agent-runtime.test.ts` | 改用 `createAgentApplication(...).agents.create(...)`；登记并关闭 Application，保留持久恢复、未知副作用、丢失收据、步数、流完成与错误隐私断言 |
+| `general-agent-lifecycle.test.ts` | Agent 生命周期行为改用 Application 创建；事件通道的实现测试仅保留对 `runtime/event-stream.ts` 的白盒访问 |
+| `general-agent-infrastructure.test.ts` | 保留资源、注册、安装回滚与工具管线的实现测试，内部类型改来源；不将这些依赖提升为公共 API |
+| `base-tools.test.ts` | 主要消费已有公开 Application；取消测试仍允许直测管线，以区分工具是否响应取消，不能用 Agent cancelled 终态替代真实工具结果 |
+| MiMo、宿主、存储及 CLI 测试 | 迁移受影响 import，不重写无关场景，不重新钉住源码措辞 |
+
+白盒例外按“具体测试文件 → 具体目标文件”登记：
+
+- `general-agent-infrastructure.test.ts`：`extensions/plugin-manager.ts`、`extensions/prompt-registry.ts`、`model/model-registry.ts`、`scope/resource-scope.ts`、`tools/tool-pipeline.ts`、`tools/tool-registry.ts`，以及拆分后确需的 `tools/tool-executor.ts`。
+- `general-agent-lifecycle.test.ts`：仅 `runtime/event-stream.ts`。
+- `base-tools.test.ts`：取消结果观察所需的 plugin manager、prompt/model/tool registries、resource scope、tool pipeline，以及 `tools/tool-executor.ts`。
+
+这些例外不允许向普通源码转导出内部符号。实施时若发现其他直接消费者，必须按行为职责迁移或说明具体白盒目的，不能给 `tests/**` 整体豁免，也不能借机删除有意义的边界覆盖。
+
+## M1.7 静态封装的实现选择
+
+新增 `scripts/check-agent-boundaries.mjs`，复用已有 TypeScript 开发依赖，作为定向依赖检查器，不建设通用架构规则框架。原因：新 `src/agent/`、旧 `src/main/agent/` 和 Renderer 的 `agent/` 目录重名；当前 Biome 字符串 glob 不能替代按 tsconfig 解析后的模块身份。避免用 `**/agent/**` 误伤旧链路或通过另一条相对路径绕过。
+
+检查器要求：
+
+1. 使用 TypeScript config API 读取 node/web tsconfig，按各自编译选项解析模块；合并去重源码身份。使用平台一致的绝对规范路径与大小写规则，识别实际位于本仓库 `src/agent/` 的目标，不能靠 `startsWith("src/agent")` 误匹配其他目录。
+2. 分析静态 import、type-only import、re-export、import type 表达式、字面量动态 import 和字面量 require。检查器覆盖编译项目内源码及测试；同一文件在两个项目中的不同解析结果都要校验。
+3. Agent 外部只能依赖 M1.3 精确入口；拒绝经相对路径、别名或转导出进入内部实现。白盒例外仅允许指定源/目标组合，不扩成前缀开放。
+4. Agent 内部只允许模块内部依赖及当前已有 `zod` 依赖；拒绝宿主、业务、Electron、Node builtin、具体数据库、厂商 SDK 等反向依赖。不顺带给其他模块建立新的依赖体系。
+5. 公共纯类型协议只能 type-import 其他公共协议和 `zod` 类型；`protocol-values/errors` 可以有相互之间的受控 type/value 依赖，但不得带入默认运行时。功能入口可依赖内部实现，不适用纯协议规则。
+6. 对本模块及公共协议闭包的未解析导入明确失败，不静默跳过；不将无关旧模块的解析问题包装为 Agent 边界错误。非字面量模块加载不能宣称已静态证明：本轮禁止 Agent 内部使用，并要求所有指向 Agent 的依赖使用可解析字面量；这不是任意 JavaScript 加载行为的安全隔离。
+7. 输出源文件、位置、解析目标和违反规则，退出非零；允许集合只有一份，不再用 Biome 复制同一套 Agent 白名单。现有配置模块、tools 的 Biome 限制保持有效。
+
+增加 `npm run check:agent-boundaries`，将其接入 `typecheck` 的前置步骤；现有 `build` 依赖 `typecheck`，因此构建自动执行约束，不重复增加另一条检查链。不改默认测试排除策略，不把开发测试/夹具混进生产 `out/**`。
+
+实施中用临时小消费程序验证检查器：合法公共 type import 通过；私有值/type import、re-export、动态字面量导入、别名绕过和内核反向依赖失败；现有旧 `main/agent` 导入仍通过；白盒例外不得传播到普通源码。临时程序置于隔离目录，验证后删除。不写源码字符串、导出数量或 import 次数断言。
+
+## M1.8 实施顺序与文件落点
+
+按依赖顺序完成，所有代码改完后集中运行验证，不在每次移动后全量跑检查：
+
+1. **协议拆分**：新增 `protocol-errors.ts`、内部 `tools/tool-executor.ts`；迁移公共值操作；完成内核及外部引用迁移，删除旧 utils 路径与旧内部类型导出。
+2. **插件边界**：在 plugin contract 定义 `PluginScope`，plugin manager 传窄对象；保持默认工厂与资源回收机制不变。
+3. **消费测试**：运行时与生命周期测试改从公开 Application 创建；保留上节明确的内部覆盖，不增加生产兼容路径。
+4. **静态约束**：实现定向脚本与 npm 接线；验证合法、非法及旧链路边界，不把扫描文件数量当验收结果。
+5. **集中验收**：依次运行相关行为、node/web 类型与依赖检查、静态检查、全量单测、实际入口/恢复烟测；失败先定位，不用删除行为断言让检查变绿。
+6. **交付记录**：仅在验收后更新本计划和整体规划的实际状态，记录命令、场景、通过/跳过/失败及证据限制；不提前标记 M1 完成。
+
+现有 `application/agent-application.ts` 被明确支持后无需搬到根目录或增加包装工厂。`src/main/agent-host/` 在本轮仍是固定工作区运行配置；这不阻止通过公开 Application 验收无插件配置，但不能据此宣布 M2 已完成。
+
+## M1.9 验证方案与通过条件
+
+### 行为回归
+
+优先复用现有 `general-agent-infrastructure`、`general-agent-lifecycle`、`general-agent-runtime`、`base-tools`、`general-agent-host`、`general-agent-host-binding`、`general-agent-development-host`、`general-agent-development-sessions`、`mimo-token-plan-cn` 等测试。只为新增的不确定边界补行为测试，不重复既有路径；安装失败回收、关闭排空和错误隐私断言不得缩成“未抛错”。
+
+| 验收面 | 必须观察的结果 |
+| --- | --- |
+| 无业务插件消费 | `plugins: []` 通过公开 Application 运行普通对话；模型拿不到未安装工具，主动请求未安装工具也不能执行 |
+| 资源边界 | setup 失败和 Agent/Application 关闭回收已托管资源，借用端口不被误关；同一插件多次安装互不污染；创建取消不留下可运行实例 |
+| 类型边界 | 临时外部插件无需导入/实现 `ResourceScope`；`scope.child/dispose` 无法通过公共类型调用；模型、工具、存储协议可从支持路径完整消费 |
+| 存储与恢复 | Query 不变、新 Run；待决回答匹配且不重复消费；步数不重置；CAS/围栏、丢失历史收据、unknown/applied 语义保持 |
+| 错误与值 | 单一 `AgentError` 身份及安全投影保持；无损 JSON 拒绝和快照隔离保持；历史 batchId 同内容幂等、不同内容冲突保持 |
+| 授权与文件 | 只读自动允许、写入逐次审批；批准前不写，未安装/越界访问拒绝；文件版本与 UTF-8/大小校验不弱化 |
+| 静态约束 | 公开路径通过，私有导入与反向依赖失败，旧 Agent 同名路径不误伤，白盒例外不外泄 |
+
+集中验证命令如下；本轮实际执行结果见 M1.12，不引用前序验收数字代替：
+
+```text
+npx vitest run tests/general-agent-infrastructure.test.ts tests/general-agent-lifecycle.test.ts tests/general-agent-runtime.test.ts tests/base-tools.test.ts tests/general-agent-host.test.ts tests/general-agent-host-binding.test.ts tests/general-agent-development-host.test.ts tests/general-agent-development-sessions.test.ts tests/mimo-token-plan-cn.test.ts
+npm run typecheck
+npx biome check <本轮修改的受支持代码文件>
+npm test
+npx vitest run tests/general-agent-development-cli.integration.test.ts tests/mimo-development-cli.integration.test.ts
+npm run agent:dev -- --help
+```
+
+Windows 使用对应 `npm.cmd`、`npx.cmd`。Electron 集成被环境条件跳过不算通过，须明确记录并以可运行的等价实际场景补证；不能把旧 `test:integration:agent` 当成新宿主验收。
+
+### 实际运行，不以单测或帮助代替
+
+使用临时工作区、临时数据库与既有受控模型方式，不调用远程厂商、不触碰生产配置或数据库：
+
+1. 临时独立消费程序仅从公开入口创建 Application，先不安装业务插件；执行一次对话并观察规范历史与关闭。随后在独立 Agent 安装 `createTools`，观察实际随机校验码文件读写和工具结果，不以模型自述代替文件核对。
+2. 实际 Node 启动器 → Electron 开发宿主 → 原生 MiMo SDK → 本地 HTTP/SSE，执行 glob/grep/read 后请求写入；只读零审批，EOF 保留 waiting，批准前目标文件不存在。
+3. 新进程恢复原 Query，使用新 runId 回答权威待决交互；批准后内容匹配校验码，记录规范消息与最终检查点，并确认无活动租约。拒绝和取消分别在独立临时会话覆盖。
+4. 补一次关闭中断与依赖排空观察；取消不当作关闭，Ctrl+C 不当作 EOF 恢复。若既有实际入口集成已覆盖某场景，可复用该证据，不再重复远程调用。
+5. 仅清理本次进程、临时脚本、会话、工作区与构建缓存。报告受控模型、本地真实 SDK/HTTP 与远程厂商三类证据，不混称真实模型验收。
+
+M1 完成要求：上述功能/扩展入口可用且内部绕过受约束，全部相关调用方迁完，无旧路径 shim，无业务插件与文件插件两类公开消费成立，既有执行和恢复语义保持。模块可独立发布、宿主配置可组合及生产切换都不属于本轮完成声明。
+
+## M1.10 参考来源与取舍
+
+- [DeepSeek Harness 架构与 Session log](https://deepseek-harness.github.io/deepseek-harness/en/reference/)：区分持久事实、运行事件和能力扩展；不直接采用其 SessionEvent 格式或恢复算法。
+- [固定版本 plugin 生命周期实现](https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/vendor/cordis/src/fiber.ts) 与 [vendoring 说明](https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/vendor/README.md)：借鉴贡献归属与初始化发布；不引入动态依赖重装、配置 HMR 或整个 fork，不将其异步回收顺序替代本项目契约。
+- [Spring Framework 依赖注入](https://docs.spring.io/spring-framework/reference/core/beans/dependencies/factory-collaborators.html)、[生命周期](https://docs.spring.io/spring-framework/reference/core/beans/factory-nature.html)：借鉴显式工厂参数、完整初始化及依赖者优先停止；不建立 BeanFactory，不把 Bean scope 映射为 Query。
+- [Spring Boot 自动配置](https://docs.spring.io/spring-boot/reference/features/developing-auto-configuration.html)：默认实现由模块内聚，显式选择在组合边界完成；本轮不实现条件装配或扫描，第二轮再处理具体配置。
+- [Fowler：配置与使用分离](https://www.martinfowler.com/articles/injection.html#SeparatingConfigurationFromUse)、[Ports & Adapters](https://alistair.cockburn.us/hexagonal-architecture)：用于约束依赖方向，不增加空壳适配层。
+- [Node package exports](https://nodejs.org/docs/latest-v24.x/api/packages.html#main-entry-point-export)：未来包边界仍需配合相对路径约束；本轮不以新增 exports 冒充独立包。
+
+## M1.11 方案设计记录（实施前）
+
+方案设计阶段只更新实施方案及整体规划，没有将设计当作验收。已核对公开签名、宿主/模型/tools 消费、现有行为测试及静态检查能力；LSP 无可用语言服务器，调用方盘点使用定向导入检索与相关代码阅读。实施时再次查询引用仍返回无语言服务器，随后通过定向导入盘点、编译和边界检查完成迁移验证。
+
+## M1.12 实施与验收记录（2026-11-01）
+
+### 实际变更
+
+- 已按 M1.3 精确路径收敛消费边界，保留现有 Application 功能入口，没有新增包装工厂、聚合入口或容器。
+- 新增 `protocol-errors.ts`，唯一错误类与安全投影原样迁移；快照、JSON 校验与值比较迁入 `protocol-values.ts`。内核、七个宿主文件和相关测试已迁移，旧 `protocol-utils.ts` 已删除，无兼容重导出。
+- 新增内部 `tools/tool-executor.ts`，移入 `ToolExecutor/ToolExecutionResult`；`ToolCompletion` 留在公共协议，事件及检查点载荷没有变化。
+- 插件得到独立的 `PluginScope` 窄对象，仅有 `signal/own()`；资源树、注册回滚与关闭顺序保持原机制。新增行为回归验证同一插件多次安装的取消/资源归属互不污染，以及关闭后托管拒绝且不误关未接收资源。
+- 运行时与 Agent 生命周期回归改由公开 Application 创建并登记回收；保留方案列出的精确白盒访问。
+- 新增 `scripts/check-agent-boundaries.mjs` 与 `check:agent-boundaries`，接入 `typecheck`；`build` 经现有链包含检查。按两份 tsconfig 解析实际目标，核查公共协议闭包、反向依赖和白盒导出泄漏。类型来源按声明/符号身份去重，避免展开递归泛型导致栈溢出；不是任意 JavaScript 值流或计算加载的安全分析器。
+- `tsconfig.web.json` 补入新增错误协议，保证公共值操作的浏览器编译闭包；Biome 仅显式纳入这一个新 `.mjs` 检查脚本，没有扩大到其他旧脚本或复制 Agent 白名单。中英文 README 已补充消费边界。
+
+### 本轮执行结果
+
+| 检查/场景 | 实际结果 |
+| --- | --- |
+| M1.9 所列九个相关行为回归文件 | 152 项通过，1 项按既有条件跳过 |
+| `npm.cmd run typecheck` | 模块边界检查及 node/web 两个 TypeScript 项目全部通过 |
+| Biome：新脚本、package/config、Agent、开发宿主与四个受影响测试文件 | 42 个受支持文件通过；迁移产生的三处格式差异已修复 |
+| `npm.cmd test` | 191 个文件、1609 项通过，2 项按既有条件跳过；没有运行远程厂商集成 |
+| 两个独立 Electron CLI 集成文件 | 2 项通过、无跳过；覆盖凭据重开、原生 SDK/本地 HTTP/SSE、EOF waiting、新进程恢复、拒绝、取消、配置变更拒绝与租约释放 |
+| `npm.cmd run agent:dev -- --help` | 实际 Node 启动器构建并启动 Electron 帮助成功；没有启动生产 UI |
+| 独立公开消费程序 | 无插件普通对话完成；模型看不到未安装工具，主动调用缺失工具被拒绝；借用 SQLite 端口在 Application 关闭后仍可读取 |
+| 公开消费类型检查 | 外部结构对象可实现 `PluginScope`，无需内部类；`child/dispose` 的负向类型断言成立 |
+| 独立公开文件消费与关闭烟测 | 实际 glob→grep→read→write；批准前无文件；重新打开存储后批准，随机校验码匹配、原 Query/新 Run、完成检查点和释放租约均核验；关闭返回 interrupted，先排空模型再关闭 binding 与插件资源 |
+| 独立 Electron → SDK → 本地 SSE 烟测 | 一次模型发现、三次模型请求；实际 glob/grep/read 零只读审批，写入 EOF waiting；新进程批准后文件内容匹配随机校验码，Query 不变、Run 更新、完成检查点无活动租约 |
+| 隔离依赖反例矩阵 | 25 个场景通过，包括合法公开消费/旧同名目录、私有值/类型/重导出/import type/动态字面量/require/别名、未解析 Agent 依赖、内核反向依赖与非字面量加载、协议闭包、精确白盒及别名/实例/包装导出泄漏、node/web 不同解析 |
+
+测试条件跳过不视为已验收对应平台行为。本轮两项既有跳过均保留原条件；实际 Electron 集成及独立烟测没有跳过。静态反例和公开消费使用临时程序，不新增锁定源码措辞、导出数量或文件布局的永久测试。
+
+没有读取或修改生产会话数据、没有复制或打印真实 Key、没有调用远程厂商；本地真实 SDK/SSE 结果不能作为远程模型新验收。生产打包与跨包发布未在本轮执行。临时程序使用独立数据库、工作区与构建目录，仅清理本次创建的资源。
+
+结论：M1 第一轮完成；M2-A 仍为待实施设计，M2 独立包构建消费、M3 扩展验收和 M4 生产迁移仍是后续范围。工作区宿主仍固定选择文件能力，旧生产 Agent、PPT、Gateway 保持独立运行。
+
+## M2-A.1 第二轮目标、前置条件与非目标
+
+第二轮交付“平台无关的会话宿主装配”：固定一个 Thread 的执行入口，先确认宿主持久绑定，再通过公开 Application 创建 Agent；具体指令、插件与授权由调用方显式提供。它是 M2 的通用装配切片，不等于 M2 的独立包、构建与发布门槛已经完成。
+
+前置条件：M1 的公共协议闭包、窄 PluginScope、调用方迁移和定向依赖检查已落地并完成相应验收。第二轮设计可以先行，但实施必须先重读第一轮实际结果；如路径或契约发生变化，先修订本方案，不新增旧入口 shim，也不覆盖第一轮正在进行的改动。M1 不包含本节工作，M1 完成也不能自动标记 M2-A 完成。
+
+纳入范围：
+
+1. 新增 `src/agent-host/session-host.ts`，内聚线程固定、发布前绑定确认、Application 创建与关闭；只消费 M1 公开入口。
+2. 将现有工作区定义、文件插件选择、工具授权和审批载荷解释集中到当前宿主的具体配置文件；不进入通用模块。
+3. 工作区组合根继续创建并拥有模型、SQLite、日志，通过必需的窄绑定端口连接通用宿主。
+4. 保持工作区 v2 绑定及原会话可恢复，证明不安装文件能力也可以使用同一个通用宿主。
+5. 迁移受影响调用方、补齐依赖约束，提供实际 Node 无 Electron 消费及原开发入口恢复证据。
+
+不纳入范围：
+
+- 不新增 Harness/Assistant 类、BeanFactory、全局 Context、依赖 token、拓扑解析器、扫描、配置语言、动态插件或 HMR。
+- 不新建包/workspace，不新增 package exports；不宣称脱离仓库安装消费、独立发布或完整 M2 验收。
+- 不泛化 SQLite 绑定格式、历史查询或配置注册体系；不新增 v3，不改表结构，不迁移历史行。
+- 不改变检查点 v1、模型重放、连接指纹算法、工作区定义/插件版本、审批 v1、工具安全或执行状态机。
+- 不改变 CLI 默认配置、命令和选择流程，不增加 profile/插件选择菜单；不接入额外 provider。
+- 不切换生产 UI、不迁生产历史、不迁 PPT/Skill/子 Agent，不删除旧 Agent/Gateway。
+
+## M2-A.2 当前职责与切分决策
+
+本节依据当前调用链；M1 实施中的错误/值操作 import 迁移不再列为第二轮待修问题。
+
+| 位置 | 当前职责 | 第二轮归属 |
+| --- | --- | --- |
+| `main/agent-host/create-agent-host.ts` | 指令、tools、按工具名授权、模型/存储/日志、绑定及执行包装 | 保留具体资源组合根，通用执行包装迁到新模块，工作区配置另行内聚 |
+| `agent/application/agent-application.ts` | Agent 创建占位、取消、关闭与排空 | 完整复用，不复制其实例表、资源树或生命周期算法 |
+| `main/agent-host/host-session-binding.ts` | 严格工作区 v2 格式与快照 | 原位保留，是宿主适配协议，不成为通用宿主 schema |
+| `main/agent-host/sqlite-agent-stores.ts` | 历史/检查点/绑定的真实 SQLite 实现与工作区列表投影 | 原位保留，由组合根借出端口；不因使用 Node API 就声称已完成独立适配模块 |
+| `main/agent-host/configured-model-factory.ts` | 已签发计划、凭据解析、原生模型准备与连接指纹 | 原位保留，依赖当前应用配置的代码不进入通用模块 |
+| `main/agent-host/development-runner.ts` | Electron、输入队列、命令、观察投影、审批、会话选择 | 继续调用工作区组合根；不变成通用运行容器 |
+| `main/agent-host/development-sessions.ts` | 当前工作区的只读会话枚举 | 保持工作区特定用途，不新增全局通用会话目录 |
+
+不另建“运行配置对象系统”。具体配置首先就是有明确返回类型的 TypeScript 工厂；依赖由参数/闭包提供。无插件消费直接显式传 `plugins: []`、定义和授权策略，不必注册一种新的助手类别。
+
+## M2-A.3 通用会话宿主的公开协议
+
+新增具名入口 `src/agent-host/session-host.ts`，定义以下受支持契约并内聚默认创建逻辑；不新增 `index.ts` 或单纯转发工厂。类型引用均来自 M1 公开协议。
+
+```ts
+export interface SessionBindingPort {
+  ensure(): Promise<void>;
+}
+
+export interface SessionHostOptions {
+  readonly services: AgentServices;
+  readonly agent: AgentCreationOptions;
+  readonly threadId: string;
+  readonly binding: SessionBindingPort;
+}
+
+export type SessionRunInput = Omit<AgentRunInput, "threadId">;
+export type SessionResumeInput = Omit<AgentResumeInput, "threadId" | "takeover">;
+
+export interface SessionHost extends Disposable {
+  run(input: SessionRunInput): Promise<AgentRunHandle>;
+  resume(input: SessionResumeInput): Promise<AgentRunHandle>;
+  close(): Promise<void>;
+}
+
+export function createSessionHost(options: SessionHostOptions): Promise<SessionHost>;
+```
+
+这是拟实施签名，不是当前已可调用 API；函数声明在此仅描述签名，不是要求添加无函数体实现。
+
+契约要求：
+
+- `AgentServices`、`AgentCreationOptions` 继续由 Agent 模块拥有，不复制一套 model/history/checkpoint/plugin 类型，不把具体函数的 ReturnType 作为公共协议。
+- `services.authorizeTool` 必须显式提供，即使 `plugins: []` 也不默认允许；插件不可移除或替换宿主策略。原型外的意外缺项应在创建阶段拒绝，不能静默补默认实现。
+- `binding` 必须提供，不默认空 ensure，不增加可选关闭回调或服务定位方法。其实现确认这一份固定装配与权威恢复边界一致；不符合则拒绝创建。
+- 通用模块不接收 `AgentConfiguration`、密钥、SDK、路径、ToolsMode、数据库连接、NodeLogs 或整个宿主对象；不读取进程环境。
+- 不向通用 SessionHost 暴露绑定内容或具体资源；工作区外壳可以继续提供自己的 `binding` getter。
+- 一个 SessionHost 创建一个 Application 和一个 Agent，保持当前资源隔离粒度；不在本轮引入共享 Application、多 Agent 调度或隐式排队。
+- `SessionRunInput/SessionResumeInput` 的省略仅描述调用协议；实现仍显式构造转发字段，不能靠 TypeScript 类型阻止运行时夹带 threadId/takeover。
+
+## M2-A.4 创建、执行与关闭顺序
+
+通用实现只负责以下实际机制，不复制 Loop、恢复协调或 Application 的资源管理：
+
+1. 在首个 await 前校验 threadId，并固定 services 中的端口引用、agentId/maxSteps/signal、definition/model 的 detached 协议快照和插件数组副本。创建参数不得在等待绑定后重新从可变 options 读取；插件是受信任对象，不深拷贝其函数或承诺隔离恶意改写。
+2. 检查创建信号，等待 `binding.ensure()`，完成后再次检查取消。失败不得安装插件、创建模型 binding 或发布可运行宿主。外层已经创建的 provider、SQLite、日志不属于这里的“尚未创建资源”。
+3. 通过 `createAgentApplication(services)` 和 `application.agents.create(fixedAgentOptions)` 创建实例；完整保留 M1 入口。应用创建成功才进入本宿主所有权。
+4. 创建后再次检查信号；已取消则回收 Application，不发布半初始化实例。创建失败回收已取得的 Application；执行错误和清理错误必须保留并安全投影，不用清理成功掩盖原失败。
+5. `run()` 固定创建时的 threadId，显式转发 queryId/runId/input/signal；`resume()` 固定 threadId，仅转发 queryId/runId/response/signal。不接受 takeover，不把前端重建快照传给内核。Query/Run 身份及待决回答的合法性继续由内核检查。
+6. `close()/dispose()` 共享幂等关闭 Promise；开始关闭时同步停止受理，再调用 Application 关闭并等待执行静止。不维护第二张 Agent/Run 表，也不额外实现取消状态机。
+7. 关闭只释放本宿主创建的 Application/Agent；不 dispose 借用的 models/history/checkpoints/authorizeTool/binding，也不直接关闭 provider、日志或数据库。
+
+新通用实现沿用现有 `HOST_OPTIONS_INVALID`、`HOST_CLOSED` 等可公开宿主错误语义；工作区组合根继续负责既有 `HOST_CLOSE_FAILED`、`HOST_START_AND_CLOSE_FAILED` 的安全报告。不可将原始 AggregateError、SDK 异常或内部堆栈直接输出到终端。新增错误如确有必要，在实施中具名定义并补相应调用方行为，不通过字符串别名维持两套实现。
+
+Query 等待仍结束当前 Run；关闭已持久 waiting 不应改成 cancelled/interrupted。活动执行关闭是 interrupted，用户取消是 cancelled。新的包装不能改变这些内核语义。
+
+## M2-A.5 工作区配置与 Electron 组合根
+
+新增 `src/main/agent-host/workspace-configuration.ts`，集中当前工作区配置：
+
+```ts
+export interface WorkspaceConfigurationOptions {
+  readonly workspaceRoot: string;
+  readonly toolMode?: ToolsMode;
+  readonly logger?: Logger;
+}
+
+export interface WorkspaceConfiguration {
+  readonly definition: AgentDefinition;
+  readonly plugin: ToolsPlugin;
+  readonly authorizeTool: ToolAuthorizationPolicy;
+}
+
+export function createWorkspaceConfiguration(
+  options: WorkspaceConfigurationOptions,
+): Promise<WorkspaceConfiguration>;
+```
+
+`createTools()` 保持工具模块的公开创建入口，返回的实际 canonical workspaceRoot、effective mode 和工具清单是绑定与授权的来源。该配置工厂不创建模型、SQLite 或日志，不启动执行。未安装文件能力的配置不调用此工厂，无需伪造工作区。
+
+从原组合根移动而非复制以下逻辑：
+
+- `workspaceDefinition()` 及原 instructions，保持 `general-workspace-assistant` 的 ID、version 和内容不变；本轮不借拆分改变模型提示词。
+- tools 创建、read-only 默认值、已安装工具集合、workspaceId 的 SHA-256 计算。
+- 原按工具名解释 path/pattern/glob 的授权规则、只读允许和写入逐次审批。
+- 原 `host-permissions`、`workspace-tool:<queryId>:<callId>`、`host.workspace-tool` v1 及 `{ tool, path, workspaceId }`，保持可解释旧只读待决交互。
+
+在同一具体配置模块导出具名 `WorkspaceApproval` 和 `parseWorkspaceApproval(interaction: InteractionRequest): WorkspaceApproval`，移动 runner 原 owner/type/version 与严格 payload 检查，不新建交互处理器 Registry。未知交互仍以 `CLI_INTERACTION_UNSUPPORTED` 失败并保持 waiting；既有已识别载荷的无效内容继续安全拒绝。runner 只负责显示、yes/no/cancel 输入和调用 resume，不再定义第二份工具名/载荷 schema。
+
+`create-agent-host.ts` 继续作为当前开发入口的具体组合根，公开名称不因这一轮统一命名而更换：
+
+1. 创建 NodeLogs、工作区配置、PreparedConfiguredModel、SqliteAgentStores。
+2. 用同一份固定配置生成工作区 v2 绑定和 ensure 闭包，调用通用 `createSessionHost()`。
+3. 向通用模块提供实际 definition、`[plugin]`、model/maxSteps 和独立 authorizeTool；不让通用模块解释工具名。
+4. 返回现有工作区 AgentHost，保留 detached `binding` getter。其类型以 `extends SessionHost` 表达执行能力，不再重复声明 HostRunInput/HostResumeInput；旧无调用方类型删除，不保留兼容 re-export。
+5. 关闭顺序是 SessionHost/Application 排空 → prepared model → SQLite stores → logs。某个关闭失败仍尝试后续资源，报告不能确认清理；configuration runtime 仍为借用对象。
+
+资源归属：组合根拥有上述具体资源；通用宿主只拥有其 Application；Agent 拥有模型 binding、插件注册与其自有资源；Run 拥有本次执行资源。插件不能因为获得 Logger 或窄端口就承担整个共享服务的关闭责任。
+
+## M2-A.6 恢复绑定：保留 v2，不做格式泛化
+
+决策：通用机制不解释持久绑定，所以解除工作区耦合不要求 v3。`HostSessionBinding`、严格字段白名单、SQLite 表/SQL、只读列表投影、旧版本拒绝和现有 snapshot 校验保持原样；不新增泛型 JSON metadata 袋、绑定 codec 注册器或读时规范化。
+
+工作区组合根在第一个相关异步边界前固定其选项；准备资源后，从同一组固定值构造 detached v2 候选和 Agent 创建参数：
+
+- threadId/agentId；definition ID/version；插件 ID/version 及顺序。
+- 实际 tools 的 canonical workspaceRoot/effective toolMode。
+- 同一个 prepared model 的 selection、connectionFingerprint 和 maxSteps。
+- 原 resume 标志，不在 ensure 中重新读取当前 UI/配置。
+
+绑定端口闭包只执行当前语义：
+
+```ts
+async ensure() {
+  if (resume && !(await stores.bindings.read(binding.threadId))) {
+    throw new AgentError("HOST_SESSION_NOT_FOUND", "找不到已绑定的开发会话，不能恢复。");
+  }
+  await stores.bindings.ensure(binding);
+}
+```
+
+这是具名端口的实现约定，不是新增存储 API。闭包捕获的 binding 与传给通用宿主的实际配置必须来自同一份快照；零参数接口本身无法证明绑定 A 与运行 B 一致，组合根对此负责。等待 ensure 期间不得发生重新拼装、模型选择漂移或修改创建选项。
+
+必须保持：
+
+| 情形 | 结果 |
+| --- | --- |
+| resume 且绑定不存在 | `HOST_SESSION_NOT_FOUND`，不补建绑定 |
+| 首次创建、无绑定且无任何 thread 持久状态 | 事务写入原 v2 |
+| 无绑定但已有 history head（含空批次）或任何 checkpoint 行（含已释放占位） | `HOST_BINDING_MISSING`，不认领旧状态 |
+| 已有绑定，任一字段、插件顺序或可选 effort 表达不同 | `HOST_BINDING_CHANGED`，不覆盖原行 |
+| 未知 schemaVersion | 沿用 unsupported 错误，不猜测兼容 |
+| 原 Query 已有活动写租约 | 内核报告 busy，不自动接管 |
+
+恢复仍由 CLI 选择原 summary.toolMode，并用原 connectionFingerprint 匹配当前签发计划；再次打开必须完整 read/ensure，列表不是授权快照。Key 轮换不改变连接身份；model/endpoint/effort/output budget/步骤预算变化的现有拒绝行为保持。不对已存 root 重新 canonicalize、不补历史默认值、不重新计算历史 fingerprint。
+
+无插件或其他配置的消费者须提供自己的权威绑定实现，确认其权限环境与执行版本；通用模块不提供无校验默认。临时内存实现可用于确定性消费烟测，但必须真正记录并比较绑定候选；它只证明进程内装配，不构成跨进程持久恢复证据。未来如要统一不同配置的列表/持久格式，再单独设计版本化协议，不以本轮预建框架。
+
+## M2-A.7 文件落点、调用方与依赖约束
+
+| 文件/消费侧 | 实施动作 |
+| --- | --- |
+| `src/agent-host/session-host.ts`（新增） | 公开协议及完整通用装配实现；只依赖 M1 公共入口与标准语言/Web 类型 |
+| `src/main/agent-host/workspace-configuration.ts`（新增） | 内聚工作区定义、tools、授权和审批载荷解释；不成为 Agent 内核默认配置 |
+| `src/main/agent-host/create-agent-host.ts` | 实际调用新模块，移走重复 Application/执行包装和工作区策略；保留具体资源组合、v2 绑定、getter 与外层关闭 |
+| `src/main/agent-host/development-runner.ts` | 继续调用原工作区组合根，审批解析改用具体配置模块；不直接绕过组合根 |
+| `host-session-binding.ts`、`sqlite-agent-stores.ts`、`development-sessions.ts` | 保留格式、存储、列表语义，不为本轮修改 SQL/表结构或迁移历史 |
+| `configured-model-factory.ts`、`development-setup.ts`、`development-command.ts`、`scripts/run-agent.mjs` | 不改变行为；仅在确有类型/帮助说明受影响时修改，不新增参数或支持范围 |
+| `tests/general-agent-development-host.test.ts`、`tests/mimo-token-plan-cn.test.ts` | 仍消费工作区组合根，验证它实际转入通用机制；保留 SDK/本地 HTTP、文件、审批与恢复行为 |
+| `tests/general-agent-host.test.ts`、`general-agent-host-binding.test.ts` | 现有主要是 SQLite/绑定回归，不因名称含 host 就整体改为新 SessionHost 测试 |
+| `tests/general-agent-development-sessions.test.ts`、两项 CLI integration | 保留只读列表和真实 Electron 跨进程覆盖，不改成纯模型 mock 替代 |
+| `tests/general-agent-session-host.test.ts`（新增） | 只消费公开入口，覆盖新边界的配置隔离、绑定拒绝/等待、固定 thread、所有权及创建取消 |
+| `tsconfig.node.json` | 明确包含 `src/agent-host/**/*.ts`；不把功能模块加入 web include，不新增项目/workspace |
+| M1 `scripts/check-agent-boundaries.mjs` | 扩展同一个定向检查器的模块规则与临时验证，不另建重复检查链 |
+
+边界约束实施要求：
+
+1. `src/agent-host/` 是 `src/agent/` 外部消费者，只能访问 M1 精确公共入口，不给其默认工厂、资源树等内部例外。
+2. 为新模块限定精确入口 `session-host.ts`；如以后拆内部文件，其他消费者不得直接进入。该入口可以实现功能，不要求再套转发层。
+3. 新模块禁止导入 main/shared/renderer/preload/ppt/tools/models/logs、Electron、Node builtin、厂商 SDK、具体数据库和任意其他运行依赖；其平台独立性由真实依赖图和实际 Node 消费证明，不由文件名或 node tsconfig 中全局 Electron 类型证明。
+4. Agent 内核不得反向依赖 agent-host。使用 M1 已有的 tsconfig 模块解析、规范路径和目录包含判断，不能以字符串 `startsWith("src/agent")` 把 `src/agent-host` 误认为内核。
+5. 补临时正负消费：host → 公共 Application 通过；host → 默认工厂失败；Agent → host 失败；host → main/tools/Node builtin 失败；旧 main/agent 同名目录仍不误伤。沿用 M1 对 type/re-export/dynamic literal/require 等的覆盖，不以源码字符串测试代替解析。
+
+公开符号有变化前按可用语言服务查 references；当前环境仅配置 Biome，不能宣称它提供 TypeScript 引用分析。实施若无相应服务，使用定向导入检索并阅读全部相关调用方，不能仅凭当前表格遗漏新增消费者。
+
+## M2-A.8 实施顺序
+
+1. **承接 M1**：核对其实际公开入口、资源契约、错误迁移及检查器；记录基线，不重做或绕过第一轮约束。
+2. **新增通用实现**：落实 SessionHost 的固定快照、绑定确认、公开 Application 创建、显式转发和幂等关闭；先完成行为，不建空包装。
+3. **提取具体配置**：移动工作区指令、tools 装配、授权与批准解析；同一次切换修改 runner 的解释来源，保持原载荷。
+4. **组合根切换**：用同一固定装配生成 v2 binding/ensure 与 SessionHost 参数；删除旧重复执行包装，保留当前外部工作区入口和资源所有权。
+5. **约束与消费覆盖**：接入新源码 include、已有检查器规则及必要行为测试；保留存储/审批/恢复测试，不扩大白盒例外。
+6. **集中验收**：相关行为 → 类型/边界 → 静态检查 → 全量单测 → 实际 Node 消费与 Electron 本地协议/恢复。禁止用放宽 schema、跳过边界、删除有效断言来使检查通过。
+7. **证据交付**：验收后才更新状态与命令/场景结果；标记 M2-A 完成时仍将独立包构建、exports、安装消费等 M2 剩余门槛列为未完成。
+
+## M2-A.9 行为验收矩阵
+
+优先复用已有覆盖，只为新风险补确定性测试；不得新增转发 mock 回声、import 数量、源码措辞或文件布局锁定断言。
+
+| 验收面 | 必须观察的结果 |
+| --- | --- |
+| 显式装配 | 自定义 definition/model/maxSteps、`plugins: []` 可完成对话；模型不可见文件工具，主动请求未安装工具也不能执行 |
+| 能力与策略独立 | 同一通用入口安装显式测试能力，宿主策略拒绝时没有副作用；批准场景 waiting/resume 后消费真实结果 |
+| 绑定发布顺序 | ensure 挂起期间不能取得可执行宿主，插件 setup/模型 binding 尚未发生；拒绝后无半初始化实例，借用端口仍可使用 |
+| 配置快照 | ensure 等待期间修改原 options/definition/model/插件数组不能使实际执行配置漂移；与权威绑定的固定值一致 |
+| Thread/恢复边界 | 额外 runtime threadId 不能覆盖固定线程；夹带 takeover 不能接管忙租约；同 Query、新 Run，回答只消费匹配待决交互 |
+| 资源所有权 | 创建失败/取消回收已取得插件和 binding；关闭先排空执行；借用 provider/history/checkpoints/绑定端口不被关闭；重复关闭不重复释放 |
+| v2 会话兼容 | 使用本轮前的原始 v2 payload/待决记录重开并批准成功，不重写绑定；root/mode/model/预算/版本变化仍拒绝 |
+| 持久与列表 | 空历史/占位 checkpoint 仍禁止无绑定认领；只读枚举不创建 DB、不改绑定/检查点、不拿租约；历史幂等/CAS/围栏覆盖保留 |
+| 工作区行为 | 两种模式下读取零审批；write/edit 批准前不写，拒绝/取消不写；未安装、越界、文件版本、UTF-8/大小校验不弱化 |
+| 平台与隐私 | 新模块实际依赖图无 Electron/main/工具等；SDK 安全错误、终端投影、密钥/reasoning/工具正文隐私保持 |
+
+实施后集中运行，以下均为待执行命令，不是本次设计证据：
+
+```text
+npx vitest run tests/general-agent-session-host.test.ts tests/general-agent-host.test.ts tests/general-agent-host-binding.test.ts tests/general-agent-development-host.test.ts tests/general-agent-development-sessions.test.ts tests/mimo-token-plan-cn.test.ts
+npm run check:agent-boundaries
+npm run typecheck
+npx biome check <本轮修改的受支持代码文件>
+npm test
+npx vitest run tests/general-agent-development-cli.integration.test.ts tests/mimo-development-cli.integration.test.ts
+npm run agent:dev -- --help
+```
+
+Windows 使用 npm.cmd/npx.cmd；命令以 M1 实际接线为前提。Electron 集成按环境跳过必须单列，不能将 skip 计为通过。若首项已有某场景的完整行为覆盖，不额外复制相同测试。
+
+## M2-A.10 实际消费烟测与证据分级
+
+单测或帮助不能证明通用装配已被真正消费。实施需完成两类实际路径：
+
+**A. 普通 Node、无 Electron 的源码公开消费**
+
+- 使用临时入口、临时 Vite SSR 构建目录，`spawn(process.execPath, [builtEntry])` 运行真实 Node 子进程，不用 Electron 或 Vitest 进程内 import 冒充。
+- 入口消费 `src/agent-host/session-host.ts` 和 M1 公开协议，显式注入确定性模型、内存历史/检查点及有真实比较逻辑的绑定端口。先 `plugins: []` 完成预期文本，再通过独立会话安装一个非文件临时能力，观察宿主审批、waiting、新 Run resume、预期结果与关闭后借用历史仍可读。
+- 构建依赖图不得包含 main/Electron，不能配置 Electron alias/mock 或只把它 external 后宣称无依赖。使用已有定向检查器的解析目标约束并观察 Node 成功执行；不写源码文本断言。
+- 此证据证明源码公开消费、机制无固定文件业务依赖和 Node 可运行；不证明跨进程内存恢复、远程模型、独立包或脱离仓库安装。临时能力仅作验收夹具，不新增生产插件。
+
+**B. 原 Node 启动器 → Electron → 原生 SDK/本地 HTTP/SSE**
+
+- 复用现有测试传输适配，仅将固定厂商 URL 转发本地服务；运行真实 Electron/safeStorage、配置模块、工作区组合根、新 SessionHost、SQLite 与 tools。不复制 runner，不扩大远程调用。
+- 自建临时工作区与随机校验码，实际 glob→grep→read 后请求 write/edit；批准前文件不存在/不变，EOF 退出时检查 status=waiting 且租约释放。
+- 新进程选择原会话，保持原 Query 并使用新 runId，批准后核对真实文件和模型消费结果；独立覆盖拒绝、取消、关闭中断与恢复配置变更拒绝。
+- 至少一条恢复路径使用保留的旧 v2 payload 及原 `host.workspace-tool` v1 待决交互，核对恢复前后绑定行未被“升级”；普通 Key 轮换允许，身份/effort/预算/权限环境变化仍拒绝。
+- 核对最终检查点、规范历史、租约与错误隐私，不只看退出码或模型自述；EOF、Ctrl+C 和应用关闭不是等价动作。
+
+CLI 无参数/--prompt/--help、/model /new /resume /tools、默认只读、工作区来源、session.ready/逐行 JSON、退出码及 Windows 父子 IPC 握手保持原样；不在 ESM 顶层等待 app.whenReady。help 仍不解析凭据或建宿主。仅清理本轮临时脚本、构建、进程、数据库和工作区，不删除共享记录，不写入生产 out/**。
+
+M2-A 完成要求：通用入口被当前组合根实际消费，无业务插件和显式能力配置均成立；具体配置不进入通用模块；原持久恢复与工作区行为保持，借用资源所有权正确，依赖约束和两类实际证据齐备。独立包、生产 UI/PPT 与动态装配继续列为未实施。
+
+## M2-A.11 参考取舍与本次设计记录
+
+- [DeepSeek Harness 架构](https://deepseek-harness.github.io/deepseek-harness/en/reference/) 与 [固定版本生命周期实现](https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/vendor/cordis/src/fiber.ts)：借鉴注册归属、初始化完成后发布、持久事实与运行对象分离；不引入 Cordis Context、动态依赖重装、热更新或并发 disposer 完成语义。
+- [Spring Framework DI](https://docs.spring.io/spring-framework/reference/core/beans/dependencies/factory-collaborators.html)、[生命周期](https://docs.spring.io/spring-framework/reference/core/beans/factory-nature.html)、[Bean scope](https://docs.spring.io/spring-framework/reference/core/beans/factory-scopes.html)：使用显式工厂参数与闭包，区分借用和所有权，依赖者先停止；不将 Bean scope 映射为 Thread/Query/Run。
+- [Spring Boot 自动配置](https://docs.spring.io/spring-boot/reference/features/developing-auto-configuration.html)：模块提供完整默认实现，宿主显式选择；本轮直接程序化组合，不建条件注解、扫描/发现，也不允许注册冲突静默覆盖。
+- [Fowler 配置与使用分离](https://www.martinfowler.com/articles/injection.html#SeparatingConfigurationFromUse)、[Ports & Adapters](https://alistair.cockburn.us/hexagonal-architecture)：支撑宿主配置与机制拆分，不增加空壳服务定位层。
+- [Node package exports](https://nodejs.org/docs/latest-v24.x/api/packages.html#main-entry-point-export)：独立包边界留待后续；本轮目录、静态约束和 Node 烟测不能冒充发布验收。
+
+本次只设计第二轮并更新这两份现有计划文档，未实施 SessionHost、未修改生产代码、未运行上述待执行验收。已核对实际组合根、runner、v2 绑定事务/列表、模型指纹、相关测试和 tsconfig；M1 由正在执行的任务维护，本方案只消费其落地结果，不声明 M1 已完成。语言服务状态仅列出 Biome，不作为 TypeScript 引用盘点证据。
+
+不选择 v3 的理由是当前范围只要求宿主机制可组合，不要求统一管理任意配置的历史目录或序列化格式；保留具体适配边界比引入版本迁移更小、更可核验。若实施发现必须变更格式/权限语义/CLI 支持范围，先修订方案并明确范围，不将其作为接口提取的隐含副作用。
+
+以下为历史记录，不构成本轮实施验收。
+
+## 前序已完成切片：MiMo 与 CLI
+
+状态：MiMo 原生接入已实现并完成本地协议、真实 Electron 设置组件/开发入口及小范围实际 CN 验收；完整方案与分层证据见 [mimo-token-plan-cn 具体实施方案](mimo-token-plan-cn.md#11-实施与验收记录2026-10-31)。未切换生产聊天或迁移 PPT 能力、生产会话；已有自定义连接不自动升级。
 
 1. `src/models/` 原生 provider：固定 CN 连接、发现、generate/stream、有序内容/函数调用、私有 output 重放、取消及关闭；52 项真实 SDK/本地 HTTP/SSE 回归通过。
 2. 连接预设、发现选择、模型级 `reasoningEffort`、签发 adapter/effort 与生产受理前保护贯通；真实 Electron 设置组件经管理 IPC/safeStorage 验证本地与实际 CN 发现、保存及重开。

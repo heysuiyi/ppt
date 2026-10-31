@@ -10,8 +10,8 @@ import {
   type AgentApplication,
   createAgentApplication,
 } from "../../agent/application/agent-application";
-import { AgentError, snapshot } from "../../agent/protocol-utils";
-import type { Disposable } from "../../agent/protocol-values";
+import { AgentError } from "../../agent/protocol-errors";
+import { type Disposable, snapshot } from "../../agent/protocol-values";
 import { createNodeLogs, type NodeLogs } from "../../logs/node-logs";
 import { createTools, type ToolsMode } from "../../tools/tools";
 import type { AgentConfiguration } from "../agent-configuration";

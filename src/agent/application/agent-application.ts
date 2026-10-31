@@ -1,6 +1,6 @@
 import type { Agent } from "../agent-contract";
 import type { AgentFactory, AgentServices } from "../agent-factory";
-import { AgentError } from "../protocol-utils";
+import { AgentError } from "../protocol-errors";
 import type { Disposable } from "../protocol-values";
 import { ResourceScope } from "../scope/resource-scope";
 import { createDefaultAgentFactory } from "./default-agent-factory";

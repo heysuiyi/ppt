@@ -1,4 +1,4 @@
-import { AgentError } from "../protocol-utils";
+import { AgentError } from "../protocol-errors";
 import type { Disposable } from "../protocol-values";
 
 /** 仅释放显式取得所有权的资源；父信号不代表父服务的所有权。 */

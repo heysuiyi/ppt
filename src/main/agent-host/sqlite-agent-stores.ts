@@ -2,7 +2,8 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ModelMessage, ModelSelection } from "../../agent/model/model-contract";
-import { AgentError, sameValue, snapshot } from "../../agent/protocol-utils";
+import { AgentError } from "../../agent/protocol-errors";
+import { sameValue, snapshot } from "../../agent/protocol-values";
 import type {
   CheckpointAcquireResult,
   CheckpointKey,

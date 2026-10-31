@@ -1,7 +1,13 @@
 import { z } from "zod";
 import type { ModelToolSchema } from "../model/model-contract";
-import { AgentError, snapshot } from "../protocol-utils";
-import type { Disposable, InteractionResponse, JsonValue, VersionedData } from "../protocol-values";
+import { AgentError } from "../protocol-errors";
+import {
+  type Disposable,
+  type InteractionResponse,
+  type JsonValue,
+  snapshot,
+  type VersionedData,
+} from "../protocol-values";
 import { RegistrationStore } from "../scope/registration-store";
 import type {
   ToolCompletion,

@@ -1,16 +1,13 @@
 import type { ModelMessage } from "../../model/model-contract";
-import { AgentError, snapshot } from "../../protocol-utils";
-import type { InteractionResponse } from "../../protocol-values";
+import { AgentError } from "../../protocol-errors";
+import { type InteractionResponse, snapshot } from "../../protocol-values";
 import type {
   StoredToolCompletion,
   StoredToolInvocation,
   ToolBatchCheckpoint,
 } from "../../session/session-contract";
-import type {
-  ToolCompletion,
-  ToolExecutionResult,
-  ToolSideEffects,
-} from "../../tools/tool-contract";
+import type { ToolCompletion, ToolSideEffects } from "../../tools/tool-contract";
+import type { ToolExecutionResult } from "../../tools/tool-executor";
 import { type CheckpointSession, checkpointData, running } from "../query/checkpoint-session";
 import type { RunEnvironment } from "../run-controller";
 

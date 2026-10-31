@@ -9,10 +9,10 @@ import type {
 import type { AgentServices } from "../agent-factory";
 import type { PromptRegistry } from "../extensions/prompt-registry";
 import type { ModelBinding, ModelSelection } from "../model/model-contract";
-import { AgentError, snapshot } from "../protocol-utils";
-import type { RunIdentity } from "../protocol-values";
+import { AgentError } from "../protocol-errors";
+import { type RunIdentity, snapshot } from "../protocol-values";
 import type { ResourceScope } from "../scope/resource-scope";
-import type { ToolExecutor } from "../tools/tool-contract";
+import type { ToolExecutor } from "../tools/tool-executor";
 import { RuntimeEventStream } from "./event-stream";
 import { executeRun, type RunEnvironment, type RunRequest } from "./run-controller";
 

@@ -10,7 +10,7 @@ import type {
   ModelRequest,
   ModelStreamEvent,
 } from "../src/agent/model/model-contract";
-import { AgentError } from "../src/agent/protocol-utils";
+import { AgentError } from "../src/agent/protocol-errors";
 import type { Logger, LogInput } from "../src/logs/log-contract";
 import type { AgentConfiguration, ExecutionPlan } from "../src/main/agent-configuration";
 import { prepareConfiguredModel } from "../src/main/agent-host/configured-model-factory";

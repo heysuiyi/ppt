@@ -29,11 +29,8 @@ import type {
 import { ModelRegistry } from "../src/agent/model/model-registry";
 import type { Disposable, JsonObject } from "../src/agent/protocol-values";
 import { ResourceScope } from "../src/agent/scope/resource-scope";
-import type {
-  ToolAuthorizationPolicy,
-  ToolCompletion,
-  ToolExecutionResult,
-} from "../src/agent/tools/tool-contract";
+import type { ToolAuthorizationPolicy, ToolCompletion } from "../src/agent/tools/tool-contract";
+import type { ToolExecutionResult } from "../src/agent/tools/tool-executor";
 import { ToolPipeline } from "../src/agent/tools/tool-pipeline";
 import { ToolRegistry } from "../src/agent/tools/tool-registry";
 import { createLogs, type Logger, type LogRecord } from "../src/logs/logs";

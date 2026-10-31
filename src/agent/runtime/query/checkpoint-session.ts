@@ -1,4 +1,5 @@
-import { AgentError, sameValue, snapshot } from "../../protocol-utils";
+import { AgentError } from "../../protocol-errors";
+import { sameValue, snapshot } from "../../protocol-values";
 import type { CheckpointLease, CheckpointStore } from "../../session/checkpoint-contract";
 import type {
   AgentCheckpoint,
