@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { build } from "vite";
+import { buildHarness } from "./harness-build.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const workspaceRoot = process.env.INIT_CWD || process.cwd();
@@ -18,6 +19,7 @@ if (process.platform === "win32") {
   try { execFileSync(process.env.ComSpec || "cmd.exe", ["/d", "/c", "chcp 65001"], { stdio: ["inherit", "ignore", "pipe"], windowsHide: true }); }
   catch { console.warn("[agent:dev] 无法设置终端 UTF-8；日志文件仍使用 UTF-8。"); }
 }
+buildHarness();
 // 不写 out/**，避免开发入口混进生产安装包；每次启动使用独立目录。
 const cacheRoot = join(root, ".vite/agent-dev");
 await mkdir(cacheRoot, { recursive: true });

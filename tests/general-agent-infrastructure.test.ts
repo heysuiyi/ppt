@@ -1,25 +1,28 @@
-import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
-import type { AgentPlugin, PluginContext } from "../src/agent/extensions/plugin-contract";
-import { installPlugins } from "../src/agent/extensions/plugin-manager";
-import { PromptRegistry } from "../src/agent/extensions/prompt-registry";
-import type { ModelClientFactory, ModelToolCallContent } from "../src/agent/model/model-contract";
-import { ModelRegistry } from "../src/agent/model/model-registry";
+import type { AgentPlugin, PluginContext } from "@agent-ppt/harness/extensions/plugin-contract";
+import type {
+  ModelClientFactory,
+  ModelToolCallContent,
+} from "@agent-ppt/harness/model/model-contract";
 import type {
   InteractionRequest,
   InteractionResponse,
   RunIdentity,
   VersionedData,
-} from "../src/agent/protocol-values";
-import { ResourceScope } from "../src/agent/scope/resource-scope";
+} from "@agent-ppt/harness/protocol-values";
 import type {
   ImmediateToolDefinition,
   ToolAuthorizationDecision,
   ToolExecutionContext,
   ToolSuspension,
-} from "../src/agent/tools/tool-contract";
-import { ToolPipeline } from "../src/agent/tools/tool-pipeline";
-import { ToolRegistry } from "../src/agent/tools/tool-registry";
+} from "@agent-ppt/harness/tools/tool-contract";
+import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { installPlugins } from "../packages/harness/dist/agent/extensions/plugin-manager.js";
+import { PromptRegistry } from "../packages/harness/dist/agent/extensions/prompt-registry.js";
+import { ModelRegistry } from "../packages/harness/dist/agent/model/model-registry.js";
+import { ResourceScope } from "../packages/harness/dist/agent/scope/resource-scope.js";
+import { ToolPipeline } from "../packages/harness/dist/agent/tools/tool-pipeline.js";
+import { ToolRegistry } from "../packages/harness/dist/agent/tools/tool-registry.js";
 
 const identity: RunIdentity = {
   agentId: "agent",

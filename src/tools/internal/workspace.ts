@@ -1,6 +1,6 @@
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-import type { ToolResult } from "../../agent/tools/tool-contract";
+import type { ToolResult } from "@agent-ppt/harness/tools/tool-contract";
 import type { EditInput, EditOutput } from "../edit";
 import type { GlobInput, GlobOutput } from "../glob";
 import type { GrepInput, GrepOutput } from "../grep";

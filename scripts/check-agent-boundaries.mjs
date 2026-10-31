@@ -4,20 +4,8 @@ import ts from "typescript";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// Keep the supported paths and white-box grants here, not in a second glob-based rule.
-const publicEntries = [
-  "application/agent-application.ts",
-  "agent-contract.ts",
-  "agent-factory.ts",
-  "protocol-values.ts",
-  "protocol-errors.ts",
-  "extensions/plugin-contract.ts",
-  "model/model-contract.ts",
-  "tools/tool-contract.ts",
-  "session/session-contract.ts",
-  "session/checkpoint-contract.ts",
-  "session/session-events.ts",
-];
+// Public entries come only from the package manifest; these grants are private,
+// exact-file exceptions and never package exports.
 const infrastructureTargets = [
   "extensions/plugin-manager.ts",
   "extensions/prompt-registry.ts",
@@ -110,7 +98,7 @@ function dependencies(source) {
   return result;
 }
 
-/** Check both compiler projects without emitting or typechecking them. */
+/** Check the package and both consumer projects without emitting or typechecking. */
 export function checkAgentBoundaries(rootDir = repositoryRoot) {
   // realpath prevents symlink spellings from changing module identity; TypeScript's
   // platform case policy also applies to configs, exact grants and containment.
@@ -121,8 +109,15 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
     return ts.sys.useCaseSensitiveFileNames ? absolute : absolute.toLowerCase();
   }
   const root = identity(rootDir);
-  const agentRoot = identity(path.join(root, "src/agent"));
-  const hostRoot = identity(path.join(root, "src/agent-host"));
+  const packageRoot = identity(path.join(root, "packages/harness"));
+  const sourceRoot = identity(path.join(packageRoot, "src"));
+  const distRoot = identity(path.join(packageRoot, "dist"));
+  const agentRoot = identity(path.join(sourceRoot, "agent"));
+  const hostRoot = identity(path.join(sourceRoot, "agent-host"));
+  const agentDistRoot = identity(path.join(distRoot, "agent"));
+  const hostDistRoot = identity(path.join(distRoot, "agent-host"));
+  const legacyAgentRoot = identity(path.join(root, "src/agent"));
+  const legacyHostRoot = identity(path.join(root, "src/agent-host"));
   function within(directory, file) {
     const relative = path.relative(directory, file);
     return (
@@ -130,21 +125,33 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
       (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
     );
   }
-  const isAgent = (file) => within(agentRoot, file);
-  const isHost = (file) => within(hostRoot, file);
-  const hostEntry = identity(path.join(hostRoot, "session-host.ts"));
+  const isAgent = (file) => within(agentRoot, file) || within(agentDistRoot, file);
+  const isHost = (file) => within(hostRoot, file) || within(hostDistRoot, file);
+  const isLegacy = (file) => within(legacyAgentRoot, file) || within(legacyHostRoot, file);
+  const isPackage = (file) => within(sourceRoot, file) || within(distRoot, file);
   const entry = (file) => identity(path.join(agentRoot, file));
-  const publicPaths = new Set(publicEntries.map(entry));
-  const application = entry("application/agent-application.ts");
-  const values = entry("protocol-values.ts");
-  const errors = entry("protocol-errors.ts");
-  const purePaths = new Set(
-    [...publicPaths].filter((file) => file !== application && file !== values && file !== errors),
-  );
+  const variants = (file) => {
+    const relative = path.relative(sourceRoot, file).replace(/\.ts$/, "");
+    return [
+      file,
+      identity(path.join(distRoot, `${relative}.js`)),
+      identity(path.join(distRoot, `${relative}.d.ts`)),
+    ];
+  };
+  const applications = new Set(variants(entry("application/agent-application.ts")));
+  const values = new Set(variants(entry("protocol-values.ts")));
+  const errors = new Set(variants(entry("protocol-errors.ts")));
+  const hostEntries = new Set(variants(identity(path.join(hostRoot, "session-host.ts"))));
+  const publicPaths = new Set();
+  const publicSpecifiers = new Map();
   const grants = new Map(
     [...whiteBoxEntries].map(([source, targets]) => [
       identity(path.join(root, source)),
-      new Set(targets.map(entry)),
+      new Set(
+        targets.flatMap((file) =>
+          variants(entry(file)).filter((target) => within(distRoot, target)),
+        ),
+      ),
     ]),
   );
   const diagnostics = [];
@@ -174,7 +181,90 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
     }
   }
 
-  for (const configName of ["tsconfig.node.json", "tsconfig.web.json"]) {
+  const manifestPath = path.join(packageRoot, "package.json");
+  const manifestResult = ts.readConfigFile(manifestPath, ts.sys.readFile);
+  if (manifestResult.error) {
+    report(
+      manifestPath,
+      undefined,
+      undefined,
+      manifestPath,
+      "package-exports",
+      ts.flattenDiagnosticMessageText(manifestResult.error.messageText, "\n"),
+    );
+    return diagnostics;
+  }
+  const manifest = manifestResult.config;
+  if (
+    manifest.name !== "@agent-ppt/harness" ||
+    !manifest.exports ||
+    typeof manifest.exports !== "object" ||
+    Array.isArray(manifest.exports)
+  ) {
+    report(
+      manifestPath,
+      undefined,
+      undefined,
+      manifestPath,
+      "package-exports",
+      "The harness manifest must declare its package name and exact subpath exports.",
+    );
+    return diagnostics;
+  }
+  for (const [subpath, conditions] of Object.entries(manifest.exports)) {
+    const types = conditions?.types;
+    const imported = conditions?.import;
+    const validShape =
+      subpath.startsWith("./") &&
+      subpath.length > 2 &&
+      !subpath.includes("*") &&
+      typeof types === "string" &&
+      typeof imported === "string" &&
+      types.startsWith("./dist/") &&
+      imported.startsWith("./dist/") &&
+      types.endsWith(".d.ts") &&
+      imported.endsWith(".js") &&
+      types.slice(0, -5) === imported.slice(0, -3);
+    const declaration = validShape ? identity(path.join(packageRoot, types)) : undefined;
+    const javascript = validShape ? identity(path.join(packageRoot, imported)) : undefined;
+    const source = validShape
+      ? identity(path.join(sourceRoot, `${path.relative(distRoot, javascript).slice(0, -3)}.ts`))
+      : undefined;
+    if (
+      !validShape ||
+      !within(distRoot, declaration) ||
+      !within(distRoot, javascript) ||
+      (!within(agentRoot, source) && !hostEntries.has(source))
+    ) {
+      report(
+        manifestPath,
+        undefined,
+        undefined,
+        subpath,
+        "package-exports",
+        "Each exact export must map matching dist JS and declarations to one harness source module.",
+      );
+      continue;
+    }
+    publicSpecifiers.set(
+      `${manifest.name}/${subpath.slice(2)}`,
+      new Set([javascript, declaration]),
+    );
+    if (within(agentRoot, source)) {
+      for (const file of [source, javascript, declaration]) publicPaths.add(file);
+    }
+  }
+  const purePaths = new Set(
+    [...publicPaths].filter(
+      (file) => !applications.has(file) && !values.has(file) && !errors.has(file),
+    ),
+  );
+
+  for (const configName of [
+    "tsconfig.node.json",
+    "tsconfig.web.json",
+    "packages/harness/tsconfig.json",
+  ]) {
     const configPath = path.join(root, configName);
     const config = ts.readConfigFile(configPath, ts.sys.readFile);
     if (config.error) {
@@ -207,6 +297,19 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
         );
       }
       continue;
+    }
+    if (
+      configName === "packages/harness/tsconfig.json" &&
+      (!Array.isArray(parsed.options.types) || parsed.options.types.length !== 0)
+    ) {
+      report(
+        configPath,
+        undefined,
+        undefined,
+        configPath,
+        "ambient-node",
+        "The standalone harness project must explicitly disable ambient type packages with types: [].",
+      );
     }
     const program = ts.createProgram({
       rootNames: parsed.fileNames,
@@ -266,11 +369,15 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
 
     for (const source of program.getSourceFiles()) {
       const sourcePath = identity(source.fileName);
-      if (!within(root, sourcePath) || program.isSourceFileFromExternalLibrary(source)) continue;
+      if (
+        !within(root, sourcePath) ||
+        (program.isSourceFileFromExternalLibrary(source) && !isPackage(sourcePath))
+      )
+        continue;
       const internal = isAgent(sourcePath);
       const host = isHost(sourcePath);
       const pure = purePaths.has(sourcePath);
-      const controlled = sourcePath === values || sourcePath === errors;
+      const controlled = values.has(sourcePath) || errors.has(sourcePath);
 
       if (pure) {
         for (const statement of source.statements) {
@@ -320,9 +427,15 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
           // missing Agent files and unresolved Agent aliases cannot be skipped.
           const boundaryLookup = (resolution.failedLookupLocations ?? []).some((file) => {
             const candidate = identity(file);
-            return isAgent(candidate) || isHost(candidate);
+            return isAgent(candidate) || isHost(candidate) || isLegacy(candidate);
           });
-          if (internal || host || boundaryLookup) {
+          if (
+            internal ||
+            host ||
+            boundaryLookup ||
+            specifier === manifest.name ||
+            specifier.startsWith(`${manifest.name}/`)
+          ) {
             report(
               configPath,
               source,
@@ -337,7 +450,31 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
         const target = identity(resolved.resolvedFileName);
         const targetInternal = isAgent(target);
         const targetHost = isHost(target);
+        if (isLegacy(target)) {
+          report(
+            configPath,
+            source,
+            node,
+            target,
+            "legacy-agent-path",
+            "The retired src/agent and src/agent-host paths are not valid package entry points.",
+          );
+        }
         if (resolution.standardLibrary) continue;
+        if (
+          (internal || host) &&
+          (targetInternal || targetHost) &&
+          within(sourceRoot, sourcePath) !== within(sourceRoot, target)
+        ) {
+          report(
+            configPath,
+            source,
+            node,
+            target,
+            "package-tree",
+            "Harness dependencies must stay in the source tree or the matching dist tree, not mix both.",
+          );
+        }
         if (host && !targetHost && !(targetInternal && publicPaths.has(target))) {
           report(
             configPath,
@@ -348,15 +485,24 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
             "Session host may depend only on its own modules and exact public Agent entries.",
           );
         }
-        if (!host && targetHost && target !== hostEntry) {
-          report(
-            configPath,
-            source,
-            node,
-            target,
-            "private-host-entry",
-            "External code must use the exact session-host.ts entry.",
-          );
+        if (!internal && !host && (targetInternal || targetHost)) {
+          const publicTarget = publicSpecifiers.get(specifier)?.has(target);
+          const whiteBoxTarget =
+            !dependency.kind &&
+            (specifier.startsWith("./") || specifier.startsWith("../")) &&
+            (specifier.endsWith(".js") || specifier.endsWith(".d.ts")) &&
+            grants.get(sourcePath)?.has(target) &&
+            !reexport;
+          if (!publicTarget && !whiteBoxTarget) {
+            report(
+              configPath,
+              source,
+              node,
+              target,
+              "package-entry",
+              "Consumers must use an exact package export resolving to its dist product; only exact white-box dist targets are exempt.",
+            );
+          }
         }
         const zod = specifier === "zod" && resolved.packageId?.name === "zod";
         if (internal) {
@@ -370,7 +516,10 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
               "Agent may depend only on its own modules and zod.",
             );
           }
-          if (pure && (!typeOnly || (!publicPaths.has(target) && !zod) || target === application)) {
+          if (
+            pure &&
+            (!typeOnly || (!publicPaths.has(target) && !zod) || applications.has(target))
+          ) {
             report(
               configPath,
               source,
@@ -381,8 +530,9 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
             );
           }
           if (controlled) {
-            const allowed =
-              sourcePath === values ? target === errors : target === values && typeOnly;
+            const allowed = values.has(sourcePath)
+              ? errors.has(target)
+              : values.has(target) && typeOnly;
             if (!allowed) {
               report(
                 configPath,
@@ -393,17 +543,6 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
                 "protocol-values may depend only on protocol-errors; protocol-errors may only type-import protocol-values.",
               );
             }
-          }
-        } else if (targetInternal && !publicPaths.has(target)) {
-          if (!grants.get(sourcePath)?.has(target) || reexport) {
-            report(
-              configPath,
-              source,
-              node,
-              target,
-              "private-entry",
-              "External code must use an exact public entry; white-box grants allow consumption, not re-export.",
-            );
           }
         }
         if (publicPaths.has(sourcePath) && reexport && targetInternal && !publicPaths.has(target)) {
@@ -441,7 +580,7 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
             const file = declaration.getSourceFile();
             return (
               within(root, identity(file.fileName)) &&
-              !program.isSourceFileFromExternalLibrary(file)
+              (!program.isSourceFileFromExternalLibrary(file) || isPackage(identity(file.fileName)))
             );
           }
           function firstLocalDeclaration(declaration) {
@@ -581,5 +720,5 @@ if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === imp
     );
   }
   if (diagnostics.length) process.exitCode = 1;
-  else console.log("Agent boundaries passed (node + web compiler projects).");
+  else console.log("Agent boundaries passed (harness + node + web compiler projects).");
 }

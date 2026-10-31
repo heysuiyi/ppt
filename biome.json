@@ -9,6 +9,9 @@
     "includes": [
       "**/*.{js,jsx,ts,tsx,json,css}",
       "scripts/check-agent-boundaries.mjs",
+      "scripts/harness-build.mjs",
+      "scripts/verify-harness-package.mjs",
+      "packages/harness/build.mjs",
       "!**/node_modules",
       "!**/dist",
       "!**/out",

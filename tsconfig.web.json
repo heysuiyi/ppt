@@ -23,9 +23,6 @@
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts",
     "src/models/mimo-token-plan-cn-contract.ts",
-    "src/agent/model/model-contract.ts",
-    "src/agent/protocol-values.ts",
-    "src/agent/protocol-errors.ts",
     "src/logs/log-contract.ts",
     "src/design-system/**/*.ts"
   ]

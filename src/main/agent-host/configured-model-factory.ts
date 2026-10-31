@@ -3,9 +3,9 @@ import type {
   ModelBinding,
   ModelClientFactory,
   ModelSelection,
-} from "../../agent/model/model-contract";
-import { AgentError } from "../../agent/protocol-errors";
-import { type Disposable, sameValue } from "../../agent/protocol-values";
+} from "@agent-ppt/harness/model/model-contract";
+import { AgentError } from "@agent-ppt/harness/protocol-errors";
+import { type Disposable, sameValue } from "@agent-ppt/harness/protocol-values";
 import type { Logger } from "../../logs/log-contract";
 import { createMimoTokenPlanCN, MimoModelError } from "../../models/mimo-token-plan-cn";
 import {

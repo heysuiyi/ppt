@@ -1,10 +1,25 @@
+import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [
+      externalizeDepsPlugin(),
+      {
+        name: "watch-harness-artifacts",
+        buildStart() {
+          // The dependency remains external; watch its emitted files to restart Main in dev.
+          const directory = resolve("packages/harness/dist");
+          for (const file of readdirSync(directory, { recursive: true })) {
+            if (typeof file === "string" && file.endsWith(".js")) {
+              this.addWatchFile(resolve(directory, file));
+            }
+          }
+        },
+      },
+    ],
     resolve: {
       alias: {
         "@shared": resolve("src/shared"),

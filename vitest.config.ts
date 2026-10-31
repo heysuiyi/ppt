@@ -16,6 +16,10 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    server: {
+      // Public entries and exact white-box dist imports share one emitted module graph.
+      deps: { inline: [/\/packages\/harness\/dist\//, /^@agent-ppt\/harness(?:\/|$)/] },
+    },
     maxWorkers: 4,
     setupFiles: [resolve("tests/setup.ts")],
   },

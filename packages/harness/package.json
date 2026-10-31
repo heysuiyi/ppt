@@ -1,0 +1,73 @@
+{
+  "name": "@agent-ppt/harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "npm run build"
+  },
+  "exports": {
+    "./application/agent-application": {
+      "types": "./dist/agent/application/agent-application.d.ts",
+      "import": "./dist/agent/application/agent-application.js"
+    },
+    "./agent-contract": {
+      "types": "./dist/agent/agent-contract.d.ts",
+      "import": "./dist/agent/agent-contract.js"
+    },
+    "./agent-factory": {
+      "types": "./dist/agent/agent-factory.d.ts",
+      "import": "./dist/agent/agent-factory.js"
+    },
+    "./protocol-values": {
+      "types": "./dist/agent/protocol-values.d.ts",
+      "import": "./dist/agent/protocol-values.js"
+    },
+    "./protocol-errors": {
+      "types": "./dist/agent/protocol-errors.d.ts",
+      "import": "./dist/agent/protocol-errors.js"
+    },
+    "./extensions/plugin-contract": {
+      "types": "./dist/agent/extensions/plugin-contract.d.ts",
+      "import": "./dist/agent/extensions/plugin-contract.js"
+    },
+    "./model/model-contract": {
+      "types": "./dist/agent/model/model-contract.d.ts",
+      "import": "./dist/agent/model/model-contract.js"
+    },
+    "./tools/tool-contract": {
+      "types": "./dist/agent/tools/tool-contract.d.ts",
+      "import": "./dist/agent/tools/tool-contract.js"
+    },
+    "./session/session-contract": {
+      "types": "./dist/agent/session/session-contract.d.ts",
+      "import": "./dist/agent/session/session-contract.js"
+    },
+    "./session/checkpoint-contract": {
+      "types": "./dist/agent/session/checkpoint-contract.d.ts",
+      "import": "./dist/agent/session/checkpoint-contract.js"
+    },
+    "./session/session-events": {
+      "types": "./dist/agent/session/session-events.d.ts",
+      "import": "./dist/agent/session/session-events.js"
+    },
+    "./session-host": {
+      "types": "./dist/agent-host/session-host.d.ts",
+      "import": "./dist/agent-host/session-host.js"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

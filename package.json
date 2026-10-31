@@ -4,23 +4,30 @@
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
+  "workspaces": [
+    "packages/harness"
+  ],
   "scripts": {
     "postinstall": "install-electron",
     "dev": "node scripts/start-electron.mjs dev",
     "agent:dev": "node scripts/run-agent.mjs",
     "build": "npm run typecheck && electron-vite build",
     "preview": "node scripts/start-electron.mjs preview",
-    "check:agent-boundaries": "node scripts/check-agent-boundaries.mjs",
+    "build:harness": "npm run build --workspace @agent-ppt/harness",
+    "verify:harness-package": "npm run build:harness && node scripts/verify-harness-package.mjs",
+    "check:agent-boundaries": "npm run build:harness && node scripts/check-agent-boundaries.mjs",
     "typecheck": "npm run check:agent-boundaries && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "test": "vitest run --exclude tests/*.integration.test.ts",
-    "test:integration:agent": "vitest run tests/agent-gateway.integration.test.ts tests/agent-loop.integration.test.ts",
+    "test": "npm run build:harness && vitest run --exclude tests/*.integration.test.ts",
+    "test:integration:agent": "npm run build:harness && vitest run tests/agent-gateway.integration.test.ts tests/agent-loop.integration.test.ts",
+    "test:integration:harness": "npm run build:harness && vitest run tests/general-agent-development-cli.integration.test.ts tests/mimo-development-cli.integration.test.ts",
     "build:win": "npm run build && electron-builder --win --publish never",
     "build:mac": "npm run build && electron-builder --mac --publish never",
     "build:linux": "npm run build && electron-builder --linux --publish never"
   },
   "dependencies": {
+    "@agent-ppt/harness": "0.1.0",
     "@anthropic-ai/sdk": "^0.104.1",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
@@ -65,7 +72,17 @@
     "files": [
       "out/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/@agent-ppt/harness{,/**/*}",
+      {
+        "from": "packages/harness",
+        "to": "node_modules/@agent-ppt/harness",
+        "filter": [
+          "package.json",
+          "dist/**/*.js",
+          "dist/**/*.d.ts"
+        ]
+      }
     ],
     "extraResources": [
       {

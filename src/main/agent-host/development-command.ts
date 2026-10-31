@@ -1,7 +1,7 @@
-import type { AgentRunResult } from "../../agent/agent-contract";
-import { AgentError, asProtocolError } from "../../agent/protocol-errors";
-import type { ProtocolError } from "../../agent/protocol-values";
-import type { RuntimeEvent } from "../../agent/session/session-events";
+import type { AgentRunResult } from "@agent-ppt/harness/agent-contract";
+import { AgentError, asProtocolError } from "@agent-ppt/harness/protocol-errors";
+import type { ProtocolError } from "@agent-ppt/harness/protocol-values";
+import type { RuntimeEvent } from "@agent-ppt/harness/session/session-events";
 import {
   MIMO_TOKEN_PLAN_CN_MAX_OUTPUT_TOKENS,
   MIMO_TOKEN_PLAN_CN_PROVIDER_ID,

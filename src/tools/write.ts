@@ -1,9 +1,9 @@
-import { z } from "zod";
 import type {
   ImmediateToolDefinition,
   ToolExecutionContext,
   ToolResult,
-} from "../agent/tools/tool-contract";
+} from "@agent-ppt/harness/tools/tool-contract";
+import { z } from "zod";
 
 export interface WriteCreateInput {
   path: string;

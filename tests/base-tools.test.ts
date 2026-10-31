@@ -14,25 +14,28 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
-import type { Agent, AgentRunHandle, AgentRunResult } from "../src/agent/agent-contract";
-import { createAgentApplication } from "../src/agent/application/agent-application";
-import type { AgentPlugin } from "../src/agent/extensions/plugin-contract";
-import { installPlugins } from "../src/agent/extensions/plugin-manager";
-import { PromptRegistry } from "../src/agent/extensions/prompt-registry";
+import type { Agent, AgentRunHandle, AgentRunResult } from "@agent-ppt/harness/agent-contract";
+import { createAgentApplication } from "@agent-ppt/harness/application/agent-application";
+import type { AgentPlugin } from "@agent-ppt/harness/extensions/plugin-contract";
 import type {
   ModelClientFactory,
   ModelRequest,
   ModelResponse,
   ModelToolCallContent,
-} from "../src/agent/model/model-contract";
-import { ModelRegistry } from "../src/agent/model/model-registry";
-import type { Disposable, JsonObject } from "../src/agent/protocol-values";
-import { ResourceScope } from "../src/agent/scope/resource-scope";
-import type { ToolAuthorizationPolicy, ToolCompletion } from "../src/agent/tools/tool-contract";
-import type { ToolExecutionResult } from "../src/agent/tools/tool-executor";
-import { ToolPipeline } from "../src/agent/tools/tool-pipeline";
-import { ToolRegistry } from "../src/agent/tools/tool-registry";
+} from "@agent-ppt/harness/model/model-contract";
+import type { Disposable, JsonObject } from "@agent-ppt/harness/protocol-values";
+import type {
+  ToolAuthorizationPolicy,
+  ToolCompletion,
+} from "@agent-ppt/harness/tools/tool-contract";
+import { describe, expect, it, vi } from "vitest";
+import { installPlugins } from "../packages/harness/dist/agent/extensions/plugin-manager.js";
+import { PromptRegistry } from "../packages/harness/dist/agent/extensions/prompt-registry.js";
+import { ModelRegistry } from "../packages/harness/dist/agent/model/model-registry.js";
+import { ResourceScope } from "../packages/harness/dist/agent/scope/resource-scope.js";
+import type { ToolExecutionResult } from "../packages/harness/dist/agent/tools/tool-executor.js";
+import { ToolPipeline } from "../packages/harness/dist/agent/tools/tool-pipeline.js";
+import { ToolRegistry } from "../packages/harness/dist/agent/tools/tool-registry.js";
 import { createLogs, type Logger, type LogRecord } from "../src/logs/logs";
 import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
 import type { EditOutput } from "../src/tools/edit";

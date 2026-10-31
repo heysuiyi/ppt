@@ -226,8 +226,8 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `src/renderer/`：React 工作台、聊天流、实时 PPT 镜像、设置台；`src/renderer/src/App.tsx` 直接承载公共布局与工作台/设置页切换
   - 布局由容器分配空间：根节点限定窗口高度，主体通过 Flex/Grid 伸展；栏宽由 `useWorkbenchLayout` 的 CSS 变量统一控制，并通过 `ResizeObserver` 按实际容器尺寸适配。内部面板独立滚动，局部响应式使用容器查询；窗口缩小时不会覆盖用户保存的预览宽度。SVG 预览保持 16:9，作者坐标仍为 1280×720。
   - 面板尺寸拖拽统一使用 `src/renderer/src/components/ResizeHandle.tsx`：受控 `value/min/max/onValueChange`，`axis` 选择左右或上下拖动，`direction` 决定增减方向。组件统一管理 idle/hover/dragging/disabled、指针捕获、全局光标和清理；支持方向键（10px）、Home/End。取消保留最后尺寸，禁用、失焦、失去捕获、卸载或边界变化时结束拖拽；尺寸约束和持久化仍由布局层负责。
-- `src/agent/`：独立的通用 Agent 协议与默认执行实现，尚未接入生产 UI；现有 `src/main/agent/` 继续运行。这里不依赖 PPT、Electron、应用存储或厂商 SDK，也不使用 `index.ts` 聚合入口。
-  - `application/agent-application.ts`：受支持的 `createAgentApplication()` 入口；内部默认工厂安装插件、绑定模型、就绪后发布实例，失败回滚。应用关闭先拒绝新创建、打断并排空执行，再释放拥有的资源；调用方不直接使用默认工厂。
+- `packages/harness/`：私有 npm workspace 包 `@agent-ppt/harness@0.1.0`，Node >=24、ESM-only；独立生成 JS 与声明，运行时仅依赖 Zod。普通消费方使用包的精确子路径，不直接引用源码或私有 dist 文件；未接入生产 UI，现有 `src/main/agent/` 继续运行。
+  - `src/agent/application/agent-application.ts`：公开 `@agent-ppt/harness/application/agent-application` 的 `createAgentApplication()`；内部默认工厂安装插件、绑定模型、就绪后发布实例，失败回滚。应用关闭先拒绝新创建、打断并排空执行，再释放拥有的资源；调用方不直接使用默认工厂。以下子目录均位于 `src/agent/` 内，不代表可导入路径。
   - `scope/`：Application → Agent → Run 的资源所有权、逆序释放与注册句柄；借用的宿主服务不随 Agent 关闭。
   - `runtime/`：单实例单激活的 `run/resume`、独立事件观察通道、Query 检查点协调，以及模型步/工具步。新请求只接收用户消息，不强制转换为业务 Task；Step 在提交边界更新快照。
   - `model/`：模型中立消息、能力声明、私有重放状态、按 provider ID 注册的模型工厂；增加厂商不在循环中新增分支。
@@ -267,11 +267,13 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 宿主显式装配 `AgentServices`（模型工厂、授权策略、历史和检查点），调用 `createAgentApplication(services)`，通过 `application.agents.create()` 提供定义、模型选择、步数预算和插件。业务工具在插件 `setup()` 中注册；内核只调用协议，不读取 Presentation、workspace 服务或厂商配置。关闭顺序为先 `application.close()`，再关闭宿主拥有的存储和连接。
 
-需要固定 Thread 并校验宿主恢复边界时，使用 `src/agent-host/session-host.ts` 的 `createSessionHost({ services, agent, threadId, binding })`：先等待必需的 `binding.ensure()`，再从公开 Application 创建 Agent。定义、模型、插件和授权均显式提供；`plugins: []` 不依赖工作区或 Electron。SessionHost 只拥有自己的 Application，关闭后不释放借用端口，`resume()` 不接受接管租约。当前 Electron 组合根通过 `workspace-configuration.ts` 选择文件能力、指令和审批策略，继续保存原 v2 绑定；CLI 使用方式与生产 PPT 链路不变。
+需要固定 Thread 并校验宿主恢复边界时，从 `@agent-ppt/harness/session-host` 导入 `createSessionHost({ services, agent, threadId, binding })`：先等待必需的 `binding.ensure()`，再从公开 Application 创建 Agent。定义、模型、插件和授权均显式提供；`plugins: []` 不依赖工作区或 Electron。SessionHost 只拥有自己的 Application，关闭后不释放借用端口，`resume()` 不接受接管租约。当前 Electron 组合根通过 `workspace-configuration.ts` 选择文件能力、指令和审批策略，继续保存原 v2 绑定；CLI 使用方式与生产 PPT 链路不变。
 
-支持的功能与协议路径见 [M1 公开面清单](docs/next-steps.md#m13-公开路径与协议闭包)。`PluginContext.scope` 只提供 `PluginScope.signal/own()`，不暴露内部资源树的创建与关闭；错误使用 `protocol-errors.ts` 的同一 `AgentError`，无损 JSON 快照与值比较由 `protocol-values.ts` 提供。`ToolCompletion` 是事件/存储公共数据，`ToolExecutor` 与执行管线仍为内部协议。旧 `protocol-utils.ts` 已移除，不提供兼容导出。
+完整包子路径与实施证据见 [M2-B 包边界](docs/next-steps.md#m2-b-独立包边界与实际消费)。`PluginContext.scope` 只提供 `PluginScope.signal/own()`，不暴露内部资源树的创建与关闭；错误使用 `@agent-ppt/harness/protocol-errors` 的同一 `AgentError`，无损 JSON 快照与值比较由 `@agent-ppt/harness/protocol-values` 提供。`ToolCompletion` 是事件/存储公共数据，`ToolExecutor` 与执行管线仍为内部协议。没有根导出、通配导出、源码别名或旧路径兼容层。
 
-`npm run check:agent-boundaries` 按 node/web tsconfig 的实际模块解析检查公开入口、协议闭包和反向依赖，允许精确的内部行为测试例外；同时检查三斜线 types/path/lib 引用，以及白盒导出中的继承、泛型条件类型等来源。`src/agent-host/` 只允许自身与 Agent 公开入口，外部只通过 `session-host.ts` 消费。`typecheck` 和 `build` 自动包含该检查。它是源码依赖约束，不是任意计算加载或恶意插件的安全沙箱；模块尚未拆成独立发布包。
+`npm run check:agent-boundaries` 在包自身、node/web 三个 TypeScript 项目中校验源码与声明闭包、反向依赖、精确子路径及实际解析目标；只有指定行为测试可白盒导入同一 dist 实体。三斜线引用、继承和泛型条件类型的来源也参与检查。`typecheck` 和 `build` 自动包含该检查；它不是恶意插件沙箱。
+
+安装依赖会建立 workspace 链接；`npm run build:harness` 独立构建包。应用构建、测试、开发 CLI 和 preview 在消费前构建包，`npm run dev` 等待首次成功 emit 后持续监听包源码及 Main 使用的 JS 产物。`npm run verify:harness-package` 打包 tarball，在仓库外离线安装并验证原生 Node 行为及 NodeNext/Bundler 声明消费；`npm run test:integration:harness` 运行现有两个真实 Electron CLI 集成文件。本轮未发布 npm registry，也未切换生产 UI/PPT。
 
 - 同一 Agent 同时只接受一次 `run()` 或 `resume()`，不隐式排队。`handle.events` 仅供单消费者观察；不消费或退出事件流都不会取消执行。
 - `waiting` 会保存交互和续传数据，结束本次 Run 并释放租约。回答只能匹配持久化交互，恢复必须提供新的 `runId`；不接收前端重建的执行快照。线程有未完成 Query 时，新请求不能越过它。

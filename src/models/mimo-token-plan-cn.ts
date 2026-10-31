@@ -1,11 +1,11 @@
-import OpenAI from "openai";
 import type {
   ModelBinding,
   ModelCallContext,
   ModelResponse,
   ModelSelection,
   ModelStreamEvent,
-} from "../agent/model/model-contract";
+} from "@agent-ppt/harness/model/model-contract";
+import OpenAI from "openai";
 import type { Logger } from "../logs/log-contract";
 import { MimoModelError, modelError, object, outputBudget } from "./internal/mimo-errors";
 import { requestBody, responseProjection } from "./internal/mimo-responses";

@@ -26,7 +26,7 @@
 
 | 位置 | 当前职责 |
 | --- | --- |
-| `src/agent/` | Harness 的现有通用执行基础：Agent 协议、默认工厂、默认 Agent、Loop、工具管线、资源作用域与恢复协调 |
+| `packages/harness/src/agent/`、`packages/harness/src/agent-host/` | 私有 workspace 包 `@agent-ppt/harness`：通用执行协议、默认实现与 SessionHost；调用方只消费受控子路径的构建产物，不直接导入源码 |
 | `src/main/agent-host/` | 当前 Electron 宿主的配置与 Gateway 适配、持久化适配、装配和独立开发入口；不是 Harness 的全部实现 |
 | `src/tools/` | `read/write/edit/glob/grep` 基础工具的约定、默认装配与内部安全读写/搜索机制；不提供独立文件功能开关 |
 | `src/main/agent/` | 仍在生产链路中使用的旧 Agent；宿主暂时复用其网关，旧文件工具与持久化已改用 `src/tools/internal/` 中迁出的共享原语 |

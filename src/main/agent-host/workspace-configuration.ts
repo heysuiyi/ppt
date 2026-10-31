@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
+import type { AgentDefinition } from "@agent-ppt/harness/agent-contract";
+import { AgentError } from "@agent-ppt/harness/protocol-errors";
+import type { InteractionRequest } from "@agent-ppt/harness/protocol-values";
+import type { ToolAuthorizationPolicy } from "@agent-ppt/harness/tools/tool-contract";
 import { z } from "zod";
-import type { AgentDefinition } from "../../agent/agent-contract";
-import { AgentError } from "../../agent/protocol-errors";
-import type { InteractionRequest } from "../../agent/protocol-values";
-import type { ToolAuthorizationPolicy } from "../../agent/tools/tool-contract";
 import type { Logger } from "../../logs/log-contract";
 import { createTools, type ToolsMode, type ToolsPlugin } from "../../tools/tools";
 

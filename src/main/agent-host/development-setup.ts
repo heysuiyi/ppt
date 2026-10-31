@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { AgentError } from "../../agent/protocol-errors";
+import { AgentError } from "@agent-ppt/harness/protocol-errors";
 import {
   MIMO_TOKEN_PLAN_CN_BASE_URL,
   MIMO_TOKEN_PLAN_CN_MAX_OUTPUT_TOKENS,

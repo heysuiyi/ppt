@@ -1,19 +1,22 @@
-import { describe, expect, it, onTestFinished, vi } from "vitest";
-import { z } from "zod";
-import type { AgentRunInput } from "../src/agent/agent-contract";
-import type { AgentCreationOptions, AgentServices } from "../src/agent/agent-factory";
-import { createAgentApplication } from "../src/agent/application/agent-application";
-import type { AgentPlugin, PluginScope } from "../src/agent/extensions/plugin-contract";
+import type { AgentRunInput } from "@agent-ppt/harness/agent-contract";
+import type { AgentCreationOptions, AgentServices } from "@agent-ppt/harness/agent-factory";
+import { createAgentApplication } from "@agent-ppt/harness/application/agent-application";
+import type { AgentPlugin, PluginScope } from "@agent-ppt/harness/extensions/plugin-contract";
 import type {
   ModelBinding,
   ModelClient,
   ModelRequest,
   ModelResponse,
-} from "../src/agent/model/model-contract";
-import { sameValue, snapshot } from "../src/agent/protocol-values";
-import { RuntimeEventStream } from "../src/agent/runtime/event-stream";
-import type { CheckpointKey, CheckpointLease } from "../src/agent/session/checkpoint-contract";
-import type { AgentCheckpoint, SessionHistory } from "../src/agent/session/session-contract";
+} from "@agent-ppt/harness/model/model-contract";
+import { sameValue, snapshot } from "@agent-ppt/harness/protocol-values";
+import type {
+  CheckpointKey,
+  CheckpointLease,
+} from "@agent-ppt/harness/session/checkpoint-contract";
+import type { AgentCheckpoint, SessionHistory } from "@agent-ppt/harness/session/session-contract";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { z } from "zod";
+import { RuntimeEventStream } from "../packages/harness/dist/agent/runtime/event-stream.js";
 
 const response: ModelResponse = {
   message: { role: "assistant", content: [{ type: "text", text: "saved answer" }] },

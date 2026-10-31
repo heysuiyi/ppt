@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { ModelMessage } from "@agent-ppt/harness/model/model-contract";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ModelMessage } from "../src/agent/model/model-contract";
 import type { HostSessionBinding } from "../src/main/agent-host/host-session-binding";
 import {
   createSqliteAgentStores,

@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { buildHarness, watchHarness } from "./harness-build.mjs";
 
 // Electron/Chromium inherits the console independently of the application logger.
 // Configure its code page before either electron-vite or Electron starts.
@@ -14,6 +15,13 @@ if (process.platform === "win32") {
   } catch {
     console.warn("[launcher] Could not set console UTF-8; use a UTF-8 terminal. Log files use UTF-8.");
   }
+}
+
+const command = process.argv[2];
+if (command === undefined || command === "dev") {
+  await watchHarness();
+} else if (command === "preview") {
+  buildHarness();
 }
 
 const require = createRequire(import.meta.url);

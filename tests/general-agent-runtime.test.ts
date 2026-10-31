@@ -1,18 +1,18 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { z } from "zod";
-import type { AgentServices } from "../src/agent/agent-factory";
-import { createAgentApplication } from "../src/agent/application/agent-application";
-import type { AgentPlugin } from "../src/agent/extensions/plugin-contract";
+import type { AgentServices } from "@agent-ppt/harness/agent-factory";
+import { createAgentApplication } from "@agent-ppt/harness/application/agent-application";
+import type { AgentPlugin } from "@agent-ppt/harness/extensions/plugin-contract";
 import type {
   ModelClientFactory,
   ModelRequest,
   ModelResponse,
-} from "../src/agent/model/model-contract";
-import type { Disposable } from "../src/agent/protocol-values";
-import type { CheckpointStore } from "../src/agent/session/checkpoint-contract";
+} from "@agent-ppt/harness/model/model-contract";
+import type { Disposable } from "@agent-ppt/harness/protocol-values";
+import type { CheckpointStore } from "@agent-ppt/harness/session/checkpoint-contract";
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   createSqliteAgentStores,
   type SqliteAgentStores,

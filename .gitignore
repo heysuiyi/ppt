@@ -17,7 +17,6 @@ coverage/
 .env
 .env.*
 !.env.example
-package-lock.json
 
 # Editors and operating systems
 .idea/

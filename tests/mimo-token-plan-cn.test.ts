@@ -3,14 +3,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ModelAssistantMessage,
   ModelBinding,
   ModelRequest,
   ModelStreamEvent,
-} from "../src/agent/model/model-contract";
-import { AgentError } from "../src/agent/protocol-errors";
+} from "@agent-ppt/harness/model/model-contract";
+import { AgentError } from "@agent-ppt/harness/protocol-errors";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Logger, LogInput } from "../src/logs/log-contract";
 import type { AgentConfiguration, ExecutionPlan } from "../src/main/agent-configuration";
 import { prepareConfiguredModel } from "../src/main/agent-host/configured-model-factory";
