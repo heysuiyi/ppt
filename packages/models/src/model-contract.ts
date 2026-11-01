@@ -14,7 +14,28 @@ export interface MimoTokenPlanCNOptions extends ModelProviderConnectionOptions {
   readonly apiKey: string;
 }
 
-export type ModelProviderOptions = MimoTokenPlanCNOptions;
+export interface ConfigurableModelProviderOptions extends ModelProviderConnectionOptions {
+  readonly apiKey: string;
+  readonly baseURL?: string;
+}
+
+export interface OpenAIChatOptions extends ConfigurableModelProviderOptions {
+  readonly adapterId: "openai-chat-completions";
+}
+
+export interface OpenAIResponsesOptions extends ConfigurableModelProviderOptions {
+  readonly adapterId: "openai-responses";
+}
+
+export interface AnthropicMessagesOptions extends ConfigurableModelProviderOptions {
+  readonly adapterId: "anthropic-messages";
+}
+
+export type ModelProviderOptions =
+  | MimoTokenPlanCNOptions
+  | OpenAIChatOptions
+  | OpenAIResponsesOptions
+  | AnthropicMessagesOptions;
 export type ModelAdapterId = ModelProviderOptions["adapterId"];
 
 export interface DiscoveredModel {
