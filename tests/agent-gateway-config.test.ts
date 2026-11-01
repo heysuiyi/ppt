@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
 import {
   resolveAgentGatewayConfig,
   resolveAgentGatewayPreferences,
   resolveAgentSearchConfig,
-} from "../src/shared/agent-gateway-config";
+} from "@agent-harness/configuration/gateway-settings";
+import { describe, expect, it } from "vitest";
 
 describe("agent runtime parameter validation", () => {
   it.each([0, -1, 1.5, Number.NaN])("rejects invalid timeout %s", (timeoutMs) => {

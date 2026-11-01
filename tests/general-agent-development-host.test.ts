@@ -3,19 +3,21 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import {
+  type AgentConfiguration,
+  createAgentConfiguration,
+} from "@agent-harness/configuration/configuration";
+import type { ModelProviderOptions } from "@agent-harness/models/model-contract";
 import { getModelProfile } from "@agent-harness/models/model-profiles";
 import type { ToolsMode } from "@agent-harness/tools/tools-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AgentConfiguration, createAgentConfiguration } from "../app/main/agent-configuration";
-import { prepareConfiguredModel } from "../app/main/agent-host/configured-model-factory";
-import { type AgentHost, createAgentHost } from "../app/main/agent-host/create-agent-host";
-import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
-import {
-  parseDevelopmentArguments,
-  projectDevelopmentEvent,
-  projectDevelopmentModels,
-  projectDevelopmentResult,
-} from "../cli/commands/development-command";
+import { prepareConfiguredModel } from "../cli/host/configured-model-factory";
+import { type AgentHost, createAgentHost } from "../cli/host/create-agent-host";
+import { configuredModels } from "../cli/host/model-catalog";
+import { createNodeHost } from "../cli/host/node-host";
+import { createSqliteAgentStores } from "../cli/host/sqlite-agent-stores";
+import { projectTerminalEvent, projectTerminalResult } from "../cli/terminal/terminal-projection";
 
 const mimoProfile = getModelProfile("mimo-token-plan-cn");
 if (mimoProfile?.endpoint?.kind !== "fixed")
@@ -38,16 +40,16 @@ afterEach(async () => {
   if (errors.length === 1) throw errors[0];
   if (errors.length) throw new AggregateError(errors, "Development-host fixture cleanup failed");
 });
-// Unit-test credential round-tripping only; real encryption is covered by Electron tests.
-const fakeSafeStorage = {
-  isEncryptionAvailable: () => true,
-  isAsyncEncryptionAvailable: async () => true,
-  getSelectedStorageBackend: () => "unknown" as const,
-  encryptString: (value: string) => Buffer.from(value, "utf8"),
-  encryptStringAsync: async (value: string) => Buffer.from(value, "utf8"),
-  decryptString: (value: Buffer) => value.toString("utf8"),
-  decryptStringAsync: async (value: Buffer) => ({
-    result: value.toString("utf8"),
+// Controlled credential port: this fixture tests real persistence, not OS encryption.
+const fakeProtection = {
+  scheme: "windows-dpapi-current-user" as const,
+  inspect: async () => ({
+    state: "secure" as const,
+    backend: "windows-dpapi-current-user" as const,
+  }),
+  encrypt: async (value: string) => Buffer.from(value, "utf8"),
+  decrypt: async (value: Uint8Array) => ({
+    result: Buffer.from(value).toString("utf8"),
     shouldReEncrypt: false,
   }),
 };
@@ -111,7 +113,8 @@ async function fixture(
   const configure = async (key = "first-stored-key"): Promise<AgentConfiguration> => {
     const configuration = createAgentConfiguration({
       applicationDataRoot: directory,
-      safeStorage: fakeSafeStorage,
+      credentialProtection: fakeProtection,
+      defaultTemplateId: "none",
       environment: {},
     });
     await configuration.management.initialize({
@@ -351,10 +354,10 @@ describe("independent configured Agent host", () => {
       code: "ENOENT",
     });
     await host.close();
-    const stored = createSqliteAgentStores(join(f.directory, "agent-development.sqlite"));
+    const stored = createSqliteAgentStores(join(f.directory, "sessions.sqlite"));
     try {
       expect((await stored.history.read("thread")).messages).toEqual(question.input);
-      expect(await stored.checkpoints.findUnfinished("development-agent", "thread")).toMatchObject({
+      expect(await stored.checkpoints.findUnfinished("cli-agent", "thread")).toMatchObject({
         status: "waiting",
         inflight: { completed: [] },
       });
@@ -376,9 +379,11 @@ describe("independent configured Agent host", () => {
     const result = await resumed.completed;
     expect(result.status).toBe("completed");
     expect(await readFile(join(f.workspace, "created.txt"), "utf8")).toBe(createdContent);
-    const projections: object[] = [projectDevelopmentResult(result)];
+    const projections: object[] = [
+      ...projectTerminalResult(result, () => ({ support: "unsupported" })),
+    ];
     for await (const event of resumed.events) {
-      const value = projectDevelopmentEvent(event);
+      const value = projectTerminalEvent(event, () => ({ support: "unsupported" }));
       if (value) projections.push(value);
     }
     const publicOutput = JSON.stringify(projections);
@@ -696,7 +701,9 @@ describe("independent configured Agent host", () => {
     const result = await (await host.run(question)).completed;
     expect(result.status).toBe("failed");
     expect(error).not.toHaveBeenCalled();
-    const output = JSON.stringify(projectDevelopmentResult(result));
+    const output = JSON.stringify(
+      projectTerminalResult(result, () => ({ support: "unsupported" })),
+    );
     expect(output).not.toContain("first-stored-key");
     expect(output).not.toContain("private native diagnostic");
   });
@@ -806,7 +813,7 @@ describe("independent configured Agent host", () => {
       });
     }
     const saved = await configuration.management.getSnapshot();
-    const listed = projectDevelopmentModels(saved);
+    const listed = configuredModels(saved);
     expect(listed.map(({ id, status }) => ({ id, status }))).toEqual([
       { id: "configured-model", status: "ready" },
       { id: "disabled", status: "disabled" },
@@ -814,42 +821,340 @@ describe("independent configured Agent host", () => {
       { id: "missing", status: "missing-credential" },
       { id: "legacy", status: "unsupported-adapter" },
     ]);
-    expect(projectDevelopmentModels(undefined)).toEqual([]);
+    expect(configuredModels(undefined)).toEqual([]);
     if (!saved) throw new Error("Expected saved configuration");
     saved.settings.gateway.maxOutputTokens = 131_072;
-    expect(projectDevelopmentModels(saved)[0].status).toBe("ready");
+    expect(configuredModels(saved)[0].status).toBe("ready");
     saved.settings.gateway.maxOutputTokens = 131_073;
-    expect(projectDevelopmentModels(saved)[0].status).toBe("invalid-budget");
+    expect(configuredModels(saved)[0].status).toBe("invalid-budget");
     saved.settings.gateway.maxOutputTokens = 1024;
     saved.credentials.storage.state = "unavailable";
-    expect(projectDevelopmentModels(saved)[0].status).toBe("credential-storage-unavailable");
+    expect(configuredModels(saved)[0].status).toBe("credential-storage-unavailable");
     expect(f.requests).toEqual([]);
   });
 
-  it("accepts only help, a single prompt, or the argument-free loop", () => {
-    expect(parseDevelopmentArguments([])).toEqual({ mode: "run", command: {} });
-    expect(parseDevelopmentArguments(["--prompt", "Hello"])).toEqual({
-      mode: "run",
-      command: { prompt: "Hello" },
+  it("runs no-plugin conversations through the production host and retains real persistent sessions", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("No plugin answer")]),
+    );
+    const configuration = await f.configure();
+    await configuration.management.saveCliPreferences({ defaultModelId: "configured-model" });
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
     });
-    expect(parseDevelopmentArguments(["--help"])).toEqual({ mode: "help" });
-    expect(parseDevelopmentArguments(["-h"])).toEqual({ mode: "help" });
-    for (const args of [
-      ["--list-models"],
-      ["--model", "m"],
-      ["--workspace", "w"],
-      ["--thread", "t"],
-      ["--query", "q"],
-      ["--resume", "q"],
-      ["--tools", "read-write"],
-      ["--prompt"],
-      ["--prompt", "Hello", "--prompt", "Again"],
-      ["--help", "--prompt", "Hello"],
-      ["Hello"],
-    ]) {
-      expect(() => parseDevelopmentArguments(args)).toThrow(
-        expect.objectContaining({ code: "CLI_ARGUMENTS_INVALID" }),
+    cleanup.push(() => host.close());
+    await host.open({ toolsMode: "none" });
+    expect(await host.models()).toEqual([
+      { id: "configured-model", label: "Native consumer fixture / MiMo Flash" },
+    ]);
+    const first = await host.run("Hello without tools");
+    const result = await first.completed;
+    expect(result.status).toBe("completed");
+    expect(f.requests[0].tools ?? []).toEqual([]);
+    const sessions = await host.sessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      id: host.context.threadId,
+      modelId: "configured-model",
+      toolsMode: "none",
+      history: [
+        { role: "user", text: "Hello without tools" },
+        { role: "assistant", text: "No plugin answer" },
+      ],
+    });
+    await host.newSession({ toolsMode: "read-only" });
+    expect(host.context.threadId).not.toBe(first.identity.threadId);
+    await host.selectSession(first.identity.threadId);
+    expect(host.context.toolsMode).toBe("none");
+  });
+
+  it("restores the authoritative waiting interaction in a fresh Run and consumes only an explicit matching choice", async () => {
+    const f = await fixture((body, response) => {
+      if (!lastToolResult(body)) respondNative(response, readCall);
+      else respondNative(response, [textOutput("Approved read complete")]);
+    });
+    const configuration = await f.configure();
+    const firstHost = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+      requireReadApproval: true,
+    });
+    cleanup.push(() => firstHost.close());
+    await firstHost.open({ modelId: "configured-model" });
+    const first = await firstHost.run("Read notes.txt");
+    const waiting = await first.completed;
+    if (waiting.status !== "waiting") throw new Error("Expected read approval.");
+    expect(f.requests).toHaveLength(1);
+    const threadId = firstHost.context.threadId;
+    expect((await firstHost.sessions())[0]?.history).toEqual([
+      { role: "user", text: "Read notes.txt" },
+    ]);
+    await firstHost.close();
+    const resumedHost = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+      requireReadApproval: true,
+    });
+    cleanup.push(() => resumedHost.close());
+    await resumedHost.open({ threadId });
+    const probe = await resumedHost.resume(first.identity.queryId);
+    expect(probe.identity.queryId).toBe(first.identity.queryId);
+    expect(probe.identity.runId).not.toBe(first.identity.runId);
+    const restored = await probe.completed;
+    if (restored.status !== "waiting") throw new Error("Expected persistent waiting.");
+    expect(restored.interaction).toEqual(waiting.interaction);
+    expect(f.requests).toHaveLength(1);
+    expect(resumedHost.describeInteraction(restored.interaction)).toMatchObject({
+      support: "supported",
+      confirmation: "explicit-choice",
+    });
+    expect(
+      resumedHost.describeInteraction({ ...restored.interaction, owner: "untrusted" }),
+    ).toEqual({ support: "unsupported" });
+    expect(() => resumedHost.answerInteraction(restored.interaction, "yes")).toThrow();
+    expect(() =>
+      resumedHost.answerInteraction(restored.interaction, "allow", "stale-id"),
+    ).toThrow();
+    const answer = resumedHost.answerInteraction(restored.interaction, "allow");
+    const resumed = await resumedHost.resume(first.identity.queryId, answer);
+    expect(resumed.identity.runId).not.toBe(probe.identity.runId);
+    expect((await resumed.completed).status).toBe("completed");
+    expect((await resumedHost.sessions())[0]?.history).toEqual([
+      { role: "user", text: "Read notes.txt" },
+      { role: "assistant", text: "Inspecting notes." },
+      { role: "assistant", text: "Approved read complete" },
+    ]);
+  });
+
+  it("refuses to restore an approval-bound session under a different host read policy", async () => {
+    const f = await fixture((_body, response) => respondNative(response, readCall));
+    const configuration = await f.configure();
+    const protectedHost = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+      requireReadApproval: true,
+    });
+    cleanup.push(() => protectedHost.close());
+    await protectedHost.open({ modelId: "configured-model" });
+    expect((await (await protectedHost.run("Read notes.txt")).completed).status).toBe("waiting");
+    const threadId = protectedHost.context.threadId;
+    await protectedHost.close();
+    const unprotectedHost = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+    });
+    cleanup.push(() => unprotectedHost.close());
+    await expect(unprotectedHost.open({ threadId })).rejects.toMatchObject({
+      code: "HOST_BINDING_CHANGED",
+    });
+    expect(f.requests).toHaveLength(1);
+  });
+
+  it("keeps sessions with changed model configuration visible but rejects restore before acquiring a lease", async () => {
+    const f = await fixture((_body, response) => respondNative(response, writeCall));
+    const configuration = await f.configure();
+    const firstHost = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+    });
+    cleanup.push(() => firstHost.close());
+    await firstHost.open({ modelId: "configured-model", toolsMode: "read-write" });
+    expect((await (await firstHost.run("Create the file")).completed).status).toBe("waiting");
+    const threadId = firstHost.context.threadId;
+    await firstHost.close();
+    const snapshot = await configuration.management.getSnapshot();
+    if (!snapshot) throw new Error("Expected saved model configuration.");
+    await configuration.management.savePreferences({
+      gateway: { ...snapshot.settings.gateway, maxOutputTokens: 512 },
+      stepLimits: snapshot.settings.stepLimits,
+      executionStrategy: snapshot.settings.executionStrategy,
+      defaultTemplateId: snapshot.settings.defaultTemplateId,
+    });
+    const inspection = new DatabaseSync(join(f.directory, "sessions.sqlite"), { readOnly: true });
+    cleanup.push(async () => inspection.close());
+    const before = inspection
+      .prepare("SELECT * FROM general_agent_checkpoints ORDER BY query_id")
+      .all();
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+    });
+    cleanup.push(() => host.close());
+    expect(await host.sessions()).toEqual([
+      expect.objectContaining({
+        id: threadId,
+        modelId: undefined,
+        toolsMode: "read-write",
+        unfinished: { queryId: expect.any(String), status: "waiting" },
+      }),
+    ]);
+    await expect(host.open({ threadId })).rejects.toMatchObject({ code: "HOST_BINDING_CHANGED" });
+    await expect(host.open({ threadId, modelId: "configured-model" })).rejects.toMatchObject({
+      code: "HOST_BINDING_CHANGED",
+    });
+    await host.open({ modelId: "configured-model" });
+    const newThreadId = host.context.threadId;
+    await expect(host.selectSession(threadId)).rejects.toMatchObject({
+      code: "HOST_BINDING_CHANGED",
+    });
+    expect(host.context.threadId).toBe(newThreadId);
+    expect(
+      inspection.prepare("SELECT * FROM general_agent_checkpoints ORDER BY query_id").all(),
+    ).toEqual(before);
+    expect(f.requests).toHaveLength(1);
+    await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it.each(["write", "edit"] as const)(
+    "requires the exact interaction ID before approving %s",
+    async (tool) => {
+      const f = await fixture((body, response) => {
+        const result = lastToolResult(body);
+        if (!result) {
+          respondNative(response, tool === "write" ? writeCall : readCall);
+        } else if (tool === "edit" && result.call_id === "read-1") {
+          const read = JSON.parse(result.output!) as { content: string; version: string };
+          respondNative(response, [
+            toolCall("edit-approval", "edit", {
+              path: "notes.txt",
+              oldText: read.content,
+              newText: "approved edit",
+              expectedVersion: read.version,
+            }),
+          ]);
+        } else {
+          respondNative(response, [textOutput("Approved modification complete")]);
+        }
+      });
+      const host = createNodeHost({
+        dataRoot: f.directory,
+        workspaceRoot: f.workspace,
+        configuration: await f.configure(),
+      });
+      cleanup.push(() => host.close());
+      await host.open({ modelId: "configured-model", toolsMode: "read-write" });
+      const run = await host.run("Perform the requested modification");
+      const waiting = await run.completed;
+      if (waiting.status !== "waiting") throw new Error("Expected writable approval.");
+      expect(host.describeInteraction(waiting.interaction)).toMatchObject({
+        support: "supported",
+        confirmation: "interaction-id",
+      });
+      expect(() => host.answerInteraction(waiting.interaction, "allow")).toThrow(
+        expect.objectContaining({ code: "STALE_INTERACTION" }),
       );
-    }
+      expect(() => host.answerInteraction(waiting.interaction, "allow", "wrong-id")).toThrow(
+        expect.objectContaining({ code: "STALE_INTERACTION" }),
+      );
+      expect(await readFile(join(f.workspace, "notes.txt"), "utf8")).toBe("first file revision");
+      await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      const answer = host.answerInteraction(waiting.interaction, "allow", waiting.interaction.id);
+      expect((await (await host.resume(run.identity.queryId, answer)).completed).status).toBe(
+        "completed",
+      );
+      expect(
+        await readFile(join(f.workspace, tool === "write" ? "created.txt" : "notes.txt"), "utf8"),
+      ).toBe(tool === "write" ? createdContent : "approved edit");
+    },
+  );
+
+  it("reports abandoned setup distinctly without starting a Query", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("unexpected")]),
+    );
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration: await f.configure(),
+    });
+    cleanup.push(() => host.close());
+    const secret = vi.fn();
+    await expect(
+      host.open({
+        setup: {
+          select: async () => undefined,
+          secret,
+          text: async () => undefined,
+          notify: async () => {},
+        },
+      }),
+    ).rejects.toMatchObject({ code: "CLI_SETUP_CANCELLED" });
+    expect(secret).not.toHaveBeenCalled();
+    expect(await host.sessions()).toEqual([]);
+    expect(f.requests).toEqual([]);
+  });
+
+  it("aborts and drains model preparation on close without publishing a live host", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("unexpected")]),
+    );
+    const entered = Promise.withResolvers<void>();
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration: await f.configure(),
+      createProvider: async (_options: ModelProviderOptions, signal: AbortSignal) => {
+        const pending = Promise.withResolvers<never>();
+        const aborted = () => pending.reject(signal.reason);
+        signal.addEventListener("abort", aborted, { once: true });
+        entered.resolve();
+        try {
+          return await pending.promise;
+        } finally {
+          signal.removeEventListener("abort", aborted);
+        }
+      },
+    });
+    cleanup.push(() => host.close());
+    const opening = host.open({ modelId: "configured-model" });
+    const rejected = expect(opening).rejects.toMatchObject({ code: "HOST_CLOSED" });
+    await entered.promise;
+    await host.close();
+    await rejected;
+    expect(() => host.context).toThrow(expect.objectContaining({ code: "HOST_CLOSED" }));
+    expect(f.requests).toEqual([]);
+  });
+
+  it("closes while the terminal owns a pending setup prompt without publishing a host", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("unexpected")]),
+    );
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration: await f.configure(),
+    });
+    cleanup.push(() => host.close());
+    const entered = Promise.withResolvers<void>();
+    const selection = Promise.withResolvers<string | undefined>();
+    const opening = host.open({
+      setup: {
+        select: async () => {
+          entered.resolve();
+          return selection.promise;
+        },
+        secret: async () => undefined,
+        text: async () => undefined,
+        notify: async () => {},
+      },
+    });
+    const rejected = expect(opening).rejects.toMatchObject({ code: "HOST_CLOSED" });
+    await entered.promise;
+    await host.close();
+    await rejected;
+    expect(() => host.context).toThrow(expect.objectContaining({ code: "HOST_CLOSED" }));
+    expect(f.requests).toEqual([]);
   });
 });

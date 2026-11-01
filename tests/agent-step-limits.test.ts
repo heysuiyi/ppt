@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import {
   AGENT_STEP_LIMITS_FALLBACK,
   buildMainStepLimitMessage,
@@ -7,7 +6,8 @@ import {
   getEffectiveMainMaxSteps,
   getEffectiveSubMaxSteps,
   resolveAgentStepLimits,
-} from "../src/shared/agent-step-limits";
+} from "@agent-harness/configuration/step-limits";
+import { describe, expect, it } from "vitest";
 
 describe("agent-step-limits", () => {
   it("uses defaults when input is empty", () => {

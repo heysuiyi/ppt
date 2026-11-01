@@ -56,6 +56,7 @@ function fixture() {
   const rows = new Map<
     string,
     {
+      key: CheckpointKey;
       checkpoint: AgentCheckpoint | null;
       revision: number;
       generation: number;
@@ -127,12 +128,25 @@ function fixture() {
     async acquire(key, ownerId, options) {
       const name = JSON.stringify(key);
       let row = rows.get(name);
+      if (options?.replace && !sameValue(options.replace, row?.lease)) return { status: "stale" };
+      if (!options?.replace && row?.lease) return { status: "busy", lease: snapshot(row.lease) };
+      // 准入先检查目标租约，再检查同线程其他查询；拒绝不能创建空行或消耗代际。
+      for (const other of rows.values()) {
+        if (
+          other.key.agentId === key.agentId &&
+          other.key.threadId === key.threadId &&
+          other.key.queryId !== key.queryId &&
+          (other.lease ||
+            other.checkpoint?.status === "running" ||
+            other.checkpoint?.status === "waiting" ||
+            other.checkpoint?.status === "interrupted")
+        )
+          return { status: "thread-pending", queryId: other.key.queryId };
+      }
       if (!row) {
-        row = { checkpoint: null, revision: 0, generation: 0, lease: null };
+        row = { key: snapshot(key), checkpoint: null, revision: 0, generation: 0, lease: null };
         rows.set(name, row);
       }
-      if (options?.replace && !sameValue(options.replace, row.lease)) return { status: "stale" };
-      if (!options?.replace && row.lease) return { status: "busy", lease: snapshot(row.lease) };
       const lease = { key: snapshot(key), ownerId, generation: ++row.generation };
       row.lease = lease;
       return {

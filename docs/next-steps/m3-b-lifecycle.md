@@ -1,8 +1,8 @@
 # M3-B：执行隔离、单实例准入与关闭排空
 
-[返回计划目录](README.md) · [M3 总计划](m3-reliability.md) · [前一步 M3-A](m3-a-composition.md)
+[返回计划目录](README.md) · [M3 总计划](m3-reliability.md) · [前一步 M3-A](m3-a-composition.md) · [下一步 M3-C](m3-c-persistence.md)
 
-状态：运行时修复与 B1/B2 新增回归已实施，定向及全量回归、原生 SQLite 消费、真实 CLI、包消费和独立类型编译通过；全仓 typecheck 仍受本次未修改的 tools 边界问题阻塞，**不标记 B 验收完成**。实施证据见第 9 节；M3-A 的历史验收不计作 B 新增证据。
+状态：**已通过后续独立审核，B0/B1/B2 验收完成**。两个 binding 交接点修复、定向及全量回归、全仓类型/四包边界、原生 SQLite、真实 CLI 与包消费通过。第 9 节保留实施当时的结果与阻塞，第 10 节记录后续审核及阻塞解除；历史失败不删除，也不继续作为当前未完成原因。M3-A 的历史验收不计作 B 新增证据，C–E 不随 B 自动完成。
 
 ## 1. 目标与不变边界
 
@@ -117,7 +117,7 @@ finally 顺序固定为：解除本次门闩 → 等待已启动 create/run/clos
 
 ## 7. 实施后的检查与完成门槛
 
-以下保留实施门禁命令；本轮实际结果与阻塞见第 9 节，不以命令列表代替通过证据：
+以下保留实施门禁命令；实施当时的结果与阻塞见第 9 节，后续独立审核结论见第 10 节，不以命令列表代替通过证据：
 
 ```text
 npm.cmd run build:packages
@@ -180,7 +180,7 @@ npm.cmd test
 - 原生程序覆盖 B1-1/B2-1/B2-4，不代替永久回归中的其它交错。永久 session-host fixture 的 history/checkpoint 为真实 SQLite，既有 SessionBindingPort 为内存配置比较；不把两者混称为持久 Host binding。
 - 一次性程序与编译适配目录 `.tmp-m3-b-smoke/` 已删除；四份 `m3-b-native-*` 隔离临时目录及 SQLite/WAL/SHM、nonce 文件均由程序 finally 清理。
 
-### 9.3 门禁结果与限制
+### 9.3 实施当时的门禁结果与限制（历史）
 
 | 检查 | 本轮实际观察 |
 | --- | --- |
@@ -194,4 +194,34 @@ npm.cmd test
 | `npm.cmd test` 最终全量回归 | 193 文件通过，1654 项通过、2 项既有条件跳过；未将跳过场景记为验收 |
 | 单独 Web TypeScript 项目 | 通过 |
 
-最终剩余阻塞为 tools 的 public-resolution 边界检查；相关文件不由本次修改，不以删除断言、改接口或绕过门禁掩盖，B 的全仓完成门槛仍未满足。首次全量回归另有 tools 测试 initializingReader 未定义，随后观察到该文件已改动，最终全量通过。C–E 保持独立待执行，不声称 Thread 级跨进程准入、崩溃恢复、容量、恶意插件隔离或外部影响恰好一次已完成。不承诺不合作工具的固定关闭时限；未新增远程厂商调用、生产 UI/PPT 切换、ASAR 或安装器验收。
+实施当时剩余阻塞为 tools 的 public-resolution 边界检查；相关文件未由 M3-B 修改，当时不以删除断言、改接口或绕过门禁掩盖，故没有标记 B 完成。首次全量回归另有 tools 测试 initializingReader 未定义，随后观察到该文件已改动，最终全量通过。**该 tools 阻塞已在后续独立审核中解除，见第 10 节。** C–E 保持独立待执行，不声称 Thread 级跨进程准入、崩溃恢复、容量、恶意插件隔离或外部影响恰好一次已完成。不承诺不合作工具的固定关闭时限；未新增远程厂商调用、生产 UI/PPT 切换、ASAR 或安装器验收。
+
+## 10. 后续独立审核与完成结论
+
+本节记录后续审核实际执行的结果，不覆盖第 9 节的实施历史。本次文档同步不重复运行这些检查，也不将随后独立 CLI 迁移中的工作区状态倒推为审核时的状态。
+
+### 10.1 修复与验收复核
+
+- `model/model-registry.ts` 与 `application/default-agent-factory.ts` 两个交接点均区分普通取消和回收失败；后者保留取消原因及同一 cleanupError。所有权交接互斥，未发现重复 dispose 或未发布绑定进入模型执行。
+- B1 的同 Application 双 Agent 同时在途、共享端口存活、各自真实 nonce、身份与租约隔离成立；resume/resume、清理期间占槽和旧取消隔离的断言覆盖既定边界。
+- B2 的活动工具、writer lease、慢 binding disposer 三段排空，以及取消/关闭交错、已提交 completed/cancelled/waiting 不被重写，均有确定性门闩证据。
+- 未发现阻塞性缺陷。非阻塞补强：第二交接点可另补正常回收参数组；Registry 路径可加强取消原因对象身份断言。它们不是当前已发现的实现错误，不影响既定 B 验收结论。
+
+### 10.2 审核实际执行证据
+
+| 检查 | 独立审核结果 |
+| --- | --- |
+| `npm.cmd run build:packages` | core/logs/models/tools 四包构建通过 |
+| 第 7 节七文件定向 Vitest | 7 文件、110 项通过，无跳过 |
+| 两个生产修改文件与两个回归文件的 Biome | 4 文件通过，无自动修改 |
+| `npm.cmd run test:integration:harness` | 2 文件、2 项通过，无跳过；真实 Electron 入口、本地 HTTP/SSE，无远程厂商调用 |
+| `npm.cmd run verify:harness-package` | 仓库外 tarball 安装、NodeNext/Bundler 声明与原生公开消费通过；脚本内存存储不计跨进程持久证据 |
+| `npm.cmd run typecheck` | 四包边界及 Node/Web 类型检查全部通过；此前 tools public-resolution 阻塞不再存在 |
+| `npm.cmd test` | 193 文件通过，1654 项通过、2 项既有跳过；跳过项不计验收 |
+| 一次性原生 Node + 真实 SQLite | B1 双 Agent 隔离、B2 活动工具/租约/慢 binding 排空、迟到 binding 成功/失败回收均通过 |
+
+原生审核程序使用公开 Core 构建产物与当时的 `app/main/agent-host/sqlite-agent-stores.ts` 宿主适配。B1 中 A interrupted，B 消费自身真实 nonce 完成；B2 使用持久 HostSessionBinding v2，分别核验 Run completed 与 Host.close 边界、借用端口存活及租约释放。迟到回收成功时 create 拒绝、close 成功；回收失败时两者均拒绝并保留同一 cleanupError；各 dispose 一次、模型执行零次。
+
+审核未修改永久代码、测试或文档；`.vite/m3-b-review-0ce7bbe8dd/` 内临时程序、编译适配、SQLite 和 nonce 文件已清理。本文更新发生在审核结束后，记录前述已观察证据。未运行远程厂商、生产构建、ASAR 或安装器验收。
+
+**完成结论：M3-B 满足 B0/B1/B2 门槛，可以验收完成。** 下一步按 [M3-C：持久并发准入与恢复兼容](m3-c-persistence.md)推进；不将 B 的单实例隔离当作 Thread 跨进程安全证明，不宣称 M3 整体完成。

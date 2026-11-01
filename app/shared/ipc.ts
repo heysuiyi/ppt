@@ -1,13 +1,14 @@
-import { z } from "zod";
 import type {
   AgentConfigurationSnapshot,
   AgentPreferences,
   DiscoverAgentModelsRequest,
   SaveAgentVendorRequest,
   UpdateSearchCredentialRequest,
-} from "../../src/shared/agent-configuration";
+} from "@agent-harness/configuration/configuration-contract";
+import type { ListRemoteModelsResult } from "@agent-harness/configuration/remote-models";
+import type { AgentSettings } from "@agent-harness/configuration/settings";
+import { z } from "zod";
 import type { AgentQuestion } from "../../src/shared/agent-question";
-import type { AgentSettings } from "../../src/shared/agent-settings";
 import type { AgentTaskNode } from "../../src/shared/agent-task-list";
 import type {
   AgentApprovalRequest,
@@ -17,6 +18,7 @@ import type {
 import type {
   AppLogEntry,
   AppLogLevel,
+  LogClearResult,
   LogManagerSettings,
   LogManagerStatus,
   RendererLogReport,
@@ -24,7 +26,6 @@ import type {
 import type { ExportPresentationOptions } from "../../src/shared/ppt-export";
 import type { Presentation } from "../../src/shared/presentation";
 import type { PptJobProjection } from "../../src/shared/presentation-lifecycle";
-import type { ListRemoteModelsResult } from "../../src/shared/remote-models";
 import type {
   ProjectArtifact,
   SessionBootstrap,
@@ -310,7 +311,7 @@ export interface DesktopApi {
   getLogManagerStatus(): Promise<LogManagerStatus>;
   getRecentLogs(limit?: number, minimumLevel?: AppLogLevel): Promise<AppLogEntry[]>;
   updateLogManagerSettings(patch: Partial<LogManagerSettings>): Promise<LogManagerSettings>;
-  clearLogs(): Promise<number>;
+  clearLogs(): Promise<LogClearResult>;
   openLogDirectory(): Promise<boolean>;
   getApplicationDataPath(): Promise<string>;
   openApplicationDataDirectory(): Promise<boolean>;

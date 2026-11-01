@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentModelSelection } from "@agent-harness/configuration/model-contract";
 import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it, vi } from "vitest";
@@ -35,7 +36,6 @@ import { ContentAddressedBlobStore } from "../app/main/presentation-lifecycle/co
 import { PresentationLifecycleOrchestrator } from "../app/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
 import { PresentationLifecycleRepository } from "../app/main/presentation-lifecycle/presentation-lifecycle-repository";
 import { PresentationLifecycleToolBridge } from "../app/main/presentation-lifecycle/presentation-lifecycle-tool-bridge";
-import type { AgentModelSelection } from "../src/shared/agent";
 import { CommandBus } from "../src/shared/commands";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import { asProjectId } from "../src/shared/presentation-lifecycle";

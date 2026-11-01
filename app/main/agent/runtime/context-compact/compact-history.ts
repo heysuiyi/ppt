@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentModelSelection } from "@shared/agent";
+import type { AgentModelSelection } from "@agent-harness/configuration/model-contract";
 import type { AgentModelGateway, AgentModelMessage } from "../../gateway";
 import { isOutputTruncated, textFromContentBlocks, toolUseBlocksFromContent } from "../../gateway";
 import type { ModelPromptPayload } from "../turns/model-call-recovery";

@@ -1,10 +1,10 @@
-import { readJsonFile, writeJsonFileAtomic } from "@agent-harness/tools/atomic-files";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import {
   buildSubStepLimitMessage,
   getEffectiveSubMaxSteps,
   resolveAgentStepLimits,
-} from "@shared/agent-step-limits";
+} from "@agent-harness/configuration/step-limits";
+import { readJsonFile, writeJsonFileAtomic } from "@agent-harness/tools/atomic-files";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import type { AgentTaskNode } from "@shared/agent-task-list";
 import {
   formatTeammateToolProgress,
@@ -1417,6 +1417,7 @@ async function generateTeammateResponse(input: {
 }): Promise<AgentModelContentBlock[]> {
   const result = await callModelWithRecovery({
     gateway: input.options.gateway,
+    logger: input.options.logger,
     systemPrompt: input.systemPrompt,
     promptPayload: {
       task: input.task,

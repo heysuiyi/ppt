@@ -5,8 +5,8 @@ import {
   saveAgentVendorSchema,
   updateSearchCredentialSchema,
   vendorIdSchema,
-} from "@shared/agent-configuration";
-import { agentSettingsSchema } from "@shared/agent-settings";
+} from "@agent-harness/configuration/configuration-contract";
+import { agentSettingsSchema } from "@agent-harness/configuration/settings";
 import type { IpcMain, IpcMainInvokeEvent } from "electron";
 
 export function registerAgentConfigurationIpc(

@@ -1,4 +1,7 @@
-import { getModelReasoningEfforts, getModelReasoningLabel } from "@shared/model-reasoning";
+import {
+  getModelReasoningEfforts,
+  getModelReasoningLabel,
+} from "@agent-harness/configuration/model-reasoning";
 import { type CSSProperties, useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ManagedModel } from "../modelCatalog";

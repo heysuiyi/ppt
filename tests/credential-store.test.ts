@@ -1,17 +1,20 @@
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CredentialStorageBackend } from "@agent-harness/configuration/credential-contract";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  createSafeStorageCredentialProtection,
+  type SafeStorageAdapter,
+} from "../app/main/agent-configuration/safe-storage-protection";
 import {
   CredentialStore,
   CredentialStoreError,
-  type SafeStorageAdapter,
-} from "../app/main/agent-configuration/internal/credential-store";
+} from "../packages/configuration/dist/internal/credential-store.js";
 import type {
   ModelCredentialBinding,
   WebSearchCredentialBinding,
-} from "../app/main/agent-configuration/internal/credential-types";
-import type { CredentialStorageBackend } from "../src/shared/credentials";
+} from "../packages/configuration/dist/internal/credential-types.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -230,11 +233,11 @@ describe("CredentialStore", () => {
     };
     const firstStore = new CredentialStore({
       applicationDataRoot: directory,
-      safeStorage: firstSafeStorage,
+      credentialProtection: createSafeStorageCredentialProtection(firstSafeStorage),
     });
     const secondStore = new CredentialStore({
       applicationDataRoot: directory,
-      safeStorage: secondSafeStorage,
+      credentialProtection: createSafeStorageCredentialProtection(secondSafeStorage),
     });
     const secondBinding: ModelCredentialBinding = {
       ...MODEL_BINDING,
@@ -332,6 +335,71 @@ describe("CredentialStore", () => {
     });
   });
 
+  it("refuses cross-scheme stores without decrypting or overwriting desktop credentials", async () => {
+    const { directory, store, safeStorage } = await createStore();
+    await store.setModelCredentials({ bindings: [MODEL_BINDING], apiKey: "desktop-secret" });
+    const original = await readFile(store.filePath, "utf8");
+    const desktopProtection = createSafeStorageCredentialProtection(safeStorage);
+    let decryptCalls = 0;
+    const nodeStore = new CredentialStore({
+      applicationDataRoot: directory,
+      credentialProtection: {
+        ...desktopProtection,
+        scheme: "windows-dpapi-current-user",
+        async decrypt(ciphertext) {
+          decryptCalls += 1;
+          return desktopProtection.decrypt(ciphertext);
+        },
+      },
+    });
+    await expect(nodeStore.resolveModelCredential(MODEL_BINDING)).rejects.toMatchObject({
+      code: "CORRUPT_STORE",
+    });
+    await expect(
+      nodeStore.setModelCredentials({
+        bindings: [MODEL_BINDING],
+        apiKey: "new-node-secret",
+      }),
+    ).rejects.toMatchObject({ code: "CORRUPT_STORE" });
+    expect(decryptCalls).toBe(0);
+    expect(await readFile(store.filePath, "utf8")).toBe(original);
+    expect(await store.resolveModelCredential(MODEL_BINDING)).toBe("desktop-secret");
+  });
+
+  it("persists the Node protection scheme/version and rejects unknown versions", async () => {
+    const { directory, store, safeStorage } = await createStore();
+    const protection = {
+      ...createSafeStorageCredentialProtection(safeStorage),
+      scheme: "windows-dpapi-current-user" as const,
+    };
+    const nodeStore = new CredentialStore({
+      applicationDataRoot: directory,
+      credentialProtection: protection,
+    });
+    await nodeStore.setModelCredentials({ bindings: [MODEL_BINDING], apiKey: "node-secret" });
+    const persisted = JSON.parse(await readFile(nodeStore.filePath, "utf8"));
+    expect(persisted).toMatchObject({
+      version: 3,
+      protection: { scheme: "windows-dpapi-current-user", version: 1 },
+    });
+    expect(
+      await new CredentialStore({
+        applicationDataRoot: directory,
+        credentialProtection: protection,
+      }).resolveModelCredential(MODEL_BINDING),
+    ).toBe("node-secret");
+    await expect(store.resolveModelCredential(MODEL_BINDING)).rejects.toMatchObject({
+      code: "CORRUPT_STORE",
+    });
+    persisted.protection.version = 2;
+    const unsupported = `${JSON.stringify(persisted)}\n`;
+    await writeFile(nodeStore.filePath, unsupported);
+    await expect(nodeStore.resolveModelCredential(MODEL_BINDING)).rejects.toMatchObject({
+      code: "CORRUPT_STORE",
+    });
+    expect(await readFile(nodeStore.filePath, "utf8")).toBe(unsupported);
+  });
+
   it("surfaces malformed stores and filesystem errors without exposing secrets", async () => {
     const malformed = await createStore();
     await writeFile(malformed.store.filePath, "{not-json", "utf8");
@@ -368,7 +436,10 @@ async function createStore(safeStorage = new FakeSafeStorage()): Promise<{
   return {
     directory,
     safeStorage,
-    store: new CredentialStore({ applicationDataRoot: directory, safeStorage }),
+    store: new CredentialStore({
+      applicationDataRoot: directory,
+      credentialProtection: createSafeStorageCredentialProtection(safeStorage),
+    }),
   };
 }
 

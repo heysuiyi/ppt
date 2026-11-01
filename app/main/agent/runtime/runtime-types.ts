@@ -2,9 +2,12 @@
  * Agent Runtime 的稳定协议类型边界。
  */
 
-import type { AgentExecutionStrategy, AgentModelSelection } from "@shared/agent";
+import type {
+  AgentExecutionStrategy,
+  AgentModelSelection,
+} from "@agent-harness/configuration/model-contract";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
 import { agentQuestionSchema } from "@shared/agent-question";
-import type { AgentStepLimits } from "@shared/agent-step-limits";
 import { presentationCommandSchema } from "@shared/commands";
 import type { Presentation } from "@shared/presentation";
 import { z } from "zod";

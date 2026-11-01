@@ -1,5 +1,6 @@
-import type { AgentModelSelection } from "@shared/agent";
-import type { AgentStepLimits } from "@shared/agent-step-limits";
+import type { Logger } from "@agent-harness/logs/logs";
+import type { AgentModelSelection } from "@agent-harness/configuration/model-contract";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
 import type { AgentTaskNode } from "@shared/agent-task-list";
 import type { TeammateProgressListener } from "@shared/teammate-progress";
 import type {
@@ -41,6 +42,7 @@ export interface SpawnTeammateThreadOptions {
   filePolicy?: WorkspaceFilePolicy;
   domain?: TeammateDomainContext;
   gateway: AgentModelGateway;
+  logger?: Logger;
   model?: AgentModelSelection;
   maxSteps?: number;
   agentStepLimits?: AgentStepLimits;

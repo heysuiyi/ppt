@@ -1,4 +1,4 @@
-import { DEFAULT_WEB_SEARCH_ENDPOINT } from "@shared/agent-gateway-config";
+import { DEFAULT_WEB_SEARCH_ENDPOINT } from "@agent-harness/configuration/gateway-settings";
 import type {
   WebSearchAdapter,
   WebSearchImageResult,

@@ -1,7 +1,7 @@
+import type { DiscoverAgentModelsRequest } from "@agent-harness/configuration/configuration-contract";
+import { normalizeCredentialUrl } from "@agent-harness/configuration/credential-contract";
+import type { RemoteModelInfo } from "@agent-harness/configuration/remote-models";
 import { getModelSupport } from "@agent-harness/models/model-profiles";
-import type { DiscoverAgentModelsRequest } from "@shared/agent-configuration";
-import { normalizeCredentialUrl } from "@shared/credentials";
-import type { RemoteModelInfo } from "@shared/remote-models";
 import { useMemo, useState } from "react";
 import {
   buildCustomVendorDraft,

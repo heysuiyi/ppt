@@ -1,7 +1,7 @@
 import {
   type AgentGatewayPreferences,
   resolveAgentGatewayPreferences,
-} from "@shared/agent-gateway-config";
+} from "@agent-harness/configuration/gateway-settings";
 import { markCredentialReentryRequired } from "./credentialMigration";
 
 export const AGENT_GATEWAY_CONFIG_STORAGE_KEY = "agent-ppt.gateway-config.v2";

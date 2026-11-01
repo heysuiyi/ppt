@@ -1,16 +1,17 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ExecutionPlan } from "@agent-harness/configuration/configuration";
+import { agentSettingsSchema } from "@agent-harness/configuration/settings";
+import { DEFAULT_AGENT_STEP_LIMITS } from "@agent-harness/configuration/step-limits";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acceptAgentRequest,
   assertProductionModelAdapter,
 } from "../app/main/agent/submit-agent-request";
-import { createAgentConfiguration, type ExecutionPlan } from "../app/main/agent-configuration";
+import { createDesktopAgentConfiguration } from "../app/main/agent-configuration/desktop-configuration";
 import { FileSessionStore } from "../app/main/session-store";
 import { type SubmitAgentRequest, submitAgentRequestSchema } from "../app/shared/ipc";
-import { agentSettingsSchema } from "../src/shared/agent-settings";
-import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
 import { APPLICATION_DEFAULT_TEMPLATE_ID } from "../src/shared/template-protocol";
 
 const settings = agentSettingsSchema.parse({
@@ -51,7 +52,7 @@ const plan: ExecutionPlan = {
   defaultTemplateId: settings.defaultTemplateId,
 };
 function configurationAt(applicationDataRoot: string) {
-  return createAgentConfiguration({
+  return createDesktopAgentConfiguration({
     applicationDataRoot,
     environment: {},
     safeStorage: {

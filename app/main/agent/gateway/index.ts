@@ -1,8 +1,17 @@
-import type { AgentModelSelection, AgentModelSettings } from "@shared/agent";
-import type { AgentGatewayConfig, AgentSearchConfig } from "@shared/agent-gateway-config";
-import { resolveAgentGatewayConfig, resolveAgentSearchConfig } from "@shared/agent-gateway-config";
+import type {
+  AgentGatewayConfig,
+  AgentSearchConfig,
+} from "@agent-harness/configuration/gateway-settings";
+import {
+  resolveAgentGatewayConfig,
+  resolveAgentSearchConfig,
+} from "@agent-harness/configuration/gateway-settings";
+import type {
+  AgentModelSelection,
+  AgentModelSettings,
+} from "@agent-harness/configuration/model-contract";
 import type { ModelUsageRecord } from "../../token-usage-store";
-import { createModuleLogger } from "../logger";
+import type { Logger } from "@agent-harness/logs/logs";
 import { anthropicDriver } from "./anthropic";
 import {
   type AgentCallPath,
@@ -31,8 +40,6 @@ import type {
   AgentModelStreamChunk,
 } from "./types";
 
-const logger = createModuleLogger("gateway");
-
 const DRIVERS = {
   chat: chatDriver,
   responses: responsesDriver,
@@ -53,6 +60,8 @@ export class AgentGateway implements AgentModelGateway {
   private searchConfig: AgentSearchConfig = resolveAgentSearchConfig();
   private usageRecorder?: (record: ModelUsageRecord) => Promise<void>;
 
+  constructor(private readonly options: { logger: Logger; logDirectory: string }) {}
+
   setUsageRecorder(recorder: (record: ModelUsageRecord) => Promise<void>): void {
     this.usageRecorder = recorder;
   }
@@ -61,7 +70,7 @@ export class AgentGateway implements AgentModelGateway {
     try {
       await this.usageRecorder?.(record);
     } catch (error) {
-      logger.error("model.usage.persist-failed", {
+      this.options.logger.error("model.usage.persist-failed", {
         provider: record.provider,
         model: record.model,
         error,
@@ -131,7 +140,7 @@ export class AgentGateway implements AgentModelGateway {
       const driver = resolveDriver(config.callPath);
       preparedRequest = prepareAgentModelRequest(request, config);
       const requestLogPayload = buildGatewayIoLogRequest(preparedRequest);
-      logger.info("model.request.started", {
+      this.options.logger.info("model.request.started", {
         gatewayRequestId,
         provider: config.provider,
         model: config.model,
@@ -154,7 +163,7 @@ export class AgentGateway implements AgentModelGateway {
         });
       }
 
-      logger.info("model.request.completed", {
+      this.options.logger.info("model.request.completed", {
         gatewayRequestId,
         provider: response.provider,
         model: response.model,
@@ -176,13 +185,14 @@ export class AgentGateway implements AgentModelGateway {
           request: requestLogPayload,
           response,
         }),
+        this.options.logDirectory,
       );
       return response;
     } catch (error) {
       const normalized = config
         ? normalizeProviderError(config.provider, error, request.signal)
         : error;
-      logger.error("model.request.failed", {
+      this.options.logger.error("model.request.failed", {
         gatewayRequestId,
         provider: config?.provider ?? selection?.provider,
         model: config?.model ?? selection?.model,
@@ -210,6 +220,7 @@ export class AgentGateway implements AgentModelGateway {
               },
           error: normalized,
         }),
+        this.options.logDirectory,
       );
       throw normalized;
     }
@@ -233,7 +244,7 @@ export class AgentGateway implements AgentModelGateway {
       const driver = resolveDriver(config.callPath);
       preparedRequest = prepareAgentModelRequest(request, config);
       requestLogPayload = buildGatewayIoLogRequest(preparedRequest);
-      logger.info("model.stream.started", {
+      this.options.logger.info("model.stream.started", {
         gatewayRequestId,
         provider: config.provider,
         model: config.model,
@@ -287,7 +298,7 @@ export class AgentGateway implements AgentModelGateway {
         );
       }
 
-      logger.info("model.stream.completed", {
+      this.options.logger.info("model.stream.completed", {
         gatewayRequestId,
         provider: config.provider,
         model: config.model,
@@ -307,12 +318,13 @@ export class AgentGateway implements AgentModelGateway {
           request: requestLogPayload,
           ...(completedResponse ? { response: completedResponse } : {}),
         }),
+        this.options.logDirectory,
       );
     } catch (error) {
       const normalized = config
         ? normalizeProviderError(config.provider, error, request.signal)
         : error;
-      logger.error("model.stream.failed", {
+      this.options.logger.error("model.stream.failed", {
         gatewayRequestId,
         provider: config?.provider ?? selection?.provider,
         model: config?.model ?? selection?.model,
@@ -342,6 +354,7 @@ export class AgentGateway implements AgentModelGateway {
                 }),
           error: normalized,
         }),
+        this.options.logDirectory,
       );
       throw normalized;
     }

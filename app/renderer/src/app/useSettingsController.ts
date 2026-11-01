@@ -1,14 +1,17 @@
-import type { UiThemeSummary } from "@app/shared/ipc";
-import { DEFAULT_DESIGN_SYSTEM, type DesignSystemV2, designSystemV2Schema } from "@design-system";
-import type { AgentExecutionStrategy } from "@shared/agent";
-import type { AgentConfigurationSnapshot, AgentPreferences } from "@shared/agent-configuration";
+import type {
+  AgentConfigurationSnapshot,
+  AgentPreferences,
+} from "@agent-harness/configuration/configuration-contract";
+import type { CredentialStorageStatus } from "@agent-harness/configuration/credential-contract";
 import {
   type AgentGatewayPreferences,
   DEFAULT_WEB_SEARCH_ENDPOINT,
-} from "@shared/agent-gateway-config";
-import type { AgentStepLimits } from "@shared/agent-step-limits";
-import type { CredentialStorageStatus } from "@shared/credentials";
-import { getModelReasoningEfforts } from "@shared/model-reasoning";
+} from "@agent-harness/configuration/gateway-settings";
+import type { AgentExecutionStrategy } from "@agent-harness/configuration/model-contract";
+import { getModelReasoningEfforts } from "@agent-harness/configuration/model-reasoning";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
+import type { UiThemeSummary } from "@app/shared/ipc";
+import { DEFAULT_DESIGN_SYSTEM, type DesignSystemV2, designSystemV2Schema } from "@design-system";
 import type { Presentation } from "@shared/presentation";
 import { getBuiltinTemplate } from "@shared/template-catalog";
 import { APPLICATION_DEFAULT_TEMPLATE_ID, isUploadedTemplateId } from "@shared/template-protocol";

@@ -21,8 +21,8 @@ export default defineConfig({
       // Public entries and exact white-box dist imports share one emitted module graph.
       deps: {
         inline: [
-          /\/packages\/(?:harness|logs|models|tools)\/dist\//,
-          /^@agent-harness\/(?:core|logs|models|tools)(?:\/|$)/,
+          /\/packages\/(?:harness|logs|models|tools|configuration)\/dist\//,
+          /^@agent-harness\/(?:core|logs|models|tools|configuration)(?:\/|$)/,
         ],
       },
     },

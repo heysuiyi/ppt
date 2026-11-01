@@ -1,7 +1,7 @@
+import type { ExecutionPlan } from "@agent-harness/configuration/configuration";
 import type { SubmitAgentRequest } from "@app/shared/ipc";
 import { createSessionTitleFromPrompt, type SessionChatMessage } from "@shared/session";
 import { toAgentMessageHistory } from "@shared/session-recovery";
-import type { ExecutionPlan } from "../agent-configuration";
 import type { FileSessionStore } from "../session-store";
 import type { DurableServiceThread } from "./persistence/durable-service-store";
 

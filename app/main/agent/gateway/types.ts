@@ -1,5 +1,11 @@
-import type { AgentModelSelection, AgentProvider } from "@shared/agent";
-import type { AgentGatewayConfig, AgentSearchConfig } from "@shared/agent-gateway-config";
+import type {
+  AgentGatewayConfig,
+  AgentSearchConfig,
+} from "@agent-harness/configuration/gateway-settings";
+import type {
+  AgentModelSelection,
+  AgentProvider,
+} from "@agent-harness/configuration/model-contract";
 import type { ProviderTokenUsage } from "@shared/token-usage";
 
 export type AgentResponseContract = "markdown" | "markdown-summary" | "none";

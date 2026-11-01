@@ -25,7 +25,7 @@ export interface PrepareContextOptions {
   softTokenThreshold?: number;
   compactHistoryFailures?: number;
   gateway?: import("../../gateway/types").AgentModelGateway;
-  model?: import("@shared/agent").AgentModelSelection;
+  model?: import("@agent-harness/configuration/model-contract").AgentModelSelection;
   signal?: AbortSignal;
   onProgress?: (message: string) => void;
 }

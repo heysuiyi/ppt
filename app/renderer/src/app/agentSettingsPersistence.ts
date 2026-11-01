@@ -1,4 +1,7 @@
-import type { AgentConfigurationSnapshot, AgentPreferences } from "@shared/agent-configuration";
+import type {
+  AgentConfigurationSnapshot,
+  AgentPreferences,
+} from "@agent-harness/configuration/configuration-contract";
 
 let pendingSave: Promise<unknown> = Promise.resolve();
 

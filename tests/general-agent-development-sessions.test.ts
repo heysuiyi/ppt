@@ -5,12 +5,9 @@ import { DatabaseSync } from "node:sqlite";
 import type { ModelMessage } from "@agent-harness/core/model/model-contract";
 import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
 import { afterEach, describe, expect, it } from "vitest";
-import { listDevelopmentSessions } from "../app/main/agent-host/development-sessions";
-import type { HostSessionBinding } from "../app/main/agent-host/host-session-binding";
-import {
-  createSqliteAgentStores,
-  type SqliteAgentStores,
-} from "../app/main/agent-host/sqlite-agent-stores";
+import type { HostSessionBinding } from "../cli/host/host-session-binding";
+import { listHostSessions } from "../cli/host/session-directory";
+import { createSqliteAgentStores, type SqliteAgentStores } from "../cli/host/sqlite-agent-stores";
 
 const cleanup: Array<() => void | Promise<void>> = [];
 const publicIdentity = {
@@ -53,6 +50,7 @@ async function saveCheckpoint(
   const identity = { agentId: "development-agent", threadId, queryId };
   const acquired = await stores.checkpoints.acquire(identity, "active-writer");
   if (acquired.status !== "acquired") throw new Error("Expected checkpoint acquisition.");
+  const history = await stores.history.read(threadId);
   const base = {
     schemaVersion: 1 as const,
     ...identity,
@@ -61,8 +59,8 @@ async function saveCheckpoint(
     plugins: [{ id: "tools", version: "1" }],
     model: binding(threadId, "unused").model,
     maxSteps: 12,
-    committed: { historyRevision: 0, messages: [], step: 0 },
-    startMessageCount: 0,
+    committed: { historyRevision: history.revision, messages: history.messages, step: 0 },
+    startMessageCount: history.messages.length,
     extensions: [],
   };
   const checkpoint: AgentCheckpoint =
@@ -78,7 +76,7 @@ async function saveCheckpoint(
 describe("development session queries", () => {
   it("lists only workspace-bound sessions in checkpoint update order and exposes text only", async () => {
     const { root, workspace } = fixture();
-    const databasePath = join(root, "agent-development.sqlite");
+    const databasePath = join(root, "sessions.sqlite");
     const stores = createSqliteAgentStores(databasePath);
     cleanup.push(() => stores.dispose());
     const messages: readonly ModelMessage[] = [
@@ -124,9 +122,10 @@ describe("development session queries", () => {
     await stores.history.append("older", 0, messages, "canonical-history");
     await stores.history.append("unbound", 0, messages, "unbound-history");
     await saveCheckpoint(stores, "older", "older-running", "running");
+    const completed = await saveCheckpoint(stores, "newer", "newer-completed", "completed");
+    await stores.checkpoints.release(completed);
+    // 已结束的前序 Query 与当前待决 Query 共存，不绕过线程准入创建多个活动请求。
     const heldLease = await saveCheckpoint(stores, "newer", "newer-interrupted", "interrupted");
-    // Terminal checkpoints still determine recency; they do not hide an older unfinished query.
-    await saveCheckpoint(stores, "newer", "newer-completed", "completed");
     await saveCheckpoint(stores, "foreign", "foreign-query", "running");
     await saveCheckpoint(stores, "unbound", "unbound-query", "running");
     const database = new DatabaseSync(databasePath);
@@ -136,7 +135,7 @@ describe("development session queries", () => {
       .all();
     const canonical = await stores.history.read("older");
 
-    const sessions = await listDevelopmentSessions(root, join(workspace, "."));
+    const sessions = await listHostSessions(root, join(workspace, "."));
     expect(sessions).toEqual([
       {
         threadId: "newer",
@@ -175,7 +174,7 @@ describe("development session queries", () => {
 
   it("returns only running, waiting and interrupted queries as unfinished", async () => {
     const { root, workspace } = fixture();
-    const path = join(root, "agent-development.sqlite");
+    const path = join(root, "sessions.sqlite");
     const stores = createSqliteAgentStores(path);
     cleanup.push(() => stores.dispose());
     for (const status of ["running", "interrupted", "completed", "cancelled", "failed"] as const) {
@@ -215,7 +214,7 @@ describe("development session queries", () => {
         },
       }),
     ).toMatchObject({ status: "saved" });
-    const sessions = await listDevelopmentSessions(root, workspace);
+    const sessions = await listHostSessions(root, workspace);
     expect(sessions.map((session) => [session.threadId, session.unfinished?.status])).toEqual([
       ["waiting", "waiting"],
       ["failed", undefined],
@@ -226,16 +225,46 @@ describe("development session queries", () => {
     ]);
   });
 
+  it("hides unfinished Query assistant text, including an appended batch awaiting checkpoint acknowledgement", async () => {
+    const { root, workspace } = fixture();
+    const stores = createSqliteAgentStores(join(root, "sessions.sqlite"));
+    cleanup.push(() => stores.dispose());
+    await stores.bindings.ensure(binding("thread", workspace));
+    const completed: readonly ModelMessage[] = [
+      { role: "user", content: [{ type: "text", text: "first" }] },
+      { role: "assistant", content: [{ type: "text", text: "settled answer" }] },
+    ];
+    await stores.history.append("thread", 0, completed, "first-query");
+    const lease = await saveCheckpoint(stores, "thread", "pending-query", "running");
+    await stores.history.append(
+      "thread",
+      1,
+      [
+        { role: "user", content: [{ type: "text", text: "second" }] },
+        { role: "assistant", content: [{ type: "text", text: "unfinished private preview" }] },
+      ],
+      "pending-query:step",
+    );
+    const sessions = await listHostSessions(root, workspace);
+    expect(sessions[0]?.history).toEqual([
+      { role: "user", text: "first" },
+      { role: "assistant", text: "settled answer" },
+      { role: "user", text: "second" },
+    ]);
+    expect(sessions[0]?.unfinished).toEqual({ queryId: "pending-query", status: "running" });
+    expect(await stores.checkpoints.acquire(lease.key, "reader")).toMatchObject({ status: "busy" });
+  });
+
   it("does not create a missing database or its parent directory", async () => {
     const { root, workspace } = fixture();
     const dataRoot = join(root, "not-created");
-    expect(await listDevelopmentSessions(dataRoot, workspace)).toEqual([]);
+    expect(await listHostSessions(dataRoot, workspace)).toEqual([]);
     expect(existsSync(dataRoot)).toBe(false);
   });
 
   it("closes a failed read without changing an unsupported binding", async () => {
     const { root, workspace } = fixture();
-    const path = join(root, "agent-development.sqlite");
+    const path = join(root, "sessions.sqlite");
     const stores = createSqliteAgentStores(path);
     await stores.dispose();
     const database = new DatabaseSync(path);
@@ -244,7 +273,7 @@ describe("development session queries", () => {
       .prepare("INSERT INTO general_agent_host_bindings(thread_id, payload) VALUES (?, ?)")
       .run("legacy", legacy);
     database.close();
-    await expect(listDevelopmentSessions(root, workspace)).rejects.toMatchObject({
+    await expect(listHostSessions(root, workspace)).rejects.toMatchObject({
       code: "HOST_BINDING_VERSION_UNSUPPORTED",
     });
     const reopened = new DatabaseSync(path);

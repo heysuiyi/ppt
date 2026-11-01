@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import type { AgentConfigurationSnapshot } from "@agent-harness/configuration/configuration-contract";
+import { resolveAgentGatewayPreferences } from "@agent-harness/configuration/gateway-settings";
+import { DEFAULT_AGENT_STEP_LIMITS } from "@agent-harness/configuration/step-limits";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AGENT_GATEWAY_CONFIG_STORAGE_KEY,
@@ -18,9 +21,6 @@ import {
   MODEL_STORAGE_KEY,
   materializeVendorDraft,
 } from "../app/renderer/src/modelCatalog";
-import type { AgentConfigurationSnapshot } from "../src/shared/agent-configuration";
-import { resolveAgentGatewayPreferences } from "../src/shared/agent-gateway-config";
-import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
 import { APPLICATION_DEFAULT_TEMPLATE_ID } from "../src/shared/template-protocol";
 
 function legacyModel(name = "Legacy Model", apiKey = "legacy-secret") {

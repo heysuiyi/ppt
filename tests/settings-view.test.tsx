@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 
+import {
+  DEFAULT_WEB_SEARCH_ENDPOINT,
+  resolveAgentGatewayPreferences,
+} from "@agent-harness/configuration/gateway-settings";
+import { DEFAULT_AGENT_STEP_LIMITS } from "@agent-harness/configuration/step-limits";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "../app/renderer/src/app/SettingsView";
 import { MAX_UI_FONT_SIZE } from "../app/renderer/src/app/uiTypography";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import {
-  DEFAULT_WEB_SEARCH_ENDPOINT,
-  resolveAgentGatewayPreferences,
-} from "../src/shared/agent-gateway-config";
-import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
 import { MAX_OUTPUT_TOKENS } from "../src/shared/generation-settings-inputs";
 
 type SettingsRegionProps = ComponentProps<typeof SettingsView>["controller"] &

@@ -68,7 +68,8 @@ import {
 import { acceptAgentRequest, assertProductionModelAdapter } from "./agent/submit-agent-request";
 import { formatMailboxMessagesForHistory, MessageBus } from "./agent/teammate/message-bus";
 import { TeammateManager } from "./agent/teammate/spawn-teammate";
-import { createAgentConfiguration, registerAgentConfigurationIpc } from "./agent-configuration";
+import { createDesktopAgentConfiguration } from "./agent-configuration/desktop-configuration";
+import { registerAgentConfigurationIpc } from "./agent-configuration/ipc";
 import { configureApplicationDataRoot, getApplicationDataRoot } from "./application-data";
 import { recoverInterruptedExport } from "./deck/export-recovery";
 import { createPptRuntime, createPptToolRegistry } from "./plugins/ppt";
@@ -400,7 +401,7 @@ app.whenReady().then(async () => {
   const sessionActiveRuns = new Map<string, string>(); // sessionId -> runId
   const activeRuns = new Map<string, AbortController>(); // runId -> AbortController
   const trustedRendererWebContentsIds = new Set<number>();
-  const agentConfiguration = createAgentConfiguration({ applicationDataRoot, safeStorage });
+  const agentConfiguration = createDesktopAgentConfiguration({ applicationDataRoot, safeStorage });
   let activeSessionId = sessionStore.getBootstrap().activeSession?.session.id ?? "";
 
   const ensureRuntime = async (snapshot: SessionSnapshot): Promise<SessionRuntime> => {

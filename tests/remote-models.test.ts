@@ -2,15 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModelProfile } from "@agent-harness/models/model-profiles";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createAgentConfiguration } from "../app/main/agent-configuration";
-import { listProviderModels } from "../app/main/agent-configuration/internal/model-discovery";
 import {
   discoverAgentModelsSchema,
   type VendorConfiguration,
-} from "../src/shared/agent-configuration";
-import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
+} from "@agent-harness/configuration/configuration-contract";
+import { DEFAULT_AGENT_STEP_LIMITS } from "@agent-harness/configuration/step-limits";
+import { getModelProfile } from "@agent-harness/models/model-profiles";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createDesktopAgentConfiguration } from "../app/main/agent-configuration/desktop-configuration";
+import { listProviderModels } from "../packages/configuration/dist/internal/model-discovery.js";
 
 const profile = getModelProfile("mimo-token-plan-cn");
 if (profile?.endpoint?.kind !== "fixed")
@@ -133,7 +133,11 @@ async function management(environment: NodeJS.ProcessEnv = {}) {
     isAsyncEncryptionAvailable: async () => true,
     isEncryptionAvailable: () => true,
   };
-  const config = createAgentConfiguration({ applicationDataRoot: root, safeStorage, environment });
+  const config = createDesktopAgentConfiguration({
+    applicationDataRoot: root,
+    safeStorage,
+    environment,
+  });
   await config.management.initialize({
     vendors: [vendor],
     gateway: { timeoutMs: 180_000, maxOutputTokens: 16_384 },
@@ -195,6 +199,39 @@ describe("adapter discovery capability", () => {
 });
 
 describe("configuration model discovery", () => {
+  it.each(["legacy", "native"] as const)(
+    "aborts in-flight %s discovery when its owning scope closes",
+    async (adapter) => {
+      const api = await management();
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      sdk.started = started.resolve;
+      sdk.waitForModels = release.promise;
+      const controller = new AbortController();
+      const discovery = api.listRemoteModels(
+        {
+          type: "draft",
+          provider: "openai",
+          baseURL: adapter === "native" ? mimoBaseURL : "https://draft.example.test/v1",
+          ...(adapter === "native" ? { modelAdapter: "mimo-token-plan-cn" as const } : {}),
+          apiKey: "cancelled-discovery-secret",
+        },
+        controller.signal,
+      );
+      // Attach the rejection handler before aborting to keep the test's rejected promise owned.
+      const rejected = expect(discovery).rejects.toThrow();
+      try {
+        await started.promise;
+        controller.abort();
+        await rejected;
+      } finally {
+        release.resolve();
+      }
+      expect(sdk.openai.length + sdk.native.length).toBe(1);
+      expect((await api.getSnapshot())!.credentials.models[0]!.configured).toBe(false);
+    },
+  );
+
   it("lists native models through the real SDK and preserves capability metadata", async () => {
     const api = await management();
     const before = await api.getSnapshot();

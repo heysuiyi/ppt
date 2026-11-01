@@ -1,9 +1,9 @@
+import type { CredentialStorageStatus } from "@agent-harness/configuration/credential-contract";
+import { normalizeCredentialUrl } from "@agent-harness/configuration/credential-contract";
 import {
   type AgentGatewayPreferences,
   DEFAULT_WEB_SEARCH_ENDPOINT,
-} from "@shared/agent-gateway-config";
-import type { CredentialStorageStatus } from "@shared/credentials";
-import { normalizeCredentialUrl } from "@shared/credentials";
+} from "@agent-harness/configuration/gateway-settings";
 import {
   MAX_OUTPUT_TOKENS,
   MIN_OUTPUT_TOKENS,

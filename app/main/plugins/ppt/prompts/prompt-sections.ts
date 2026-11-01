@@ -1,4 +1,4 @@
-import type { AgentStepLimits } from "@shared/agent-step-limits";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
 import type { SkillRegistry } from "../../../agent/skills/loadSkillsDir";
 import type { SkillCard } from "../../../agent/skills/skill-types";
 import { toToolCard } from "../../../agent/tools/tool-card";

@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 
+import type {
+  AgentConfigurationSnapshot,
+  SaveAgentVendorRequest,
+} from "@agent-harness/configuration/configuration-contract";
+import { resolveAgentGatewayPreferences } from "@agent-harness/configuration/gateway-settings";
+import { DEFAULT_AGENT_STEP_LIMITS } from "@agent-harness/configuration/step-limits";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppBootstrapSnapshot } from "../app/renderer/src/app/appBootstrap";
 import { useSettingsController } from "../app/renderer/src/app/useSettingsController";
-import type {
-  AgentConfigurationSnapshot,
-  SaveAgentVendorRequest,
-} from "../src/shared/agent-configuration";
-import { resolveAgentGatewayPreferences } from "../src/shared/agent-gateway-config";
-import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
 import { APPLICATION_DEFAULT_TEMPLATE_ID } from "../src/shared/template-protocol";
 
 function snapshot(configured = true): AgentConfigurationSnapshot {

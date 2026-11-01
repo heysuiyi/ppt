@@ -2,7 +2,7 @@ import {
   type AgentStepLimits,
   DEFAULT_AGENT_STEP_LIMITS,
   resolveAgentStepLimits,
-} from "@shared/agent-step-limits";
+} from "@agent-harness/configuration/step-limits";
 
 export const AGENT_STEP_LIMITS_STORAGE_KEY = "agent-ppt.step-limits";
 

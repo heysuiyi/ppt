@@ -1,0 +1,75 @@
+{
+  "name": "@agent-harness/configuration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "npm run build"
+  },
+  "exports": {
+    "./configuration": {
+      "types": "./dist/configuration.d.ts",
+      "import": "./dist/configuration.js"
+    },
+    "./configuration-contract": {
+      "types": "./dist/configuration-contract.d.ts",
+      "import": "./dist/configuration-contract.js"
+    },
+    "./credential-contract": {
+      "types": "./dist/credential-contract.d.ts",
+      "import": "./dist/credential-contract.js"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "import": "./dist/settings.js"
+    },
+    "./model-contract": {
+      "types": "./dist/model-contract.d.ts",
+      "import": "./dist/model-contract.js"
+    },
+    "./gateway-settings": {
+      "types": "./dist/gateway-settings.d.ts",
+      "import": "./dist/gateway-settings.js"
+    },
+    "./step-limits": {
+      "types": "./dist/step-limits.d.ts",
+      "import": "./dist/step-limits.js"
+    },
+    "./model-reasoning": {
+      "types": "./dist/model-reasoning.d.ts",
+      "import": "./dist/model-reasoning.js"
+    },
+    "./model-catalog": {
+      "types": "./dist/model-catalog.d.ts",
+      "import": "./dist/model-catalog.js"
+    },
+    "./remote-models": {
+      "types": "./dist/remote-models.d.ts",
+      "import": "./dist/remote-models.js"
+    },
+    "./node-credentials": {
+      "types": "./dist/node-credentials.d.ts",
+      "import": "./dist/node-credentials.js"
+    }
+  },
+  "dependencies": {
+    "@agent-harness/models": "0.1.0",
+    "@agent-harness/tools": "0.1.0",
+    "@anthropic-ai/sdk": "^0.104.1",
+    "openai": "^6.42.0",
+    "proper-lockfile": "^4.1.2",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,9 +1,9 @@
+import type { AgentConfigurationSnapshot } from "@agent-harness/configuration/configuration-contract";
+import type { CredentialStatusSnapshot } from "@agent-harness/configuration/credential-contract";
+import type { AgentGatewayPreferences } from "@agent-harness/configuration/gateway-settings";
+import type { AgentExecutionStrategy } from "@agent-harness/configuration/model-contract";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
 import type { DesignSystemV2 } from "@design-system";
-import type { AgentExecutionStrategy } from "@shared/agent";
-import type { AgentConfigurationSnapshot } from "@shared/agent-configuration";
-import type { AgentGatewayPreferences } from "@shared/agent-gateway-config";
-import type { AgentStepLimits } from "@shared/agent-step-limits";
-import type { CredentialStatusSnapshot } from "@shared/credentials";
 import { APPLICATION_DEFAULT_TEMPLATE_ID } from "@shared/template-protocol";
 import {
   AGENT_GATEWAY_CONFIG_STORAGE_KEY,

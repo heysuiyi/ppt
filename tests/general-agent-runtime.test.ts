@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import type { AgentCreationOptions } from "@agent-harness/core/agent-factory";
 import type { AgentServices } from "@agent-harness/core/agent-factory";
 import { createAgentApplication } from "@agent-harness/core/application/agent-application";
 import type { AgentPlugin } from "@agent-harness/core/extensions/plugin-contract";
@@ -8,15 +11,19 @@ import type {
   ModelClientFactory,
   ModelRequest,
   ModelResponse,
+  ModelSelection,
 } from "@agent-harness/core/model/model-contract";
 import type { Disposable } from "@agent-harness/core/protocol-values";
 import type { CheckpointStore } from "@agent-harness/core/session/checkpoint-contract";
+import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
+import { createSessionHost } from "@agent-harness/core/session-host";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import type { HostSessionBinding } from "../cli/host/host-session-binding.js";
 import {
   createSqliteAgentStores,
   type SqliteAgentStores,
-} from "../app/main/agent-host/sqlite-agent-stores";
+} from "../cli/host/sqlite-agent-stores.js";
 
 const selection = { providerId: "test", modelId: "reasoning-model" };
 const input = (queryId: string, runId: string) => ({
@@ -100,6 +107,7 @@ function writer(
   path: string,
   counters: { execute: number; resume: number },
   suspend = false,
+  toolVersion = "1",
 ): AgentPlugin {
   return {
     id: "documents",
@@ -108,7 +116,7 @@ function writer(
       const common = {
         name: "documents.write",
         owner: "documents",
-        version: "1",
+        version: toolVersion,
         description: "Write a local document",
         inputSchema: z.object({ content: z.string() }),
         outputSchema: z.object({ bytes: z.number() }),
@@ -218,6 +226,123 @@ function faultingCheckpoint(
     },
   };
 }
+
+function checkpointRow(path: string) {
+  const database = new DatabaseSync(path, { readOnly: true });
+  try {
+    const row = database
+      .prepare(
+        "SELECT owner_id, generation, revision, payload FROM general_agent_checkpoints WHERE agent_id = ? AND thread_id = ? AND query_id = ?",
+      )
+      .get("agent", "thread", "query") as {
+      owner_id: string | null;
+      generation: number;
+      revision: number;
+      payload: string;
+    };
+    return { ...row, checkpoint: JSON.parse(row.payload) as AgentCheckpoint };
+  } finally {
+    database.close();
+  }
+}
+
+function compatibilityCapabilities(directory: string) {
+  const counters = { execute: 0, resume: 0, audit: 0 };
+  const nonce = randomUUID();
+  const ledger = join(directory, "effects.txt");
+  const file = join(directory, "approved.txt");
+  const audit: AgentPlugin = {
+    id: "audit",
+    version: "1",
+    setup(context) {
+      context.tools.register({
+        name: "audit.record",
+        owner: "audit",
+        version: "1",
+        description: "Record one durable effect before approval",
+        mode: "immediate",
+        inputSchema: z.object({}),
+        outputSchema: z.object({ nonce: z.string() }),
+        toModelContent: (output) => [{ type: "text", text: output.nonce }],
+        async execute() {
+          counters.audit += 1;
+          await writeFile(ledger, nonce, { encoding: "utf8", flag: "wx" });
+          return { status: "succeeded", output: { nonce }, effects: "applied" };
+        },
+      });
+    },
+  };
+  const plugins = [audit, writer(file, counters, true)];
+  const first = call();
+  const request: ModelResponse = {
+    ...first,
+    message: {
+      ...first.message,
+      content: [
+        { type: "tool-call", callId: "audit-1", name: "audit.record", input: {} },
+        ...first.message.content,
+      ],
+    },
+  };
+  return {
+    counters,
+    nonce,
+    ledger,
+    file,
+    plugins,
+    request,
+    async assertEffects(resumed: boolean) {
+      expect(await readFile(ledger, "utf8")).toBe(nonce);
+      expect(counters).toEqual({ execute: 1, resume: resumed ? 1 : 0, audit: 1 });
+      if (resumed) expect(await readFile(file, "utf8")).toBe("persistent document");
+      else await expect(readFile(file)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+    complete(request: ModelRequest) {
+      expect(request.messages).toContainEqual({
+        role: "tool",
+        content: [
+          { type: "tool-result", callId: "audit-1", content: [{ type: "text", text: nonce }] },
+          {
+            type: "tool-result",
+            callId: "write-1",
+            content: [{ type: "text", text: "Document written" }],
+          },
+        ],
+      });
+      return answer("Approved durable effects complete");
+    },
+  };
+}
+
+interface CompatibilityChange {
+  name: string;
+  originalModel?: ModelSelection;
+  change?: (original: AgentCreationOptions) => AgentCreationOptions;
+  boundModel?: ModelSelection;
+}
+
+const compatibilityChanges: readonly CompatibilityChange[] = [
+  { name: "definition id", change: (o) => ({ ...o, definition: { ...o.definition, id: "other" } }) },
+  { name: "definition version", change: (o) => ({ ...o, definition: { ...o.definition, version: "2" } }) },
+  { name: "plugin order", change: (o) => ({ ...o, plugins: [...o.plugins].reverse() }) },
+  { name: "plugin addition", change: (o) => ({ ...o, plugins: [...o.plugins, { id: "extra", version: "1", setup() {} }] }) },
+  { name: "plugin removal", change: (o) => ({ ...o, plugins: o.plugins.slice(1) }) },
+  { name: "plugin id", change: (o) => ({ ...o, plugins: [{ ...o.plugins[0], id: "other-audit" }, o.plugins[1]] }) },
+  { name: "plugin version", change: (o) => ({ ...o, plugins: [{ ...o.plugins[0], version: "2" }, o.plugins[1]] }) },
+  { name: "actual provider binding", boundModel: { ...selection, providerId: "other" } },
+  { name: "actual model binding", boundModel: { ...selection, modelId: "other" } },
+  { name: "actual effort addition", boundModel: { ...selection, reasoningEffort: "high" } },
+  {
+    name: "actual effort removal",
+    originalModel: { ...selection, reasoningEffort: "high" },
+    boundModel: selection,
+  },
+  {
+    name: "actual effort change",
+    originalModel: { ...selection, reasoningEffort: "high" },
+    boundModel: { ...selection, reasoningEffort: "low" },
+  },
+];
 
 describe("general Agent execution and recovery", () => {
   it("runs a real file capability and preserves ordered tool pairs and reasoning replay", async () =>
@@ -643,4 +768,167 @@ describe("general Agent execution and recovery", () => {
         ["user", "assistant"],
       );
     }));
+
+  it("rejects a delayed new Query after another writer has durably entered waiting", async () =>
+    fixture(async (directory, own) => {
+      const path = join(directory, "approval.txt");
+      const counters = { execute: 0, resume: 0 };
+      const first = own(createSqliteAgentStores(join(directory, "state.sqlite")));
+      const second = own(createSqliteAgentStores(join(directory, "state.sqlite")));
+      const entered = Promise.withResolvers<void>();
+      const proceed = Promise.withResolvers<void>();
+      let rejectedModelCalls = 0;
+      const firstServices: AgentServices = {
+        ...services(
+          first,
+          models((request) =>
+            request.messages.some((message) => message.role === "tool")
+              ? answer("approved completion")
+              : call(),
+          ),
+        ),
+        authorizeTool: (invocation, context) => ({
+          type: "approval",
+          interaction: {
+            id: `approve:${context.identity.queryId}:${invocation.callId}`,
+            owner: "host-policy",
+            payload: { type: "documents.approval", version: 1, data: {} },
+          },
+        }),
+      };
+      const active = await own(createAgentApplication(firstServices)).agents.create(
+        options([writer(path, counters)]),
+      );
+      const delayed = await own(
+        createAgentApplication(
+          services(
+            second,
+            models(() => {
+              rejectedModelCalls += 1;
+              return answer("must not run");
+            }),
+            {
+              ...second.checkpoints,
+              async acquire(...args) {
+                entered.resolve();
+                await proceed.promise;
+                return second.checkpoints.acquire(...args);
+              },
+            },
+          ),
+        ),
+      ).agents.create(options([writer(path, counters)]));
+      const rejected = (await delayed.run(input("delayed", "delayed-run"))).completed;
+      // 先登记拒绝观察，再放行竞争方，避免失败 Promise 悬空。
+      const rejectedAssertion = expect(rejected).rejects.toMatchObject({ code: "THREAD_PENDING" });
+      try {
+        await entered.promise;
+        const waiting = await (await active.run(input("waiting", "waiting-run"))).completed;
+        expect(waiting.status).toBe("waiting");
+        if (waiting.status !== "waiting") throw new Error("Expected approval");
+        const before = await first.checkpoints.findUnfinished("agent", "thread");
+        proceed.resolve();
+        await rejectedAssertion;
+        expect(rejectedModelCalls).toBe(0);
+        expect(counters).toEqual({ execute: 0, resume: 0 });
+        expect(await second.checkpoints.findUnfinished("agent", "thread")).toEqual(before);
+        expect(await second.history.read("thread")).toEqual({
+          threadId: "thread",
+          revision: 1,
+          messages: input("waiting", "waiting-run").input,
+        });
+        const resumed = await (
+          await active.resume({
+            threadId: "thread",
+            queryId: "waiting",
+            runId: "approved-run",
+            response: { interactionId: waiting.interaction.id, type: "answer", value: true },
+          })
+        ).completed;
+        expect(resumed.status).toBe("completed");
+        expect(await readFile(path, "utf8")).toBe("persistent document");
+        expect(counters).toEqual({ execute: 1, resume: 0 });
+      } finally {
+        proceed.resolve();
+        await Promise.allSettled([rejected, rejectedAssertion]);
+      }
+    }));
+
+  it.each(["initial-save", "terminal-release"] as const)(
+    "keeps the Thread reserved across the %s boundary",
+    async (boundary) =>
+      fixture(async (directory, own) => {
+        const first = own(createSqliteAgentStores(join(directory, "state.sqlite")));
+        const second = own(createSqliteAgentStores(join(directory, "state.sqlite")));
+        const entered = Promise.withResolvers<void>();
+        const proceed = Promise.withResolvers<void>();
+        let firstSave = true;
+        let secondCalls = 0;
+        const checkpoints: CheckpointStore = {
+          ...first.checkpoints,
+          async save(...args) {
+            if (boundary === "initial-save" && firstSave) {
+              firstSave = false;
+              entered.resolve();
+              await proceed.promise;
+            }
+            return first.checkpoints.save(...args);
+          },
+          async release(lease) {
+            if (boundary === "terminal-release") {
+              entered.resolve();
+              await proceed.promise;
+            }
+            return first.checkpoints.release(lease);
+          },
+        };
+        const active = await own(
+          createAgentApplication(
+            services(
+              first,
+              models(() => answer("first reply")),
+              checkpoints,
+            ),
+          ),
+        ).agents.create(options([]));
+        const competing = await own(
+          createAgentApplication(
+            services(
+              second,
+              models(() => {
+                secondCalls += 1;
+                return answer("second reply");
+              }),
+            ),
+          ),
+        ).agents.create(options([]));
+        const running = (await active.run(input("first", "first-run"))).completed;
+        const observed = running.then(
+          (result) => ({ result }),
+          (error: unknown) => ({ error }),
+        );
+        try {
+          await entered.promise;
+          await expect(
+            (await competing.run(input("second", "blocked-run"))).completed,
+          ).rejects.toMatchObject({ code: "THREAD_PENDING" });
+          expect(secondCalls).toBe(0);
+          proceed.resolve();
+          expect(await running).toMatchObject({ status: "completed" });
+          expect(
+            await (await competing.run(input("second", "allowed-run"))).completed,
+          ).toMatchObject({ status: "completed" });
+          expect(secondCalls).toBe(1);
+          expect((await second.history.read("thread")).messages).toEqual([
+            ...input("first", "first-run").input,
+            answer("first reply").message,
+            ...input("second", "allowed-run").input,
+            answer("second reply").message,
+          ]);
+        } finally {
+          proceed.resolve();
+          await observed;
+        }
+      }),
+  );
 });

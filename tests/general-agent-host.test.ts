@@ -1,11 +1,12 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import type { ModelMessage, ModelSelection } from "@agent-harness/core/model/model-contract";
 import type { CheckpointKey } from "@agent-harness/core/session/checkpoint-contract";
 import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
 import { afterEach, describe, expect, it } from "vitest";
-import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
+import { createSqliteAgentStores } from "../cli/host/sqlite-agent-stores.js";
 
 const cleanup: Array<() => void | Promise<void>> = [];
 const selected: ModelSelection = { providerId: "configured-host", modelId: "host-model" };
@@ -177,39 +178,113 @@ describe("durable general agent stores", () => {
     expect(await first.checkpoints.findUnfinished(key.agentId, key.threadId)).toBeNull();
   });
 
-  it("finds the most recently saved running, waiting, or interrupted query, not a terminal query", async () => {
+  it("blocks new queries until each released unfinished query is resumed and completed", async () => {
     const stores = openStores(databasePath());
     expect(await stores.checkpoints.findUnfinished("agent", "thread")).toBeNull();
-    for (const [queryId, status] of [
-      ["running", "running"],
-      ["waiting", "waiting"],
-      ["interrupted", "interrupted"],
-      ["terminal", "completed"],
-    ] as const) {
-      const identity = { ...key, queryId };
-      const activation = await stores.checkpoints.acquire(identity, queryId);
+    for (const status of ["running", "waiting", "interrupted"] as const) {
+      const identity = { ...key, queryId: status };
+      const activation = await stores.checkpoints.acquire(identity, "writer");
       if (activation.status !== "acquired") throw new Error("Expected acquisition.");
-      await stores.checkpoints.save(activation.lease, 0, checkpoint(identity, status));
+      expect(
+        await stores.checkpoints.save(activation.lease, 0, checkpoint(identity, status)),
+      ).toEqual({
+        status: "saved",
+        revision: 1,
+      });
       await stores.checkpoints.release(activation.lease);
+      expect(await stores.checkpoints.findUnfinished("agent", "thread")).toEqual(
+        checkpoint(identity, status),
+      );
+      expect(await stores.checkpoints.findUnfinished("other-agent", "thread")).toBeNull();
+      expect(await stores.checkpoints.acquire(key, "new-query")).toEqual({
+        status: "thread-pending",
+        queryId: status,
+      });
+      const resumed = await stores.checkpoints.acquire(identity, "resume");
+      if (resumed.status !== "acquired") throw new Error("Expected same-query resumption.");
+      expect(resumed.currentRevision).toBe(1);
+      expect(resumed.lease.generation).toBe(2);
+      expect(
+        await stores.checkpoints.save(resumed.lease, 1, checkpoint(identity, "completed")),
+      ).toEqual({ status: "saved", revision: 2 });
+      expect(await stores.checkpoints.findUnfinished("agent", "thread")).toBeNull();
+      expect(await stores.checkpoints.acquire(key, "before-release")).toEqual({
+        status: "thread-pending",
+        queryId: status,
+      });
+      await stores.checkpoints.release(resumed.lease);
     }
-    expect(await stores.checkpoints.findUnfinished("agent", "thread")).toMatchObject({
-      queryId: "interrupted",
-      status: "interrupted",
+    const next = await stores.checkpoints.acquire(key, "new-query");
+    expect(next).toMatchObject({
+      status: "acquired",
+      currentRevision: 0,
+      checkpoint: null,
+      lease: { generation: 1 },
     });
-    expect(await stores.checkpoints.findUnfinished("other-agent", "thread")).toBeNull();
-    const interrupted = await stores.checkpoints.acquire(
-      { ...key, queryId: "interrupted" },
-      "close",
-    );
-    if (interrupted.status !== "acquired") throw new Error("Expected acquisition.");
-    await stores.checkpoints.save(
-      interrupted.lease,
-      1,
-      checkpoint(interrupted.lease.key, "cancelled"),
-    );
-    expect(await stores.checkpoints.findUnfinished("agent", "thread")).toMatchObject({
-      queryId: "waiting",
-      status: "waiting",
+  });
+
+  it("admits atomically before first save and preserves released empty-row generations", async () => {
+    const path = databasePath();
+    const first = openStores(path);
+    const second = openStores(path);
+    const otherKey = { ...key, queryId: "other" };
+    const empty = await first.checkpoints.acquire(key, "first");
+    if (empty.status !== "acquired") throw new Error("Expected initial empty lease.");
+    expect(await second.checkpoints.findUnfinished(key.agentId, key.threadId)).toBeNull();
+    expect(await second.checkpoints.acquire(otherKey, "second")).toEqual({
+      status: "thread-pending",
+      queryId: key.queryId,
+    });
+    expect(
+      await second.checkpoints.acquire(otherKey, "second", {
+        replace: { ...empty.lease, key: otherKey },
+      }),
+    ).toEqual({ status: "stale" });
+    expect(await second.checkpoints.acquire(key, "first")).toEqual({
+      status: "busy",
+      lease: empty.lease,
+    });
+    expect(
+      await second.checkpoints.acquire(key, "replacement", {
+        replace: { ...empty.lease, generation: 0 },
+      }),
+    ).toEqual({ status: "stale" });
+    for (const independent of [
+      { ...key, threadId: "other-thread" },
+      { ...key, agentId: "other-agent" },
+    ]) {
+      const acquired = await second.checkpoints.acquire(independent, "independent");
+      expect(acquired.status).toBe("acquired");
+      if (acquired.status !== "acquired") throw new Error("Expected independent admission.");
+      await second.checkpoints.release(acquired.lease);
+    }
+    await first.checkpoints.release(empty.lease);
+    const other = await second.checkpoints.acquire(otherKey, "second");
+    expect(other).toMatchObject({ status: "acquired", lease: { generation: 1 } });
+    if (other.status !== "acquired") throw new Error("Expected empty release to unblock.");
+    expect(await first.checkpoints.acquire(key, "blocked")).toEqual({
+      status: "thread-pending",
+      queryId: otherKey.queryId,
+    });
+    await second.checkpoints.release(other.lease);
+    const reacquired = await first.checkpoints.acquire(key, "first-again");
+    expect(reacquired).toMatchObject({
+      status: "acquired",
+      lease: { generation: 2 },
+      currentRevision: 0,
+      checkpoint: null,
+    });
+    if (reacquired.status !== "acquired") throw new Error("Expected preserved empty row.");
+    await first.checkpoints.save(reacquired.lease, 0, checkpoint(key, "completed"));
+    expect(await second.checkpoints.acquire(otherKey, "before-terminal-release")).toEqual({
+      status: "thread-pending",
+      queryId: key.queryId,
+    });
+    await first.checkpoints.release(reacquired.lease);
+    expect(await second.checkpoints.acquire(otherKey, "after-terminal-release")).toMatchObject({
+      status: "acquired",
+      lease: { generation: 2 },
+      currentRevision: 0,
     });
   });
 
@@ -255,6 +330,49 @@ describe("durable general agent stores", () => {
       status: "appended",
       revision: 1,
     });
+  });
+
+  it("reads a committed history snapshot while another connection holds an uncommitted write", async () => {
+    const path = databasePath();
+    const stores = openStores(path);
+    const first: ModelMessage = { role: "user", content: [{ type: "text", text: "committed" }] };
+    const second: ModelMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "next committed answer" }],
+    };
+    expect(await stores.history.append("thread", 0, [first], "first")).toEqual({
+      status: "appended",
+      revision: 1,
+    });
+    const writer = new DatabaseSync(path);
+    cleanup.push(() => writer.close());
+    writer.exec("BEGIN IMMEDIATE");
+    writer.prepare("UPDATE general_agent_history SET revision = 2 WHERE thread_id = ?").run("thread");
+    writer
+      .prepare(
+        "INSERT INTO general_agent_history_batches(thread_id, batch_id, revision, payload) VALUES (?, ?, ?, ?)",
+      )
+      .run("thread", "second", 2, JSON.stringify([second]));
+    // 读必须在 writer 提交前完成，且 head 与消息只能来自同一已提交视图。
+    expect(await stores.history.read("thread")).toEqual({
+      threadId: "thread",
+      revision: 1,
+      messages: [first],
+    });
+    writer.exec("COMMIT");
+    expect(await stores.history.read("thread")).toEqual({
+      threadId: "thread",
+      revision: 2,
+      messages: [first, second],
+    });
+    expect(await stores.history.read("absent")).toEqual({
+      threadId: "absent",
+      revision: 0,
+      messages: [],
+    });
+    expect(
+      writer.prepare("SELECT thread_id FROM general_agent_history WHERE thread_id = ?").get("absent"),
+    ).toBeUndefined();
   });
 
   it("does not reserve an uncommitted batch on CAS conflict and rejects lossy protocol values", async () => {

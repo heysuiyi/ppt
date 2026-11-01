@@ -1,6 +1,7 @@
+import type { Logger } from "@agent-harness/logs/logs";
+import type { AgentModelSelection } from "@agent-harness/configuration/model-contract";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
 import type { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
-import type { AgentModelSelection } from "@shared/agent";
-import type { AgentStepLimits } from "@shared/agent-step-limits";
 import type { AgentTaskNode } from "@shared/agent-task-list";
 import type { Presentation } from "@shared/presentation";
 import type {
@@ -171,8 +172,9 @@ export interface ToolContext {
   readonly filePolicy?: WorkspaceFilePolicy;
   /** Model gateway for teammate delegation. */
   readonly gateway?: AgentModelGateway;
+  readonly logger?: Logger;
   /** Search credentials for web/image tools; not read from model gateway config. */
-  readonly searchConfig?: import("@shared/agent-gateway-config").AgentSearchConfig;
+  readonly searchConfig?: import("@agent-harness/configuration/gateway-settings").AgentSearchConfig;
   /** Active model selection for teammate delegation. */
   readonly model?: AgentModelSelection;
   readonly signal?: AbortSignal;

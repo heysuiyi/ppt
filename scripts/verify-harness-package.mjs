@@ -199,12 +199,20 @@ function memoryPorts() {
     async acquire(key, ownerId, options) {
       const id = keyOf(key);
       let row = rows.get(id);
+      if (options?.replace && !sameValue(row?.lease, options.replace)) return { status: "stale" };
+      if (row?.lease && !options?.replace) return { status: "busy", lease: snapshot(row.lease) };
+      // 首存前和终态释放前仍占用线程；释放空行保留代际，但不再阻塞其他查询。
+      for (const other of rows.values()) {
+        if (other.key.agentId === key.agentId && other.key.threadId === key.threadId
+          && other.key.queryId !== key.queryId
+          && (other.lease || (other.checkpoint && ["running", "waiting", "interrupted"].includes(other.checkpoint.status)))) {
+          return { status: "thread-pending", queryId: other.key.queryId };
+        }
+      }
       if (!row) {
         row = { key: snapshot(key), generation: 0, revision: 0, savedAt: 0, lease: null, checkpoint: null };
         rows.set(id, row);
       }
-      if (options?.replace && !sameValue(row.lease, options.replace)) return { status: "stale" };
-      if (row.lease && !options?.replace) return { status: "busy", lease: snapshot(row.lease) };
       row.lease = { key: snapshot(key), ownerId, generation: ++row.generation };
       return { status: "acquired", lease: snapshot(row.lease), currentRevision: row.revision, checkpoint: snapshot(row.checkpoint) };
     },
@@ -334,6 +342,8 @@ async function toolCase(mode: "approve" | "reject" | "deny" | "invalid") {
     equal(result.interaction, interaction, "Waiting must expose the stored interaction");
     check(sideEffects === before, "Waiting must not execute the tool");
     check((await ports.checkpoints.findUnfinished("tool-" + mode, "thread-" + mode))?.status === "waiting", "Waiting checkpoint must be committed before return");
+    equal(await ports.checkpoints.acquire({ agentId: "tool-" + mode, threadId: "thread-" + mode, queryId: "blocked" }, "writer"),
+      { status: "thread-pending", queryId: "query-" + mode }, "Released waiting checkpoint must block a different query");
     result = await finish(await host.resume({
       queryId: "query-" + mode, runId: "resumed-" + mode,
       response: mode === "approve" ? { interactionId: interaction.id, type: "answer", value: true } : { interactionId: interaction.id, type: "reject" },
@@ -394,13 +404,56 @@ check((await store.acquire(key, "writer-3", { replace: second.lease })).status =
 const third = await store.acquire(key, "writer-3");
 check(third.status === "acquired" && third.lease.generation > second.lease.generation && third.currentRevision === saved.revision, "Release must preserve revision and never reuse generation");
 await store.release(third.lease);
+// 只通过公共存储操作验证准入，不能绕过规则拼装多个 unfinished 行。
+const admission = memoryPorts().checkpoints;
+const admissionKey = { agentId: "admission", threadId: "thread", queryId: "first" };
+const candidateKey = { ...admissionKey, queryId: "next" };
+const empty = await admission.acquire(admissionKey, "empty");
+check(empty.status === "acquired", "Initial empty lease");
+equal(await admission.acquire(candidateKey, "blocked"), { status: "thread-pending", queryId: "first" }, "Owner without payload must reserve thread");
+equal(await admission.acquire(candidateKey, "stale", { replace: { ...empty.lease, key: candidateKey } }), { status: "stale" }, "Replacement comparison precedes thread admission");
+equal(await admission.acquire(admissionKey, "busy"), { status: "busy", lease: empty.lease }, "Target owner must report busy");
+equal(await admission.acquire(admissionKey, "stale", { replace: { ...empty.lease, generation: 0 } }), { status: "stale" }, "Stale replacement precedes target busy");
+for (const independent of [{ ...admissionKey, threadId: "other" }, { ...admissionKey, agentId: "other" }]) {
+  const acquired = await admission.acquire(independent, "independent");
+  check(acquired.status === "acquired", "Thread and agent scopes must be independent");
+  await admission.release(acquired.lease);
+}
+await admission.release(empty.lease);
+const candidate = await admission.acquire(candidateKey, "next");
+check(candidate.status === "acquired" && candidate.lease.generation === 1, "Rejected acquire must not consume generation; released empty row must not block");
+equal(await admission.acquire(admissionKey, "blocked"), { status: "thread-pending", queryId: "next" }, "Existing released empty target must not bypass other owner");
+await admission.release(candidate.lease);
+const preserved = await admission.acquire(admissionKey, "again");
+check(preserved.status === "acquired" && preserved.lease.generation === 2 && preserved.currentRevision === 0 && preserved.checkpoint === null, "Empty release must preserve generation");
+const terminal: AgentCheckpoint = { ...first.checkpoint, ...admissionKey, status: "completed" };
+equal(await admission.save(preserved.lease, 0, terminal), { status: "saved", revision: 1 }, "Save terminal checkpoint");
+equal(await admission.acquire(candidateKey, "blocked"), { status: "thread-pending", queryId: "first" }, "Terminal checkpoint still reserves thread until release");
+await admission.release(preserved.lease);
+for (const status of ["running", "interrupted"] as const) {
+  const identity = { ...admissionKey, queryId: status };
+  const active = await admission.acquire(identity, status);
+  check(active.status === "acquired", "Admit next unfinished query after terminal release");
+  const unfinished: AgentCheckpoint = { ...terminal, ...identity, status };
+  const saved = await admission.save(active.lease, active.currentRevision, unfinished);
+  check(saved.status === "saved", "Save unfinished checkpoint");
+  await admission.release(active.lease);
+  equal(await admission.acquire(candidateKey, "blocked"), { status: "thread-pending", queryId: status }, "Released unfinished checkpoint must continue reserving thread");
+  const resumed = await admission.acquire(identity, "resume");
+  check(resumed.status === "acquired", "Same-query resume remains legal");
+  check((await admission.save(resumed.lease, resumed.currentRevision, { ...terminal, ...identity })).status === "saved", "Complete resumed query");
+  await admission.release(resumed.lease);
+}
+const admitted = await admission.acquire(candidateKey, "after-release");
+check(admitted.status === "acquired" && admitted.lease.generation === 2, "Terminal release must admit next query and preserve its prior empty generation");
+await admission.release(admitted.lease);
 
 console.log(JSON.stringify({
   nativeNode: true, plainConversation: true, zodSchema: true,
   approvalWaitingResume: true, rejectionWithoutEffects: true, policyDenialWithoutEffects: true,
   schemaValidationBeforeAuthorization: true, borrowedHistoryAfterClose: true,
   publicAgentErrorIdentity: true, protocolErrorConversion: true,
-  inMemoryPorts: { historyIdempotency: true, revisionCas: true, leaseFencing: true, crossProcessDurability: false },
+  inMemoryPorts: { historyIdempotency: true, revisionCas: true, leaseFencing: true, threadAdmission: true, crossProcessDurability: false },
 }));
 `;
 

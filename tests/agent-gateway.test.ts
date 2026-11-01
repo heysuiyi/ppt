@@ -1,3 +1,4 @@
+import type { AgentModelSettings } from "@agent-harness/configuration/model-contract";
 import { describe, expect, it } from "vitest";
 import {
   AgentModelSettingsRegistry,
@@ -6,7 +7,6 @@ import {
   resolveFallbackModelSelection,
 } from "../app/main/agent/gateway/config";
 import { AgentGatewayError } from "../app/main/agent/gateway/errors";
-import type { AgentModelSettings } from "../src/shared/agent";
 
 function settingsRegistry(...primarySettings: AgentModelSettings[]): AgentModelSettingsRegistry {
   const registry = new AgentModelSettingsRegistry();

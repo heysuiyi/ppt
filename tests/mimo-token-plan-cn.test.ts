@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentConfiguration, ExecutionPlan } from "@agent-harness/configuration/configuration";
 import type {
   ModelAssistantMessage,
   ModelBinding,
@@ -16,11 +17,10 @@ import { ModelProviderError } from "@agent-harness/models/model-errors";
 import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import { createModelProvider } from "@agent-harness/models/models";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentConfiguration, ExecutionPlan } from "../app/main/agent-configuration";
-import { prepareConfiguredModel } from "../app/main/agent-host/configured-model-factory";
-import { createAgentHost } from "../app/main/agent-host/create-agent-host";
-import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
-import { publicDevelopmentError } from "../cli/commands/development-command";
+import { prepareConfiguredModel } from "../cli/host/configured-model-factory.js";
+import { createAgentHost } from "../cli/host/create-agent-host.js";
+import { createSqliteAgentStores } from "../cli/host/sqlite-agent-stores.js";
+import { terminalError } from "../cli/terminal/terminal-projection.js";
 
 const adapterId = "mimo-token-plan-cn";
 const profile = getModelProfile(adapterId)!;
@@ -979,12 +979,10 @@ describe("MiMo configured host error boundary", () => {
       expect(result).toMatchObject({ status: "failed", error: { code, message } });
       expect(JSON.stringify(result)).not.toMatch(/private SDK|tp-synthetic/u);
       await host.close();
-      const stores = createSqliteAgentStores(join(directory, "agent-development.sqlite"));
+      const stores = createSqliteAgentStores(join(directory, "sessions.sqlite"));
       hostCleanup.push(() => stores.dispose());
-      const saved = await stores.checkpoints.acquire(
-        { agentId: "development-agent", threadId: "thread", queryId: "query" },
-        "inspector",
-      );
+      const { agentId, threadId, queryId } = handle.identity;
+      const saved = await stores.checkpoints.acquire({ agentId, threadId, queryId }, "inspector");
       if (saved.status !== "acquired") throw new Error("Expected released execution lease");
       expect(saved.checkpoint).toMatchObject({ status: "failed", error: { code, message } });
       await stores.checkpoints.release(saved.lease);
@@ -1021,8 +1019,8 @@ describe("MiMo configured host error boundary", () => {
         failure = error;
       }
       expect(failure).toBeInstanceOf(AgentError);
-      expect(publicDevelopmentError(failure)).toMatchObject({ code });
-      expect(JSON.stringify(publicDevelopmentError(failure))).not.toContain("tp-synthetic");
+      expect(terminalError(failure)).toMatchObject({ code });
+      expect(JSON.stringify(terminalError(failure))).not.toContain("tp-synthetic");
       expect(observed).toHaveLength(0);
     },
   );

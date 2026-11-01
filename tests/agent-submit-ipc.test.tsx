@@ -95,8 +95,10 @@ describe("Renderer submit boundary", () => {
         saveAgentPreferences: vi.fn().mockRejectedValue(new Error("settings write failed")),
       },
     });
-    const { agentPreferencesSchema } = await import("../src/shared/agent-configuration");
-    const { DEFAULT_AGENT_STEP_LIMITS } = await import("../src/shared/agent-step-limits");
+    const { agentPreferencesSchema } = await import(
+      "@agent-harness/configuration/configuration-contract"
+    );
+    const { DEFAULT_AGENT_STEP_LIMITS } = await import("@agent-harness/configuration/step-limits");
     const preferences = agentPreferencesSchema.parse({
       gateway: {},
       stepLimits: DEFAULT_AGENT_STEP_LIMITS,

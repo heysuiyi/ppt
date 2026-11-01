@@ -1,9 +1,13 @@
-import type { AgentModelSelection, AgentModelSettings, AgentProvider } from "@shared/agent";
 import {
   type AgentGatewayConfig,
   DEFAULT_AGENT_GATEWAY_CONFIG,
-} from "@shared/agent-gateway-config";
-import { getModelReasoningEfforts } from "@shared/model-reasoning";
+} from "@agent-harness/configuration/gateway-settings";
+import type {
+  AgentModelSelection,
+  AgentModelSettings,
+  AgentProvider,
+} from "@agent-harness/configuration/model-contract";
+import { getModelReasoningEfforts } from "@agent-harness/configuration/model-reasoning";
 import { AgentGatewayError } from "./errors";
 import type { ResolvedAgentModelConfig } from "./types";
 

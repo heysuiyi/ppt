@@ -1,10 +1,13 @@
 import { join } from "node:path";
+import type {
+  AgentExecutionStrategy,
+  AgentModelSelection,
+} from "@agent-harness/configuration/model-contract";
 import {
   readJsonFile,
   writeJsonFileAtomic,
   writeTextFileAtomic,
 } from "@agent-harness/tools/atomic-files";
-import type { AgentExecutionStrategy, AgentModelSelection } from "@shared/agent";
 import type { AgentConversationMessage } from "@shared/session-recovery";
 import type { Storage } from "../../storage";
 

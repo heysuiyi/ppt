@@ -1,4 +1,4 @@
-import type { AgentProvider } from "@shared/agent";
+import type { AgentProvider } from "@agent-harness/configuration/model-contract";
 import type { StopReason } from "./types";
 
 export type AgentGatewayErrorCode =

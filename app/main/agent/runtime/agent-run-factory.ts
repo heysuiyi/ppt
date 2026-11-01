@@ -1,8 +1,12 @@
+import type { Logger } from "@agent-harness/logs/logs";
+import {
+  getEffectiveMainMaxSteps,
+  resolveAgentStepLimits,
+} from "@agent-harness/configuration/step-limits";
 import {
   canonicalizeWorkspaceRoot,
   WorkspaceFileService,
 } from "@agent-harness/tools/workspace-files";
-import { getEffectiveMainMaxSteps, resolveAgentStepLimits } from "@shared/agent-step-limits";
 import type { TeammateProgressEvent } from "@shared/teammate-progress";
 import type { ConversationDatabase } from "../../conversation-database";
 import type { AgentModelGateway } from "../gateway";
@@ -41,6 +45,7 @@ export class AgentRunFactory {
     private readonly skillRegistry: SkillRegistry = createEmptySkillRegistry(),
     private readonly conversationDatabase?: ConversationDatabase,
     private readonly plugin?: RuntimePlugin,
+    private readonly logger?: Logger,
   ) {}
 
   async open(options: AgentRuntimeOptions): Promise<AgentRunScope> {
@@ -49,6 +54,7 @@ export class AgentRunFactory {
     return await AgentRunScope.open({
       options,
       conversationDatabase: this.conversationDatabase,
+      logger: this.logger,
       resolveDiscoverySession: (recovered) => {
         const session = this.discoverySessions.get(options.threadId) ?? {
           discoveredToolNames: new Set<string>(recovered?.discoveredToolNames ?? []),
@@ -83,6 +89,7 @@ export class AgentRunFactory {
       workspaceRoot: options.workspaceRoot,
       fileService: this.resolveFileService(options.threadId, options.workspaceRoot),
       gateway: this.gateway,
+      logger: this.logger,
       searchConfig: this.gateway.getSearchConfig?.(),
       model: options.model,
       signal: scope.signal,
@@ -170,6 +177,7 @@ export class AgentRunFactory {
       run: new PreparedAgentRun({
         scope,
         gateway: this.gateway,
+        logger: this.logger,
         conversationDatabase: this.conversationDatabase,
         systemPrompt,
         toolSchemas: toToolSchemas(coreTools),

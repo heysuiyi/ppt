@@ -1,4 +1,4 @@
-import type { AgentSearchConfig } from "@shared/agent-gateway-config";
+import type { AgentSearchConfig } from "@agent-harness/configuration/gateway-settings";
 import { executeWebSearch, type WebSearchOutput } from "./web-search";
 
 export const FREE_IMAGE_DOMAINS = [

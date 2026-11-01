@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": false,
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": "dist",
+    "declaration": true,
+    "noEmitOnError": true
+  },
+  "include": ["main.ts", "commands/**/*.ts", "terminal/**/*.ts", "host/**/*.ts"],
+  "exclude": ["dist", "**/*.test.ts"]
+}

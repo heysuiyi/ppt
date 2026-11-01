@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ModelMessage } from "@agent-harness/core/model/model-contract";
 import { afterEach, describe, expect, it } from "vitest";
-import type { HostSessionBinding } from "../app/main/agent-host/host-session-binding";
+import type { HostSessionBinding } from "../cli/host/host-session-binding.js";
 import {
   createSqliteAgentStores,
   type SqliteAgentStores,
-} from "../app/main/agent-host/sqlite-agent-stores";
+} from "../cli/host/sqlite-agent-stores.js";
 
 const cleanup: Array<() => void | Promise<void>> = [];
 const user: ModelMessage = { role: "user", content: [{ type: "text", text: "inspect" }] };

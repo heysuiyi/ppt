@@ -1,4 +1,4 @@
-import type { AgentSearchConfig } from "@shared/agent-gateway-config";
+import type { AgentSearchConfig } from "@agent-harness/configuration/gateway-settings";
 import { z } from "zod";
 import { createSearchService } from "./search-service";
 import type { WebSearchImageResult, WebSearchResult } from "./types";

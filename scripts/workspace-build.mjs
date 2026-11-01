@@ -2,16 +2,16 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const packages = ["harness", "logs", "models", "tools"];
+const packages = ["harness", "logs", "models", "tools", "configuration"];
 
-export function buildPackages() {
+export function buildPackages({ stderr = false } = {}) {
   for (const name of packages) {
     execFileSync(
       process.execPath,
       [fileURLToPath(new URL(`../packages/${name}/build.mjs`, import.meta.url))],
       {
         cwd: fileURLToPath(new URL(`../packages/${name}/`, import.meta.url)),
-        stdio: "inherit",
+        stdio: stderr ? ["ignore", 2, 2] : "inherit",
       },
     );
   }

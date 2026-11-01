@@ -40,7 +40,7 @@ import type {
   WriteOutput,
 } from "@agent-harness/tools/tools-contract";
 import { describe, expect, it, vi } from "vitest";
-import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
+import { createSqliteAgentStores } from "../cli/host/sqlite-agent-stores.js";
 import { installPlugins } from "../packages/harness/dist/agent/extensions/plugin-manager.js";
 import { PromptRegistry } from "../packages/harness/dist/agent/extensions/prompt-registry.js";
 import { ModelRegistry } from "../packages/harness/dist/agent/model/model-registry.js";

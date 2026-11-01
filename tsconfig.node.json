@@ -45,5 +45,6 @@
     "app/renderer/src/app/agent/agentRunPreparation.ts",
     "app/renderer/src/app/presentation/exportExpectations.ts",
     "tests/**/*.ts"
-  ]
+  ],
+  "exclude": ["cli/dist"]
 }

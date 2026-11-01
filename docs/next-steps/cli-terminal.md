@@ -1,12 +1,12 @@
-# 独立 Node CLI：终端设计与并行执行方案
+# 独立 Node CLI：终端设计与生产直切执行方案
 
 [返回计划目录](README.md) · [项目整体规划](../project-plan.md) · [Tools 收敛](tools-package.md) · [页面 UI 方案](ui-design-system.md)
 
-状态：2026-11-01 已按 Oh My Pi 官方 CLI/TUI 设计修订，并制定第一步 C0 的执行方案（第 8.1 节）；C0–C4 实施与验收仍待执行。本轮仅更新执行方案与导航，不修改现有 CLI、tools、Electron 桥接或根命令。Tools 抽取独立推进；参考不等于复刻 OMP 运行时或其功能已在本项目实现。
+状态：2026-11-01 C0 终端契约已实现并通过本地编译消费验收，证据见第 8.2 节。按最新交付决定，下一轮合并 C1–C4 为一次生产 CLI 直切交付，执行方案见第 8.3 节；不再先交付独立预览，不保留旧 CLI 兼容入口。Tools 单包五入口已有本地验收记录。本轮仅调整方案，尚未实现新终端、Node 宿主或切换命令；真实凭据、持久化与行为验收仍是交付条件。
 
 ## 1. 结论、目标与范围
 
-先独立完成终端呈现、输入状态机和可运行的本地场景入口，与 tools 抽取并行；待真实 Node 宿主及 tools 的受支持公开面就绪，再统一接入新的 Harness。清空根 `src/`、迁移 PPT 或完成新页面 UI 都不是本方案前置。
+下一轮直接交付真实可用的 Node CLI：终端呈现、输入状态机、宿主配置/凭据/持久化与根入口切换在同一轮完成，使用现有 Core/models/logs/tools 的受支持公开面。旧 CLI 不承担向后兼容要求，不先维护预览版或双轨入口；清空根 `src/`、迁移 PPT 或完成新页面 UI 都不是前置。用户允许直接切换 CLI，不等于授权删除桌面实现、凭据或已有数据库。
 
 终端是 Node 宿主的输入输出层，不是另一套 Agent Loop。终端调用 Core 公开执行协议，模型、配置、凭据、持久化、授权和能力装配由宿主负责。终端完成不等于纯 Node 运行时已完成；受控场景不等于真实模型或文件验收。
 
@@ -16,7 +16,7 @@
 - stdout/stderr 分工、明确的 JSONL 模式和退出语义。
 - 单一输入所有者、多行输入、命令、等待、EOF、取消、中断与恢复交互。
 - 基于现有 Core 公开协议的安全展示投影，不依赖具体工具载荷。
-- 本地终端场景、定向行为回归、真实终端烟测及后续统一接入门槛。
+- 定向行为回归、真实生产终端/管道烟测及完整生产切换；本地受控场景用于验证同一套实际组件，不作为单独预览产品或交付前置。
 
 不包含：重写 tools、PPT/文件管理界面、默认全屏备用屏幕、鼠标操作、文件/图片附件、任意补全/扩展框架、Vim 模式、外部编辑器、后台排队、自动重试、通用跨端展示协议、当前桌面配置/数据库迁移。首轮包含本地斜杠命令补全，不将其扩成文件扫描或插件发现。Node 凭据及持久化适配必须真实实现，但不在终端呈现切片中伪造或临时降级。
 
@@ -98,7 +98,7 @@ Enter 发送  Alt+Enter 换行  / 命令  Esc 取消当前局部操作
 | --- | --- |
 | history 与 mutable viewport 分离、差量重绘 | 采用职责分离；首轮只实现 inline 所需部分，不复制完整渲染引擎 |
 | Composer、多行编辑、键盘选择器、工具展开 | 采用交互形式，具体按键与安全边界见第 5 节 |
-| 独立 print 与 JSON 事件模式、确定性 gallery | 采用模式分离和独立场景预览，不复制 OMP 的事件 schema 或 CLI 命名 |
+| 独立 print 与 JSON 事件模式、确定性 gallery | 采用模式分离与确定性行为场景；不要求独立预览命令，不复制 OMP 的事件 schema 或 CLI 命名 |
 | 工具输出与模型/会话选择 | 默认摘要、可展开和可搜索；只展示真实可用项，不复制模型角色系统 |
 | Ctrl+C 清草稿、Esc 处理局部交互/中断 | 采用按状态分工；待决交互不能因 Esc 直接变成拒绝，见本项目取消规则 |
 | follow-up 队列、retry、后台任务、Agent Hub、RPC/ACP/TSP、Vim/图片/语音 | 不纳入首轮；不能仅为外观类似而伪造或扩展 Harness 能力 |
@@ -141,7 +141,7 @@ JSONL 属于 CLI 的版本化消费协议，不是 Core 原始事件或未来 IP
 | 143 | 宿主终止/关闭中断，正常排空后退出；不冒充用户取消 |
 | 141 | 下游管道关闭 EPIPE，执行已排空且没有更高优先级的关闭/持久化错误 |
 
-关闭、持久化或输出未知结果优先于“完成/取消”成功提示；不得为了凑固定退出码掩盖实际 waiting 或提交不确定。当前旧 CLI 可以在 waiting EOF 时返回 0，新协议改为 3 是显式破坏性变更，不能在独立场景阶段偷偷切换根命令。
+关闭、持久化或输出未知结果优先于“完成/取消”成功提示；不得为了凑固定退出码掩盖实际 waiting 或提交不确定。当前旧 CLI 可以在 waiting EOF 时返回 0，新协议改为 3 是本轮生产直切中明确接受的破坏性变更，帮助、消费方与测试同步迁移，不保留旧码兼容。
 
 ## 5. 输入所有权与命令
 
@@ -201,7 +201,7 @@ stateDiagram-v2
 
 ### 5.3 首轮命令面
 
-下表是新 CLI 的目标接口，不表示当前命令已支持。终端预览只能执行具名受控场景；C3/C4 真实接入后才开放模型、会话和能力操作，不能用无效按钮式命令或假成功占位。
+下表是下一轮必须真实交付的生产 CLI 接口，目前尚未支持。模型、会话和能力操作直接接真实宿主，不以预览选项或假成功命令占位；受控测试的场景数据不得出现在生产模型/会话目录。
 
 | 命令/参数 | 行为与边界 |
 | --- | --- |
@@ -269,63 +269,72 @@ stateDiagram-v2
 
 ## 7. 目录、依赖与并行协作
 
-按职责使用具名文件，不预建空文件、不新增聚合 index.ts；以下是计划落点而非已实现结构：
+按职责使用具名文件，不预建空文件、不新增聚合 index.ts。当前只有 `terminal-contract.ts` 已实现；以下为下一轮落点，最终拆分以实际职责为准：
 
 ```text
 cli/
+  main.ts                      # 真实 Node 入口；先解析参数，按需加载宿主
+  commands/
+    terminal-command.ts        # argv、本地斜杠命令和帮助
   terminal/
-    terminal-contract.ts       # 呈现/输入能力与 TerminalRecord 具名类型
-    terminal-controller.ts     # 输入所有权、活动句柄和退出协调
+    terminal-contract.ts       # 已有呈现/输入类型与 TerminalRecord
+    terminal-controller.ts     # 单输入 owner、活动句柄、等待与退出协调
     terminal-projection.ts     # Core 公开事件/结果到安全 record
-    human-renderer.ts          # print/plain 追加输出，不持有 TUI 光标
-    interactive-renderer.ts    # history 与 mutable viewport 的单 writer
-    composer.ts                # 草稿、光标、多行和就绪提交门槛
-    tool-card.ts               # 安全摘要、展开与关键状态
-    selector.ts                # 命令/模型/会话/确认的受控选择，不拥有业务数据
-    status-line.ts             # 只展示真实上下文；窄屏降级
-    jsonl-renderer.ts          # 版本化 JSONL
-    node-terminal.ts           # 模式探测、raw/readline/管道互斥、信号及背压
-  preview/
-    main.ts                    # 明确标识的本地终端场景，不接模型或文件
-    scenarios.ts               # 按 Core 公开类型构造的确定性输入序列
-  main.ts                      # 后续真实 Node 组合入口，统一接入时创建
+    human-renderer.ts          # print/plain
+    interactive-renderer.ts    # history/viewport 的单 writer
+    composer.ts                # 字素编辑、多行、提交门槛和草稿历史
+    selector.ts                # 命令/模型/会话/交互的受控选择
+    tool-card.ts               # 安全摘要/详情与关键效果
+    status-line.ts             # 真实状态与窄屏收敛
+    jsonl-renderer.ts          # TerminalRecord v1
+    node-terminal.ts           # raw/readline/pipe 互斥、模式恢复及背压
+  host/
+    host-contract.ts           # 终端消费的非敏感窄端口
+    node-host.ts               # 模型/存储/日志/能力组合与关闭
+    model-configuration.ts     # 已签发计划到 models 公开工厂
+    session-directory.ts       # 权威存储的安全会话投影
+    workspace-profile.ts       # 无插件/只读/读写配置与独立授权
+    interaction-description.ts # 宿主拥有的版本化载荷解释
+    sqlite-agent-stores.ts     # 复用现有 Node SQLite 实现与租约不变量
+    host-session-binding.ts    # 固定权限环境，不根据 UI 选择漂移
+packages/configuration/        # 从现有配置模块迁出所需协议与默认实现
 ```
 
-- 终端核心只依赖 Node 和 Core 公开契约，不导入 app、根 src、tools、旧配置或存储实现；原 cli 文件在切换阶段迁移全部调用后删除，不长期保留双实现/重导出。
-- 终端 record 是 CLI 本地展示协议，不写成新的 Harness 中间层或 Electron/CLI 万能 DTO。
-- 预览驱动实际 renderer/input 组件，以固定的 Core 类型事件/结果演示状态，始终标记“终端预览 / 受控场景，无真实模型或文件执行”。不实现返回假成功的 SessionHost，不伪造 SDK/凭据或已持久化证据。
-- 终端预览、回归及独立类型检查不先构建 tools 或启动 Electron；缓存和临时数据限定在本次具名缓存/临时目录，不混入生产 out。
+- `cli/terminal/` 只消费 Node、Core 公开协议及 CLI 自有窄类型，不导入 app、根 src、tools、配置或存储实现；`cli/host/` 可以消费 packages 的受控 Node 入口，但依赖闭包同样不回流 app/根 src/Electron。
+- 配置迁出不是为了另建容器：所属模块内聚配置管理、计划签发、凭据绑定和存储；宿主只提供路径、环境及安全保护端口。保留现有原计划对象约束，不复制一套“CLI 临时配置运行时”。详见第 8.3 节。
+- 不再要求 `cli/preview/` 或独立 gallery 命令。回归用受控事件驱动实际 projection/renderer/controller；涉及真实文件的用临时工作区，不能实现返回假成功的 SessionHost。
+- 生产 CLI 产物为 `cli/dist/`，开发临时构建进入具名缓存，不混入 Electron `out/**`。独立 CLI 类型/构建与生产命令本轮直接建立。
 
-并行工作分三条线：
+下一轮可并行的实现工作线：
 
-| 工作线 | 可以现在独立推进 | 不能替另一条线决定 |
+| 工作线 | 所有者与交付 | 共享边界 |
 | --- | --- | --- |
-| 终端线 | C0–C2：协议、TUI/print/JSONL、流式临时区、Composer/选择器/工具卡、输入所有权与 Node 场景 | tools API、权限策略、凭据方案、数据库格式 |
-| tools 线 | 按自身方案抽取插件、纯契约、文件支撑并验收 | 终端布局、输出协议、输入语义 |
-| Node 宿主线 | 模型、配置/凭据、持久化、会话发现、资源装配及无业务插件对话 | 不能把桌面内部实现或整个配置对象注入终端代替窄协议 |
+| 呈现线 | projection、TUI/print/JSONL、流式临时区、工具卡与安全排版 | 消费现有 TerminalRecord；不扩 Core、不解释原始工具载荷 |
+| 输入线 | Composer、选择器、node-terminal、controller、取消/关闭/背压 | generation/identity/submitEnabled、宿主窄端口、单 writer |
+| 宿主线 | 配置迁出、安全凭据、SQLite/会话目录、模型与能力装配 | 配置公开面、Core SessionHost、models/logs/tools 精确入口 |
 
-共享前提是 Core 当前已支持的公开协议。协调变更在统一接入前核对，不因 tools 导入路径正在迁移就修改其源码或锁定尚未验收 API。Node 凭据/存储若尚未就绪，同样是实际接入前置，不能把 tools 完成当作唯一门槛。
+集成负责人先定稿 host-contract、配置迁出边界和可运行构建，再分配上述工作；统一负责入口、调用方与旧路径删除。Tools 已验收，不再安排重抽取；消费中发现真实缺陷才定向修改，不因终端实现扩大工具 API。三个工作线在同一轮汇合，不分别发布半成品。
 
 ## 8. 分阶段执行与验收门槛
 
 | 阶段 | 工作 | 完成门槛 | 状态 |
 | --- | --- | --- | --- |
-| C0：终端契约定稿 | 本文规则、record 字段白名单、输入/命令及退出矩阵，核对公开协议 | 场景无未决语义；不预设工具答案 schema 或历史 API | 待执行 |
-| C1：独立呈现 | TUI 历史/活动区、流式预览、工具卡、状态栏、print/JSONL、安全投影与 gallery | 无 tools/Electron/真实配置运行；预览不变成提交正文，普通重绘不清历史，输出模式不串流 | 待执行 |
-| C2：输入与生命周期 | Composer、多行/粘贴、命令补全/选择器、单 owner、raw/TTY/管道、取消与模式恢复 | 真终端可编辑及逐层退出；草稿不误授权、不能排队；EOF/取消/中断和退出恢复正确 | 待执行 |
-| C3：统一真实接入 | Node 宿主公开适配、真实 models/logs/已验收 tools；移除终端旧依赖 | 无 app/根 src/Electron 依赖；先无插件对话，再授权文件和持久恢复 | 待执行 |
-| C4：切换与全量验收 | 根命令、全部调用/测试/文档迁移；删除失效桥接和旧终端路径 | 真实 Node 启动、结构化消费、进程恢复及完整回归通过 | 待执行 |
+| C0：终端契约定稿 | 本文规则、record 字段白名单、输入/命令及退出矩阵，核对公开协议 | 场景无未决语义；不预设工具答案 schema 或历史 API | 已完成契约与本地编译消费验收，见 8.2 |
+| C1：呈现工作包 | TUI 历史/活动区、流式预览、工具卡、状态栏、print/JSONL、安全投影 | 预览不成为提交正文，普通重绘不清历史，输出模式不串流 | 待实施；并入下一轮生产直切 |
+| C2：输入与生命周期工作包 | Composer、多行/粘贴、命令/选择器、单 owner、raw/TTY/管道、取消与恢复 | 真终端可编辑及逐层退出；草稿不误授权、不能排队；退出恢复正确 | 待实施；并入下一轮生产直切 |
+| C3：真实宿主工作包 | 真实 Node 配置/安全凭据/SQLite/会话发现，接 models/logs/tools | 依赖闭包无 app/根 src/Electron；无插件对话、授权文件和持久恢复成立 | 待实施；并入下一轮生产直切 |
+| C4：入口与清理工作包 | 生产命令、开发命令、全部调用/测试/文档迁移；删除旧 CLI 桥接 | 实际 Node 启动、输出消费、重启恢复及完整回归通过 | 待实施；与 C1–C3 同轮验收 |
 
-执行依赖：`C0 → C1 → C2` 不等待 tools；C3 等待终端 C2、tools 自身验收和 Node 宿主所需真实适配全部就绪；C4 才切换 `agent:dev`。页面 UI 并行推进，不是 CLI 前置。
+执行依赖调整：保留已完成的 C0；C1/C2/C3 是同轮实现工作包，不再是三个独立交付阶段，宿主与终端并行。C4 在同一轮内完成集成、根入口切换与旧代码删除；以完整生产路径验收作为最终门槛，不先交付预览、不保留运行时回退。页面 UI、PPT 迁移及 M3 其他切片不在此前置链上。
 
 C0–C2 必须完成的任务：
 
-- [ ] 定稿 TerminalRecord 判别联合、字段白名单、input request 世代及实际关闭错误处理；不以任意 object 或全部 Core event 为对外协议。
-- [ ] 创建独立终端预览命令和类型检查配置，仅覆盖新终端/预览；明确命令在实现前不存在，预览不是生产入口。
+- [x] 定稿 TerminalRecord 判别联合、字段白名单、input request 世代及关闭错误判定规则；不以任意 object 或全部 Core event 为对外协议，运行时处理留在 C2。
+- [ ] 创建独立 CLI 类型/构建配置及生产/开发 Node 命令；不以独立预览命令作为前置交付。
 - [ ] 实现 TUI 历史/viewport、流式临时块与最终结果校正；完成安全工具卡、状态栏、print/JSONL、颜色与控制字符防护。
 - [ ] 实现 Composer 原生多行、输入历史、粘贴整块和命令候选；菜单只接收明确选择，不把 Enter 顺带发送或批准。
-- [ ] 实现 raw/readline/管道互斥、局部焦点与输入世代、真实按键、resize、背压及全部退出路径的终端模式恢复。
-- [ ] 用 gallery 场景运行真实渲染/输入组件；在 Windows 终端验证 40/80/120 列、流式、粘贴、工具展开、模型/会话选择、Esc/Ctrl+C/Ctrl+D、print/JSONL 重定向。
+- [ ] 实现 raw/readline/管道互斥、局部焦点与输入世代、真实按键、resize、背压、实际关闭错误处理及全部退出路径的终端模式恢复。
+- [ ] 在实际生产 CLI 的 Windows 终端验证 40/80/120 列、流式、粘贴、工具展开、真实模型/会话选择、Esc/Ctrl+C/Ctrl+D、print/JSONL 重定向；受控场景驱动同一组件，不替代真实按键。
 
 C3–C4 必须完成的任务：
 
@@ -338,7 +347,7 @@ C3–C4 必须完成的任务：
 
 ### 8.1 第一步执行方案：C0 终端契约定稿
 
-**目标**：把第 3–6 节设计收敛成 C1/C2 可以直接消费的具名契约、白名单和行为判定；不是先画一个静态终端，也不是把旧 CLI 包装成新入口。本节是 C0 的执行安排，不代表契约代码或验收已经完成。
+**目标**：把第 3–6 节设计收敛成后续呈现/输入可以直接消费的具名契约、白名单和行为判定；不是先画一个静态终端，也不是把旧 CLI 包装成新入口。本节保留 C0 当时的执行安排；其“先预览后接入”顺序已由第 8.3 节的生产直切方案替代，契约规则和第 8.2 节既有证据继续有效。
 
 #### 范围与交付
 
@@ -364,26 +373,26 @@ Core 未提供会话目录、已配置模型列表、终端工具详情描述器
 
 #### C0-2：定稿 record 与临时展示白名单
 
-下表是本步的字段定稿基线；实现前将每行落实为具名判别分支，明确必选/可选条件、字面量和值域，不允许 `object`、任意索引签名或整份 Core event 透传。
+下表已落实为 `cli/terminal/terminal-contract.ts` 的具名判别分支；未列出的字段不进入投影，不允许 `object`、任意索引签名或整份 Core event 透传。TypeScript 结构类型不是运行时过滤器，C1 必须显式构造白名单记录，不能用类型断言或对象 spread 代替安全投影。
 
 所有 `TerminalRecord` 包含 `version: 1` 与 `type`。有执行归属的分支必须包含完整 `identity`；启动前错误和进程级记录允许没有 Run 身份，但不能补空字符串或伪造 ID。
 
 | type | 允许的数据 | 来源与禁止项 |
 | --- | --- | --- |
-| `session` | threadId，以及真实宿主提供的非敏感模型/能力展示摘要 | 不输出连接指纹、Key、完整配置或工作区外会话 |
-| `progress` | identity、受支持的 fact 阶段；step/historyRevision 只在对应阶段出现 | 不复制 RuntimeEvent；不含 delta，不把 run.completed 当作关闭成功 |
-| `tool` | 事件 identity、原 invocation identity、callId/name/toolVersion、step、开始/完成阶段；完成时 status/effects，失败时安全错误 | 不输出 input/output/modelContent/presentation；开始时不虚构 effects=none |
-| `interaction` | identity、interactionId、owner、payload type/version、请求/已接受响应阶段；可选已认可的安全说明 | 不输出 data 或 answer.value；事件请求不代表现在可以 resume |
-| `assistant.message` | identity、output 中的 messageIndex、按原 contentIndex 排列的 text 内容 | 仅来自 completed.output 的 assistant 文本；不合并不同消息，不输出 reasoning/tool-call |
-| `query.result` | identity、五种 status；waiting 的安全交互元数据或 failed 的安全错误 | 不嵌整份 output、interaction.data 或检查点；不代表进程已成功 |
-| `error` | 具名故障阶段、稳定 code、安全 message、是否存在结果不确定性；已知时附 identity | 只使用公开 ProtocolError 或本地安全错误映射；不 stringify 原生异常 |
-| `process.finished` | 最终 exitCode、具名退出原因；已知时附最后 identity/实际 Query status | 观察与资源排空、关闭结果确定后最多一次；stdout 已损坏时不尝试写此记录 |
+| `session` | 必选 threadId；可选 model（id/label）、capabilities（id/label 列表） | 不输出连接指纹、Key、完整配置或工作区外会话；未提供能力信息不等于无能力 |
+| `progress` | identity、phase；run.waiting 带 interactionId，run.failed 带 error；step.started 带 step，step.committed 另带 historyRevision | 其余阶段为 run.started/completed/cancelled/interrupted；不含 delta，不把 run.completed 当作关闭成功 |
+| `tool` | identity、invocationIdentity、callId/name/toolVersion、step、phase；completed 必带 status/effects，failed/unknown 必带 error | 不输出 input/output/modelContent/presentation；started 不提供虚构的 effects |
+| `interaction` | identity、tool 安全引用、phase、interactionId；requested 带 owner/payloadType/payloadVersion/display，resolved 只带 responseType | resolved 事件没有原载荷描述，不要求缓存补齐；不输出 data 或 answer.value；requested 不代表现在可 resume |
+| `assistant.message` | identity、messageIndex、content（原 contentIndex/text 列表） | 仅来自 completed.output 的 assistant 文本；不合并不同消息，不输出 reasoning/tool-call；无 text 不生成记录 |
+| `query.result` | identity、五种 status；waiting 必带 interaction/display，failed 必带 error | 不嵌整份 output、interaction.data 或检查点；不代表进程已成功 |
+| `error` | stage、error（code/message）、outcomeUncertain；可选 identity | stage 为 configuration/activation/observation/completion/persistence/protocol/input/output/close；不 stringify 原生异常 |
+| `process.finished` | exitCode/reason；failure 必带 stage；可选 lastRun（identity、可选实际 status） | completed 拒绝可没有 status；排空与关闭后最多一次；stdout 损坏不写该记录 |
 
 补齐以下展示规则，避免 C1 自行猜测：
 
 - JSONL 与人类输出都先经过安全投影；JSON 编码不是内容防护。外部控制字符先转成可见转义，ANSI 只能由交互 renderer 生成。
 - 一份 completed 结果中的助手消息按原顺序结算；工具调用位置不挤成正文，只有 reasoning/tool-call 的消息不制造空白正文。相同活动句柄的重复通知不能重复结算。
-- 恢复结果按本次 completed.output 投影，不与 delta 或终端缓存拼接；若恢复前已展示该 Query 的部分消息，C1 须用权威 output 的位置替换该 Query 展示，不以文本相等判断重复。
+- 恢复结果按本次 completed.output 投影，不与 delta 或终端缓存拼接。宿主历史展示只结算已结束 Query；当前未完成 Query 的部分助手正文只能在 viewport，按 Query/messageIndex 替换后再结算，不能先写入滚动历史再回写。恢复后按 output 顺序结算一次，不以文本相等去重，也不改变已落入历史的工具摘要。
 - TUI 临时预览单独定义 identity/step/requestId/contentIndex/text 及截尾标志；64 KiB UTF-8 限额只作用于当前 Run 的文本预览，不作用于 TerminalRecord 或最终正文。
 - 工具安全详情和交互描述另用具名展示类型，只接受宿主已认可的 owner/type/version；未知载荷只显示身份和不支持说明。C0 不设通用 JSON 编辑器。
 
@@ -421,13 +430,171 @@ Core 未提供会话目录、已配置模型列表、终端工具详情描述器
 4. 逐项走查上述场景；输入分支、字段来源、结果结算和退出优先级均有唯一判定后，回写本文字段表和矩阵，记录实际命令、结果及未验证项。
 5. C0 只有在契约文件可被独立编译消费、白名单/模式/场景无未决语义时才能标记完成，并解锁 C1；C1/C2 的真实终端、按键、模式恢复及 C3 的存储/模型证据仍必须单独完成。
 
-本次只制定第一步执行方案并核对公开声明，未创建上述类型文件或消费样例，未执行 C0 的编译与场景验收；阶段表与实施勾选项保持待执行。
+第一步已按本节实施；以下定稿规则和证据区分 C0 的契约验收与 C1/C2 尚未执行的运行时验收。
+
+### 8.2 C0 定稿与实施证据
+
+#### 输入与展示边界
+
+- 新增 [terminal-contract.ts](../../cli/terminal/terminal-contract.ts)，只含类型。八类 `TerminalRecord` 与 `TerminalTextPreview`、`TerminalInputRequest/Action` 分离；Core 依赖仅为公开 `protocol-values` 与 `tools/tool-contract` 的类型，不依赖 tools workspace。
+- `TerminalToolReference` 保留原 invocationIdentity；record.identity 是当前观察 Run。toolVersion 可以为 null，不凭名称猜版本。工具开始没有已确定的 effects，完成后 status 与 effects 独立保留。
+- `TerminalInteractionDisplay` 为 supported/unsupported 联合；supported 有 summary、confirmation 与 choices。choice 的 id/label/responseType 由宿主认可的描述器提供，动作只提交 choiceId，不接收任意 answer JSON；转换为 `InteractionResponse` 由真实宿主负责。
+- `TerminalInputRequest` 分 composer/selector/secret/interaction 四种用途，全部带 generation；interaction 请求/动作还绑定完整身份和交互描述。选择器初始 selectedId 可为 null；交互不预选允许项。secret 提交只存在于输入动作，不进入 record。
+- `TerminalComposerState` 将 editable、draft 与 submission 分开；禁发原因限定为 not-ready/busy/interaction/closing。draft.cursor 为字素索引。starting/运行/提交/关闭不能设为允许提交；此跨状态不变量由 C2 验证，类型本身不执行状态机。
+- generation 必须单调递增的安全整数；收到动作先匹配用途/世代，再匹配交互完整身份和 ID。unknown 描述器拒绝 choose；高风险 choose 必须精确匹配 confirmationId。optional 字段不代表放宽运行时校验。
+- 局部 Esc 优先关闭补全/选择器并恢复草稿，secret 的 Esc 放弃本次安全输入；无局部 UI 的 running Esc 请求取消，waiting Esc 只关详情、不回答。Ctrl+C 在 idle 清草稿且保留本进程可召回副本，在 running/waiting 请求取消 Query。Ctrl+D 对非空草稿无提交/退出作用。
+- selector.accept 只接受选项；command 补全返回草稿，不顺带发送。paste insert 只改草稿，运行中 submit 被拒且不暂存；本地命令仅在明确提交后解析。`TerminalCommandDefinition` 的 local/host/scenario 分类不代表命令已注册，场景模型/会话选择必须附 scenarioId。
+
+#### 退出归并的唯一判定
+
+以下从高到低处理；先停止受理、等待实际边界并完成关闭，再确定退出。多故障时保留全部安全诊断，主 failure stage 按 `persistence > close > output > completion > observation > protocol > input > activation > configuration` 选取，同阶段保留第一个错误。该顺序用于确定主错误，不暗示其他错误可以忽略。
+
+| 优先级 | 已知事实 | 进程判定 |
+| --- | --- | --- |
+| 1 | 任一非 EPIPE 故障、failed 结果、completed 拒绝、关闭失败，或停止后仍没有可解释的边界 | 1 / failure；failed 结果归 completion，只有明确的持久化故障归 persistence；不伪造 Query status |
+| 2 | 参数无效或组合不支持，尚未初始化资源 | 2 / arguments；不启动执行，故不与运行故障竞争 |
+| 3 | stdout EPIPE，且无优先级 1 故障 | 141 / broken-pipe；排空，坏 stdout 不输出 error/finished；其他输出故障归 1 |
+| 4 | 收到 SIGTERM/宿主终止，且无更高故障 | 143 / host-terminated；记录实际 Query status，落盘 waiting 仍是 waiting，不改写成 interrupted |
+| 5 | 交互用户显式中止进程，且无更高故障 | 130 / user-exit；不把普通的取消当前 Query 当作此动作 |
+| 6 | 实际结果 waiting，用户选择保留/EOF/headless 边界退出 | 3 / waiting；旧取消信号未成功消费等待时不能报已取消 |
+| 7 | headless 用户取消，实际结果 cancelled | 130 / user-cancelled；若取消竞争中实际 completed，按 completed 处理 |
+| 8 | completed 且关闭成功；help；空闲正常退出 | 分别为 0 / completed、help、idle；交互取消后继续会话，不立刻产生进程退出记录 |
+
+`TerminalExitDecision` 固定 exitCode/reason 的合法配对；`TerminalProcessFinishedRecord.lastRun.status` 保留实际结果，不能从 reason 反推。process.finished 写入自身失败也按 output/EPIPE 处理，但不递归补写第二条 finished。C0 只定稿该决策，不声称已有退出归并函数。
+
+#### C1/C2 具名验收场景
+
+下表是已定稿的运行时验收输入和预期，不是本轮已运行记录。“留会话”指不输出 process.finished；其后正常空闲退出为 0。关闭均假定成功，除非场景明确注入故障。
+
+| 场景 | 输入序列 | 允许输出/状态 | 禁止输出/动作 | 边界退出 |
+| --- | --- | --- | --- | --- |
+| preview-correction | 同请求 delta=A → completed.output=B | viewport 撤 A；权威 B 结算一次 | A 成为 assistant.message、重复追加 B | headless 0 |
+| preview-tail | 同 Run 多块中文/emoji 文本累计超过 64 KiB → completed | 字符边界保留尾部并标截尾；最终全文 | 多块各占 64 KiB、裁剪规范输出 | headless 0 |
+| late-run | Run A 结束 → B 激活 → A 的迟到 delta | B 的预览不变 | 旧事件污染 B 或按 callId 混并 | 按 B 实际结果 |
+| resume-output | waiting 时仅预览当前 Query 部分正文 → 新 Run completed.output 含此前消息 | 撤临时区，按原 messageIndex/contentIndex 有序结算 | 回写滚动历史、按文本去重或拼接 delta | headless 0 |
+| failed-applied | tool.completed failed/effects=applied → Query failed | 两字段及失败提示始终可见 | 折叠隐藏 applied、声称未改变 | 1 |
+| unknown-effect | tool.completed unknown/effects=unknown → Query failed | 结果/效果不确定说明 | 自动重试或承诺可安全重试 | 1 |
+| unknown-interaction | interaction.requested 未知载荷 → completed waiting → choose → EOF | choose 拒绝且无 resume；显示元数据 | dump data、猜 answer/reject | 3 |
+| stale-enter | starting Enter → idle；或 generation 旧 Enter → 新交互 | 草稿保留、无提交；旧输入丢弃 | 就绪重放、跨世代批准 | 空闲退出 0 |
+| paste-is-text | 粘贴含 /exit、allow、换行 → running Enter | 一份多行草稿，忙态拒发 | 按行命令解析、授权或排队 | 留会话 |
+| selector-accept | 原草稿 → 命令候选 → accept；再打开选择器 → Esc | 接受候选不发送；Esc 恢复草稿/光标 | 接受即发给模型、丢失草稿 | 留会话 |
+| secret-isolation | secret 请求 → 输入 → submit；另一路输入能力不安全 | 安全适配接收 secret；不安全时在收集前失败 | 回显、输入历史、record/日志中出现 secret | 不安全为 1 |
+| waiting-eof | running EOF → completed waiting；或 waiting EOF | 等待边界、保留 pending，不构造 response | EOF 等同取消、提前 close 活动依赖 | 3 |
+| paste-eof | /paste → 正文 → EOF，无 /end | 丢弃未提交草稿并安全提示 | 发送半份任务 | 0 |
+| cancel-race | cancel 旧 Run → 实际 waiting → 新 Run 提交当前 interaction cancel | 同 Query、新 Run、独立取消信号 → 实际 cancelled | 重用旧 aborted signal、旧 handle.cancel 充当持久取消 | headless 130；交互留会话 |
+| completion-rejected | run.completed fact → completed Promise 拒绝 | 安全错误、status 未知 | 从观察事件推出 completed、伪造 failed 检查点 | 1 |
+| close-rejected | completed → close 拒绝 | query.result=completed；finished failure/close | 先输出成功 finished、吞关闭异常 | 1 |
+| broken-pipe | stdout EPIPE → 排空；可选再注入持久化/关闭失败 | stderr 安全诊断、恢复终端模式 | 坏管道递归写、提前宣布完成 | 单独 141；叠加故障 1 |
+| terminate-waiting | SIGTERM 与实际 waiting 竞争 → close 成功 | Query waiting 保持，进程 host-terminated | 把持久 waiting 改成 interrupted/cancelled | 143 |
+
+#### 实际验证与限制
+
+2026-11-01，本轮实现 C0；没有安装依赖、修改 tools 或 Core，也没有迁移旧终端调用方——新类型尚无生产调用方，切换仍在 C4。
+
+- 临时 `consumer.ts` 通过 TypeScript `--strict --exactOptionalPropertyTypes --skipLibCheck false --target ES2022 --module NodeNext --moduleResolution NodeNext --types node` 编译；覆盖八类 record、各 progress/tool/query 分支、四种输入用途、退出码/原因配对和命令分类，并使用 `never` 检查消费端判别穷尽。
+- 六个 `@ts-expect-error` 反例被编译器拒绝：delta/draft 冒充 record、工具完成遗漏 effects、失败编码为退出 0、secret 混入 selector 动作、交互 data 透传。此证据是编译边界，不声称结构类型能过滤运行时额外字段。
+- 编译器 `--listFiles` 的实际闭包确认 Core 从 `packages/harness/dist` 解析，无 packages/tools、app 或根 src；本次消费命令未先构建 tools、未启动 Electron。
+- 用原生 Node 运行上述编译消费产物，观察到 `C0 consumer smoke passed`；受控消费者验证 failed/applied、unknown/unknown、原 invocation 与当前 Run 分离及四类输入可消费。临时消费者不是 renderer/controller，不证明按键、投影、退出或持久化行为。验证后删除临时源文件与 emit 目录。
+- `npx.cmd biome check cli/terminal/terminal-contract.ts` 通过，1 个文件无诊断；`npm.cmd run typecheck` 通过，含四包构建、四类边界门禁及 node/web 类型检查。
+- 未运行全量行为测试、真实终端、模型、文件或跨进程恢复。本轮只有类型与文档变更，不新增永久的字段转发/源码锁定测试；C1 的安全投影与 gallery、C2 的实际输入/退出仍待实现，以上场景尚未执行。
+
+### 8.3 下一步执行方案：生产 CLI 一次直切
+
+#### 决策与交付边界
+
+用户已明确允许 CLI 直接切换生产，不承担旧 CLI 的兼容成本。下一轮交付完整的生产入口、终端、Node 宿主、真实配置/凭据/存储及验证，不再单独交付 C1 预览，也不等外部迭代补齐宿主。C0 类型与第 3–6 节的终端 UX、安全和执行语义继续适用；本节替代原先 C1 → C2 → C3 → C4 的分轮发布安排。
+
+“直切”取消的是兼容层和等待顺序，不是功能或安全门槛：不能先让根命令指向静态 UI、内存会话或返回假结果的模型。下一轮可在本轮实现分支中直接替换入口、边做边验证，但只有完整验收后才算交付；不发布“先切了再补配置/审批/恢复”的状态。
+
+完整范围包含第 5.3 节所有目标命令、TUI/print/JSONL、无插件对话、默认只读文件能力、显式读写授权、跨进程恢复。保持当前唯一真实厂商 MiMo，不顺带增加厂商、PPT、Skill、子 Agent 或新的通用框架。
+
+#### 现有实现的复用与真实缺口
+
+| 当前落点 | 本轮处理 |
+| --- | --- |
+| `app/main/agent-host/sqlite-agent-stores.ts`、`host-session-binding.ts` | 已使用 Node `node:sqlite` 和公开 Core 契约；迁到 CLI 宿主并迁移全部调用方，不重写内存版存储或引入 ORM；维护 CAS、围栏、批次对账与释放顺序 |
+| `create-agent-host.ts`、`configured-model-factory.ts` | 复用模型准备、原计划 resolveRuntime、绑定与关闭机制；拆除桌面路径、旧共享类型导入和“永远安装文件插件”的假设，由新 Node 组合根拥有 |
+| `development-sessions.ts` 与 SQLite 会话投影 | 复用只读查询的语义；新增终端所需 Query/message 归属投影，排除当前未完成 Query 的正文结算；不创建租约、不从终端缓存重建历史 |
+| `workspace-configuration.ts` | 迁移宿主配置与 owner/type/version 解释，不搬入 terminal；普通对话允许 plugins=[]；宿主独立控制 read/glob/grep 与写审批，工具内的路径/版本保护继续有效 |
+| `app/main/agent-configuration/` | 管理/签发运行计划已有实现，但依赖根 shared 类型且凭据保护由 Electron 注入；迁出所需协议和默认实现，补齐真正的 Node 安全保护适配，不让 CLI 导入其内部 credential-store 或自行解密桌面数据 |
+| `scripts/run-agent.mjs`、`development-runner.ts` | 当前是 Electron 子进程及 agent-dev.* IPC；直接替换 Node 启动链，移除 CLI 专用 IPC，不做转发别名或 --legacy 模式 |
+| 旧 CLI 两份集成测试 | 保留授权/取消/恢复场景，改为真实 Node 子进程与 stdin/stdout；移除只服务旧桥接的 IPC 注入夹具。桌面仍需的测试保留 |
+
+#### P1：打通构建、公开依赖与宿主契约
+
+1. 创建 `cli/main.ts`、独立 NodeNext CLI 类型/emit 配置与 `build:cli`。生产产物在 `cli/dist/`，不借 Electron 打包或根 `src` alias；实际支持 Node >=24。参数错误和帮助在加载配置、SDK、tools 或数据库之前处理。
+2. 新增生产命令 `npm run agent -- <args>`，运行构建后的 Node 入口；`npm run agent:dev -- <args>` 改为同一入口的开发构建/启动方式，不再启动 Electron。两者不同在构建和数据路径，不能有两套执行逻辑；新命令在实施前不存在。
+3. 先定义 `cli/host/host-contract.ts`：只提供真实非敏感上下文/模型/会话/能力目录、创建或选择会话、run/resume/close 与已认可的交互描述/选择转换能力。不把配置对象、SDK、数据库、租约或完整宿主装进 renderer 上下文。
+4. 配置模块迁至私有 `@agent-harness/configuration`，用具名精确入口承载配置创建、纯协议及 Node 凭据保护适配；把必要的类型/schema/默认实现及全部调用方一起迁移，不复制默认值、重导出旧路径或把实现留在 main。桌面仍拥有其组合适配；与 CLI 无关的 PPT/Gateway 执行实现不迁入新包。
+5. 保留 `loadExecutionPlan → 同一对象 resolveRuntime` 的公开协议与模型身份检查，不让 CLI 重建计划。纯配置协议可供桌面消费，Node/凭据入口不可进入 renderer；把新包纳入 workspace、构建、声明闭包和静态依赖门禁。终端只知道展示项，配置实现不依赖 Core Loop 或 CLI。
+
+这一步是同轮的共享前置，不单独交付空包或接口；只有真实默认实现迁入、消费者能运行后才开始并行集成。
+
+#### P2：真实 Node 配置、凭据与持久化
+
+**数据选择**：
+
+- 生产 CLI 默认独立用户数据根 `~/.agent-harness/cli`，开发命令默认 `~/.agent-harness/cli-development`；允许显式 `AGENT_HARNESS_CLI_DATA_DIR` 覆盖，并在 /status 显示实际数据根。路径由 Node 宿主统一解析，不沿用桌面的 `AGENT_PPT_DATA_DIR` 作为隐式来源。
+- 新根存放真实模型配置、受保护的凭据、执行 SQLite 和诊断日志。默认不导入 `.agent-ppt` 的设置、Electron 密文或 `agent-development.sqlite`；不建立旧会话兼容目录，不删除、覆盖或自动迁移旧数据。
+- 旧 SQLite 算法和绑定校验可复用，不代表要读取旧库。新库保留完整 Run/Query 身份和规范内容，不用 JSONL 或可见文本代替存储；读会话目录时不创建数据库/锁/租约。
+
+**凭据选择**：
+
+- 本轮真实验收平台为 Windows；Node 适配使用 Windows CurrentUser DPAPI，不实现自制 AES/主密钥文件，不把“隐藏输入”冒充安全持久化。以固定 PowerShell/.NET ProtectedData 调用访问系统能力；不引入 Electron 或完整 Agent 框架。
+- 子进程只接收固定受信任脚本，秘密经专用 stdin/stdout 管道传递；不得出现在 argv、环境变量、临时明文文件、日志或公开诊断。错误输出只映射具名安全错误，不能把捕获的进程 stdout/stderr 直接打印。进程取消/关闭时排空并释放管道。
+- 配置模块定义与 Electron 无关的窄凭据保护端口；桌面以 safeStorage 适配，Node 以 DPAPI 适配，不伪装成 Electron 的存储后端。保护方案与密文版本明确记录在 Node 存储中，避免跨方案试解密或静默覆盖；桌面已有存储行为保持。
+- 收集 Key 前先验证安全输入与 OS 保护可用；不可用则明确失败，不能退回明文文件、自动保存环境 Key 或启动 Electron。非 Windows 不宣称支持该安全存储，帮助/参数路径仍可运行；其他平台的凭据后端及终端验收不计为本轮已支持。
+- 初始化通过真实配置模块保存连接与模型；secret 请求隐藏回显且不入历史。headless 缺配置时安全失败，不启动向导或借别的终端读取；JSONL/print 不能因为初始化而被菜单污染。
+
+**运行装配**：
+
+- 先完成 plugins=[] 的真实对话配置，再接已验收 tools 的只读/读写模式。新会话默认只读；/tools 在 idle 展示真实可选模式，变更权限时明确确认并新建绑定会话，不能改变旧 Query 权限。无插件配置也必须能经同一生产入口选择和运行。
+- SQLite、logs 和 models 全部采用现有公开接口/机制，迁移所需宿主代码和所有引用，消除 app/根 src 依赖。模型准备继续校验适配器、连接指纹、执行版本；恢复不自动抢租约，不回退到其他模型/目录。
+- 恢复目录由持久化查询提供；回答由当前宿主描述器生成 InteractionResponse，终端不传客户端快照。文件读取审批策略由宿主显式选择；验证用的读取审批配置同样走真实宿主策略，不修改工具来绕过权限。
+- 关闭顺序保持停止受理 → 排空 SessionHost → 模型/配置绑定 → 存储 → 日志；失败全部收敛为安全错误，不能吞掉关闭异常后报成功。
+
+#### P3：呈现与输入并行实现，直接连接真实宿主
+
+呈现线实现白名单 projection、终端内容防护、TUI 历史/viewport、64 KiB 临时预览、工具卡/状态栏、print 与 JSONL；输入线实现 Composer、斜杠命令补全、选择器、secret、raw/readline/pipe 互斥与 controller。两线消费 C0 类型与 P1 的 host-contract，不建立第二套 record 或 Loop。
+
+- 原生多行、整块粘贴、字素光标和宽度处理按第 3、5 节实现；宽度/ANSI 等底座若引入小型依赖，先记录 Node 24/Windows、许可证、控制字符边界与退出恢复取舍，不复制 Unicode 宽度表或默默安装整套 TUI/Agent 框架。
+- 状态由真实 handle.completed 与关闭结果驱动；事件单消费者，过期 Run 与输入世代无效。取消持久 waiting 使用新 Run，输入 Enter 不抢先 resume，不排队、不自动重试。
+- `/new`、`/model`、`/resume`、`/tools` 本轮接真实服务；无可用模型/会话显示真实空态，不注册假选项。`/tools-output` 只访问安全摘要/宿主认可详情，不扩大原始工具数据白名单。
+- 第 8.2 节 18 个场景用于定向行为回归；真实组件可注入受控 Core 事件和窄宿主端口，但受控选项不能进入生产目录。不要求另建 gallery 命令，禁止把测试替身作为生产 fallback。
+- 第 4 节的 stdin/stdout/TTY 判定、退出码和第 8.2 节故障归并全部落到实际程序；输出背压不驱动 Agent 执行，EPIPE 要排空而非直接 process.exit。
+
+#### P4：入口直切与旧路径删除
+
+- `npm run agent` 和 `agent:dev` 都切到 Node；开发启动器不再开 readline、不占有 stdin，不再转发 agent-dev.*。stdin/raw mode 仅由程序的 node-terminal 所有；构建日志不得混入生产 JSONL stdout。
+- 全部 CLI 调用、帮助、README、npm scripts、类型/构建与测试在同一轮迁移；删除旧 `cli/development-terminal.ts`、`cli/commands/development-command.ts`、`cli/configuration/development-setup.ts` 及 `app/main/agent-host/development-runner.ts` 的失效实现。迁出宿主代码后删除原文件，不保留重导出。
+- `scripts/run-agent.mjs` 可原地改成真正的 Node 开发启动器；不得保留 Electron 依赖、双实现选择或 --legacy。生产直接运行已构建产物，不在用户发出一次任务时启动 Vite/Electron。
+- 删除前通过解析引用核对桌面实际消费者；桌面仍使用的配置、safeStorage、旧 Agent/Gateway、PPT 和 IPC 功能继续保留。用户允许 CLI 直切，不是删除整个 app/main/agent-host 或全部桌面凭据逻辑的授权。
+- 不要求旧 stdout、waiting=0、旧输入菜单或旧 CLI 会话恢复兼容；也不在新版中伪造旧结果。入口切换失败在实现过程中修正，不增加运行时旧入口回退来掩盖缺陷。
+
+#### P5：一次交付的验收顺序
+
+| 顺序 | 必须实际运行的路径 | 合格证据 |
+| --- | --- | --- |
+| 1 | 干净临时用户数据根执行生产 `--help`、错误参数、空 stdin | 无 Key/配置/数据库/tools 初始化；帮助 0、参数 2、空输入 0；stdout/stderr 无串流 |
+| 2 | Node 安全配置初始化、退出后重启读取 | 真 Windows 控制台隐藏输入；真实 DPAPI 往返与重启加载，文件中无明文；拒绝不安全能力；不触碰桌面数据根 |
+| 3 | 无插件普通对话，随后 TUI 多轮与 print/JSONL | 真实 Node 进程，无 Electron；模型正文来自完成结果；JSONL 每行完整解析、无 banner/ANSI/delta；三个输出模式均实际执行 |
+| 4 | 默认只读与显式读写、支持和未知交互 | 临时工作区随机校验码；审批前未读取/写入，允许后消费真实结果，拒绝/取消保持正确影响，unknown/applied 不被抹去；读取审批使用显式测试宿主策略 |
+| 5 | EOF waiting → 进程退出 3 → 新进程恢复；取消 waiting | Query 不变、Run 更新、原环境绑定不变；从权威存储恢复，终态/租约实际核验；EOF 不等于 Ctrl+C/强杀 |
+| 6 | 真 Windows 终端按键、粘贴、40/80/120 列与降级 | 多行/emoji/中文光标、选择器与草稿恢复、Ctrl+O、Esc/Ctrl+C/Ctrl+D；运行后 shell 回显/光标/raw/bracketed paste 正常；尺寸不足/TERM=dumb/NO_COLOR/重定向行为正确 |
+| 7 | 完成拒绝、关闭失败、EPIPE、SIGTERM 与取消竞态 | 第 8.2 节实际退出/影响规则成立；安全错误不泄露秘密，不自动重做副作用，不提前报成功 |
+| 8 | 全部类型/解析门禁、相关行为测试、全量回归及生产构建 | `npm run typecheck`、`npm test`、修改文件 Biome、更新后的 Node CLI 集成、`build:cli`、实际生产命令通过；配置迁出涉及的桌面配置/凭据与构建路径同步回归 |
+
+模型验证区分受控模型、真实 SDK 到本地 HTTP/SSE、远程厂商三类。先用现有本地夹具覆盖故障与大部分流程；远程只使用已有授权配置，执行前说明普通对话和临时工作区文件/审批/恢复的小范围调用及用量，不为每个排版场景反复调用厂商，不输出 Key。没有真实厂商证据不能把本地服务通过写成远程验收。
+
+**本轮完成定义**：P1–P5 全部完成，生产命令可直接使用，旧 CLI 无残留调用/兼容实现，所有目标命令有真实行为，秘密与持久状态可安全跨进程使用，类型/测试/构建与实际终端证据齐全。不能用“预览完成”“宿主待补”“命令已接线”结束交付；真实平台能力不可获得时明确阻塞项，不伪造可用结果。
+
+本次仅完成以上生产直切方案的代码边界核对和文档修订，没有创建新配置包、安装依赖、执行 DPAPI、调用模型或切换生产入口。C1–C4 的待实施状态保持，C0 既有证据不升级为新生产 CLI 验收。
 
 ## 9. 验收矩阵与证据要求
 
 | 维度 | 必须观察到的结果 | 证据方式 |
 | --- | --- | --- |
-| 无工具独立性 | 新终端/预览不导入 tools、app 或根 src，不需要真实配置 | 独立类型/依赖检查、实际 Node 预览 |
+| 无工具独立性 | 无插件配置能普通对话；terminal 层不导入 tools/配置/存储，整个 CLI 闭包不导入 app/根 src/Electron | 独立类型/解析边界、实际生产 Node 命令；不是要求宿主不能消费 tools |
 | 协议分离 | TUI 为单 writer；print 正文无进度污染，JSONL 每行可解析且无菜单/回显/ANSI | 分别捕获 stdout/stderr，实际 TTY、print 与管道 |
 | 输入所有权 | Enter 不跨状态发送；多行/粘贴保持一份草稿，过期输入不能批准新交互；局部 UI 优先处理 Esc | 确定性回归、真实键盘、剪贴板文本粘贴与修饰键降级 |
 | 生命周期 | EOF waiting=3，取消持久等待、活动取消、宿主中断和关闭失败区别明确 | 控制器行为回归；真实接入后核验存储与租约 |

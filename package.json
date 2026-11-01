@@ -8,13 +8,16 @@
     "packages/harness",
     "packages/logs",
     "packages/models",
-    "packages/tools"
+    "packages/tools",
+    "packages/configuration"
   ],
   "scripts": {
     "postinstall": "install-electron",
     "dev": "node scripts/start-electron.mjs dev",
     "agent:dev": "node scripts/run-agent.mjs",
-    "build": "npm run typecheck && electron-vite build",
+    "agent": "node cli/dist/main.js",
+    "build:cli": "npm run build:packages && node cli/build.mjs",
+    "build": "npm run typecheck && node cli/build.mjs && electron-vite build",
     "preview": "node scripts/start-electron.mjs preview",
     "build:harness": "npm run build --workspace @agent-harness/core",
     "build:logs": "npm run build --workspace @agent-harness/logs",
@@ -25,13 +28,13 @@
     "build:packages": "npm run build --workspaces",
     "verify:logs-package": "npm run build:logs && node scripts/verify-logs-package.mjs",
     "verify:harness-package": "npm run build:harness && node scripts/verify-harness-package.mjs",
-    "check:agent-boundaries": "npm run build:packages && node scripts/check-agent-boundaries.mjs && node scripts/check-logs-boundaries.mjs && node scripts/check-models-boundaries.mjs && node scripts/check-tools-boundaries.mjs",
-    "typecheck": "npm run check:agent-boundaries && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "check:agent-boundaries": "npm run build:packages && node scripts/check-agent-boundaries.mjs && node scripts/check-logs-boundaries.mjs && node scripts/check-models-boundaries.mjs && node scripts/check-tools-boundaries.mjs && node scripts/check-cli-boundaries.mjs",
+    "typecheck": "npm run check:agent-boundaries && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p cli/tsconfig.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "npm run build:packages && vitest run --exclude tests/*.integration.test.ts",
     "test:integration:agent": "npm run build:packages && vitest run tests/agent-gateway.integration.test.ts tests/agent-loop.integration.test.ts",
-    "test:integration:harness": "npm run build:packages && vitest run tests/general-agent-development-cli.integration.test.ts tests/mimo-development-cli.integration.test.ts",
+    "test:integration:harness": "npm run build:cli && vitest run tests/general-agent-development-cli.integration.test.ts tests/mimo-development-cli.integration.test.ts tests/general-agent-reliability.integration.test.ts",
     "build:win": "npm run build && electron-builder --win --publish never",
     "build:mac": "npm run build && electron-builder --mac --publish never",
     "build:linux": "npm run build && electron-builder --linux --publish never"
@@ -41,6 +44,7 @@
     "@agent-harness/logs": "0.1.0",
     "@agent-harness/models": "0.1.0",
     "@agent-harness/tools": "0.1.0",
+    "@agent-harness/configuration": "0.1.0",
     "@anthropic-ai/sdk": "^0.104.1",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
@@ -56,6 +60,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "zod": "^4.1.5",
+    "string-width": "^7.2.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -90,6 +95,7 @@
       "!node_modules/@agent-harness/logs{,/**/*}",
       "!node_modules/@agent-harness/models{,/**/*}",
       "!node_modules/@agent-harness/tools{,/**/*}",
+      "!node_modules/@agent-harness/configuration{,/**/*}",
       {
         "from": "packages/harness",
         "to": "node_modules/@agent-harness/core",
@@ -120,6 +126,15 @@
       {
         "from": "packages/tools",
         "to": "node_modules/@agent-harness/tools",
+        "filter": [
+          "package.json",
+          "dist/**/*.js",
+          "dist/**/*.d.ts"
+        ]
+      },
+      {
+        "from": "packages/configuration",
+        "to": "node_modules/@agent-harness/configuration",
         "filter": [
           "package.json",
           "dist/**/*.js",

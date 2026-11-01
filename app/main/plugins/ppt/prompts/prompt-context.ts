@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentStepLimits } from "@shared/agent-step-limits";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
 import type { Presentation } from "@shared/presentation";
 import type { SkillRegistry } from "../../../agent/skills/loadSkillsDir";
 import type { SkillCard } from "../../../agent/skills/skill-types";

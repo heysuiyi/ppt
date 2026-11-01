@@ -1,5 +1,5 @@
-import type { AgentExecutionStrategy } from "@shared/agent";
-import type { AgentStepLimits } from "@shared/agent-step-limits";
+import type { AgentExecutionStrategy } from "@agent-harness/configuration/model-contract";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
 import { Select } from "../Select";
 import { Switch } from "../Switch";
 import { RangeField, SettingsPanel, SettingsRow, SettingsSection } from "./SettingsPrimitives";

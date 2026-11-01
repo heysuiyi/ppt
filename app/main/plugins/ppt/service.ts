@@ -1,7 +1,10 @@
+import type {
+  AgentExecutionStrategy,
+  AgentModelSelection,
+} from "@agent-harness/configuration/model-contract";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
 import type { AgentEditorContext, AgentRunResult } from "@app/shared/ipc";
 import { canonicalJson, hashArtifactValue } from "@ppt/core/artifact-hash";
-import type { AgentExecutionStrategy, AgentModelSelection } from "@shared/agent";
-import type { AgentStepLimits } from "@shared/agent-step-limits";
 import type { AgentTaskNode } from "@shared/agent-task-list";
 import {
   type CommandBus,

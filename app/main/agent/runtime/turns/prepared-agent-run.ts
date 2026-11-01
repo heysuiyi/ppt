@@ -1,5 +1,6 @@
-import type { AgentStepLimits } from "@shared/agent-step-limits";
-import { buildMainStepLimitMessage } from "@shared/agent-step-limits";
+import type { Logger } from "@agent-harness/logs/logs";
+import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
+import { buildMainStepLimitMessage } from "@agent-harness/configuration/step-limits";
 import type { ConversationDatabase } from "../../../conversation-database";
 import type { AgentModelGateway, AgentToolSchema } from "../../gateway";
 import type { DurableQueryInflightSnapshot } from "../../persistence/durable-run-store";
@@ -38,6 +39,7 @@ export type AgentLoopTurnOutcome =
 
 export interface PreparedAgentQueryDeps {
   gateway: AgentModelGateway;
+  logger?: Logger;
   conversationDatabase?: ConversationDatabase;
   toolSchemas: AgentToolSchema[];
   workspaceRoot?: string;
@@ -67,6 +69,7 @@ export class PreparedAgentRun {
     readonly input: {
       scope: AgentRunScope;
       gateway: AgentModelGateway;
+      logger?: Logger;
       conversationDatabase?: ConversationDatabase;
       systemPrompt: string;
       toolSchemas: AgentToolSchema[];
@@ -112,6 +115,7 @@ export class PreparedAgentRun {
       canUseTool: (toolUse) => exposedToolNames.has(toolUse.name),
       deps: {
         gateway: input.gateway,
+        logger: input.logger,
         conversationDatabase: input.conversationDatabase,
         toolSchemas: input.toolSchemas,
         workspaceRoot: options.workspaceRoot,

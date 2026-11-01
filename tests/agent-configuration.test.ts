@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,11 +12,9 @@ vi.mock("openai", () => ({
 
 import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import { AgentGateway } from "../app/main/agent/gateway";
-import {
-  createAgentConfiguration,
-  registerAgentConfigurationIpc,
-} from "../app/main/agent-configuration";
-import type { SafeStorageAdapter } from "../app/main/agent-configuration/internal/credential-store";
+import { createDesktopAgentConfiguration } from "../app/main/agent-configuration/desktop-configuration";
+import { registerAgentConfigurationIpc } from "../app/main/agent-configuration/ipc";
+import type { SafeStorageAdapter } from "../app/main/agent-configuration/safe-storage-protection";
 
 const mimoProfile = getModelProfile("mimo-token-plan-cn");
 if (mimoProfile?.endpoint?.kind !== "fixed")
@@ -27,9 +25,9 @@ const mimoSupport = getModelSupport(mimoAdapterId, "mimo-v2.6-pro");
 if (!mimoSupport?.supported) throw new Error("The MiMo Pro support profile is required.");
 const mimoReasoningEfforts = mimoSupport.reasoningEfforts;
 
-import type { VendorConfiguration } from "../src/shared/agent-configuration";
-import type { AgentSettings } from "../src/shared/agent-settings";
-import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
+import type { VendorConfiguration } from "@agent-harness/configuration/configuration-contract";
+import type { AgentSettings } from "@agent-harness/configuration/settings";
+import { DEFAULT_AGENT_STEP_LIMITS } from "@agent-harness/configuration/step-limits";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -86,7 +84,11 @@ async function configuration(
   const directory = await mkdtemp(join(tmpdir(), "agent-configuration-"));
   directories.push(directory);
   return {
-    ...createAgentConfiguration({ applicationDataRoot: directory, safeStorage, environment }),
+    ...createDesktopAgentConfiguration({
+      applicationDataRoot: directory,
+      safeStorage,
+      environment,
+    }),
     directory,
     safeStorage,
   };
@@ -96,6 +98,7 @@ class FakeSafeStorage implements SafeStorageAdapter {
   available = true;
   decryptCalls = 0;
   failEncryption = false;
+  beforeEncryption?: () => Promise<void>;
   decryptString(encrypted: Buffer) {
     this.decryptCalls++;
     return encrypted.toString("utf8");
@@ -108,6 +111,7 @@ class FakeSafeStorage implements SafeStorageAdapter {
     return Buffer.from(value);
   }
   async encryptStringAsync(value: string) {
+    await this.beforeEncryption?.();
     return this.encryptString(value);
   }
   getSelectedStorageBackend() {
@@ -122,6 +126,19 @@ class FakeSafeStorage implements SafeStorageAdapter {
 }
 
 describe("agent configuration management", () => {
+  it("does not create a configuration directory or transaction lock for an absent snapshot", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agent-configuration-read-"));
+    directories.push(directory);
+    const absentRoot = join(directory, "absent");
+    const config = createDesktopAgentConfiguration({
+      applicationDataRoot: absentRoot,
+      safeStorage: new FakeSafeStorage(),
+      environment: {},
+    });
+    expect(await config.management.getSnapshot()).toBeUndefined();
+    await expect(stat(absentRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("initializes once, preserves disk format, and supplies default preferences", async () => {
     const config = await configuration();
     await expect(config.management.getSnapshot()).resolves.toBeUndefined();
@@ -148,7 +165,7 @@ describe("agent configuration management", () => {
       ...preferences(legacy),
       gateway: { ...legacy.gateway, fallbackModelId: "other-model" },
     });
-    const reopened = createAgentConfiguration({
+    const reopened = createDesktopAgentConfiguration({
       applicationDataRoot: config.directory,
       safeStorage: config.safeStorage,
       environment: {},
@@ -280,29 +297,60 @@ describe("agent configuration management", () => {
     expect(
       (await config.management.getSnapshot())?.settings.vendors.map((entry) => entry.id),
     ).toEqual(["primary"]);
+    config.safeStorage.failEncryption = false;
+    const other = createDesktopAgentConfiguration({
+      applicationDataRoot: config.directory,
+      safeStorage: config.safeStorage,
+      environment: {},
+    });
+    await other.management.saveVendor({
+      vendor: vendor("after-failure"),
+      credential: { type: "replace", apiKey: "after-failure-key" },
+    });
+    const plan = await other.runtime.loadExecutionPlan("after-failure-model");
+    expect((await other.runtime.resolveRuntime(plan)).primary.apiKey).toBe("after-failure-key");
+    expect(
+      (await config.management.getSnapshot())?.settings.vendors.map((entry) => entry.id),
+    ).toEqual(["primary", "after-failure"]);
   });
 
   it("serializes whole management changes across factories sharing a root", async () => {
     const config = await configuration();
     await config.management.initialize(settings());
-    const other = createAgentConfiguration({
+    const other = createDesktopAgentConfiguration({
       applicationDataRoot: config.directory,
       safeStorage: config.safeStorage,
       environment: {},
     });
-    await Promise.all([
-      config.management.saveVendor({
-        vendor: vendor("second"),
-        credential: { type: "replace", apiKey: "second-key" },
-      }),
-      other.management.saveVendor({
-        vendor: vendor("third"),
-        credential: { type: "replace", apiKey: "third-key" },
-      }),
-    ]);
+    const firstEncrypting = Promise.withResolvers<void>();
+    const releaseFirstEncryption = Promise.withResolvers<void>();
+    let encrypted = 0;
+    config.safeStorage.beforeEncryption = async () => {
+      if (encrypted++ !== 0) return;
+      firstEncrypting.resolve();
+      await releaseFirstEncryption.promise;
+    };
+    const firstSave = config.management.saveVendor({
+      vendor: vendor("second"),
+      credential: { type: "replace", apiKey: "second-key" },
+    });
+    await firstEncrypting.promise;
+    const secondSave = other.management.saveVendor({
+      vendor: vendor("third"),
+      credential: { type: "replace", apiKey: "third-key" },
+    });
+    releaseFirstEncryption.resolve();
+    await Promise.all([firstSave, secondSave]);
     expect(
       (await config.management.getSnapshot())?.settings.vendors.map((entry) => entry.id),
     ).toEqual(["primary", "second", "third"]);
+    for (const [id, key] of [
+      ["second", "second-key"],
+      ["third", "third-key"],
+    ]) {
+      const plan = await other.runtime.loadExecutionPlan(`${id}-model`);
+      expect((await other.runtime.resolveRuntime(plan)).primary.apiKey).toBe(key);
+    }
   });
 
   it("coordinates search endpoint edits and removes keys instead of rebinding", async () => {
@@ -340,7 +388,7 @@ describe("native MiMo execution configuration", () => {
         credential: { type: "replace", apiKey: "bound-mimo-key" },
       });
       expect(saved.settings.vendors[0]!.models[0]!.reasoningEffort).toBe(reasoningEffort);
-      const reopened = createAgentConfiguration({
+      const reopened = createDesktopAgentConfiguration({
         applicationDataRoot: config.directory,
         safeStorage: config.safeStorage,
         environment: {},
@@ -431,7 +479,7 @@ describe("native MiMo execution configuration", () => {
         ...preferences(initial),
         gateway: { timeoutMs: 180_000, maxOutputTokens: 210_000 },
       });
-      const reopened = createAgentConfiguration({
+      const reopened = createDesktopAgentConfiguration({
         applicationDataRoot: config.directory,
         safeStorage: config.safeStorage,
         environment: {},

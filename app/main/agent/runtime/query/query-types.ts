@@ -1,4 +1,4 @@
-import type { AgentModelSelection } from "@shared/agent";
+import type { AgentModelSelection } from "@agent-harness/configuration/model-contract";
 import { asQueryId, type QueryId } from "@shared/presentation-lifecycle";
 import type {
   AgentModelMessage,

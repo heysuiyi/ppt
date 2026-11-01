@@ -1,12 +1,12 @@
-import { getModelProfile } from "@agent-harness/models/model-profiles";
-import type { AgentProvider } from "@shared/agent";
 import type {
   ModelCatalogEntry,
   ModelTokenPricing,
   ModelVendorConnection,
   PresetVendorKind,
   VendorKind,
-} from "@shared/model-catalog";
+} from "@agent-harness/configuration/model-catalog";
+import type { AgentProvider } from "@agent-harness/configuration/model-contract";
+import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { markCredentialReentryRequired } from "./credentialMigration";
 
 export type {
@@ -15,7 +15,7 @@ export type {
   ModelVendorConnection,
   PresetVendorKind,
   VendorKind,
-} from "@shared/model-catalog";
+} from "@agent-harness/configuration/model-catalog";
 
 /** Flattened display view for the chat picker and token usage. */
 export interface ManagedModel {

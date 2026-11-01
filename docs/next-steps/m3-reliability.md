@@ -4,7 +4,7 @@
 
 ## M3 执行计划
 
-状态：M3-A 已通过后续独立复核并验收完成；M3-B 运行时修复、B1/B2 回归、原生消费及 CLI 已实施验证，全量回归通过，但 tools 边界阻塞全仓 typecheck，尚不标记 B 验收完成；C–E 待执行。以下保留总计划与设计阶段证据，不表示 M3 整体已完成。前序记录见[计划目录](README.md)，历史验收数字不作为本轮新增证据。
+状态：M3-A/B 均已验收；[M3-C2](m3-c-persistence.md#10-c2-随持久化-p1p2-实施)已随持久化 P1/P2 修复并通过同进程与真实进程窗口验证。完整 C1 竞争矩阵、C3 恢复兼容及 D–E 待执行，M3 尚未整体完成。以下保留总计划与初始设计证据，历史数字不作为本轮新增证据；前序记录见[计划目录](README.md)。
 
 ### M3.1 目标、范围与非目标
 
@@ -57,7 +57,9 @@ Netty 的事件传递不是本项目 `RuntimeEvent` 的定义：后者是观察�
 
 按 A→B→C→D→E 推进；进入修改前先运行相应现有回归，缺陷先复现再修复。不同组可在共同契约固定后并行实现，最终集中验收。
 
-第一步 [M3-A](m3-a-composition.md#10-后续独立复核与完成结论)已完成 A0/A1/A2 及全仓复核。[M3-B：执行隔离、单实例准入与关闭排空](m3-b-lifecycle.md#9-m3-b-实施与验收记录)已完成两个 binding 交接点错误保留修复、新增 12 项及扩展 2 项回归：七文件 110 项、全量 193 文件/1654 项通过（2 项条件跳过），原生 Node/真实 SQLite、两个真实 CLI 集成与 tarball 消费通过。独立 Node/Web 类型编译通过，但全仓 typecheck 仍被 tools 测试两处公开导入的 public-resolution 边界错误阻塞，B 尚未完成全仓验收。C–E 不随 A/B 的进展推进，C2 Thread 准入候选竞争仍未复现或排除。
+第一步 [M3-A](m3-a-composition.md#10-后续独立复核与完成结论)与第二步 [M3-B](m3-b-lifecycle.md#10-后续独立审核与完成结论)均已完成验收，其历史数字保留在独立记录中。持久化 P1/P2 已落实 [M3-C2 原子准入](m3-c-persistence.md#10-c2-随持久化-p1p2-实施)，同进程回归、三类跨进程窗口与第三进程重开通过；完整 C1/C3 及 D–E 仍待执行，不将局部通过写成整个 M3 完成。
+
+当前下一轮按 [C 的增量执行安排](m3-c-persistence.md#11-p1p2-完成后的下一轮执行安排)只补完整 C1/C3：复用现有 `.mjs` worker、CLI 构建产物与三类准入回归，补租约/CAS/binding/receipt/围栏及跨表不收养竞争，再做分层恢复兼容。P1 分层与 P2 准入不重做，第二后端不作为 M3 前置。
 
 | 编号 | 任务与最小场景 | 必须观察的结果 |
 | --- | --- | --- |
@@ -66,15 +68,15 @@ Netty 的事件传递不是本项目 `RuntimeEvent` 的定义：后者是观察�
 | B1 | 同 Agent 的 run/run、run/resume、resume/resume；等待后新 Run；不同 Agent A/B 使用不同 Thread，同时阻塞于独立模型门闩 | 同实例竞争明确 agent-busy，无隐式队列；A/B 不串输入、工具、事件、signal 或历史；关闭 A 仅中断 A，B 可继续提交且共享存储仍可使用 |
 | B2 | 创建/迟到绑定/关闭竞争；活动工具中关闭；用户 cancel 与 close 的两个确定先后顺序 | 停止受理是同步边界；关闭等待在途工作与租约释放后才释放 binding/plugin；重复 close 幂等。取消为 cancelled、关闭中断为 interrupted，已提交 waiting 保持 waiting；重叠时按当前终态提交边界核验，不预设“第一个信号必胜” |
 | C1 | 两个独立进程打开同一临时 SQLite：争 Query 租约、同 revision 保存、竞争新 Thread binding、历史追加/重复 batch | 不预定赢家；租约一 acquired 一 busy；同 CAS 一 saved 一 conflict；不同绑定一成功一拒绝；重复批次无重复消息；第三进程重开读到持久赢家；过期 save/release/replace 不破坏新 writer |
-| C2 | 两个 Application/进程使用相同 agentId/threadId、不同 queryId；门闩固定在 findUnfinished 与 acquire 之间，再让第一 Query 进入模型 | 核验线程待决检查是否可被过期读取越过；若可越过，先形成失败回归及最小 Thread 原子准入修复设计。不能用 Query 租约、历史 CAS 或单实例 agent-busy 代替 Thread 准入证明，也不能把失败场景标记为支持的安全并发 |
+| C2 | 相同 agent/thread 不同 Query；固定延迟 acquire、首存前与终态释放前窗口 | 已原子化 acquire，失败侧 THREAD_PENDING、无模型/工具派发；同进程及三个真实 Node 进程场景通过，原 waiting 仍可恢复。完整 C1/C3 不据此通过 |
 | C3 | 原实现保存 waiting；重建实例后分别改变 definition、插件版本/增删/顺序、model selection、工具版本和宿主绑定；原配置作成功对照 | 不兼容在进一步模型/工具调用及回答消费前拒绝，原 waiting 和规范历史不被失败内存快照覆盖，原配置仍可恢复。插件当前按有序列表精确比较，不擅自改 semver 或集合兼容 |
 | D1 | 明确故障窗口：dispatched 保存后执行前；真实副作用后结果保存前；回答消费 CAS 后续传前；续传副作用后结果保存前 | 恢复不重复 execute/resume，不重复消费旧回答；公开 tool.completed、检查点与历史呈现 TOOL_OUTCOME_UNKNOWN；有既存 applied 时保持 status=unknown/effects=applied；副作用零次或一次按实际窗口核对，unknown 不表示回滚 |
-| D2 | 历史 input、工具调用/结果、最终 assistant 批次提交后丢确认；追加完成后 checkpoint 确认失败；终态保存后丢确认 | 恢复通过原 batchId 对账，消息顺序及 callId/结果配对不重复；陈旧 revision 不覆盖权威状态；已持久 completed 不再次续跑或调用模型；租约最终释放 |
+| D2 | acquire 已提交却丢返回确认（含首存前无 payload）；历史 input、工具调用/结果、最终 assistant 批次提交后丢确认；追加完成后 checkpoint 确认失败；终态保存后丢确认 | acquire 未确认时不派发模型/工具、不新建 Query 绕开、不盲目重取；按权威 owner/generation 与确认旧激活停止后的显式规则对账。历史沿原 batchId 对账且配对不重复，陈旧 revision 不覆盖权威状态；持久 completed 不再次续跑；未知与可恢复窗口分别记录 |
 | D3 | 等待期间宿主权限撤销、拒绝审批、错误交互/旧回答重交、恢复预算不增加 | 未批准不进入能力；恢复重新授权；拒绝或取消不抹掉先前 applied；Query 不变、Run 更新，累计预算不重置；终态不可恢复 |
 | E1 | 有限且确定的流式增量/事实序列：不消费、门闩式慢消费、提前 return、完成后 drain；两个 handle 交错观察 | completed 不等待消费；退订不取消；身份/有序事实不串 Run；completed 等待实际清理及租约释放；观察输出不是恢复历史 |
 | E2 | 原生 Node 包消费者及现有 Electron CLI：普通对话、随机码读取、写审批、EOF 重启批准/拒绝/取消、绑定变更拒绝 | 消费构建产物，不回退源码；工作区 read/glob/grep 按当前策略自动允许，write/edit 未批准不写；真实临时文件结果匹配；最终 checkpoint/status 与 lease 同时核验；不把退出码 0 当 completed |
 
-C2 是代码检查发现的**候选竞争窗口，尚未复现**：`run-controller.ts` 先 `findUnfinished(agentId, threadId)`，再单独 `acquire({agentId, threadId, queryId})`；SQLite 仅后者在事务内。M3 必须先查清并处理这个边界，不能仅补成功测试就宣布并发安全。若证明现有宿主存在更外层原子保护，需给出实际调用证据；否则最小修复应由通用存储/准入契约与适配器共同落实，不能增加一个仅单进程有效的锁或捕获异常后静默继续。
+C2 的修复前 TOCTOU 证据保留在 [M3-C 方案记录](m3-c-persistence.md#3-c2-已复现陈旧空读取越过-thread-待决检查)；随后已在[持久化实施](persistence-backends.md#13-p1p2-实施与验收记录)修复：SQLite 的同一 acquire 写事务检查其他 Query 的 owner/非终态，再取得目标 lease，Core 统一处理 thread-pending。没有增加单进程锁，不以 history CAS 或异常兜底冒充保护；更完整的进程竞争/故障与兼容矩阵仍按独立门槛执行。
 
 ### M3.5 夹具、持久性与证据设计
 
@@ -93,7 +95,7 @@ C2 是代码检查发现的**候选竞争窗口，尚未复现**：`run-controll
 | --- | --- | --- |
 | 1 | 现有 general-agent 系列测试、`scripts/verify-harness-package.mjs` | 运行基线，按 A–E 编号登记现有断言与缺口；已有有效测试不重写，源码措辞/简单转发测试不重新钉住 |
 | 2 | `tests/general-agent-lifecycle.test.ts`、`general-agent-session-host.test.ts` | 补 A1/A2/B1/B2/E1 的缺失公开行为；逐 binding 所有权、门闩和真实结果断言，不复制安装器或资源树 |
-| 3 | `tests/general-agent-host.test.ts`、`general-agent-host-binding.test.ts`；需要时新增 `tests/fixtures/general-agent-reliability-entry.ts` 和 `tests/general-agent-reliability.integration.test.ts` | 优先执行 C2；实现 C1 的真实子进程竞争及 D 的崩溃恢复。新增 fixture 仅用于已有 Electron/公开 SQLite 适配，不依赖真实凭据，不进入 out/** |
+| 3 | [M3-C](m3-c-persistence.md)所列现有 host/runtime 回归、新 reliability fixture/integration 与 `cli/host/sqlite-agent-stores.ts` | 先 C2 失败回归及原子准入修复，再 C1 独立进程竞争和 C3 恢复兼容；D 的崩溃恢复后续复用进程夹具，不提前标完成 |
 | 4 | `tests/general-agent-runtime.test.ts`、`general-agent-development-host.test.ts` | 补 C3/D1/D2/D3 的持久与公开事件断言；复用现有真实 SQLite 和受控模型，不扩基础设施抽象 |
 | 5 | `packages/harness/src/agent/` 对应 application/runtime/tools/session 文件及 SQLite 适配 | 仅修已复现缺陷，先失败后通过；公开符号变更前检查引用，同步所有适配器、消费者和声明闭包；不借机重写 Loop |
 | 6 | 原有两项 CLI integration、包消费脚本、根 package.json（仅若新增集成文件） | 复用 E2；若新增 reliability integration，将其接入现有 test:integration:harness。npm test 默认排除 integration 的规则保持，不能只手动跑而漏进常规集成入口 |
@@ -134,9 +136,9 @@ npm.cmd run agent:dev -- --help
 5. 所有本轮产生的进程、隔离库、工作区和临时脚本清理；共享生产库、历史日志和用户文件不动。持久保留的集成夹具可重复运行且默认不访问远程模型。
 6. 生产 UI/PPT 和旧链路状态不变；不额外声称容量有界、恶意插件隔离、自动故障接管或外部副作用恰好一次。
 
-### M3.9 本次计划制定证据
+### M3.9 初始计划制定证据（历史）
 
-本次只制定计划、核对代码和执行基线检查，不实施 A–E 的新增功能或测试。官方来源见 M3.2；新增验收、C2 竞争复现及运行时修复均为待执行，不引用后文 M1/M2 的历史数字冒充本次结果。
+以下保留初始规划时的代码盘点和基线检查，当时没有实施 A–E 的新增功能或测试，也没有复现 C2；不能当作当前完成状态。官方来源见 M3.2；后续 A/B 的完成结论及 C2 复现以各独立步骤文件为准。
 
 计划制定阶段实际运行结果：
 

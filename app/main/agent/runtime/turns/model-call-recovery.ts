@@ -1,5 +1,8 @@
-import type { AgentModelSelection } from "@shared/agent";
-import { type AgentGatewayConfig, resolveAgentGatewayConfig } from "@shared/agent-gateway-config";
+import {
+  type AgentGatewayConfig,
+  resolveAgentGatewayConfig,
+} from "@agent-harness/configuration/gateway-settings";
+import type { AgentModelSelection } from "@agent-harness/configuration/model-contract";
 import type {
   AgentModelContentBlock,
   AgentModelGateway,
@@ -18,7 +21,7 @@ import {
   textFromContentBlocks,
   toolUseBlocksFromContent,
 } from "../../gateway";
-import { createModuleLogger } from "../../logger";
+import type { Logger } from "@agent-harness/logs/logs";
 import {
   emergencyTrimContext,
   emergencyTrimModelMessages,
@@ -26,7 +29,6 @@ import {
 } from "../context-compact";
 import { backoffBeforeRetry } from "../model/with-retry";
 
-const logger = createModuleLogger("model-call-recovery");
 const MAX_RECOVERY_ATTEMPTS = 8;
 const TOKEN_UPGRADE_8K = 8_192;
 const TOKEN_UPGRADE_64K = 65_536;
@@ -55,6 +57,7 @@ export interface ModelPromptPayload {
 
 export interface ModelCallRecoveryOptions {
   gateway: AgentModelGateway;
+  logger?: Logger;
   systemPrompt: string;
   responseContract?: AgentResponseContract;
   promptPayload: ModelPromptPayload;
@@ -229,7 +232,7 @@ export async function callModelWithRecovery(
 
   const recordDiagnostic = (message: string) => {
     recoveryNotes.push(message);
-    logger.info("model.recovery", { message, model: modelSelection });
+    options.logger?.info("model.recovery", { message, model: modelSelection });
   };
   const notify = (diagnostic: string, userMessage = diagnostic) => {
     recordDiagnostic(diagnostic);

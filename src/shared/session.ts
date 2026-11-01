@@ -1,6 +1,9 @@
+import {
+  agentExecutionStrategySchema,
+  agentModelSelectionSchema,
+} from "@agent-harness/configuration/model-contract";
 import { DEFAULT_DESIGN_SYSTEM } from "@design-system";
 import { z } from "zod";
-import { agentExecutionStrategySchema, agentModelSelectionSchema } from "./agent";
 import { agentActivityItemSchema } from "./agent-activity";
 import { persistedDisplayCardSchema } from "./card-display-protocol";
 import { type Presentation, presentationSchema } from "./presentation";

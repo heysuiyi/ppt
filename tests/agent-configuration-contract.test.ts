@@ -14,10 +14,13 @@ import {
   discoverAgentModelsSchema,
   saveAgentVendorSchema,
   updateSearchCredentialSchema,
-} from "../src/shared/agent-configuration";
-import { agentSettingsSchema } from "../src/shared/agent-settings";
-import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
-import { getModelReasoningEfforts, getModelReasoningLabel } from "../src/shared/model-reasoning";
+} from "@agent-harness/configuration/configuration-contract";
+import {
+  getModelReasoningEfforts,
+  getModelReasoningLabel,
+} from "@agent-harness/configuration/model-reasoning";
+import { agentSettingsSchema } from "@agent-harness/configuration/settings";
+import { DEFAULT_AGENT_STEP_LIMITS } from "@agent-harness/configuration/step-limits";
 
 const vendor = {
   id: "vendor-a",
