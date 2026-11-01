@@ -2,8 +2,8 @@
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TokenUsageOverview } from "../src/renderer/src/components/TokenUsageOverview";
-import type { ManagedModel } from "../src/renderer/src/modelCatalog";
+import { TokenUsageOverview } from "../app/renderer/src/components/TokenUsageOverview";
+import type { ManagedModel } from "../app/renderer/src/modelCatalog";
 import type { TokenUsageDay } from "../src/shared/token-usage";
 
 const models: ManagedModel[] = [

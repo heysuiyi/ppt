@@ -2,11 +2,11 @@
 
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import type { UiColorScheme } from "../src/renderer/src/app/appBootstrap";
+import type { UiColorScheme } from "../app/renderer/src/app/appBootstrap";
 import {
   useAppearanceRuntime,
   useComputedScheme,
-} from "../src/renderer/src/app/useAppearanceRuntime";
+} from "../app/renderer/src/app/useAppearanceRuntime";
 
 function Appearance({ mode }: { mode: UiColorScheme }) {
   const computedScheme = useComputedScheme(mode);

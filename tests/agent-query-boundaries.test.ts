@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { AgentQueryAssembler } from "../src/main/agent/runtime/query/agent-query-assembler";
+import { AgentQueryAssembler } from "../app/main/agent/runtime/query/agent-query-assembler";
 import {
   createInitialQueryState,
   createIterationWorkspace,
   reduceQueryState,
-} from "../src/main/agent/runtime/query/query-types";
-import { normalizeAgentRuntimeOptions } from "../src/main/agent/runtime/runtime-types";
+} from "../app/main/agent/runtime/query/query-types";
+import { normalizeAgentRuntimeOptions } from "../app/main/agent/runtime/runtime-types";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import { asQueryId } from "../src/shared/presentation-lifecycle";
 

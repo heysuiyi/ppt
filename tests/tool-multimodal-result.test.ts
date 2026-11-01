@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { ToolExecutionEngine } from "../src/main/agent/runtime/tools/tool-execution-engine";
-import type { ToolContext, ToolDefinition } from "../src/main/agent/tools/tool-definition";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+import { ToolExecutionEngine } from "../app/main/agent/runtime/tools/tool-execution-engine";
+import type { ToolContext, ToolDefinition } from "../app/main/agent/tools/tool-definition";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 describe("multimodal tool results", () => {

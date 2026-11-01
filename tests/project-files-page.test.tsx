@@ -3,9 +3,9 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ProjectFilesController } from "../src/renderer/src/app/project/useProjectFiles";
-import { LeftPanel } from "../src/renderer/src/components/LeftPanel";
-import { ProjectFilesPageContent } from "../src/renderer/src/components/ProjectFilesPage";
+import type { ProjectFilesController } from "../app/renderer/src/app/project/useProjectFiles";
+import { LeftPanel } from "../app/renderer/src/components/LeftPanel";
+import { ProjectFilesPageContent } from "../app/renderer/src/components/ProjectFilesPage";
 import {
   asArtifactId,
   asArtifactRevisionId,

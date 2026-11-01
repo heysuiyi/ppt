@@ -1,20 +1,20 @@
 import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { AgentGatewayError } from "../src/main/agent/gateway";
+import { AgentGatewayError } from "../app/main/agent/gateway";
 import type {
   AgentModelContentBlock,
   AgentModelGateway,
   AgentModelRequest,
   AgentModelResponse,
-} from "../src/main/agent/gateway/types";
-import { clearHooks, registerHook } from "../src/main/agent/runtime/hooks/hook-registry";
-import type { AgentRuntimeStreamEvent } from "../src/main/agent/runtime/runtime-types";
-import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { toToolSchema } from "../src/main/agent/tools/tool-schema";
-import { listSlidesTool } from "../src/main/plugins/ppt/tools/list-slides";
-import { readPresentationSnapshotTool } from "../src/main/plugins/ppt/tools/read-presentation-snapshot";
+} from "../app/main/agent/gateway/types";
+import { clearHooks, registerHook } from "../app/main/agent/runtime/hooks/hook-registry";
+import type { AgentRuntimeStreamEvent } from "../app/main/agent/runtime/runtime-types";
+import type { ToolDefinition } from "../app/main/agent/tools/tool-definition";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
+import { toToolSchema } from "../app/main/agent/tools/tool-schema";
+import { listSlidesTool } from "../app/main/plugins/ppt/tools/list-slides";
+import { readPresentationSnapshotTool } from "../app/main/plugins/ppt/tools/read-presentation-snapshot";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import { createFakeCommandProposalTool } from "./fake-command-proposal-tool";
 

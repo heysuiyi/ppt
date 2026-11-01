@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { UserMessageEditor } from "../src/renderer/src/components/UserMessageEditor";
+import { UserMessageEditor } from "../app/renderer/src/components/UserMessageEditor";
 
 describe("UserMessageEditor", () => {
   it("renders a stable inline editor with branch rerun guidance", () => {

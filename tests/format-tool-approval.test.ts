@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatToolApprovalDetail } from "../src/main/agent/runtime/tools/format-tool-approval";
+import { formatToolApprovalDetail } from "../app/main/agent/runtime/tools/format-tool-approval";
 
 describe("formatToolApprovalDetail", () => {
   it("formats bash commands", () => {

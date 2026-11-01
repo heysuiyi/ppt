@@ -4,19 +4,19 @@ import { join } from "node:path";
 import { requirePresentation } from "@main/plugins/ppt/context";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
-import type { ToolContext } from "../src/main/agent/tools/tool-definition";
-import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";
-import { CommitGate } from "../src/main/plugins/ppt/gate/commit-gate";
-import { RiskPolicy } from "../src/main/plugins/ppt/gate/risk-policy";
-import { loadWorkspaceSvgPage } from "../src/main/plugins/ppt/svg-page-loader";
-import { previewSvgPageTool } from "../src/main/plugins/ppt/tools/preview-svg-page";
+import type { ToolContext } from "../app/main/agent/tools/tool-definition";
+import { slideThumbnailService } from "../app/main/plugins/ppt/adapters/electron-thumbnail-service";
+import { CommitGate } from "../app/main/plugins/ppt/gate/commit-gate";
+import { RiskPolicy } from "../app/main/plugins/ppt/gate/risk-policy";
+import { loadWorkspaceSvgPage } from "../app/main/plugins/ppt/svg-page-loader";
+import { previewSvgPageTool } from "../app/main/plugins/ppt/tools/preview-svg-page";
 import {
   submitSvgDeckSchema,
   submitSvgDeckTool,
-} from "../src/main/plugins/ppt/tools/submit-svg-deck";
+} from "../app/main/plugins/ppt/tools/submit-svg-deck";
+import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const temporaryRoots: string[] = [];
 const VALID_PIXEL_PNG =

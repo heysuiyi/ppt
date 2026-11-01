@@ -9,22 +9,22 @@ import type {
   AgentModelGateway,
   AgentModelRequest,
   AgentModelResponse,
-} from "../src/main/agent/gateway/types";
-import { DurableRunStore } from "../src/main/agent/persistence/durable-run-store";
-import { asRunId, asThreadId } from "../src/main/agent/runtime/query/query-types";
-import { MessageBus } from "../src/main/agent/teammate/message-bus";
-import { askUserTool } from "../src/main/agent/tools/core/ask-user";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { CommitGate } from "../src/main/plugins/ppt/gate/commit-gate";
-import { RiskPolicy } from "../src/main/plugins/ppt/gate/risk-policy";
-import { AgentService } from "../src/main/plugins/ppt/service";
-import { beginPptCapabilityTool } from "../src/main/plugins/ppt/tools/begin-ppt-capability";
-import { ContentAddressedBlobStore } from "../src/main/presentation-lifecycle/content-addressed-blob-store";
-import { PresentationCommitService } from "../src/main/presentation-lifecycle/presentation-commit-service";
-import { PresentationLifecycleOrchestrator } from "../src/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
-import { PresentationLifecycleRepository } from "../src/main/presentation-lifecycle/presentation-lifecycle-repository";
-import { PresentationLifecycleToolBridge } from "../src/main/presentation-lifecycle/presentation-lifecycle-tool-bridge";
-import { FileSessionStore } from "../src/main/session-store";
+} from "../app/main/agent/gateway/types";
+import { DurableRunStore } from "../app/main/agent/persistence/durable-run-store";
+import { asRunId, asThreadId } from "../app/main/agent/runtime/query/query-types";
+import { MessageBus } from "../app/main/agent/teammate/message-bus";
+import { askUserTool } from "../app/main/agent/tools/core/ask-user";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
+import { CommitGate } from "../app/main/plugins/ppt/gate/commit-gate";
+import { RiskPolicy } from "../app/main/plugins/ppt/gate/risk-policy";
+import { AgentService } from "../app/main/plugins/ppt/service";
+import { beginPptCapabilityTool } from "../app/main/plugins/ppt/tools/begin-ppt-capability";
+import { ContentAddressedBlobStore } from "../app/main/presentation-lifecycle/content-addressed-blob-store";
+import { PresentationCommitService } from "../app/main/presentation-lifecycle/presentation-commit-service";
+import { PresentationLifecycleOrchestrator } from "../app/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
+import { PresentationLifecycleRepository } from "../app/main/presentation-lifecycle/presentation-lifecycle-repository";
+import { PresentationLifecycleToolBridge } from "../app/main/presentation-lifecycle/presentation-lifecycle-tool-bridge";
+import { FileSessionStore } from "../app/main/session-store";
 import { CommandBus } from "../src/shared/commands";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import {

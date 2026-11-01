@@ -8,24 +8,24 @@ import type {
   AgentModelContentBlock,
   AgentModelGateway,
   AgentModelRequest,
-} from "../src/main/agent/gateway/types";
-import { resetDefaultHooksForTests } from "../src/main/agent/runtime/hooks/default-hooks";
-import type { PostToolUseBlock, StopBlock } from "../src/main/agent/runtime/hooks/hook-blocks";
-import { clearHooks, registerHook } from "../src/main/agent/runtime/hooks/hook-registry";
+} from "../app/main/agent/gateway/types";
+import { resetDefaultHooksForTests } from "../app/main/agent/runtime/hooks/default-hooks";
+import type { PostToolUseBlock, StopBlock } from "../app/main/agent/runtime/hooks/hook-blocks";
+import { clearHooks, registerHook } from "../app/main/agent/runtime/hooks/hook-registry";
 import {
   LEAD_TASK_PERMISSIONS,
   type TaskCommand,
   type TaskCommandPrincipal,
   type TaskMutationResult,
   TaskStore,
-} from "../src/main/agent/task/task-store";
+} from "../app/main/agent/task/task-store";
 import {
   formatMailboxMessagesForHistory,
   MessageBus,
-} from "../src/main/agent/teammate/message-bus";
-import { ProtocolStateStore } from "../src/main/agent/teammate/protocol-state";
-import { TeammateManager } from "../src/main/agent/teammate/spawn-teammate";
-import type { ToolContext } from "../src/main/agent/tools/tool-definition";
+} from "../app/main/agent/teammate/message-bus";
+import { ProtocolStateStore } from "../app/main/agent/teammate/protocol-state";
+import { TeammateManager } from "../app/main/agent/teammate/spawn-teammate";
+import type { ToolContext } from "../app/main/agent/tools/tool-definition";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import type { TeammateProgressEvent } from "../src/shared/teammate-progress";
 

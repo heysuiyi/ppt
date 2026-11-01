@@ -201,9 +201,10 @@ describe.skipIf(!desktopAvailable)("independent Electron Main CLI", () => {
         configFile: false,
         resolve: {
           alias: {
+            "@app": resolve("app"),
             "@shared": resolve("src/shared"),
             "@ppt": resolve("src/ppt"),
-            "@main": resolve("src/main"),
+            "@main": resolve("app/main"),
             "@design-system": resolve("src/design-system"),
           },
         },

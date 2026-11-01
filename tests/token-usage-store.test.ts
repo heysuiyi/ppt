@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { TokenUsageStore } from "../src/main/token-usage-store";
+import { TokenUsageStore } from "../app/main/token-usage-store";
 
 const temporaryDirectories: string[] = [];
 

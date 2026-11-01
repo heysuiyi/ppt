@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentModelGateway, AgentModelMessage } from "../src/main/agent/gateway/types";
+import type { AgentModelGateway, AgentModelMessage } from "../app/main/agent/gateway/types";
 import {
   adjustSnipBoundary,
   emergencyTrimContext,
@@ -15,8 +15,8 @@ import {
   snipCompactConversation,
   snipCompactTranscript,
   toolResultBudget,
-} from "../src/main/agent/runtime/context-compact";
-import { compactHistory } from "../src/main/agent/runtime/context-compact/compact-history";
+} from "../app/main/agent/runtime/context-compact";
+import { compactHistory } from "../app/main/agent/runtime/context-compact/compact-history";
 
 const temporaryDirectories: string[] = [];
 

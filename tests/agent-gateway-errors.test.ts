@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentGatewayError, normalizeProviderError } from "../src/main/agent/gateway/errors";
+import { AgentGatewayError, normalizeProviderError } from "../app/main/agent/gateway/errors";
 
 describe("normalizeProviderError", () => {
   it.each([

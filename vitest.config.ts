@@ -8,10 +8,11 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      "@app": resolve("app"),
       "@shared": resolve("src/shared"),
       "@ppt": resolve("src/ppt"),
       "@design-system": resolve("src/design-system"),
-      "@main": resolve("src/main"),
+      "@main": resolve("app/main"),
     },
   },
   test: {
@@ -20,8 +21,8 @@ export default defineConfig({
       // Public entries and exact white-box dist imports share one emitted module graph.
       deps: {
         inline: [
-          /\/packages\/(?:harness|logs|models)\/dist\//,
-          /^@agent-harness\/(?:core|logs|models)(?:\/|$)/,
+          /\/packages\/(?:harness|logs|models|tools)\/dist\//,
+          /^@agent-harness\/(?:core|logs|models|tools)(?:\/|$)/,
         ],
       },
     },

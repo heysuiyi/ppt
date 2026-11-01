@@ -3,11 +3,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { WorkspaceView } from "../app/renderer/src/app/WorkspaceView";
+import type { ChatWorkspaceProps } from "../app/renderer/src/components/ChatWorkspace";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { WorkspaceView } from "../src/renderer/src/app/WorkspaceView";
-import type { ChatWorkspaceProps } from "../src/renderer/src/components/ChatWorkspace";
 
-vi.mock("../src/renderer/src/components/LeftPanel", () => ({
+vi.mock("../app/renderer/src/components/LeftPanel", () => ({
   LeftPanel: ({ page }: { page: string }) => (
     <aside>
       <input aria-label="menu search" />
@@ -15,14 +15,14 @@ vi.mock("../src/renderer/src/components/LeftPanel", () => ({
     </aside>
   ),
 }));
-vi.mock("../src/renderer/src/components/ChatWorkspace", () => ({
+vi.mock("../app/renderer/src/components/ChatWorkspace", () => ({
   ChatWorkspace: () => <div data-testid="chat">Chat</div>,
 }));
-vi.mock("../src/renderer/src/components/ProjectFilesPage", () => ({
+vi.mock("../app/renderer/src/components/ProjectFilesPage", () => ({
   ProjectFilesPage: () => <input aria-label="file editor" />,
 }));
-vi.mock("../src/renderer/src/components/PPTMirror", () => ({ PPTMirror: () => <div>Mirror</div> }));
-vi.mock("../src/renderer/src/components/DeckPreviewModal", () => ({
+vi.mock("../app/renderer/src/components/PPTMirror", () => ({ PPTMirror: () => <div>Mirror</div> }));
+vi.mock("../app/renderer/src/components/DeckPreviewModal", () => ({
   DeckPreviewModal: () => <div data-testid="preview" />,
 }));
 

@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TaskPlanCard } from "../src/renderer/src/components/TaskPlanCard";
+import { TaskPlanCard } from "../app/renderer/src/components/TaskPlanCard";
 import type { AgentTaskNode } from "../src/shared/agent-task-list";
 import type { TeamSessionProjection } from "../src/shared/team-session";
 

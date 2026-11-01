@@ -2,12 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileSessionStore } from "@main/session-store";
 import {
   projectArtifactDiffRequestSchema,
   projectFileOpenRequestSchema,
   projectFileSaveRequestSchema,
-} from "@shared/ipc";
+} from "@app/shared/ipc";
+import { FileSessionStore } from "@main/session-store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 interface StoreFixture {

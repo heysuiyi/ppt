@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   findActiveThreadId,
   toSessionChatMessages,
-} from "../src/renderer/src/app/chatMessageRuntime";
+} from "../app/renderer/src/app/chatMessageRuntime";
 import type { PersistedDisplayCard } from "../src/shared/card-display-protocol";
 import { type SessionChatMessage, sessionChatMessageSchema } from "../src/shared/session";
 

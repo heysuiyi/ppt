@@ -15,7 +15,7 @@ import {
   requestSummary,
   updateLogManagerSettings,
   withLogContext,
-} from "../src/main/agent/logger";
+} from "../app/main/agent/logger";
 
 const originalLogLevel = process.env.AGENT_LOG_LEVEL;
 const originalLogFile = process.env.AGENT_LOG_FILE;

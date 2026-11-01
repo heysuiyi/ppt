@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const generate = vi.fn();
 const generateStream = vi.fn();
 
-vi.mock("../src/main/agent/gateway/openai", () => ({
+vi.mock("../app/main/agent/gateway/openai", () => ({
   chatDriver: {
     generate: (...args: unknown[]) => generate(...args),
     generateStream: (...args: unknown[]) => generateStream(...args),
@@ -17,16 +17,16 @@ vi.mock("../src/main/agent/gateway/openai", () => ({
   },
 }));
 
-vi.mock("../src/main/agent/gateway/anthropic", () => ({
+vi.mock("../app/main/agent/gateway/anthropic", () => ({
   anthropicDriver: {
     generate: (...args: unknown[]) => generate(...args),
     generateStream: (...args: unknown[]) => generateStream(...args),
   },
 }));
 
-import { AgentGateway } from "../src/main/agent/gateway";
-import { getGatewayIoLogDirectory } from "../src/main/agent/gateway/gateway-io-log";
-import type { AgentModelResponse } from "../src/main/agent/gateway/types";
+import { AgentGateway } from "../app/main/agent/gateway";
+import { getGatewayIoLogDirectory } from "../app/main/agent/gateway/gateway-io-log";
+import type { AgentModelResponse } from "../app/main/agent/gateway/types";
 
 const originalDataDir = process.env.AGENT_PPT_DATA_DIR;
 const originalIoLog = process.env.AGENT_GATEWAY_IO_LOG;

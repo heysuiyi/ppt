@@ -7,10 +7,10 @@ import {
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useDeckExport } from "../app/renderer/src/app/presentation/useDeckExport";
+import { ArtifactCardHost } from "../app/renderer/src/cards/hosts/ArtifactCardHost";
+import { PPTMirror } from "../app/renderer/src/components/PPTMirror";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { useDeckExport } from "../src/renderer/src/app/presentation/useDeckExport";
-import { ArtifactCardHost } from "../src/renderer/src/cards/hosts/ArtifactCardHost";
-import { PPTMirror } from "../src/renderer/src/components/PPTMirror";
 import type { DisplayEvent } from "../src/shared/card-display-protocol";
 import type { Presentation } from "../src/shared/presentation";
 import { createSvgTestSlide } from "../src/shared/presentation-fixtures";

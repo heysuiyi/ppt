@@ -227,19 +227,21 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 关键模块：
 
-- `src/renderer/`：React 工作台、聊天流、实时 PPT 镜像、设置台；`src/renderer/src/App.tsx` 直接承载公共布局与工作台/设置页切换
+- `app/renderer/`：React 工作台、聊天流、实时 PPT 镜像、设置台；`app/renderer/src/App.tsx` 直接承载公共布局与工作台/设置页切换
   - 布局由容器分配空间：根节点限定窗口高度，主体通过 Flex/Grid 伸展；栏宽由 `useWorkbenchLayout` 的 CSS 变量统一控制，并通过 `ResizeObserver` 按实际容器尺寸适配。内部面板独立滚动，局部响应式使用容器查询；窗口缩小时不会覆盖用户保存的预览宽度。SVG 预览保持 16:9，作者坐标仍为 1280×720。
-  - 面板尺寸拖拽统一使用 `src/renderer/src/components/ResizeHandle.tsx`：受控 `value/min/max/onValueChange`，`axis` 选择左右或上下拖动，`direction` 决定增减方向。组件统一管理 idle/hover/dragging/disabled、指针捕获、全局光标和清理；支持方向键（10px）、Home/End。取消保留最后尺寸，禁用、失焦、失去捕获、卸载或边界变化时结束拖拽；尺寸约束和持久化仍由布局层负责。
-- `packages/harness/`：私有 npm workspace 包 `@agent-harness/core@0.1.0`，Node >=24、ESM-only；独立生成 JS 与声明，运行时仅依赖 Zod。普通消费方使用包的精确子路径，不直接引用源码或私有 dist 文件；未接入生产 UI，现有 `src/main/agent/` 继续运行。
+  - 面板尺寸拖拽统一使用 `app/renderer/src/components/ResizeHandle.tsx`：受控 `value/min/max/onValueChange`，`axis` 选择左右或上下拖动，`direction` 决定增减方向。组件统一管理 idle/hover/dragging/disabled、指针捕获、全局光标和清理；支持方向键（10px）、Home/End。取消保留最后尺寸，禁用、失焦、失去捕获、卸载或边界变化时结束拖拽；尺寸约束和持久化仍由布局层负责。
+- `packages/harness/`：私有 npm workspace 包 `@agent-harness/core@0.1.0`，Node >=24、ESM-only；独立生成 JS 与声明，运行时仅依赖 Zod。普通消费方使用包的精确子路径，不直接引用源码或私有 dist 文件；未接入生产 UI，现有 `app/main/agent/` 继续运行。
   - `src/agent/application/agent-application.ts`：公开 `@agent-harness/core/application/agent-application` 的 `createAgentApplication()`；内部默认工厂安装插件、绑定模型、就绪后发布实例，失败回滚。应用关闭先拒绝新创建、打断并排空执行，再释放拥有的资源；调用方不直接使用默认工厂。以下子目录均位于 `src/agent/` 内，不代表可导入路径。
   - `scope/`：Application → Agent → Run 的资源所有权、逆序释放与注册句柄；借用的宿主服务不随 Agent 关闭。
   - `runtime/`：单实例单激活的 `run/resume`、独立事件观察通道、Query 检查点协调，以及模型步/工具步。新请求只接收用户消息，不强制转换为业务 Task；Step 在提交边界更新快照。
   - `model/`：模型中立消息、能力声明、私有重放状态、按 provider ID 注册的模型工厂；增加厂商不在循环中新增分支。
   - `tools/`：注册、输入/输出校验、宿主强制授权、审批与续传；业务依赖由插件闭包捕获，业务结果、模型内容、展示投影分别持久化。
   - `session/`：历史条件追加与幂等批次收据、版本化检查点、写租约、世代围栏和显式接管；`extensions/`：插件安装、模型/工具/提示词贡献及作用域清理。
-- `src/main/agent-host/`：新内核的宿主适配，不从内核反向导入业务。
+- `app/main/agent-host/`：新内核的桌面平台与宿主适配，不从内核反向导入业务；开发入口仍借用 Electron 的生命周期和加密凭据存储。
   - `createSqliteAgentStores(filePath)` 使用独立 SQLite 表持久保存历史、批次收据和检查点，不迁移或替换旧生产数据库。独立 Node 运行需要支持 `node:sqlite` 的版本（Node 22.13+；项目开发使用 Node 24）。
   - `createAgentHost()` 在独立数据库中绑定会话、规范工作目录、工具模式、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 只接受已签发且已接入的原生适配器，当前为 `mimo-token-plan-cn`。其他配置在凭据解析前以 `MODEL_ADAPTER_UNSUPPORTED` 拒绝，不再提供 Gateway 桥接或备用模型回退。
+- `cli/`：终端命令、模型配置向导与交互执行流程；桌面侧通过窄端口提供平台能力。根命令 `npm run agent:dev` 不变，当前仍由 Node 启动 Electron 桥接进程，不代表纯 Node CLI 已独立。
+- `app/preload/`、`app/shared/ipc.ts`：桌面 IPC 桥接与协议；通用工具和领域代码仍在 `src/`，不将整个原 `src/` 视为 Electron 应用。
 - `packages/models/`：私有单包 `@agent-harness/models@0.1.0`，厂商是包内模块，不一厂商一包。`models` 子路径的 `createModelProvider(options, signal)` 按 adapterId 懒加载实现；`model-profiles` 提供浏览器安全资料，`model-contract` 提供公共类型，`model-errors` 提供统一安全错误。当前真实适配器为 MiMo Token Plan CN，保留固定地址、Responses、发现、流式、工具和私有重放；已知型号为 Flash、Pro、Pro Ultraspeed，未知项明确不支持。模型执行协议与注册仍由 Core 拥有，凭据来源/配置/连接指纹仍由宿主拥有。
   - `npm run build:models` 构建模型包及其 workspace 前置，`npm run verify:models-package` 在仓库外离线安装真实 tarball，执行真实 SDK 到本地 HTTP/SSE、声明与错误边界验收。资料入口不加载 SDK 或 Node 工厂；提供方关闭不关闭借用 Logger。旧 `src/models` 工厂与错误类已删除，无兼容路径，生产旧 Gateway 与其 SDK 依赖仍保留。
 - `src/tools/`：基础工具 `read`、`write`、`edit`、`glob`、`grep` 的约定、默认实现与装配。`createTools({ workspaceRoot, mode })` 返回插件，默认 `read-only`；`read-write` 再安装写入和编辑工具，不自行批准调用。各同名文件拥有输入/输出 schema、工具定义与模型投影；内部共享路径守卫、稳定快照、观察记录、有界搜索与原子发布，不依赖 PPT 或当前宿主。
@@ -251,21 +253,21 @@ PPTX exporter (hybrid: SVG background + editable text)
   - Logger 只负责记录与绑定上下文；输出配置、清理与关闭归宿主。记录先做有界快照和凭据遮蔽再分发，单个输出失败不阻止其他输出，日志不能替代规范历史或检查点。
   - 文件写入显式根下的 `<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，日期使用 UTC；保留与清理仅处理当前实例的托管旧日文件，不读写旧日志、应用设置或 Gateway 归档。
   - `npm run build:packages` 按顺序构建 Core、logs 与 models；应用/测试/开发入口在消费前构建，dev 等待三个包首次 emit 并持续监听。`npm run verify:logs-package` 验证真实 tarball 的仓库外独立安装、原生 Node 行为及通用声明闭包；日志包不管理应用配置持久化，不提供全局单例或自动服务发现。
-- `src/main/agent/`：Agent runtime、工具注册、模型网关、审批门禁、子任务
-- `src/main/agent-configuration/`：通过 `createAgentConfiguration()` 提供 `management` 和 `runtime` 两套操作，不公开 Store、凭据绑定或解密接口。
+- `app/main/agent/`：Agent runtime、工具注册、模型网关、审批门禁、子任务
+- `app/main/agent-configuration/`：通过 `createAgentConfiguration()` 提供 `management` 和 `runtime` 两套操作，不公开 Store、凭据绑定或解密接口。
   - Renderer 只使用管理 IPC：读取无密钥快照、初始化、保存/删除厂商、保存执行偏好、修改搜索凭据、发现远程模型。厂商保存完成后才发布已提交状态；历史浏览器配置只读迁移，Main 初始化成功后清理。
   - 运行请求只按 `modelId` 选模：`loadExecutionPlan(modelId)` 固化本次模型和执行偏好，受理后 `resolveRuntime(plan)` 读取匹配凭据并应用环境回退；网关和搜索服务不再自行读取环境配置。缺失的可选搜索/备用密钥不提前阻塞主模型。
   - 已保存连接的模型发现仅接收 `vendorId`，地址与密钥由 Main 决定；连接草稿必须提供临时 Key。修改协议或地址不会将旧 Key 重新绑定到新连接。
   - 保留 `agent-settings.json`、`credentials.v2.json` 及原有迁移和凭据锁；整项管理操作串行协调，但不承诺两个文件之间的原子事务。模块外只能导入公共入口。
 - `src/design-system/`：DesignSystemV2 schema、预设与解析
-- `src/shared/`：演示文稿模型、命令模型、会话与 IPC 类型
-- `src/main/project/`：本地项目沙箱、产物读写、diff 和依赖状态
-- `src/main/storage/`：SQLite 数据访问层，按数据对象目录内聚（如 `session/`、`checkpoint/`、`ppt-job/`），目录内按需放置 DO、DTO、Mapper。
+- `src/shared/`：尚未进一步归属的演示文稿、命令、配置与会话契约；桌面 IPC 协议已归 `app/shared/ipc.ts`，不将该目录视为可任意复用的公共包。
+- `app/main/project/`：本地项目沙箱、产物读写、diff 和依赖状态
+- `app/main/storage/`：SQLite 数据访问层，按数据对象目录内聚（如 `session/`、`checkpoint/`、`ppt-job/`），目录内按需放置 DO、DTO、Mapper。
   - `init(connection)` 集中管理表、索引、连接配置和已有检查点字段迁移，可重复调用且保留数据。
   - `createStorage(filePath)` 创建并初始化单个连接，装配所有 Mapper，提供同步 `transaction()` 和 `close()`；业务不接触原始连接或 SQL。借用同一 Storage 的业务仓库不关闭它。
   - Mapper 负责参数化 SQL、记录映射、具名检索和条件写入；运行状态、租约接管、幂等解释、产物关联校验、失效传播及恢复规则仍由业务服务负责。
   - 会话与 PPT 生命周期共享连接和嵌套 SAVEPOINT；数据库提交成功后才发布内存状态、通知及工作区镜像。JSON 配置、项目文件和文件型 Blob 存储保持原有实现，未为闲置的 `blobs` 表新增 CRUD。
-- `src/main/deck/`：缩略图、导出历史、PPTX 导出服务
+- `app/main/deck/`：缩略图、导出历史、PPTX 导出服务
 - `skills/`：核心创建 `ppt-workflow` → `ppt-design` → `ppt-design-layout` → `ppt-build`；短路径 `ppt-edit` / `ppt-beautify` / `ppt-review` / `ppt-export`；可选上游 Skill（`ppt-brief` / `ppt-outline` / `ppt-storyboard` / `ppt-research`）仅知识包，经 ReadFile/WriteFile 写入，非 lifecycle 硬锁
 - `tests/`：Agent、导出、上下文压缩、工具审批和项目产物测试
 

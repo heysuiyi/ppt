@@ -5,17 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AgentConfiguration, createAgentConfiguration } from "../src/main/agent-configuration";
-import { prepareConfiguredModel } from "../src/main/agent-host/configured-model-factory";
-import { type AgentHost, createAgentHost } from "../src/main/agent-host/create-agent-host";
+import { type AgentConfiguration, createAgentConfiguration } from "../app/main/agent-configuration";
+import { prepareConfiguredModel } from "../app/main/agent-host/configured-model-factory";
+import { type AgentHost, createAgentHost } from "../app/main/agent-host/create-agent-host";
+import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
 import {
   parseDevelopmentArguments,
   projectDevelopmentEvent,
   projectDevelopmentModels,
   projectDevelopmentResult,
-} from "../src/main/agent-host/development-command";
-import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
-import type { ToolsMode } from "../src/tools/tools";
+} from "../cli/commands/development-command";
+import type { ToolsMode } from "@agent-harness/tools/tools-contract";
 
 const mimoProfile = getModelProfile("mimo-token-plan-cn");
 if (mimoProfile?.endpoint?.kind !== "fixed")

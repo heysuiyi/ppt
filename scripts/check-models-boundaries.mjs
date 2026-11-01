@@ -435,7 +435,8 @@ export function checkModelsBoundaries(rootDir = repositoryRoot) {
       const browser =
         relative === "tsconfig.web.json" ||
         within(path.join(root, "src/shared"), file) ||
-        within(path.join(root, "src/renderer"), file);
+        within(path.join(root, "app/shared"), file) ||
+        within(path.join(root, "app/renderer"), file);
       for (const dependency of dependencies(source)) {
         if (dependency.dynamic) {
           if (owned(file))

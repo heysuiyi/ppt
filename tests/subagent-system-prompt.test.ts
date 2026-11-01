@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { SUB_AGENT_TOOLS } from "../src/main/agent/subagent/workspace-tools";
-import { buildTeammateSystemPrompt } from "../src/main/agent/teammate/teammate-system-prompt";
+import { SUB_AGENT_TOOLS } from "../app/main/agent/subagent/workspace-tools";
+import { buildTeammateSystemPrompt } from "../app/main/agent/teammate/teammate-system-prompt";
 
 describe("teammate system prompt", () => {
   it("directs file operations to workspace tools before bash", () => {

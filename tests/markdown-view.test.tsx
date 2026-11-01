@@ -4,7 +4,7 @@ import { splitGraphemes } from "@shared/streaming-text";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MarkdownView } from "../src/renderer/src/components/markdown/MarkdownView";
+import { MarkdownView } from "../app/renderer/src/components/markdown/MarkdownView";
 import { createOpenExportFolderHref } from "../src/shared/export-links";
 
 function installMotionPreference(initial: boolean) {

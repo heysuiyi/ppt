@@ -3,9 +3,9 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Dialog } from "../src/renderer/src/components/Dialog";
-import { Menu } from "../src/renderer/src/components/Menu";
-import { Select } from "../src/renderer/src/components/Select";
+import { Dialog } from "../app/renderer/src/components/Dialog";
+import { Menu } from "../app/renderer/src/components/Menu";
+import { Select } from "../app/renderer/src/components/Select";
 
 beforeEach(() => {
   vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(800);

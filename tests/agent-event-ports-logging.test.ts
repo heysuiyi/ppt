@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { withLogContext } from "../src/main/agent/logger";
-import { AgentEventPorts } from "../src/main/agent/runtime/lifecycle/agent-event-ports";
-import type { ConversationDatabase } from "../src/main/conversation-database";
+import { withLogContext } from "../app/main/agent/logger";
+import { AgentEventPorts } from "../app/main/agent/runtime/lifecycle/agent-event-ports";
+import type { ConversationDatabase } from "../app/main/conversation-database";
 
 const originalLogLevel = process.env.AGENT_LOG_LEVEL;
 const originalLogFile = process.env.AGENT_LOG_FILE;

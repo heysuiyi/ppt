@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MarkdownRenderer } from "../src/renderer/src/components/markdown/MarkdownRenderer";
+import { MarkdownRenderer } from "../app/renderer/src/components/markdown/MarkdownRenderer";
 
 describe("MarkdownRenderer native document semantics", () => {
   let root: HTMLDivElement;

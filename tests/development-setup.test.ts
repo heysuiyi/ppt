@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AgentConfiguration, createAgentConfiguration } from "../src/main/agent-configuration";
-import type { SafeStorageAdapter } from "../src/main/agent-configuration/internal/credential-store";
+import { type AgentConfiguration, createAgentConfiguration } from "../app/main/agent-configuration";
+import type { SafeStorageAdapter } from "../app/main/agent-configuration/internal/credential-store";
 import {
   type DevelopmentSetupIO,
   ensureDevelopmentModel,
-} from "../src/main/agent-host/development-setup";
+} from "../cli/configuration/development-setup";
 
 const mimoProfile = getModelProfile("mimo-token-plan-cn");
 if (mimoProfile?.endpoint?.kind !== "fixed")

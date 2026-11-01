@@ -8,18 +8,18 @@ import type {
   AgentModelContentBlock,
   AgentModelGateway,
   AgentModelRequest,
-} from "../src/main/agent/gateway/types";
-import { DurableRunStore } from "../src/main/agent/persistence/durable-run-store";
-import type { AgentQueryLoopEvent } from "../src/main/agent/runtime/query/query-types";
+} from "../app/main/agent/gateway/types";
+import { DurableRunStore } from "../app/main/agent/persistence/durable-run-store";
+import type { AgentQueryLoopEvent } from "../app/main/agent/runtime/query/query-types";
 import {
   type AgentCommandProposalResult,
   agentCommandProposalResultSchema,
-} from "../src/main/agent/runtime/runtime-types";
-import { askUserTool } from "../src/main/agent/tools/core/ask-user";
-import { executeExtraToolTool } from "../src/main/agent/tools/core/execute-extra-tool";
-import { searchExtraToolsTool } from "../src/main/agent/tools/core/search-extra-tools";
-import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+} from "../app/main/agent/runtime/runtime-types";
+import { askUserTool } from "../app/main/agent/tools/core/ask-user";
+import { executeExtraToolTool } from "../app/main/agent/tools/core/execute-extra-tool";
+import { searchExtraToolsTool } from "../app/main/agent/tools/core/search-extra-tools";
+import type { ToolDefinition } from "../app/main/agent/tools/tool-definition";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import { createFakeCommandProposalTool } from "./fake-command-proposal-tool";
 

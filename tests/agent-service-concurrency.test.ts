@@ -1,10 +1,10 @@
 import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { describe, expect, it } from "vitest";
-import type { AgentModelGateway } from "../src/main/agent/gateway/types";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { CommitGate } from "../src/main/plugins/ppt/gate/commit-gate";
-import { RiskPolicy } from "../src/main/plugins/ppt/gate/risk-policy";
-import { AgentService } from "../src/main/plugins/ppt/service";
+import type { AgentModelGateway } from "../app/main/agent/gateway/types";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
+import { CommitGate } from "../app/main/plugins/ppt/gate/commit-gate";
+import { RiskPolicy } from "../app/main/plugins/ppt/gate/risk-policy";
+import { AgentService } from "../app/main/plugins/ppt/service";
 import { CommandBus } from "../src/shared/commands";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ChatWorkspace,
   type ChatWorkspaceProps,
-} from "../src/renderer/src/components/ChatWorkspace";
+} from "../app/renderer/src/components/ChatWorkspace";
 import {
   clearAllDisplayCardManagers,
   ingestDisplayEvent,

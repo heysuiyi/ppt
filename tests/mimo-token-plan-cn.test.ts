@@ -16,11 +16,11 @@ import { ModelProviderError } from "@agent-harness/models/model-errors";
 import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import { createModelProvider } from "@agent-harness/models/models";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentConfiguration, ExecutionPlan } from "../src/main/agent-configuration";
-import { prepareConfiguredModel } from "../src/main/agent-host/configured-model-factory";
-import { createAgentHost } from "../src/main/agent-host/create-agent-host";
-import { publicDevelopmentError } from "../src/main/agent-host/development-command";
-import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
+import type { AgentConfiguration, ExecutionPlan } from "../app/main/agent-configuration";
+import { prepareConfiguredModel } from "../app/main/agent-host/configured-model-factory";
+import { createAgentHost } from "../app/main/agent-host/create-agent-host";
+import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
+import { publicDevelopmentError } from "../cli/commands/development-command";
 
 const adapterId = "mimo-token-plan-cn";
 const profile = getModelProfile(adapterId)!;

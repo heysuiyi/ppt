@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { getChatPromptTemplates } from "../app/renderer/src/components/chat-workspace-copy";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { getChatPromptTemplates } from "../src/renderer/src/components/chat-workspace-copy";
 import type { Presentation } from "../src/shared/presentation";
 import { createSvgTestSlide } from "../src/shared/presentation-fixtures";
 

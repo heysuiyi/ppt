@@ -7,7 +7,7 @@ const providerMocks = vi.hoisted(() => ({
   anthropicStream: vi.fn(),
 }));
 
-vi.mock("../src/main/agent/gateway/openai", () => ({
+vi.mock("../app/main/agent/gateway/openai", () => ({
   chatDriver: {
     generate: providerMocks.openai,
     generateStream: providerMocks.openaiStream,
@@ -18,7 +18,7 @@ vi.mock("../src/main/agent/gateway/openai", () => ({
   },
 }));
 
-vi.mock("../src/main/agent/gateway/anthropic", () => ({
+vi.mock("../app/main/agent/gateway/anthropic", () => ({
   generateWithAnthropic: providerMocks.anthropic,
   generateStreamWithAnthropic: providerMocks.anthropicStream,
   anthropicDriver: {
@@ -27,8 +27,8 @@ vi.mock("../src/main/agent/gateway/anthropic", () => ({
   },
 }));
 
-import { AgentGateway } from "../src/main/agent/gateway";
-import { textFromContentBlocks } from "../src/main/agent/gateway/content-blocks";
+import { AgentGateway } from "../app/main/agent/gateway";
+import { textFromContentBlocks } from "../app/main/agent/gateway/content-blocks";
 
 describe("AgentGateway", () => {
   beforeEach(() => {

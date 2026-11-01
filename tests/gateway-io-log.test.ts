@@ -12,17 +12,17 @@ import {
   measureGatewayIoLogUsage,
   pruneGatewayIoLogFiles,
   writeGatewayIoLog,
-} from "../src/main/agent/gateway/gateway-io-log";
+} from "../app/main/agent/gateway/gateway-io-log";
 import type {
   AgentModelContentBlock,
   PreparedAgentModelRequest,
-} from "../src/main/agent/gateway/types";
+} from "../app/main/agent/gateway/types";
 import {
   clearLogFiles,
   getLogContext,
   getLogManagerStatus,
   withLogContext,
-} from "../src/main/agent/logger";
+} from "../app/main/agent/logger";
 
 const originalDataDir = process.env.AGENT_PPT_DATA_DIR;
 const originalIoLog = process.env.AGENT_GATEWAY_IO_LOG;

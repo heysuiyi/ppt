@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ToolApprovalBroker } from "../src/main/agent/runtime/tools/tool-approval-broker";
+import { ToolApprovalBroker } from "../app/main/agent/runtime/tools/tool-approval-broker";
 
 describe("ToolApprovalBroker", () => {
   it("waits for resolve before returning approval decision", async () => {

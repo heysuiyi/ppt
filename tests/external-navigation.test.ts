@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveExternalHttpUrl } from "../src/main/external-navigation";
+import { resolveExternalHttpUrl } from "../app/main/external-navigation";
 
 describe("resolveExternalHttpUrl", () => {
   it("accepts HTTP and HTTPS links for the system browser", () => {

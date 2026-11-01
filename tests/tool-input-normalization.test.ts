@@ -5,12 +5,12 @@ import type {
   AgentModelGateway,
   AgentModelRequest,
   AgentModelResponse,
-} from "../src/main/agent/gateway/types";
-import { askUserTool } from "../src/main/agent/tools/core/ask-user";
-import { toToolCard } from "../src/main/agent/tools/tool-card";
-import { parseDefinedToolInput, parseToolInput } from "../src/main/agent/tools/tool-input";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { toToolSchema } from "../src/main/agent/tools/tool-schema";
+} from "../app/main/agent/gateway/types";
+import { askUserTool } from "../app/main/agent/tools/core/ask-user";
+import { toToolCard } from "../app/main/agent/tools/tool-card";
+import { parseDefinedToolInput, parseToolInput } from "../app/main/agent/tools/tool-input";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
+import { toToolSchema } from "../app/main/agent/tools/tool-schema";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 describe("tool input normalization", () => {

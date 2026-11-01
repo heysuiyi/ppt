@@ -5,12 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acceptAgentRequest,
   assertProductionModelAdapter,
-} from "../src/main/agent/submit-agent-request";
-import { createAgentConfiguration, type ExecutionPlan } from "../src/main/agent-configuration";
-import { FileSessionStore } from "../src/main/session-store";
+} from "../app/main/agent/submit-agent-request";
+import { createAgentConfiguration, type ExecutionPlan } from "../app/main/agent-configuration";
+import { FileSessionStore } from "../app/main/session-store";
+import { type SubmitAgentRequest, submitAgentRequestSchema } from "../app/shared/ipc";
 import { agentSettingsSchema } from "../src/shared/agent-settings";
 import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
-import { type SubmitAgentRequest, submitAgentRequestSchema } from "../src/shared/ipc";
 import { APPLICATION_DEFAULT_TEMPLATE_ID } from "../src/shared/template-protocol";
 
 const settings = agentSettingsSchema.parse({

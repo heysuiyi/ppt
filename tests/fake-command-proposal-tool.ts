@@ -2,9 +2,9 @@ import { z } from "zod";
 import {
   type AgentCommandProposalResult,
   agentCommandProposalResultSchema,
-} from "../src/main/agent/runtime/runtime-types";
-import { assumptionsSchema } from "../src/main/agent/tools/assumptions-schema";
-import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
+} from "../app/main/agent/runtime/runtime-types";
+import { assumptionsSchema } from "../app/main/agent/tools/assumptions-schema";
+import type { ToolDefinition } from "../app/main/agent/tools/tool-definition";
 import { presentationCommandSchema } from "../src/shared/commands";
 
 /** Minimal terminal command_proposal tool for runtime-loop tests. */

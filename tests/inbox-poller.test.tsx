@@ -2,7 +2,7 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { useInboxPoller } from "../src/renderer/src/app/useInboxPoller";
+import { useInboxPoller } from "../app/renderer/src/app/useInboxPoller";
 
 const pollLeadInbox = vi.fn();
 

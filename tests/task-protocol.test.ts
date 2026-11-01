@@ -7,12 +7,12 @@ import {
   LEAD_TASK_PERMISSIONS,
   type TaskCommandPrincipal,
   TaskStore,
-} from "../src/main/agent/task/task-store";
+} from "../app/main/agent/task/task-store";
 import {
   taskClaimSchema,
   taskCreateSchema,
   taskReviewApproveSchema,
-} from "../src/main/agent/tools/core/task-tools";
+} from "../app/main/agent/tools/core/task-tools";
 
 async function workspace(): Promise<string> {
   return mkdtemp(join(tmpdir(), "task-protocol-"));

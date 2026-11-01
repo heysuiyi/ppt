@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import {
   type DurableRunCheckpoint,
   DurableRunStore,
-} from "../src/main/agent/persistence/durable-run-store";
-import { CheckpointCoordinator } from "../src/main/agent/runtime/lifecycle/checkpoint-coordinator";
-import { ConversationDatabase } from "../src/main/conversation-database";
+} from "../app/main/agent/persistence/durable-run-store";
+import { CheckpointCoordinator } from "../app/main/agent/runtime/lifecycle/checkpoint-coordinator";
+import { ConversationDatabase } from "../app/main/conversation-database";
 
 function checkpoint(
   threadId: string,

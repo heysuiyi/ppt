@@ -30,6 +30,7 @@ import type {
 } from "@agent-harness/core/tools/tool-contract";
 import { createLogs, type Logger, type LogRecord } from "@agent-harness/logs/logs";
 import { describe, expect, it, vi } from "vitest";
+import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
 import { installPlugins } from "../packages/harness/dist/agent/extensions/plugin-manager.js";
 import { PromptRegistry } from "../packages/harness/dist/agent/extensions/prompt-registry.js";
 import { ModelRegistry } from "../packages/harness/dist/agent/model/model-registry.js";
@@ -37,13 +38,16 @@ import { ResourceScope } from "../packages/harness/dist/agent/scope/resource-sco
 import type { ToolExecutionResult } from "../packages/harness/dist/agent/tools/tool-executor.js";
 import { ToolPipeline } from "../packages/harness/dist/agent/tools/tool-pipeline.js";
 import { ToolRegistry } from "../packages/harness/dist/agent/tools/tool-registry.js";
-import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
-import type { EditOutput } from "../src/tools/edit";
-import type { GlobOutput } from "../src/tools/glob";
-import type { GrepOutput } from "../src/tools/grep";
-import type { ReadOutput } from "../src/tools/read";
-import { createTools, type ToolsOptions, type ToolsPlugin } from "../src/tools/tools";
-import type { WriteOutput } from "../src/tools/write";
+import { createTools } from "@agent-harness/tools/tools";
+import type {
+  EditOutput,
+  GlobOutput,
+  GrepOutput,
+  ReadOutput,
+  ToolsOptions,
+  ToolsPlugin,
+  WriteOutput,
+} from "@agent-harness/tools/tools-contract";
 
 const allow: ToolAuthorizationPolicy = () => ({ type: "allow" });
 const versionOf = (content: string) =>

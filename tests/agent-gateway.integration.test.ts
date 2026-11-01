@@ -3,7 +3,7 @@ import {
   AgentGateway,
   type AgentModelStreamChunk,
   textFromContentBlocks,
-} from "../src/main/agent/gateway";
+} from "../app/main/agent/gateway";
 import {
   hasEnvironment,
   requiredEnvironment,

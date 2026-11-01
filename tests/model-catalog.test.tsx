@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { CREDENTIAL_REENTRY_NOTICE_STORAGE_KEY } from "../src/renderer/src/credentialMigration";
+import { CREDENTIAL_REENTRY_NOTICE_STORAGE_KEY } from "../app/renderer/src/credentialMigration";
 import {
   buildCustomVendorDraft,
   buildVendorDraftFromPreset,
@@ -15,7 +15,7 @@ import {
   MODEL_VENDOR_PRESETS,
   materializeVendorDraft,
   normalizeModelTokenPricing,
-} from "../src/renderer/src/modelCatalog";
+} from "../app/renderer/src/modelCatalog";
 
 function presetModel(kind: "openai" | "deepseek", index = 0) {
   return flattenVendors([materializeVendorDraft(buildVendorDraftFromPreset(kind))])[index]!;

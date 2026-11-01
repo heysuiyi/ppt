@@ -11,7 +11,7 @@ import {
   importTemplatePackage,
   listTemplateDescriptors,
   projectTemplateLibrary,
-} from "../src/main/project/template-import-service";
+} from "../app/main/project/template-import-service";
 
 async function createMinimalPptx(filePath: string): Promise<void> {
   const zip = new JSZip();

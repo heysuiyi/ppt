@@ -10,9 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AgentActivityStreamController,
   useAgentActivityStream,
-} from "../src/renderer/src/app/agent/useAgentActivityStream";
-import type { ChatMessage } from "../src/renderer/src/app/chatMessageRuntime";
-import type { AgentStreamEvent } from "../src/shared/ipc";
+} from "../app/renderer/src/app/agent/useAgentActivityStream";
+import type { ChatMessage } from "../app/renderer/src/app/chatMessageRuntime";
+import type { AgentStreamEvent } from "../app/shared/ipc";
 
 let emit: (event: AgentStreamEvent) => void;
 let controller: AgentActivityStreamController;

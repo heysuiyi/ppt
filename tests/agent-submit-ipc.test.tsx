@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentRunAccepted, AgentStreamEvent, SubmitAgentRequest } from "../src/shared/ipc";
-import { submitAgentRequestSchema } from "../src/shared/ipc";
+import type { AgentRunAccepted, AgentStreamEvent, SubmitAgentRequest } from "../app/shared/ipc";
+import { submitAgentRequestSchema } from "../app/shared/ipc";
 
 // Reload the modules under test to isolate their pending-save queue between test cases.
 afterEach(() => vi.resetModules());
 
 describe("Renderer submit boundary", () => {
   it("uses one submit IPC and listens before Main can accept or stream", async () => {
-    const { executeAgentRun } = await import("../src/renderer/src/app/agent/agentRunExecution");
+    const { executeAgentRun } = await import("../app/renderer/src/app/agent/agentRunExecution");
     let accept!: (event: AgentRunAccepted) => void;
     let stream!: (event: AgentStreamEvent) => void;
     const stopAccepted = vi.fn();
@@ -84,9 +84,9 @@ describe("Renderer submit boundary", () => {
 
   it("does not submit using stale settings after a failed settings save", async () => {
     const { saveExecutionPreferences } = await import(
-      "../src/renderer/src/app/agentSettingsPersistence"
+      "../app/renderer/src/app/agentSettingsPersistence"
     );
-    const { executeAgentRun } = await import("../src/renderer/src/app/agent/agentRunExecution");
+    const { executeAgentRun } = await import("../app/renderer/src/app/agent/agentRunExecution");
     const submit = vi.fn();
     Object.defineProperty(window, "desktopApi", {
       configurable: true,

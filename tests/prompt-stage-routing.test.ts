@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceArtifacts } from "../src/main/plugins/ppt/presentation/workspace-artifacts";
+import type { WorkspaceArtifacts } from "../app/main/plugins/ppt/presentation/workspace-artifacts";
 import {
   LEGACY_PROMPT_STAGE_MAP,
   normalizePromptStage,
   resolvePromptStage,
-} from "../src/main/plugins/ppt/prompts/prompt-stage";
+} from "../app/main/plugins/ppt/prompts/prompt-stage";
 import type { Presentation } from "../src/shared/presentation";
 import { createSvgTestSlide } from "../src/shared/presentation-fixtures";
 import { TEST_DESIGN_SYSTEM } from "./design-engine-test-utils";

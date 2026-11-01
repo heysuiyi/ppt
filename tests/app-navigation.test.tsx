@@ -2,7 +2,7 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useAppNavigation } from "../src/renderer/src/app/useAppNavigation";
+import { useAppNavigation } from "../app/renderer/src/app/useAppNavigation";
 
 afterEach(() => {
   cleanup();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ensureToolResultPairing } from "../src/main/agent/gateway/message-pairing";
-import type { AgentModelMessage } from "../src/main/agent/gateway/types";
+import { ensureToolResultPairing } from "../app/main/agent/gateway/message-pairing";
+import type { AgentModelMessage } from "../app/main/agent/gateway/types";
 
 describe("ensureToolResultPairing", () => {
   it("adds one synthetic error result for every missing tool result", () => {

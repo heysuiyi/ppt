@@ -16,7 +16,7 @@ import { z } from "zod";
 import {
   createSqliteAgentStores,
   type SqliteAgentStores,
-} from "../src/main/agent-host/sqlite-agent-stores";
+} from "../app/main/agent-host/sqlite-agent-stores";
 
 const selection = { providerId: "test", modelId: "reasoning-model" };
 const input = (queryId: string, runId: string) => ({

@@ -46,7 +46,7 @@ globalThis.fetch = (input, init) => {
   });
 };
 // Load the host only after interception: external SDK modules may capture global fetch on import.
-const { createAgentConfiguration } = await import("../../src/main/agent-configuration");
+const { createAgentConfiguration } = await import("../../app/main/agent-configuration");
 if (process.argv[2] === "seed") {
   app.setName("agent-ppt");
   mkdirSync(join(root, "electron"), { recursive: true });
@@ -103,5 +103,5 @@ if (process.argv[2] === "seed") {
   });
 } else {
   // 必须先安装本地 transport，再加载实际 runner；不复制执行、审批或关闭逻辑。
-  void import("../../src/main/agent-host/development-runner");
+  void import("../../app/main/agent-host/development-runner");
 }

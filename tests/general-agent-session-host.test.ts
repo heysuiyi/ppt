@@ -40,7 +40,7 @@ import type {
 } from "@agent-harness/core/tools/tool-contract";
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 import { z } from "zod";
-import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
+import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 const cleanup: Array<() => void | Promise<void>> = [];

@@ -8,9 +8,9 @@ import type {
   AgentModelGateway,
   AgentModelRequest,
   AgentModelResponse,
-} from "../src/main/agent/gateway/types";
-import { webSearchTool } from "../src/main/agent/tools/core/web-search";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+} from "../app/main/agent/gateway/types";
+import { webSearchTool } from "../app/main/agent/tools/core/web-search";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
 import { createSessionPresentation } from "../src/shared/session";
 
 const temporaryRoots: string[] = [];

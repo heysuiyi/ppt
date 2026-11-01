@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { proveExistingExport } from "../src/main/deck/export-recovery";
+import { proveExistingExport } from "../app/main/deck/export-recovery";
 import { exportToPptx } from "../src/ppt/core/ppt-exporter";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 

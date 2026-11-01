@@ -5,19 +5,19 @@ import {
   AGENT_GATEWAY_CONFIG_STORAGE_KEY,
   LEGACY_AGENT_GATEWAY_CONFIG_STORAGE_KEY,
   loadAgentGatewayPreferences,
-} from "../src/renderer/src/agentGatewayConfig";
+} from "../app/renderer/src/agentGatewayConfig";
 import {
   initializeAgentSettings,
   loadAppBootstrapSnapshot,
-} from "../src/renderer/src/app/appBootstrap";
-import { CREDENTIAL_REENTRY_NOTICE_STORAGE_KEY } from "../src/renderer/src/credentialMigration";
+} from "../app/renderer/src/app/appBootstrap";
+import { CREDENTIAL_REENTRY_NOTICE_STORAGE_KEY } from "../app/renderer/src/credentialMigration";
 import {
   buildVendorDraftFromPreset,
   LEGACY_MODEL_STORAGE_KEY,
   LEGACY_MODEL_STORAGE_KEY_V2,
   MODEL_STORAGE_KEY,
   materializeVendorDraft,
-} from "../src/renderer/src/modelCatalog";
+} from "../app/renderer/src/modelCatalog";
 import type { AgentConfigurationSnapshot } from "../src/shared/agent-configuration";
 import { resolveAgentGatewayPreferences } from "../src/shared/agent-gateway-config";
 import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";

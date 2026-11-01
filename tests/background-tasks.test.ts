@@ -6,17 +6,17 @@ import type {
   AgentModelRequest,
   AgentModelResponse,
   AgentModelToolUseBlock,
-} from "../src/main/agent/gateway/types";
+} from "../app/main/agent/gateway/types";
 import {
   BackgroundTaskManager,
   formatBackgroundNotifications,
-} from "../src/main/agent/runtime/background/background-task-manager";
-import { executeExtraToolTool } from "../src/main/agent/tools/core/execute-extra-tool";
-import { searchExtraToolsTool } from "../src/main/agent/tools/core/search-extra-tools";
-import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { toToolSchema } from "../src/main/agent/tools/tool-schema";
-import { previewSlideTool } from "../src/main/plugins/ppt/tools/preview-slide";
+} from "../app/main/agent/runtime/background/background-task-manager";
+import { executeExtraToolTool } from "../app/main/agent/tools/core/execute-extra-tool";
+import { searchExtraToolsTool } from "../app/main/agent/tools/core/search-extra-tools";
+import type { ToolDefinition } from "../app/main/agent/tools/tool-definition";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
+import { toToolSchema } from "../app/main/agent/tools/tool-schema";
+import { previewSlideTool } from "../app/main/plugins/ppt/tools/preview-slide";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 function deferred<T>() {

@@ -5,7 +5,7 @@ import type { ModelMessage, ModelSelection } from "@agent-harness/core/model/mod
 import type { CheckpointKey } from "@agent-harness/core/session/checkpoint-contract";
 import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
 import { afterEach, describe, expect, it } from "vitest";
-import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
+import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
 
 const cleanup: Array<() => void | Promise<void>> = [];
 const selected: ModelSelection = { providerId: "configured-host", modelId: "host-model" };

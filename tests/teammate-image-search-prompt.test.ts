@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   createEmptySkillRegistry,
   registerSkillFromContent,
-} from "../src/main/agent/skills/loadSkillsDir";
-import { createSkillSession } from "../src/main/agent/skills/skill-types";
-import { loadSkillSubAgentTool, SUB_AGENT_TOOLS } from "../src/main/agent/subagent/workspace-tools";
-import { buildTeammateSystemPrompt } from "../src/main/agent/teammate/teammate-system-prompt";
-import { createPptTeammateDomain } from "../src/main/plugins/ppt/teammate-domain";
+} from "../app/main/agent/skills/loadSkillsDir";
+import { createSkillSession } from "../app/main/agent/skills/skill-types";
+import { loadSkillSubAgentTool, SUB_AGENT_TOOLS } from "../app/main/agent/subagent/workspace-tools";
+import { buildTeammateSystemPrompt } from "../app/main/agent/teammate/teammate-system-prompt";
+import { createPptTeammateDomain } from "../app/main/plugins/ppt/teammate-domain";
 
 const SAMPLE_SKILL = `---
 name: ppt-brief

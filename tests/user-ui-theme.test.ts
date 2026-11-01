@@ -7,7 +7,7 @@ import {
   getBuiltinUiThemeCss,
   normalizePersistedUiThemeId,
   USER_UI_THEME_STYLE_ID,
-} from "../src/renderer/src/app/userUiTheme";
+} from "../app/renderer/src/app/userUiTheme";
 
 describe("user UI theme helpers", () => {
   afterEach(() => {

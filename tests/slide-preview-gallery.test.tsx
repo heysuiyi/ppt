@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { SlidePreviewGallery } from "../src/renderer/src/components/SlidePreviewGallery";
+import { SlidePreviewGallery } from "../app/renderer/src/components/SlidePreviewGallery";
 import type { DisplayEvent } from "../src/shared/card-display-protocol";
 
 type SlidePreviewEvent = Extract<DisplayEvent, { kind: "artifact.slide-preview" }>;

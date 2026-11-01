@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { useProjectStore } from "../src/renderer/src/components/project-store";
+import { useProjectStore } from "../app/renderer/src/components/project-store";
 import {
   asPptCapabilityRequestId,
   asPptJobId,

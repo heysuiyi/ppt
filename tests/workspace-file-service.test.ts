@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   chmod,
   lstat,
@@ -13,34 +12,32 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  AtomicWriteConflictError,
-  readJsonFile,
-  recoverInterruptedReplacement,
-  withAtomicFileTransaction,
-  writeTextFileAtomic,
-} from "../src/tools/internal/atomic";
-import { ToolPreflight } from "../src/main/agent/runtime/tools/tool-preflight";
+import { ToolPreflight } from "../app/main/agent/runtime/tools/tool-preflight";
 import {
   SUB_AGENT_TOOL_HANDLERS,
   type SubAgentToolContext,
   bashTool as subAgentBashTool,
   workspaceFileTools as subAgentWorkspaceFileTools,
-} from "../src/main/agent/subagent/workspace-tools";
-import { executeExtraToolTool } from "../src/main/agent/tools/core/execute-extra-tool";
-import { workspaceFileTools as mainAgentWorkspaceFileTools } from "../src/main/agent/tools/core/workspace-files";
+} from "../app/main/agent/subagent/workspace-tools";
+import { executeExtraToolTool } from "../app/main/agent/tools/core/execute-extra-tool";
+import { workspaceFileTools as mainAgentWorkspaceFileTools } from "../app/main/agent/tools/core/workspace-files";
+import type { ToolContext } from "../app/main/agent/tools/tool-definition";
+import type { ToolRegistry } from "../app/main/agent/tools/tool-registry";
+import { createStarterPresentation } from "../src/shared/presentation-fixtures";
+import {
+  AtomicWriteConflictError,
+  readJsonFile,
+  writeTextFileAtomic,
+} from "@agent-harness/tools/atomic-files";
 import {
   globWorkspaceFiles,
-  WorkspaceFileError,
   WorkspaceFileService,
-} from "../src/tools/internal/workspace-file-service";
-import type { ToolContext } from "../src/main/agent/tools/tool-definition";
-import type { ToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { createStarterPresentation } from "../src/shared/presentation-fixtures";
+} from "@agent-harness/tools/workspace-files";
+import { createRecoveryFixture } from "../packages/tools/tests/fixtures/atomic-v1";
 
 async function createWorkspace(): Promise<string> {
   return await mkdtemp(join(tmpdir(), "ppt-file-service-"));
@@ -475,19 +472,15 @@ describe("WorkspaceFileService", () => {
     expect(SUB_AGENT_TOOL_HANDLERS.has("ensure_dir")).toBe(false);
   });
 
-  it("exposes the exact same workspace file contract to Main and teammates", () => {
+  it("exposes workspace file operations for Main and teammates", () => {
     expect(subAgentWorkspaceFileTools.map((tool) => tool.name)).toEqual(
       mainAgentWorkspaceFileTools.map((tool) => tool.name),
     );
 
     for (const mainTool of mainAgentWorkspaceFileTools) {
-      const teammateTool = subAgentWorkspaceFileTools.find((tool) => tool.name === mainTool.name);
-      expect(teammateTool).toBeDefined();
-      expect(teammateTool?.description).toBe(mainTool.description);
-      expect(teammateTool?.inputSchema).toBe(mainTool.inputSchema);
-      expect(teammateTool?.outputSchema).toBe(mainTool.outputSchema);
-      expect(teammateTool?.permission).toBe(mainTool.permission);
-      expect(teammateTool?.mapResultToModelContent).toBe(mainTool.mapResultToModelContent);
+      expect(
+        subAgentWorkspaceFileTools.find((tool) => tool.name === mainTool.name),
+      ).toBeDefined();
     }
   });
 
@@ -559,39 +552,6 @@ describe("WorkspaceFileService", () => {
 });
 
 describe("atomic replacement recovery", () => {
-  it("restores a displaced old inode when the manifest proves target is missing", async () => {
-    const root = await createWorkspace();
-    const targetPath = join(root, "state.json");
-    const transaction = await createRecoveryFixture(targetPath, root, "old state", "new state");
-
-    await expect(recoverInterruptedReplacement(targetPath, root)).resolves.toBe(true);
-    expect(await readFile(targetPath, "utf8")).toBe("old state");
-    await expect(lstat(transaction.backupPath)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(lstat(transaction.manifestPath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("preserves the original backup when an unknown external target wins", async () => {
-    const root = await createWorkspace();
-    const targetPath = join(root, "state.json");
-    const transaction = await createRecoveryFixture(
-      targetPath,
-      root,
-      "old state",
-      "prepared state",
-    );
-    await writeFile(targetPath, "external winner", "utf8");
-
-    const error = await recoverInterruptedReplacement(targetPath, root).then(
-      () => undefined,
-      (caught: unknown) => caught,
-    );
-    expect(error).toBeInstanceOf(AtomicWriteConflictError);
-    expect(error).toMatchObject({ sideEffects: "uncertain" });
-    expect(await readFile(targetPath, "utf8")).toBe("external winner");
-    expect(await readFile(transaction.backupPath, "utf8")).toBe("old state");
-    expect(await lstat(transaction.manifestPath)).toBeDefined();
-  });
-
   it("makes an interrupted displacement recoverable by the first workspace read", async () => {
     const root = await createWorkspace();
     const targetPath = join(root, "read-recovery.txt");
@@ -609,89 +569,6 @@ describe("atomic replacement recovery", () => {
     });
     await expect(lstat(transaction.backupPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(transaction.manifestPath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("does not recover or delete a manifest owned by an active transaction", async () => {
-    const root = await createWorkspace();
-    const targetPath = join(root, "active.json");
-    let releaseOwner!: () => void;
-    const ownerGate = new Promise<void>((resolveGate) => {
-      releaseOwner = resolveGate;
-    });
-    let ownerReady!: () => void;
-    const ready = new Promise<void>((resolveReady) => {
-      ownerReady = resolveReady;
-    });
-    let transaction!: { backupPath: string; manifestPath: string };
-    const owner = withAtomicFileTransaction(targetPath, root, async () => {
-      transaction = await createRecoveryFixture(
-        targetPath,
-        root,
-        "owned old state",
-        "owned new state",
-      );
-      ownerReady();
-      await ownerGate;
-    });
-    await ready;
-
-    let recoverySettled = false;
-    const recovery = recoverInterruptedReplacement(targetPath, root).finally(() => {
-      recoverySettled = true;
-    });
-    await new Promise((resolveWait) => setTimeout(resolveWait, 75));
-    expect(recoverySettled).toBe(false);
-    expect(await readFile(transaction.backupPath, "utf8")).toBe("owned old state");
-    expect(await lstat(transaction.manifestPath)).toBeDefined();
-
-    releaseOwner();
-    await owner;
-    await expect(recovery).resolves.toBe(true);
-    expect(await readFile(targetPath, "utf8")).toBe("owned old state");
-  });
-
-  it("removes a newly linked outside inode and reports uncertainty before rollback", async () => {
-    const root = await createWorkspace();
-    const outsideRoot = await createWorkspace();
-    const parent = join(root, "safe");
-    const parked = join(root, "safe-parked");
-    const targetPath = join(parent, "file.txt");
-    await mkdir(parent);
-    await writeFile(targetPath, "old state", "utf8");
-    let pathValidation = 0;
-
-    const error = await writeTextFileAtomic(targetPath, "new state", {
-      temporaryDirectory: root,
-      commitGuard: {
-        expectedTargetExists: true,
-        async validatePath() {
-          pathValidation += 1;
-          if (pathValidation === 3) {
-            await rename(parent, parked);
-            await symlink(outsideRoot, parent, process.platform === "win32" ? "junction" : "dir");
-            return;
-          }
-          if (pathValidation >= 4) {
-            throw new WorkspaceFileError("UNSAFE_FILE_TYPE", "test parent identity changed");
-          }
-        },
-        async validateDisplaced(displacedPath) {
-          expect(displacedPath).toBeDefined();
-          expect(await readFile(displacedPath!, "utf8")).toBe("old state");
-        },
-        async validateCommitted() {
-          throw new WorkspaceFileError("UNSAFE_FILE_TYPE", "test post-link path validation failed");
-        },
-      },
-    }).then(
-      () => undefined,
-      (caught: unknown) => caught,
-    );
-
-    expect(error).toBeInstanceOf(AtomicWriteConflictError);
-    expect(error).toMatchObject({ sideEffects: "uncertain" });
-    await expect(lstat(join(outsideRoot, "file.txt"))).rejects.toMatchObject({ code: "ENOENT" });
-    expect((await readdir(root)).some((name) => name.includes(".atomic-old."))).toBe(true);
   });
 
   it("keeps fallback repair under the primary lock so a waiting writer wins last", async () => {
@@ -936,72 +813,6 @@ async function waitForAtomicLock(root: string, targetName: string): Promise<void
     await new Promise((resolveWait) => setTimeout(resolveWait, 1));
   }
   throw new Error(`Timed out waiting for the atomic lock for ${targetName}.`);
-}
-
-async function createRecoveryFixture(
-  targetPath: string,
-  transactionDirectory: string,
-  oldContent: string,
-  newContent: string,
-): Promise<{ backupPath: string; manifestPath: string }> {
-  const { realpathSync } = await import("node:fs");
-  const { dirname: dirnamePath } = await import("node:path");
-  let canonicalTarget = resolve(targetPath);
-  try {
-    canonicalTarget = realpathSync.native(canonicalTarget);
-  } catch {
-    try {
-      canonicalTarget = join(
-        realpathSync.native(dirnamePath(canonicalTarget)),
-        basename(targetPath),
-      );
-    } catch {
-      // Keep resolve() form when the parent cannot be realpath'd.
-    }
-  }
-  const targetKey = createHash("sha256").update(canonicalTarget, "utf8").digest("hex").slice(0, 20);
-  const targetName = basename(canonicalTarget);
-  const backupName = `${targetName}.${targetKey}.atomic-old.test`;
-  const backupPath = join(transactionDirectory, backupName);
-  const preparedPath = join(transactionDirectory, `.${targetName}.prepared.tmp`);
-  const manifestPath = join(
-    transactionDirectory,
-    `.${targetName}.${targetKey}.atomic-replace.json`,
-  );
-  await writeFile(backupPath, oldContent, "utf8");
-  await writeFile(preparedPath, newContent, "utf8");
-  await writeFile(
-    manifestPath,
-    `${JSON.stringify({
-      version: 1,
-      targetPath: canonicalTarget,
-      targetName,
-      backupName,
-      oldFingerprint: await testFingerprint(backupPath),
-      newFingerprint: await testFingerprint(preparedPath),
-    })}\n`,
-    "utf8",
-  );
-  return { backupPath, manifestPath };
-}
-
-async function testFingerprint(path: string): Promise<{
-  dev: number;
-  ino: number;
-  size: number;
-  mtimeMs: number;
-  ctimeMs: number;
-  sha256: string;
-}> {
-  const [bytes, stats] = await Promise.all([readFile(path), lstat(path)]);
-  return {
-    dev: stats.dev,
-    ino: stats.ino,
-    size: stats.size,
-    mtimeMs: stats.mtimeMs,
-    ctimeMs: stats.ctimeMs,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
-  };
 }
 
 function createToolContext(

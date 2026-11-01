@@ -175,8 +175,9 @@ describe.skipIf(!desktopAvailable)("native MiMo Electron development entry", () 
         configFile: false,
         resolve: {
           alias: {
+            "@app": resolve("app"),
             "@shared": resolve("src/shared"),
-            "@main": resolve("src/main"),
+            "@main": resolve("app/main"),
             "@ppt": resolve("src/ppt"),
             "@design-system": resolve("src/design-system"),
           },

@@ -6,7 +6,7 @@ import {
   isBinaryProjectFile,
   projectFileRequiresReload,
   reconcileProjectFileSave,
-} from "../src/renderer/src/app/project/projectFilesState";
+} from "../app/renderer/src/app/project/projectFilesState";
 import type { ProjectArtifact } from "../src/shared/session";
 
 const ARTIFACTS: ProjectArtifact[] = [

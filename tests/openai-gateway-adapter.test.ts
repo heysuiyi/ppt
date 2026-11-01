@@ -26,8 +26,8 @@ vi.mock("openai", () => ({
   },
 }));
 
-import { chatDriver, responsesDriver } from "../src/main/agent/gateway/openai";
-import type { PreparedAgentModelRequest } from "../src/main/agent/gateway/types";
+import { chatDriver, responsesDriver } from "../app/main/agent/gateway/openai";
+import type { PreparedAgentModelRequest } from "../app/main/agent/gateway/types";
 
 const baseConfig = {
   provider: "openai" as const,

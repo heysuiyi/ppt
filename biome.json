@@ -18,6 +18,9 @@
       "packages/models/build.mjs",
       "scripts/check-models-boundaries.mjs",
       "scripts/verify-models-package.mjs",
+      "packages/tools/build.mjs",
+      "scripts/check-tools-boundaries.mjs",
+      "scripts/verify-tools-package.mjs",
       "!**/node_modules",
       "!**/dist",
       "!**/out",
@@ -87,7 +90,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/**", "!src/main/agent-configuration/**"],
+      "includes": ["src/**", "app/**", "cli/**", "!app/main/agent-configuration/**"],
       "linter": {
         "rules": {
           "style": {
@@ -107,7 +110,7 @@
       }
     },
     {
-      "includes": ["src/tools/**"],
+      "includes": ["packages/tools/src/**"],
       "linter": {
         "rules": {
           "style": {
@@ -118,6 +121,8 @@
                   {
                     "group": [
                       "**/main/**",
+                      "**/app/**",
+                      "**/cli/**",
                       "@main/**",
                       "electron",
                       "electron/**",
@@ -141,14 +146,14 @@
     },
     {
       "includes": [
-        "src/renderer/src/components/Button.tsx",
-        "src/renderer/src/components/Field.tsx",
-        "src/renderer/src/components/Switch.tsx",
-        "src/renderer/src/components/Select.tsx",
-        "src/renderer/src/components/Menu.tsx",
-        "src/renderer/src/components/Dialog.tsx",
-        "src/renderer/src/components/Tabs.tsx",
-        "src/renderer/src/components/PreviewNavigation.tsx"
+        "app/renderer/src/components/Button.tsx",
+        "app/renderer/src/components/Field.tsx",
+        "app/renderer/src/components/Switch.tsx",
+        "app/renderer/src/components/Select.tsx",
+        "app/renderer/src/components/Menu.tsx",
+        "app/renderer/src/components/Dialog.tsx",
+        "app/renderer/src/components/Tabs.tsx",
+        "app/renderer/src/components/PreviewNavigation.tsx"
       ],
       "linter": {
         "rules": {

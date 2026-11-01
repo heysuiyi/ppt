@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentSession } from "../src/main/agent/runtime/lifecycle/agent-session";
+import { AgentSession } from "../app/main/agent/runtime/lifecycle/agent-session";
 
 function createSession(): AgentSession {
   return new AgentSession({ transcript: [] });

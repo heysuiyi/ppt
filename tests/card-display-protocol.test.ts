@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   toResultDisplayEvents,
   toStreamDisplayEvent,
-} from "../src/main/agent/display/display-event-adapter";
+} from "../app/main/agent/display/display-event-adapter";
 import { displayEventSchema } from "../src/shared/card-display-protocol";
 import { createSvgTestSlide } from "../src/shared/presentation-fixtures";
 import { createSessionPresentation } from "../src/shared/session";

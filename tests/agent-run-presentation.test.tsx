@@ -6,11 +6,11 @@ import type { AgentTaskNode } from "@shared/agent-task-list";
 import { projectTeamSession } from "@shared/team-session";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentRunTerminalNotice } from "../src/renderer/src/components/AgentRunTerminalNotice";
-import { RunStatusIndicator } from "../src/renderer/src/components/RunStatusIndicator";
-import { RunDuration } from "../src/renderer/src/components/run-process/RunDuration";
-import { RunTimeline } from "../src/renderer/src/components/run-process/RunTimeline";
-import { FocusedTeamSession } from "../src/renderer/src/components/TeamSessionViews";
+import { AgentRunTerminalNotice } from "../app/renderer/src/components/AgentRunTerminalNotice";
+import { RunStatusIndicator } from "../app/renderer/src/components/RunStatusIndicator";
+import { RunDuration } from "../app/renderer/src/components/run-process/RunDuration";
+import { RunTimeline } from "../app/renderer/src/components/run-process/RunTimeline";
+import { FocusedTeamSession } from "../app/renderer/src/components/TeamSessionViews";
 
 const thought: Extract<AgentActivityItem, { kind: "reasoning" }> = {
   id: "thought-1",

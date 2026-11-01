@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { getDesignReferenceTool } from "../src/main/plugins/ppt/tools/get-design-reference";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
+import { getDesignReferenceTool } from "../app/main/plugins/ppt/tools/get-design-reference";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 describe("GetDesignReference", () => {

@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Select, type SelectOption } from "../src/renderer/src/components/Select";
+import { Select, type SelectOption } from "../app/renderer/src/components/Select";
 
 const OPTIONS: SelectOption[] = [
   { value: "a", label: "Alpha" },

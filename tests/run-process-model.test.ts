@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildProcessView,
   buildTimelineSegments,
-} from "../src/renderer/src/components/run-process/process-model";
+} from "../app/renderer/src/components/run-process/process-model";
 
 const thought: AgentActivityItem = {
   id: "r1",

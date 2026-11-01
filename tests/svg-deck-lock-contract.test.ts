@@ -8,24 +8,24 @@ import {
   writeFileContract,
 } from "@main/plugins/ppt/workspace-files";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { classifyToolExecutionError } from "../src/main/agent/runtime/tools/tool-execution-error";
-import {
-  WorkspaceFileError,
-  WorkspaceFileService,
-} from "../src/tools/internal/workspace-file-service";
-import type { ToolContext } from "../src/main/agent/tools/tool-definition";
-import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";
-import { buildWorkspaceSection } from "../src/main/plugins/ppt/prompts/prompt-sections";
-import { loadWorkspaceSvgPage } from "../src/main/plugins/ppt/svg-page-loader";
-import { previewSvgPageTool } from "../src/main/plugins/ppt/tools/preview-svg-page";
+import { classifyToolExecutionError } from "../app/main/agent/runtime/tools/tool-execution-error";
+import type { ToolContext } from "../app/main/agent/tools/tool-definition";
+import { slideThumbnailService } from "../app/main/plugins/ppt/adapters/electron-thumbnail-service";
+import { buildWorkspaceSection } from "../app/main/plugins/ppt/prompts/prompt-sections";
+import { loadWorkspaceSvgPage } from "../app/main/plugins/ppt/svg-page-loader";
+import { previewSvgPageTool } from "../app/main/plugins/ppt/tools/preview-svg-page";
 import {
   readSvgDeckLocks,
   SVG_DECK_DESIGN_SPEC_MINI_SCHEMA,
   SVG_DECK_PAGE_PLAN_MINI_SCHEMA,
   validateSvgDeckLockContent,
-} from "../src/main/plugins/ppt/tools/svg-deck-locks";
+} from "../app/main/plugins/ppt/tools/svg-deck-locks";
+import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
+import {
+  WorkspaceFileError,
+  WorkspaceFileService,
+} from "@agent-harness/tools/workspace-files";
 
 const temporaryRoots: string[] = [];
 

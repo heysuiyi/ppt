@@ -2,12 +2,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-
-import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
 import {
   probeWorkspaceArtifactDetails,
   probeWorkspaceArtifacts,
-} from "../src/main/plugins/ppt/presentation/workspace-artifacts";
+} from "../app/main/plugins/ppt/presentation/workspace-artifacts";
+import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import {
   createDefaultBriefMarkdown,

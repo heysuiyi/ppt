@@ -5,12 +5,12 @@ import {
   clearHooks,
   registerHook,
   triggerHooks,
-} from "../src/main/agent/runtime/hooks/hook-registry";
+} from "../app/main/agent/runtime/hooks/hook-registry";
 import {
   createPermissionPreToolUseHook,
   evaluatePermission,
   type PreToolUseBlock,
-} from "../src/main/agent/runtime/tools/permission-check";
+} from "../app/main/agent/runtime/tools/permission-check";
 
 function createBlock(overrides: Partial<PreToolUseBlock> = {}): PreToolUseBlock {
   return {

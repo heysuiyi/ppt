@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { ResizeHandle, type ResizeHandleProps } from "../src/renderer/src/components/ResizeHandle";
+import { ResizeHandle, type ResizeHandleProps } from "../app/renderer/src/components/ResizeHandle";
 
 class ControlledPointerEvent extends MouseEvent {
   readonly pointerId: number;

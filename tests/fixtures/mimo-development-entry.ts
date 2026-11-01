@@ -21,8 +21,8 @@ globalThis.fetch = (input, init) => {
   return transport(input instanceof Request ? new Request(target, input) : target, init);
 };
 // Load the host only after interception: external SDK modules may capture global fetch on import.
-const { createAgentConfiguration } = await import("../../src/main/agent-configuration");
-const { createSqliteAgentStores } = await import("../../src/main/agent-host/sqlite-agent-stores");
+const { createAgentConfiguration } = await import("../../app/main/agent-configuration");
+const { createSqliteAgentStores } = await import("../../app/main/agent-host/sqlite-agent-stores");
 const mode = process.argv[2];
 if (["seed", "inspect", "set-effort", "set-budget", "rotate-key"].includes(mode)) {
   app.setName("agent-ppt");
@@ -143,5 +143,5 @@ if (["seed", "inspect", "set-effort", "set-budget", "rotate-key"].includes(mode)
   });
 } else {
   // 动态导入实际开发入口，不复制其执行、审批或关闭机制。
-  void import("../../src/main/agent-host/development-runner");
+  void import("../../app/main/agent-host/development-runner");
 }

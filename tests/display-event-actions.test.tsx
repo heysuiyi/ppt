@@ -9,17 +9,17 @@ import {
 import { cleanup, render } from "@testing-library/react";
 import { act, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentActivityStreamController } from "../src/renderer/src/app/agent/useAgentActivityStream";
+import type { AgentActivityStreamController } from "../app/renderer/src/app/agent/useAgentActivityStream";
 import {
   type ApplyAgentResult,
   useAgentResultHandler,
-} from "../src/renderer/src/app/agent/useAgentResultHandler";
+} from "../app/renderer/src/app/agent/useAgentResultHandler";
 import {
   type DisplayEventActions,
   useDisplayEventActions,
-} from "../src/renderer/src/app/cards/useDisplayEventActions";
-import type { ChatMessage } from "../src/renderer/src/app/chatMessageRuntime";
-import { useProjectStore } from "../src/renderer/src/components/project-store";
+} from "../app/renderer/src/app/cards/useDisplayEventActions";
+import type { ChatMessage } from "../app/renderer/src/app/chatMessageRuntime";
+import { useProjectStore } from "../app/renderer/src/components/project-store";
 import type { AgentActivityItem } from "../src/shared/agent-activity";
 import type { DisplayEvent } from "../src/shared/card-display-protocol";
 import {

@@ -1,14 +1,14 @@
 import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { AgentModelGateway } from "../src/main/agent/gateway/types";
+import type { AgentModelGateway } from "../app/main/agent/gateway/types";
 import {
   isRuntimeCancellation,
   rethrowIfRuntimeCancellation,
-} from "../src/main/agent/runtime/lifecycle/runtime-cancellation";
-import { ToolApprovalBroker } from "../src/main/agent/runtime/tools/tool-approval-broker";
-import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+} from "../app/main/agent/runtime/lifecycle/runtime-cancellation";
+import { ToolApprovalBroker } from "../app/main/agent/runtime/tools/tool-approval-broker";
+import type { ToolDefinition } from "../app/main/agent/tools/tool-definition";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 describe("runtime cancellation classification", () => {

@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import type {
   AgentModelContentBlock,
   AgentModelGateway,
@@ -11,7 +10,6 @@ import { DurableRunStore } from "@main/agent/persistence/durable-run-store";
 import { AgentRunFactory } from "@main/agent/runtime/agent-run-factory";
 import { AgentRuntime } from "@main/agent/runtime/agent-runtime";
 import { workspaceFileTools as teammateFileTools } from "@main/agent/subagent/workspace-tools";
-import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
 import { createHostToolRegistry } from "@main/agent/tools/host-tools";
 import type { ToolContext } from "@main/agent/tools/tool-definition";
 import { createPptFilePolicy } from "@main/plugins/ppt/file-policy";
@@ -20,8 +18,8 @@ import { formatPptTaskPlanProjection } from "@main/plugins/ppt/task/ppt-task-com
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { DeckExportService, DeckValidationService, inspectPptxExport } from "@ppt/core";
 import { createStarterPresentation } from "@shared/presentation-fixtures";
-import ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { createExportGoldenPresentation } from "./fixtures/export-golden-deck";
 
 const directories: string[] = [];
@@ -219,35 +217,5 @@ describe("PPT plugin boundaries", () => {
     const report = await inspectPptxExport(result.filePath, presentation);
     expect(report.passed).toBe(true);
     expect(report.slideCount).toBe(presentation.slides.length);
-  });
-
-  it("keeps the complete core source dependency graph free of host and Electron imports", () => {
-    const pending = [resolve("src/ppt/core/index.ts")];
-    const visited = new Set<string>();
-    while (pending.length) {
-      const file = pending.pop()!;
-      if (visited.has(file)) continue;
-      visited.add(file);
-      expect(file.replaceAll("\\", "/")).not.toMatch(/\/src\/(main|renderer)\/|\/shared\/ipc\.ts$/);
-      const imports = ts.preProcessFile(readFileSync(file, "utf8")).importedFiles;
-      for (const { fileName: specifier } of imports) {
-        expect(specifier).not.toBe("electron");
-        let target: string | undefined;
-        if (specifier.startsWith(".")) target = resolve(dirname(file), specifier);
-        else if (specifier.startsWith("@shared/"))
-          target = resolve("src/shared", specifier.slice(8));
-        else if (specifier.startsWith("@ppt/")) target = resolve("src/ppt", specifier.slice(5));
-        else if (specifier === "@design-system") target = resolve("src/design-system/index");
-        else if (specifier.startsWith("@design-system/"))
-          target = resolve("src/design-system", specifier.slice(15));
-        else expect(specifier).not.toMatch(/^@main/);
-        if (target) {
-          const resolved = [`${target}.ts`, join(target, "index.ts")].find(existsSync);
-          expect(resolved, `${file} imports ${specifier}`).toBeDefined();
-          pending.push(resolved!);
-        }
-      }
-    }
-    expect(visited.size).toBeGreaterThan(10);
   });
 });

@@ -8,15 +8,15 @@ import {
   listSkills,
   registerSkillFromContent,
   scanSkills,
-} from "../src/main/agent/skills/loadSkillsDir";
+} from "../app/main/agent/skills/loadSkillsDir";
 import {
   parseSkillFrontmatterFields,
   readFrontmatterString,
-} from "../src/main/agent/skills/parseSkillFrontmatterFields";
-import { createSkillSession } from "../src/main/agent/skills/skill-types";
-import { askUserTool } from "../src/main/agent/tools/core/ask-user";
-import { loadSkillTool } from "../src/main/agent/tools/core/load-skill";
-import { SystemPromptBuilder } from "../src/main/plugins/ppt/prompts/system-prompt";
+} from "../app/main/agent/skills/parseSkillFrontmatterFields";
+import { createSkillSession } from "../app/main/agent/skills/skill-types";
+import { askUserTool } from "../app/main/agent/tools/core/ask-user";
+import { loadSkillTool } from "../app/main/agent/tools/core/load-skill";
+import { SystemPromptBuilder } from "../app/main/plugins/ppt/prompts/system-prompt";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 const SAMPLE_SKILL = `---

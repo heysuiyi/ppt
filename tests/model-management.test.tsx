@@ -12,9 +12,9 @@ const mimoSupport = getModelSupport("mimo-token-plan-cn", "mimo-v2.6-pro");
 if (!mimoSupport?.supported) throw new Error("The MiMo Pro support profile is required.");
 const mimoReasoningEfforts = mimoSupport.reasoningEfforts;
 
-import { ModelManagement } from "../src/renderer/src/components/ModelManagement";
-import type { ModelVendorConnection } from "../src/renderer/src/modelCatalog";
-import { flattenVendors } from "../src/renderer/src/modelCatalog";
+import { ModelManagement } from "../app/renderer/src/components/ModelManagement";
+import type { ModelVendorConnection } from "../app/renderer/src/modelCatalog";
+import { flattenVendors } from "../app/renderer/src/modelCatalog";
 
 function deepseekVendor(): ModelVendorConnection {
   return {

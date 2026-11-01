@@ -1,30 +1,30 @@
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
-import type { SkillCard } from "../src/main/agent/skills/skill-types";
-import type { ToolContext } from "../src/main/agent/tools/tool-definition";
+import type { SkillCard } from "../app/main/agent/skills/skill-types";
+import type { ToolContext } from "../app/main/agent/tools/tool-definition";
 import {
   buildRuntimeContextSection,
   buildToolsSection,
-} from "../src/main/plugins/ppt/prompts/prompt-sections";
-import { rankSkillCatalogForStage } from "../src/main/plugins/ppt/prompts/skill-stage-policy";
+} from "../app/main/plugins/ppt/prompts/prompt-sections";
+import { rankSkillCatalogForStage } from "../app/main/plugins/ppt/prompts/skill-stage-policy";
 import {
   composePptTaskPlan,
   resolveActiveRoute,
   resolveSkillTiers,
   skillRecommendationForPlan,
   summarizeDifficulty,
-} from "../src/main/plugins/ppt/task/ppt-task-composer";
-import { deriveTaskFacts } from "../src/main/plugins/ppt/task/ppt-task-facts";
-import { createPptTaskSession } from "../src/main/plugins/ppt/task/ppt-task-session";
+} from "../app/main/plugins/ppt/task/ppt-task-composer";
+import { deriveTaskFacts } from "../app/main/plugins/ppt/task/ppt-task-facts";
+import { createPptTaskSession } from "../app/main/plugins/ppt/task/ppt-task-session";
 import type {
   DifficultyDims,
   Level,
   PptTaskPlan,
   TaskAssessment,
   TaskFacts,
-} from "../src/main/plugins/ppt/task/ppt-task-types";
-import { emptyDims } from "../src/main/plugins/ppt/task/ppt-task-types";
-import { setPptTaskAssessmentTool } from "../src/main/plugins/ppt/tools/set-ppt-task-assessment";
+} from "../app/main/plugins/ppt/task/ppt-task-types";
+import { emptyDims } from "../app/main/plugins/ppt/task/ppt-task-types";
+import { setPptTaskAssessmentTool } from "../app/main/plugins/ppt/tools/set-ppt-task-assessment";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 function dims(overrides: Partial<DifficultyDims> = {}): DifficultyDims {

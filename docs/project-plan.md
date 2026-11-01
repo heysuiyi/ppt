@@ -39,9 +39,9 @@ PPT 只是其中一个可选插件能力，不是与 Harness 并列的项目主�
 | --- | --- | --- |
 | 通用执行 | 私有 workspace `@agent-harness/core` 提供通用执行协议与默认实现；独立 ESM/声明构建、精确 exports 及仓库外 tarball 消费已通过 | 不代表通用体系的所有扩展能力或生产 UI 已完成 |
 | 宿主接入 | `@agent-harness/core/session-host` 提供固定 Thread、发布前绑定确认及公开 Application 装配；Electron 组合根负责配置与端口，CLI 原有向导/命令保持 | 仅原生 MiMo 接入当前配置；其他配置的持久适配未完成，生产 UI 未迁移，异常租约不自动接管 |
-| 基础工具 | `src/tools` 已提供 `read/write/edit/glob/grep` 及独立装配，默认只读；安全原语已从旧 Agent 目录迁出，现有生产消费者同步改用迁出实现 | 工具观察记录不跨进程恢复，重启后须重新读取；不代表编码/PPT 能力或生产 UI 已迁移 |
+| 基础工具 | `src/tools` 已提供 `read/write/edit/glob/grep` 及独立装配，默认只读；安全原语已从旧 Agent 目录迁出，现有生产消费者同步改用迁出实现 | 单包 tools 收敛方案已设计、待实施；观察记录不跨进程恢复，重启须重新读取，不代表生产 UI/PPT 已迁移 |
 | 端到端 | 已完成一个已配置真实模型的普通对话、读取、EOF 等待、目录变更拒绝、重启恢复、拒绝审批与取消验证 | 不代表所有厂商、业务插件或生产 UI 都已验收 |
-| 现有消费侧 | 旧 `src/main/agent/` 与现有 PPT/UI 链路继续运行 | 尚未消费新执行链；PPT 接入属于业务插件迁移，不是 Harness 内核完成的前置条件 |
+| 现有消费侧 | 旧 `app/main/agent/` 与现有 PPT/UI 链路继续运行；桌面与终端按根级 `app/`、`cli/` 分类，通用工具和领域模块仍在 `src/` | 尚未消费新执行链；CLI 当前仍借用 Electron 平台桥接，不等于纯 Node 运行时独立；PPT 接入属于业务插件迁移 |
 | 模块治理 | M1 公开协议/窄资源能力及门禁已落地；M2-A 分离通用 SessionHost 与工作区配置；M2-B 完成单包、声明闭包门禁、tarball 安装及实际 Electron ASAR 消费 | 未公开发布 npm，未统一不同配置的历史目录或引入动态装配，不声称完整 Harness 已完成 |
 | 日志能力 | 私有 workspace `@agent-harness/logs` 提供通用记录与 Node 默认管理；开发宿主、原生 MiMo 与 tools 消费精确包子路径，宿主拥有实例，消费者借用 Logger | Harness 全生命周期和日志 UI 未迁移；旧 logger、Gateway 正文归档与历史日志保持原样，跨实例治理未实现 |
 | 模型适配 | 单一 `@agent-harness/models` 包已实施；四个公开入口内聚统一创建、纯资料、安全错误与私有 MiMo，实现真实 tarball 安装、SDK 本地 HTTP/SSE、实际 Electron 设置/凭据、旧 waiting 恢复及 ASAR 执行 | 当前真实适配器仅 MiMo；本轮不增加远程验收，不代表所有型号/档位或未来厂商已验收，生产聊天未切换 |
@@ -172,6 +172,8 @@ logs/tools 与 MiMo/CLI 能力切片的既有实现和证据保留在下一步�
 下一步按 [M3-B 执行方案](next-steps/m3-b-lifecycle.md)核验多 Agent 隔离、单实例竞争拒绝及关闭排空。方案阶段已通过公开 Application 与真实 SQLite 复现“迟到 binding 的 dispose 异常被取消覆盖、close 仍成功”的问题；仅复现，尚未修复。先补失败回归并修复所有权交接处的错误保留，再完成 B1/B2，不扩成线程池、并行工具或 Thread 跨进程准入改造。
 
 独立的[单包多厂商模型切片](next-steps/models-package.md#12-实施与验收记录)已完成实施与本地验收：一个 `@agent-harness/models` 包，统一创建/资料/错误入口及包内厂商模块；配置、凭据、连接指纹和步数预算留在宿主。16 项隔离门禁、三包监听、真实依赖闭包离线安装、NodeNext/Bundler 声明、实际 Electron 设置与加密凭据重启、迁移前 waiting 新进程完成及 ASAR 原生模型执行通过。当前仅 MiMo，本轮没有远程厂商调用或生产聊天迁移；并行 M3-A 的范围与证据独立保留。
+
+独立的 [Tools 收敛方案](next-steps/tools-package.md)已完成代码调研与设计，尚未实施：采用一个 `@agent-harness/tools` 包，以插件、纯契约/错误、共享原子 I/O 与旧文件服务五个入口收敛调用面，不公开全部 internal 或新建文件底座包。保留新工具与旧 WorkspaceFileService 的读取恢复、receipt 生命周期及错误身份差异；按当前 app/cli 路径完整迁移调用方，先建立迁移前 waiting/磁盘恢复基线，再验证独立安装、四包监听与实际 Electron 消费。现有语义的临时 Node 文件探针通过，不等同工具包或生产迁移验收，也不推进并行 M3/UI 工作。
 
 通用包身份已修正并完成本轮本地验收：`@agent-harness/core`、`@agent-harness/logs` 及根 workspace `agent-harness` 已统一，两个真实 tarball、新名实际 Electron ASAR 消费及旧名拒绝通过；全量 192 文件/1632 项通过（2 项既有跳过）、两项真实 CLI 集成通过，见[修正记录](next-steps/package-identities.md#通用包身份修正)。包身份修正阶段未开始 MiMo 抽取或 M3 实施；当时的 [M3 执行计划](next-steps/m3-reliability.md#m3-执行计划)保留以下边界：参考 Netty 的有序执行/状态隔离和 Tomcat 的发布/停止服务/资源所有权，验证现有模型而非引入线程池或新容器。计划包含能力组合、安装回滚、多 Agent 隔离、版本兼容、真实 SQLite 竞争、明确故障窗口恢复及观察独立性；优先查清 findUnfinished 与 Query acquire 分离的候选 Thread 准入竞争。该风险尚未复现，不能写成已修复；事件观察队列无容量上限，M3 不据此承诺背压、内存有界或抗拒绝服务。生产消费迁移仍按 M4 单独切片。
 

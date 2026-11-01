@@ -11,7 +11,7 @@ import {
   normalizePersistedUiFontFamily,
   normalizePersistedUiFontSize,
   normalizePersistedUiLineHeight,
-} from "../src/renderer/src/app/uiTypography";
+} from "../app/renderer/src/app/uiTypography";
 
 describe("ui typography helpers", () => {
   afterEach(() => {

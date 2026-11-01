@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectTrendTicks } from "../src/renderer/src/components/usage-trend-axis";
+import { selectTrendTicks } from "../app/renderer/src/components/usage-trend-axis";
 
 function expectNonOverlappingLayout(widths: number[], containerWidth: number, minimumGap = 8) {
   const layout = selectTrendTicks(widths, containerWidth, minimumGap);

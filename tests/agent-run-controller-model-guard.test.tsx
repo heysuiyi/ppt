@@ -2,8 +2,8 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentActivityStreamController } from "../src/renderer/src/app/agent/useAgentActivityStream";
-import { useAgentRunController } from "../src/renderer/src/app/agent/useAgentRunController";
+import type { AgentActivityStreamController } from "../app/renderer/src/app/agent/useAgentActivityStream";
+import { useAgentRunController } from "../app/renderer/src/app/agent/useAgentRunController";
 
 describe("useAgentRunController model guard", () => {
   afterEach(() => {

@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { askUserTool } from "../src/main/agent/tools/core/ask-user";
-import { loadSkillTool } from "../src/main/agent/tools/core/load-skill";
-import { readFileTool, writeFileTool } from "../src/main/agent/tools/core/workspace-files";
+import { askUserTool } from "../app/main/agent/tools/core/ask-user";
+import { loadSkillTool } from "../app/main/agent/tools/core/load-skill";
+import { readFileTool, writeFileTool } from "../app/main/agent/tools/core/workspace-files";
 import {
   buildIdentitySection,
   buildToolsSection,
-} from "../src/main/plugins/ppt/prompts/prompt-sections";
-import { buildContentBlockResponseGuidance } from "../src/main/plugins/ppt/prompts/response-guidance";
-import { previewSvgPageTool } from "../src/main/plugins/ppt/tools/preview-svg-page";
+} from "../app/main/plugins/ppt/prompts/prompt-sections";
+import { buildContentBlockResponseGuidance } from "../app/main/plugins/ppt/prompts/response-guidance";
+import { previewSvgPageTool } from "../app/main/plugins/ppt/tools/preview-svg-page";
 import {
   formatSvgDeckLockBootstrapGuidance,
   formatSvgDeckLockContractBlock,
-} from "../src/main/plugins/ppt/tools/svg-deck-locks";
+} from "../app/main/plugins/ppt/tools/svg-deck-locks";
 
 /**
  * Soft create-path habits that inflate turnCount (not hard runtime gates):

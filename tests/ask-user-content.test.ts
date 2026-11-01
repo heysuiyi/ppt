@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { completeAskUserMessage } from "../src/main/agent/tools/core/ask-user";
+import { completeAskUserMessage } from "../app/main/agent/tools/core/ask-user";
 
 describe("AskUser visible content", () => {
   it("turns missing field metadata into visible prompts when the model only writes an intro", () => {

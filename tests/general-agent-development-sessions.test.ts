@@ -5,12 +5,12 @@ import { DatabaseSync } from "node:sqlite";
 import type { ModelMessage } from "@agent-harness/core/model/model-contract";
 import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
 import { afterEach, describe, expect, it } from "vitest";
-import { listDevelopmentSessions } from "../src/main/agent-host/development-sessions";
-import type { HostSessionBinding } from "../src/main/agent-host/host-session-binding";
+import { listDevelopmentSessions } from "../app/main/agent-host/development-sessions";
+import type { HostSessionBinding } from "../app/main/agent-host/host-session-binding";
 import {
   createSqliteAgentStores,
   type SqliteAgentStores,
-} from "../src/main/agent-host/sqlite-agent-stores";
+} from "../app/main/agent-host/sqlite-agent-stores";
 
 const cleanup: Array<() => void | Promise<void>> = [];
 const publicIdentity = {

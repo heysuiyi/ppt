@@ -2,7 +2,7 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useWorkbenchLayout } from "../src/renderer/src/app/useWorkbenchLayout";
+import { useWorkbenchLayout } from "../app/renderer/src/app/useWorkbenchLayout";
 
 let resize: ResizeObserverCallback;
 

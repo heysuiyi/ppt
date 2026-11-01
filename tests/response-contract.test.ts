@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyResponseContract,
   buildResponseContract,
-} from "../src/main/agent/gateway/response-contract";
-import { buildContentBlockResponseGuidance } from "../src/main/plugins/ppt/prompts/response-guidance";
+} from "../app/main/agent/gateway/response-contract";
+import { buildContentBlockResponseGuidance } from "../app/main/plugins/ppt/prompts/response-guidance";
 
 describe("response contracts", () => {
   it("defines native ContentBlock guidance without a JSON envelope", () => {

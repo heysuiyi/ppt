@@ -5,13 +5,18 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
 export default defineConfig({
   main: {
+    build: {
+      rollupOptions: {
+        input: resolve("app/main/index.ts"),
+      },
+    },
     plugins: [
       externalizeDepsPlugin(),
       {
         name: "watch-workspace-artifacts",
         buildStart() {
           // The dependency remains external; watch its emitted files to restart Main in dev.
-          for (const name of ["harness", "logs", "models"]) {
+          for (const name of ["harness", "logs", "models", "tools"]) {
             const directory = resolve(`packages/${name}/dist`);
             for (const file of readdirSync(directory, { recursive: true })) {
               if (typeof file === "string" && file.endsWith(".js")) {
@@ -24,10 +29,11 @@ export default defineConfig({
     ],
     resolve: {
       alias: {
+        "@app": resolve("app"),
         "@shared": resolve("src/shared"),
         "@ppt": resolve("src/ppt"),
         "@design-system": resolve("src/design-system"),
-        "@main": resolve("src/main"),
+        "@main": resolve("app/main"),
       },
     },
   },
@@ -35,6 +41,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
+        input: resolve("app/preload/index.ts"),
         output: {
           format: "cjs",
           entryFileNames: "[name].cjs",
@@ -43,6 +50,7 @@ export default defineConfig({
     },
     resolve: {
       alias: {
+        "@app": resolve("app"),
         "@shared": resolve("src/shared"),
         "@ppt": resolve("src/ppt"),
         "@design-system": resolve("src/design-system"),
@@ -50,8 +58,15 @@ export default defineConfig({
     },
   },
   renderer: {
+    root: resolve("app/renderer"),
+    build: {
+      rollupOptions: {
+        input: resolve("app/renderer/index.html"),
+      },
+    },
     resolve: {
       alias: {
+        "@app": resolve("app"),
         "@shared": resolve("src/shared"),
         "@ppt": resolve("src/ppt"),
         "@design-system": resolve("src/design-system"),

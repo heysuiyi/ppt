@@ -27,11 +27,11 @@ const buildRoot = await mkdtemp(join(cacheRoot, "run-"));
 try {
 await build({
   configFile: false, root,
-  resolve: { alias: { "@shared": resolve(root, "src/shared"), "@ppt": resolve(root, "src/ppt"), "@main": resolve(root, "src/main"), "@design-system": resolve(root, "src/design-system") } },
+  resolve: { alias: { "@app": resolve(root, "app"), "@shared": resolve(root, "src/shared"), "@ppt": resolve(root, "src/ppt"), "@main": resolve(root, "app/main"), "@design-system": resolve(root, "src/design-system") } },
   build: {
     ssr: true, target: "node24", outDir: buildRoot, emptyOutDir: true,
     rollupOptions: {
-      input: join(root, "src/main/agent-host/development-runner.ts"),
+      input: join(root, "app/main/agent-host/development-runner.ts"),
       external: (id) => id === "electron" || id.startsWith("node:") || builtins.has(id) || dependencies.some((name) => id === name || id.startsWith(`${name}/`)),
       output: { format: "es", entryFileNames: "agent-dev.mjs" },
     },

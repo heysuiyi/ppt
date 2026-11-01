@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Tabs, type TabsItem, TabsList, TabsPanel } from "../src/renderer/src/components/Tabs";
+import { Tabs, type TabsItem, TabsList, TabsPanel } from "../app/renderer/src/components/Tabs";
 
 const items: readonly TabsItem<string>[] = [
   { value: "first", label: "First" },

@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PatchReviewCard } from "../src/renderer/src/components/PatchReviewCard";
+import { PatchReviewCard } from "../app/renderer/src/components/PatchReviewCard";
 
 afterEach(cleanup);
 

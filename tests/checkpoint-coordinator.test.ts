@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { DurableRunCheckpoint } from "../src/main/agent/persistence/durable-run-store";
-import { CheckpointCoordinator } from "../src/main/agent/runtime/lifecycle/checkpoint-coordinator";
-import { asRunId, asThreadId } from "../src/main/agent/runtime/query/query-types";
+import type { DurableRunCheckpoint } from "../app/main/agent/persistence/durable-run-store";
+import { CheckpointCoordinator } from "../app/main/agent/runtime/lifecycle/checkpoint-coordinator";
+import { asRunId, asThreadId } from "../app/main/agent/runtime/query/query-types";
 
 function checkpoint(status: DurableRunCheckpoint["status"]): DurableRunCheckpoint {
   const now = new Date().toISOString();

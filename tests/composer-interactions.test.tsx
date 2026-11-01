@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { type ComponentProps, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ChatWorkspaceComposer } from "../src/renderer/src/components/ChatWorkspaceComposer";
+import { ChatWorkspaceComposer } from "../app/renderer/src/components/ChatWorkspaceComposer";
 import {
   clearAllDisplayCardManagers,
   useEnvironmentCardManager,

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createAgentConfiguration } from "../src/main/agent-configuration";
-import { listProviderModels } from "../src/main/agent-configuration/internal/model-discovery";
+import { createAgentConfiguration } from "../app/main/agent-configuration";
+import { listProviderModels } from "../app/main/agent-configuration/internal/model-discovery";
 import {
   discoverAgentModelsSchema,
   type VendorConfiguration,

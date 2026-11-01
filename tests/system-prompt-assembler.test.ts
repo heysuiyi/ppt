@@ -7,23 +7,23 @@ import { z } from "zod";
 import {
   createEmptySkillRegistry,
   registerSkillFromContent,
-} from "../src/main/agent/skills/loadSkillsDir";
-import { createSkillSession } from "../src/main/agent/skills/skill-types";
-import { askUserTool } from "../src/main/agent/tools/core/ask-user";
+} from "../app/main/agent/skills/loadSkillsDir";
+import { createSkillSession } from "../app/main/agent/skills/skill-types";
+import { askUserTool } from "../app/main/agent/tools/core/ask-user";
 import {
   buildSystemPromptContext,
   MEMORY_INDEX_RELATIVE_PATH,
-} from "../src/main/plugins/ppt/prompts/prompt-context";
-import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "../src/main/plugins/ppt/prompts/prompt-sections";
-import { resolvePromptStage } from "../src/main/plugins/ppt/prompts/prompt-stage";
-import { SystemPromptBuilder } from "../src/main/plugins/ppt/prompts/system-prompt";
+} from "../app/main/plugins/ppt/prompts/prompt-context";
+import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "../app/main/plugins/ppt/prompts/prompt-sections";
+import { resolvePromptStage } from "../app/main/plugins/ppt/prompts/prompt-stage";
+import { SystemPromptBuilder } from "../app/main/plugins/ppt/prompts/system-prompt";
 import {
   assembleSystemPrompt,
   clearSystemPromptCache,
   getSystemPrompt,
   SystemPromptManager,
   splitSystemPromptPrefix,
-} from "../src/main/plugins/ppt/prompts/system-prompt-assembler";
+} from "../app/main/plugins/ppt/prompts/system-prompt-assembler";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 const SAMPLE_SKILL = `---

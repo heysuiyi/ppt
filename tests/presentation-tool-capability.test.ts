@@ -2,15 +2,14 @@ import { requirePptCapability } from "@main/plugins/ppt/context";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { ToolPreflight } from "../src/main/agent/runtime/tools/tool-preflight";
-import { executeExtraToolTool } from "../src/main/agent/tools/core/execute-extra-tool";
-import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
+import { ToolPreflight } from "../app/main/agent/runtime/tools/tool-preflight";
+import { executeExtraToolTool } from "../app/main/agent/tools/core/execute-extra-tool";
 import type {
   PptLifecycleToolBridge,
   ToolContext,
   ToolDefinition,
-} from "../src/main/agent/tools/tool-definition";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+} from "../app/main/agent/tools/tool-definition";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import {
   asPptCapabilityRequestId,
@@ -21,6 +20,7 @@ import {
   type PptJobProjection,
   pptJobProjectionSchema,
 } from "../src/shared/presentation-lifecycle";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const PRESENTATION_TOOL_NAMES = [
   "GetDesignReference",

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentModelGateway, AgentModelMessage } from "../src/main/agent/gateway";
+import type { AgentModelGateway, AgentModelMessage } from "../app/main/agent/gateway";
 import {
   AgentGatewayError,
   classifyGatewayRecovery,
   isOutputTruncated,
   normalizeProviderError,
-} from "../src/main/agent/gateway/errors";
-import { computeBackoffDelayMs } from "../src/main/agent/runtime/model/with-retry";
-import { callModelWithRecovery } from "../src/main/agent/runtime/turns/model-call-recovery";
-import { compactTranscript } from "../src/main/agent/runtime/turns/transcript-compact";
+} from "../app/main/agent/gateway/errors";
+import { computeBackoffDelayMs } from "../app/main/agent/runtime/model/with-retry";
+import { callModelWithRecovery } from "../app/main/agent/runtime/turns/model-call-recovery";
+import { compactTranscript } from "../app/main/agent/runtime/turns/transcript-compact";
 
 function textContent(text: string) {
   return [{ type: "text" as const, text }];

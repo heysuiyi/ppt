@@ -6,11 +6,11 @@ import {
   CredentialStore,
   CredentialStoreError,
   type SafeStorageAdapter,
-} from "../src/main/agent-configuration/internal/credential-store";
+} from "../app/main/agent-configuration/internal/credential-store";
 import type {
   ModelCredentialBinding,
   WebSearchCredentialBinding,
-} from "../src/main/agent-configuration/internal/credential-types";
+} from "../app/main/agent-configuration/internal/credential-types";
 import type { CredentialStorageBackend } from "../src/shared/credentials";
 
 const temporaryDirectories: string[] = [];

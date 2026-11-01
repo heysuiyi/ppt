@@ -2,8 +2,8 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppBootstrapSnapshot } from "../src/renderer/src/app/appBootstrap";
-import { useSettingsController } from "../src/renderer/src/app/useSettingsController";
+import type { AppBootstrapSnapshot } from "../app/renderer/src/app/appBootstrap";
+import { useSettingsController } from "../app/renderer/src/app/useSettingsController";
 import type {
   AgentConfigurationSnapshot,
   SaveAgentVendorRequest,

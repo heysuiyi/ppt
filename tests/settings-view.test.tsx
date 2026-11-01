@@ -3,9 +3,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SettingsView } from "../app/renderer/src/app/SettingsView";
+import { MAX_UI_FONT_SIZE } from "../app/renderer/src/app/uiTypography";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { SettingsView } from "../src/renderer/src/app/SettingsView";
-import { MAX_UI_FONT_SIZE } from "../src/renderer/src/app/uiTypography";
 import {
   DEFAULT_WEB_SEARCH_ENDPOINT,
   resolveAgentGatewayPreferences,

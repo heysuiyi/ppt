@@ -1,9 +1,9 @@
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { formatTerminalAgentRunContent } from "@app/shared/agent-result-copy";
 import { FileSessionStore } from "@main/session-store";
 import { getResponseBlockContent } from "@shared/agent-activity";
-import { formatTerminalAgentRunContent } from "@shared/agent-result-copy";
 import { sessionChatMessageSchema } from "@shared/session";
 import { afterEach, describe, expect, it } from "vitest";
 

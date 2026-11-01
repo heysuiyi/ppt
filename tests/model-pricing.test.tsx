@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { ManagedModel } from "../src/renderer/src/modelCatalog";
+import type { ManagedModel } from "../app/renderer/src/modelCatalog";
 import {
   buildPricingIndex,
   estimateModelCost,
   estimateModelsCost,
   resolveUsagePricing,
-} from "../src/renderer/src/modelPricing";
+} from "../app/renderer/src/modelPricing";
 import type { TokenUsageModel } from "../src/shared/token-usage";
 
 function model(id: string, currency: "CNY" | "USD", inputPerMillion: number): ManagedModel {

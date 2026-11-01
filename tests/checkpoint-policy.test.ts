@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CheckpointPolicy } from "../src/main/agent/runtime/lifecycle/checkpoint-policy";
+import { CheckpointPolicy } from "../app/main/agent/runtime/lifecycle/checkpoint-policy";
 
 describe("CheckpointPolicy", () => {
   const policy = new CheckpointPolicy();

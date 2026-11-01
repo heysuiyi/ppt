@@ -2,15 +2,15 @@ import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { writeTextFileAtomic } from "../src/tools/internal/atomic";
 import {
   LEAD_TASK_PERMISSIONS,
   type PersistedTaskList,
   type TaskCommandPrincipal,
   type TaskListIdentity,
   TaskStore,
-} from "../src/main/agent/task/task-store";
-import { TaskSubscriptionService } from "../src/main/agent/task/task-subscription-service";
+} from "../app/main/agent/task/task-store";
+import { TaskSubscriptionService } from "../app/main/agent/task/task-subscription-service";
+import { writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 
 async function fixture(scope: TaskListIdentity["scope"] = "conversation") {
   const root = await mkdtemp(join(tmpdir(), "task-store-v1-"));

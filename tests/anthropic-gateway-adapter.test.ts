@@ -18,8 +18,8 @@ vi.mock("@anthropic-ai/sdk", () => ({
 import {
   generateStreamWithAnthropic,
   generateWithAnthropic,
-} from "../src/main/agent/gateway/anthropic";
-import type { PreparedAgentModelRequest } from "../src/main/agent/gateway/types";
+} from "../app/main/agent/gateway/anthropic";
+import type { PreparedAgentModelRequest } from "../app/main/agent/gateway/types";
 
 const config = {
   provider: "anthropic" as const,

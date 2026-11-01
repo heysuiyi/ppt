@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MessageBus } from "../src/main/agent/teammate/message-bus";
-import { TeammateManager } from "../src/main/agent/teammate/spawn-teammate";
+import { MessageBus } from "../app/main/agent/teammate/message-bus";
+import { TeammateManager } from "../app/main/agent/teammate/spawn-teammate";
 
 describe("teammate cold-start recovery", () => {
   it("turns a previous process teammate into a durable interruption message", async () => {

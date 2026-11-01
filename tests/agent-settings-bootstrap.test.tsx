@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AGENT_STEP_LIMITS_STORAGE_KEY } from "../src/renderer/src/agentStepLimits";
+import { AGENT_STEP_LIMITS_STORAGE_KEY } from "../app/renderer/src/agentStepLimits";
 import {
   initializeAgentSettings,
   loadAppBootstrapSnapshot,
   UI_SETTINGS_STORAGE_KEY,
-} from "../src/renderer/src/app/appBootstrap";
-import { CREDENTIAL_REENTRY_NOTICE_STORAGE_KEY } from "../src/renderer/src/credentialMigration";
-import { LEGACY_MODEL_STORAGE_KEY } from "../src/renderer/src/modelCatalog";
+} from "../app/renderer/src/app/appBootstrap";
+import { CREDENTIAL_REENTRY_NOTICE_STORAGE_KEY } from "../app/renderer/src/credentialMigration";
+import { LEGACY_MODEL_STORAGE_KEY } from "../app/renderer/src/modelCatalog";
 import type { AgentConfigurationSnapshot } from "../src/shared/agent-configuration";
 import { resolveAgentGatewayPreferences } from "../src/shared/agent-gateway-config";
 import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";

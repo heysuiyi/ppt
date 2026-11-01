@@ -8,12 +8,12 @@ import type {
   AgentModelContentBlock,
   AgentModelGateway,
   AgentModelRequest,
-} from "../src/main/agent/gateway/types";
-import { DurableRunStore } from "../src/main/agent/persistence/durable-run-store";
-import { clearHooks, registerHook } from "../src/main/agent/runtime/hooks/hook-registry";
-import { readFileTool, writeFileTool } from "../src/main/agent/tools/core/workspace-files";
-import type { ToolDefinition } from "../src/main/agent/tools/tool-definition";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+} from "../app/main/agent/gateway/types";
+import { DurableRunStore } from "../app/main/agent/persistence/durable-run-store";
+import { clearHooks, registerHook } from "../app/main/agent/runtime/hooks/hook-registry";
+import { readFileTool, writeFileTool } from "../app/main/agent/tools/core/workspace-files";
+import type { ToolDefinition } from "../app/main/agent/tools/tool-definition";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 const temporaryRoots: string[] = [];

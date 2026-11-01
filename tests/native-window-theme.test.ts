@@ -44,7 +44,7 @@ vi.mock("electron", () => ({
   BrowserWindow: { getAllWindows: () => [platform.window] },
 }));
 
-import { applyWindowThemeMode } from "../src/main/window/theme";
+import { applyWindowThemeMode } from "../app/main/window/theme";
 
 it("follows OS changes after leaving an explicit mode and keeps caption colors synchronized", () => {
   const frame = () => ({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { LeadInboxInputSource } from "../src/main/agent/runtime/background/lead-inbox-input-source";
-import { AgentSession } from "../src/main/agent/runtime/lifecycle/agent-session";
-import type { MessageBus } from "../src/main/agent/teammate/message-bus";
+import { LeadInboxInputSource } from "../app/main/agent/runtime/background/lead-inbox-input-source";
+import { AgentSession } from "../app/main/agent/runtime/lifecycle/agent-session";
+import type { MessageBus } from "../app/main/agent/teammate/message-bus";
 
 function createSession(): AgentSession {
   return new AgentSession({ transcript: [] });

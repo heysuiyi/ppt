@@ -1,12 +1,12 @@
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SUB_AGENT_TOOL_PERMISSION_PROFILES } from "../src/main/agent/runtime/tools/tool-access-policy";
-import { createSearchService } from "../src/main/agent/search/search-service";
-import { TavilySearchAdapter } from "../src/main/agent/search/tavily-adapter";
-import { webSearchSchema } from "../src/main/agent/search/web-search";
-import { SUB_AGENT_TOOLS, webSearchSubAgentTool } from "../src/main/agent/subagent/workspace-tools";
-import { webSearchTool } from "../src/main/agent/tools/core/web-search";
-import { searchSlideImagesTool } from "../src/main/plugins/ppt/tools/search-slide-images";
+import { SUB_AGENT_TOOL_PERMISSION_PROFILES } from "../app/main/agent/runtime/tools/tool-access-policy";
+import { createSearchService } from "../app/main/agent/search/search-service";
+import { TavilySearchAdapter } from "../app/main/agent/search/tavily-adapter";
+import { webSearchSchema } from "../app/main/agent/search/web-search";
+import { SUB_AGENT_TOOLS, webSearchSubAgentTool } from "../app/main/agent/subagent/workspace-tools";
+import { webSearchTool } from "../app/main/agent/tools/core/web-search";
+import { searchSlideImagesTool } from "../app/main/plugins/ppt/tools/search-slide-images";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 afterEach(() => {

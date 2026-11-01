@@ -3,14 +3,14 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { executeAgentRun } from "../src/renderer/src/app/agent/agentRunExecution";
-import type { AgentActivityStreamController } from "../src/renderer/src/app/agent/useAgentActivityStream";
-import { useAgentRunController } from "../src/renderer/src/app/agent/useAgentRunController";
-import { useSessionController } from "../src/renderer/src/app/session/useSessionController";
-import { useProjectStore } from "../src/renderer/src/components/project-store";
+import { executeAgentRun } from "../app/renderer/src/app/agent/agentRunExecution";
+import type { AgentActivityStreamController } from "../app/renderer/src/app/agent/useAgentActivityStream";
+import { useAgentRunController } from "../app/renderer/src/app/agent/useAgentRunController";
+import { useSessionController } from "../app/renderer/src/app/session/useSessionController";
+import { useProjectStore } from "../app/renderer/src/components/project-store";
 import { createSessionPresentation, type SessionBootstrap } from "../src/shared/session";
 
-vi.mock("../src/renderer/src/app/agent/agentRunExecution", () => ({ executeAgentRun: vi.fn() }));
+vi.mock("../app/renderer/src/app/agent/agentRunExecution", () => ({ executeAgentRun: vi.fn() }));
 
 function snapshot(id: string): SessionBootstrap {
   const session = {

@@ -2,8 +2,8 @@
 
 import { presentationUsesSvgPages } from "@shared/presentation-export";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { confirmSvgExportExpectation } from "../app/renderer/src/app/presentation/exportExpectations";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { confirmSvgExportExpectation } from "../src/renderer/src/app/presentation/exportExpectations";
 import { createSvgTestSlide } from "../src/shared/presentation-fixtures";
 
 function svgPresentation() {

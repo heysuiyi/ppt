@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { handleAgentRunFailure } from "../src/renderer/src/app/agent/agentRunFailure";
-import type { ChatMessage } from "../src/renderer/src/app/chatMessageRuntime";
+import { handleAgentRunFailure } from "../app/renderer/src/app/agent/agentRunFailure";
+import type { ChatMessage } from "../app/renderer/src/app/chatMessageRuntime";
 
 function createMessageState(initial: ChatMessage[]) {
   let messages = initial;

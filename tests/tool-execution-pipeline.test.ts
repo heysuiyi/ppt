@@ -5,17 +5,17 @@ import type {
   AgentModelContentBlock,
   AgentModelGateway,
   AgentModelRequest,
-} from "../src/main/agent/gateway/types";
-import type { PostToolUseBlock } from "../src/main/agent/runtime/hooks/hook-blocks";
-import { clearHooks, registerHook } from "../src/main/agent/runtime/hooks/hook-registry";
-import type { PreToolUseBlock } from "../src/main/agent/runtime/tools/permission-check";
-import { ToolExecutionEngine } from "../src/main/agent/runtime/tools/tool-execution-engine";
-import { executeExtraToolTool } from "../src/main/agent/tools/core/execute-extra-tool";
-import { searchExtraToolsTool } from "../src/main/agent/tools/core/search-extra-tools";
-import { WorkspaceFileError } from "../src/tools/internal/workspace-file-service";
-import type { ToolContext, ToolDefinition } from "../src/main/agent/tools/tool-definition";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
+} from "../app/main/agent/gateway/types";
+import type { PostToolUseBlock } from "../app/main/agent/runtime/hooks/hook-blocks";
+import { clearHooks, registerHook } from "../app/main/agent/runtime/hooks/hook-registry";
+import type { PreToolUseBlock } from "../app/main/agent/runtime/tools/permission-check";
+import { ToolExecutionEngine } from "../app/main/agent/runtime/tools/tool-execution-engine";
+import { executeExtraToolTool } from "../app/main/agent/tools/core/execute-extra-tool";
+import { searchExtraToolsTool } from "../app/main/agent/tools/core/search-extra-tools";
+import type { ToolContext, ToolDefinition } from "../app/main/agent/tools/tool-definition";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
+import { WorkspaceFileError } from "@agent-harness/tools/workspace-files";
 
 function gatewayFor(turns: AgentModelContentBlock[][]): AgentModelGateway & {
   requests: AgentModelRequest[];

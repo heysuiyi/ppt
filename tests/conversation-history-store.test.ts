@@ -7,12 +7,12 @@ import type {
   AgentModelContentBlock,
   AgentModelGateway,
   AgentModelRequest,
-} from "../src/main/agent/gateway/types";
-import { DurableConversationHistoryStore } from "../src/main/agent/persistence/conversation-history-store";
-import { DurableRunStore } from "../src/main/agent/persistence/durable-run-store";
-import { ToolRegistry } from "../src/main/agent/tools/tool-registry";
-import { ConversationDatabase } from "../src/main/conversation-database";
-import { readPresentationSnapshotTool } from "../src/main/plugins/ppt/tools/read-presentation-snapshot";
+} from "../app/main/agent/gateway/types";
+import { DurableConversationHistoryStore } from "../app/main/agent/persistence/conversation-history-store";
+import { DurableRunStore } from "../app/main/agent/persistence/durable-run-store";
+import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
+import { ConversationDatabase } from "../app/main/conversation-database";
+import { readPresentationSnapshotTool } from "../app/main/plugins/ppt/tools/read-presentation-snapshot";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 const history = [

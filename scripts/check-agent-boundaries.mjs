@@ -1,3 +1,4 @@
+import { isBuiltin } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -312,7 +313,16 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
       );
     }
     const program = ts.createProgram({
-      rootNames: parsed.fileNames,
+      rootNames: [
+        ...parsed.fileNames,
+        ...(configName === "tsconfig.node.json"
+          ? ["app", "cli", "src"].flatMap((directory) =>
+              ts.sys.readDirectory(path.join(root, directory), [".ts", ".tsx", ".mts"], undefined, [
+                "**/*",
+              ]),
+            )
+          : []),
+      ],
       options: parsed.options,
       projectReferences: parsed.projectReferences,
     });
@@ -408,18 +418,20 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
       for (const dependency of dependencies(source)) {
         const { node, specifier, typeOnly, reexport } = dependency;
         if (specifier === undefined) {
-          if (internal || host) {
+          if (internal || host || within(path.join(root, "cli"), sourcePath)) {
             report(
               configPath,
               source,
               node,
               "<non-literal module>",
               "literal-loading",
-              "Agent and session-host module loading must use a resolvable string literal.",
+              "Agent, session-host and CLI module loading must use a resolvable string literal.",
             );
           }
           continue;
         }
+        // Node built-ins have no file target for TypeScript module resolution.
+        if (isBuiltin(specifier)) continue;
         const resolution = resolveDependency(source, dependency);
         const resolved = resolution.resolvedModule;
         if (!resolved) {
@@ -432,6 +444,7 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
           if (
             internal ||
             host ||
+            within(path.join(root, "cli"), sourcePath) ||
             boundaryLookup ||
             specifier === manifest.name ||
             specifier.startsWith(`${manifest.name}/`)
@@ -442,12 +455,22 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
               node,
               `<unresolved: ${specifier}>`,
               "resolved-agent-dependency",
-              "Agent and session-host dependencies must resolve in this compiler project.",
+              "Agent, session-host and CLI dependencies must resolve in this compiler project.",
             );
           }
           continue;
         }
         const target = identity(resolved.resolvedFileName);
+        if (within(path.join(root, "cli"), sourcePath) && within(path.join(root, "app"), target)) {
+          report(
+            configPath,
+            source,
+            node,
+            target,
+            "cli-app-dependency",
+            "CLI modules must use injected platform adapters, never desktop app modules.",
+          );
+        }
         const targetInternal = isAgent(target);
         const targetHost = isHost(target);
         if (isLegacy(target)) {

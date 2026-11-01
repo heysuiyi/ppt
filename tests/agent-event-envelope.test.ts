@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentEventPorts } from "../src/main/agent/runtime/lifecycle/agent-event-ports";
+import { AgentEventPorts } from "../app/main/agent/runtime/lifecycle/agent-event-ports";
 
 describe("agent event envelope", () => {
   it("forwards a structured tool state with stable call identity", () => {

@@ -3,16 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PptLifecycleToolBridge, ToolContext } from "../app/main/agent/tools/tool-definition";
+import { slideThumbnailService } from "../app/main/plugins/ppt/adapters/electron-thumbnail-service";
+import { previewSvgPageTool } from "../app/main/plugins/ppt/tools/preview-svg-page";
+import { submitSvgDeckTool } from "../app/main/plugins/ppt/tools/submit-svg-deck";
+import { ContentAddressedBlobStore } from "../app/main/presentation-lifecycle/content-addressed-blob-store";
+import { PresentationLifecycleOrchestrator } from "../app/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
+import { PresentationLifecycleRepository } from "../app/main/presentation-lifecycle/presentation-lifecycle-repository";
+import { PresentationLifecycleToolBridge } from "../app/main/presentation-lifecycle/presentation-lifecycle-tool-bridge";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
-import { WorkspaceFileService } from "../src/tools/internal/workspace-file-service";
-import type { PptLifecycleToolBridge, ToolContext } from "../src/main/agent/tools/tool-definition";
-import { slideThumbnailService } from "../src/main/plugins/ppt/adapters/electron-thumbnail-service";
-import { previewSvgPageTool } from "../src/main/plugins/ppt/tools/preview-svg-page";
-import { submitSvgDeckTool } from "../src/main/plugins/ppt/tools/submit-svg-deck";
-import { ContentAddressedBlobStore } from "../src/main/presentation-lifecycle/content-addressed-blob-store";
-import { PresentationLifecycleOrchestrator } from "../src/main/presentation-lifecycle/presentation-lifecycle-orchestrator";
-import { PresentationLifecycleRepository } from "../src/main/presentation-lifecycle/presentation-lifecycle-repository";
-import { PresentationLifecycleToolBridge } from "../src/main/presentation-lifecycle/presentation-lifecycle-tool-bridge";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 import {
   asPresentationId,
@@ -20,6 +19,7 @@ import {
   asQueryId,
   type BlobReference,
 } from "../src/shared/presentation-lifecycle";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const temporaryRoots: string[] = [];
 const repositories: PresentationLifecycleRepository[] = [];

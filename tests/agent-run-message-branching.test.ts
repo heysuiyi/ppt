@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { prepareAgentRunMessages } from "../src/renderer/src/app/agent/agentRunPreparation";
-import type { ChatMessage } from "../src/renderer/src/app/chatMessageRuntime";
+import { prepareAgentRunMessages } from "../app/renderer/src/app/agent/agentRunPreparation";
+import type { ChatMessage } from "../app/renderer/src/app/chatMessageRuntime";
 
 const sourceMessages: ChatMessage[] = [
   { id: "user-1", role: "user", content: "first" },

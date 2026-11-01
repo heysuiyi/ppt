@@ -1,6 +1,6 @@
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
-import { SUB_AGENT_TOOLS } from "../src/main/agent/subagent/workspace-tools";
+import { SUB_AGENT_TOOLS } from "../app/main/agent/subagent/workspace-tools";
 import {
   formatAgentProgressMessage,
   formatAgentToolActivity,

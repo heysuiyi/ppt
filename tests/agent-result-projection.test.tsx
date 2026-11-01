@@ -11,12 +11,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ApplyAgentResult,
   useAgentResultHandler,
-} from "../src/renderer/src/app/agent/useAgentResultHandler";
-import { type ChatMessage, findActiveThreadId } from "../src/renderer/src/app/chatMessageRuntime";
-import { useProjectStore } from "../src/renderer/src/components/project-store";
+} from "../app/renderer/src/app/agent/useAgentResultHandler";
+import { type ChatMessage, findActiveThreadId } from "../app/renderer/src/app/chatMessageRuntime";
+import { useProjectStore } from "../app/renderer/src/components/project-store";
+import { formatTerminalAgentRunContent } from "../app/shared/agent-result-copy";
+import type { AgentRunResult } from "../app/shared/ipc";
 import type { AgentActivityItem } from "../src/shared/agent-activity";
-import { formatTerminalAgentRunContent } from "../src/shared/agent-result-copy";
-import type { AgentRunResult } from "../src/shared/ipc";
 import { createSvgTestSlide } from "../src/shared/presentation-fixtures";
 import { createSessionPresentation } from "../src/shared/session";
 

@@ -4,8 +4,8 @@ import {
   DEFAULT_AGENT_TIMEOUT_MS,
   resolveAgentModelConfig,
   resolveFallbackModelSelection,
-} from "../src/main/agent/gateway/config";
-import { AgentGatewayError } from "../src/main/agent/gateway/errors";
+} from "../app/main/agent/gateway/config";
+import { AgentGatewayError } from "../app/main/agent/gateway/errors";
 import type { AgentModelSettings } from "../src/shared/agent";
 
 function settingsRegistry(...primarySettings: AgentModelSettings[]): AgentModelSettingsRegistry {
