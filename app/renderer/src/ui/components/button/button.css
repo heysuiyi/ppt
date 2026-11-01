@@ -22,7 +22,7 @@
   color: var(--ui-button-text);
   font-family: var(--ui-font-sans);
   font-size: var(--ui-font-size-14);
-  font-weight: 600;
+  font-weight: 500;
   line-height: var(--ui-line-height-control);
   text-align: center;
   white-space: normal;
@@ -40,6 +40,7 @@
   --ui-button-active: var(--ui-action-primary-active);
   --ui-button-text: var(--ui-action-on-primary);
   --ui-button-border: var(--ui-action-primary);
+  font-weight: 600;
 }
 
 .ui-root .ui-button[data-ui-tone="danger"] {
@@ -61,7 +62,7 @@
 }
 
 .ui-root .ui-button:disabled {
-  border-color: var(--ui-border);
+  border-color: var(--ui-border-subtle);
   background: var(--ui-action-disabled);
   color: var(--ui-text-disabled);
   cursor: not-allowed;

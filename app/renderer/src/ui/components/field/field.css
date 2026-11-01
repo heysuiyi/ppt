@@ -14,15 +14,16 @@
 }
 
 .ui-root .ui-field__required {
+  margin-inline-start: var(--ui-space-4);
   color: var(--ui-text-muted);
-  font-size: var(--ui-font-size-12);
+  font-size: var(--ui-font-size-14);
   font-weight: 400;
 }
 
 .ui-root .ui-field__hint,
 .ui-root .ui-field__error {
   margin: 0;
-  font-size: var(--ui-font-size-12);
+  font-size: var(--ui-font-size-14);
   line-height: var(--ui-line-height-body);
   overflow-wrap: anywhere;
 }

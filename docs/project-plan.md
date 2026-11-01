@@ -7,7 +7,7 @@
 - [AGENTS.md](../AGENTS.md)：持续适用的开发规范、架构约束与验证底线。
 - 本文：项目整体方向、模块职责和分阶段路线。
 - [下一步计划](next-steps/README.md)：当前待执行迭代的具体范围、改动落点与验收条件。
-- [独立页面 UI 设计体系](next-steps/ui-design-system.md)：U0–U2 首轮工程与行为已验收，当前风格未获用户认可；先执行已整理的 R1 默认界面去演示化，再推进 U3–U5，不接后端/Harness、不改旧生产 UI。
+- [独立页面 UI 设计体系](next-steps/ui-design-system.md)：U0–U2 / R1 基线保留；参考用户 DeepSeek Harness / Cursor 截图完成 R2 会话工作区首页与分类设置，[本地复核及全仓 CLI 失败](next-steps/ui-design-system.md#124-r2-会话工作区与分类设置实施记录)分开记录。用户风格及完整 U3–U5 待复核，不接后端/Harness、不改旧生产 UI。
 - [独立 Node CLI 终端](next-steps/cli-terminal.md)：C0–C4 已同轮实施，生产/开发入口直接运行 Node，旧 CLI/Electron 桥接已删除；真实 ConPTY、Windows DPAPI、本地 SDK 与小范围 MiMo 远程验收分开记录，不保留预览或兼容入口。
 - [README](../README.md)：当前产品能力、使用方式和现有执行入口。
 

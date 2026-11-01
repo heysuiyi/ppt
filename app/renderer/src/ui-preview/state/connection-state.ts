@@ -38,7 +38,6 @@ export type LeaveIntent =
 export type PreviewPage = "connection" | "foundations";
 export interface ConnectionState {
   connections: DemoConnection[];
-  selectedId: string;
   page: PreviewPage;
   editor: ConnectionEditor | null;
   leave: LeaveIntent | null;
@@ -50,7 +49,7 @@ export interface ConnectionState {
   notice: string;
 }
 export type ConnectionAction =
-  | { type: "open" }
+  | { type: "open"; targetId: string }
   | { type: "change"; field: Exclude<FieldName, "demoKey">; value: string }
   | DemoKeyChangeAction
   | { type: "submit"; outcome: LocalOutcome; deferred: boolean }
@@ -78,10 +77,9 @@ export function demoKeyChange(value: string): DemoKeyChangeAction {
 export function createConnectionState(generation = 0): ConnectionState {
   return {
     connections: [
-      { id: "atlas", name: "Atlas · 示例连接", address: "https://atlas.example.invalid/v1" },
-      { id: "cedar", name: "Cedar · 示例连接", address: "https://cedar.example.invalid/v1" },
+      { id: "atlas", name: "Atlas", address: "https://atlas.example.invalid/v1" },
+      { id: "cedar", name: "Cedar", address: "https://cedar.example.invalid/v1" },
     ],
-    selectedId: "atlas",
     page: "connection",
     editor: null,
     leave: null,
@@ -101,10 +99,9 @@ export function validateDraft(draft: ConnectionDraft): FieldErrors {
     const address = new URL(draft.address);
     if (!["https:", "http:"].includes(address.protocol) || !address.hostname) throw new Error();
   } catch {
-    errors.address = "请输入完整的 http:// 或 https:// 示例地址；这里只校验格式。";
+    errors.address = "请输入完整的 http:// 或 https:// 地址。";
   }
-  if (draft.demoKey !== "demo-key")
-    errors.demoKey = "仅接受公开演示值 demo-key，不要输入真实 Key。";
+  if (draft.demoKey !== "demo-key") errors.demoKey = "仅接受 demo-key。";
   return errors;
 }
 
@@ -137,13 +134,33 @@ function invalidate(state: ConnectionState): ConnectionState {
   };
 }
 
+function openEditor(state: ConnectionState, targetId: string): ConnectionState {
+  const target = state.connections.find((item) => item.id === targetId);
+  if (!target) return state;
+  return {
+    ...state,
+    leave: null,
+    notice: "",
+    nextEditorId: state.nextEditorId + 1,
+    editor: {
+      id: state.nextEditorId,
+      targetId: target.id,
+      draft: { name: target.name, address: target.address, demoKey: "" },
+      errors: {},
+      phase: "editing",
+      operation: null,
+      failure: false,
+    },
+  };
+}
+
 function leaveNow(state: ConnectionState, intent: LeaveIntent): ConnectionState {
+  if (intent.kind === "target") return openEditor(state, intent.targetId);
   return {
     ...state,
     editor: null,
     leave: null,
     notice: "",
-    ...(intent.kind === "target" ? { selectedId: intent.targetId } : {}),
     ...(intent.kind === "page" ? { page: intent.page } : {}),
   };
 }
@@ -153,24 +170,8 @@ export function connectionReducer(
   action: ConnectionAction,
 ): ConnectionState {
   switch (action.type) {
-    case "open": {
-      if (state.editor) return state;
-      const target = state.connections.find((item) => item.id === state.selectedId)!;
-      return {
-        ...state,
-        notice: "",
-        nextEditorId: state.nextEditorId + 1,
-        editor: {
-          id: state.nextEditorId,
-          targetId: target.id,
-          draft: { name: target.name, address: target.address, demoKey: "" },
-          errors: {},
-          phase: "editing",
-          operation: null,
-          failure: false,
-        },
-      };
-    }
+    case "open":
+      return state.editor ? state : openEditor(state, action.targetId);
     case "change": {
       if (!state.editor || state.editor.phase === "pending" || state.leave) return state;
       return {
@@ -193,9 +194,7 @@ export function connectionReducer(
           draft: { ...state.editor.draft, demoKey: action.value },
           errors: {
             ...state.editor.errors,
-            demoKey: action.rejected
-              ? "已拒绝非演示输入。只接受 demo-key，不保存其他内容。"
-              : undefined,
+            demoKey: action.rejected ? "仅接受 demo-key，其他输入已清除。" : undefined,
           },
         },
       };
@@ -258,7 +257,7 @@ export function connectionReducer(
             ? { ...item, name: editor.draft.name.trim(), address: editor.draft.address.trim() }
             : item,
         ),
-        notice: "本地演示已更新，仅保留名称和地址于本页内存；未保存凭据，未验证远程连接。",
+        notice: "示例已更新",
       };
     }
     case "leave": {

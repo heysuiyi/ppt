@@ -1,43 +1,53 @@
 import type { TerminalView } from "./renderer-contract.js";
-import { truncateTerminalText, visibleWidth } from "./terminal-text.js";
+import { graphemes, truncateTerminalText, visibleWidth } from "./terminal-text.js";
 
-/** 输入归属、提交条件及按键说明只由控制器提供。 */
-export function statusLines(view: TerminalView, columns: number): string[] {
-  const context = view.context;
-  let main = view.input.status;
-  if (context) {
-    const workspace = context.workspace.replaceAll("\\", "/").replace(/\/+$/, "");
-    const location = columns < 80 ? workspace.split("/").at(-1) || workspace : workspace;
-    const mode =
-      context.capabilities === "read-only"
-        ? "只读"
-        : context.capabilities === "read-write"
-          ? "读写"
-          : context.capabilities === "none"
-            ? "无"
-            : context.capabilities;
-    const tools = truncateTerminalText(`工具 ${mode}`, Math.floor(columns / 3));
-    // 先缩工作区和模型名；切换、取消等真实状态优先于元数据。
-    const status = truncateTerminalText(
-      view.input.status,
-      Math.max(0, columns - visibleWidth(tools) - 3),
-    );
-    const remaining = Math.max(0, columns - visibleWidth(status) - visibleWidth(tools) - 9);
-    const pathBudget = Math.min(visibleWidth(location), Math.max(4, Math.floor(remaining / 3)));
-    const name = truncateTerminalText(context.model, Math.max(0, remaining - pathBudget));
-    const path = truncateTerminalText(location, Math.max(0, remaining - visibleWidth(name)));
-    main = [status, name, tools, path].filter(Boolean).join(" · ");
+/** 单行状态栏：项目标识、模型、工作目录，随后是上下文刻度。 */
+export function contextLines(view: TerminalView, columns: number): string[] {
+  if (!view.context) return [];
+  const { model, workspace } = view.context;
+  const path = workspace.replaceAll("\\", "/").replace(/\/+$/, "");
+  // 当前宿主没有上下文容量契约；不可把输出预算或累计 usage 冒充上下文用量。
+  const gauge = "—% ── 上下文未知";
+  const labelBudget = Math.max(1, columns - visibleWidth(gauge) - 5);
+  const name = truncateTerminalText(`π › ${model}`, Math.max(1, Math.floor(labelBudget * 0.55)));
+  const budget = Math.max(0, labelBudget - visibleWidth(name) - 3);
+  let tail = path;
+  if (visibleWidth(path) > budget) {
+    const parts = graphemes(path);
+    let width = 1;
+    let start = parts.length;
+    while (start > 0 && width + visibleWidth(parts[start - 1]!) <= budget) {
+      start -= 1;
+      width += visibleWidth(parts[start]!);
+    }
+    tail = budget > 0 ? `…${parts.slice(start).join("")}` : "";
   }
-  const feedback = view.feedback;
-  const modelProblem = context?.modelStatus;
-  const problems: string[] = [];
-  if (feedback?.kind === "blocking") problems.push(feedback.message);
-  else if (feedback) main = `${feedback.message} · ${main}`;
-  if (modelProblem && !feedback?.message.includes(modelProblem))
-    problems.push(`模型不可用：${modelProblem}`);
-  // 两个独立问题占用主行和问题行，仍为返回操作保留尾行。
-  if (problems.length > 1) main = `${problems.pop()} · ${main}`;
-  const lines = [main, ...problems];
-  lines.push(view.input.hint);
-  return lines.map((line) => truncateTerminalText(line, columns));
+  const label = [name, tail].filter(Boolean).join(" › ");
+  const line = `${label} ${"─".repeat(Math.max(1, columns - visibleWidth(label) - visibleWidth(gauge) - 2))}${gauge}`;
+  return [truncateTerminalText(line, columns)];
+}
+
+/** Execution and durable problems are independent of the editor's focus. */
+export function activityLines(view: TerminalView, columns: number): string[] {
+  const lines: string[] = [];
+  if (view.activity) lines.push(view.activity);
+  if (view.feedback?.kind === "blocking") lines.push(view.feedback.message);
+  const problem = view.context?.modelStatus;
+  if (problem && !view.feedback?.message.includes(problem)) lines.push(`模型不可用：${problem}`);
+  return lines.filter(Boolean).map((line) => truncateTerminalText(line, columns));
+}
+
+/** Feedback and genuinely local instructions live below the editor/completion. */
+export function hintLines(view: TerminalView, columns: number): string[] {
+  return [view.feedback?.kind !== "blocking" ? view.feedback?.message : undefined, view.input.hint]
+    .filter((line): line is string => !!line)
+    .map((line) => truncateTerminalText(line, columns));
+}
+
+export function statusLines(view: TerminalView, columns: number): string[] {
+  return [
+    ...activityLines(view, columns),
+    ...contextLines(view, columns),
+    ...hintLines(view, columns),
+  ];
 }

@@ -7,6 +7,7 @@ import type {
 } from "@agent-harness/core/protocol-values";
 import type { StoredToolInvocation } from "@agent-harness/core/session/session-contract";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
+import type { TerminalTimelinePart, TerminalTurnSettlement } from "./renderer-contract.js";
 import type {
   TerminalInteractionDisplay,
   TerminalInteractionReference,
@@ -14,6 +15,7 @@ import type {
   TerminalToolReference,
 } from "./terminal-contract.js";
 import { sanitizeTerminalText as safe } from "./terminal-text.js";
+import { projectToolDisplay, sanitizeToolDisplay } from "./tool-display.js";
 
 export function terminalIdentity(value: RunIdentity): RunIdentity {
   return {
@@ -100,6 +102,16 @@ export function projectTerminalEvent(
         phase: event.type,
         error: sanitizeProtocolError(event.error),
       };
+    case "model.completed":
+      return sanitizeTerminalRecord({
+        version: 1,
+        type: "model.completed",
+        identity,
+        requestId: event.requestId,
+        step: event.step,
+        durationMs: event.durationMs,
+        ...(event.usage ? { usage: event.usage } : {}),
+      });
     case "step.started":
       return { version: 1, type: "progress", identity, phase: event.type, step: event.step };
     case "step.committed":
@@ -114,6 +126,12 @@ export function projectTerminalEvent(
     case "tool.started":
     case "tool.completed": {
       const tool = invocationReference(event.invocation);
+      const display = projectToolDisplay(
+        event.invocation,
+        event.type === "tool.completed" && event.completion.status === "succeeded"
+          ? event.completion.presentation
+          : undefined,
+      );
       const base = {
         version: 1 as const,
         type: "tool" as const,
@@ -123,6 +141,14 @@ export function projectTerminalEvent(
         name: tool.name,
         toolVersion: tool.toolVersion,
         step: event.step,
+        ...(display
+          ? {
+              display:
+                event.type === "tool.completed" && display.output.length === 0
+                  ? { ...display, output: ["结果预览不可用"] }
+                  : display,
+            }
+          : {}),
       };
       if (event.type === "tool.started") return { ...base, phase: "started" };
       if (event.completion.status === "succeeded")
@@ -177,6 +203,17 @@ export function projectTerminalResult(
   if (result.status === "completed") {
     result.output.forEach((message, messageIndex) => {
       if (message.role !== "assistant") return;
+      message.content.forEach((part, contentIndex) => {
+        if (part.type === "reasoning" && part.text.length > 0)
+          records.push({
+            version: 1,
+            type: "assistant.reasoning",
+            identity,
+            messageIndex,
+            contentIndex,
+            text: safe(part.text),
+          });
+      });
       const content = message.content.flatMap((part, contentIndex) =>
         part.type === "text" && part.text.length > 0
           ? [{ contentIndex, text: safe(part.text) }]
@@ -207,6 +244,36 @@ export function projectTerminalResult(
     records.push({ version: 1, type: "query.result", identity, status: result.status });
   }
   return records;
+}
+
+/** Public canonical positions only; tool payloads and private replay never cross this boundary. */
+export function projectTerminalSettlement(
+  result: AgentRunResult,
+  describe: (request: InteractionRequest) => TerminalInteractionDisplay,
+): TerminalTurnSettlement {
+  const timeline: TerminalTimelinePart[] = [];
+  const pendingCalls = new Map<string, number>();
+  if (result.status === "completed") {
+    result.output.forEach((message, messageIndex) => {
+      message.content.forEach((part, contentIndex) => {
+        if (message.role === "assistant" && part.type === "text" && part.text.length > 0) {
+          timeline.push({ type: "text", messageIndex, contentIndex, text: safe(part.text) });
+        } else if (message.role === "assistant" && part.type === "reasoning" && part.text.length > 0) {
+          timeline.push({ type: "reasoning", messageIndex, contentIndex, text: safe(part.text) });
+        } else if (part.type === "tool-call" || part.type === "tool-result") {
+          const callId = safe(part.callId);
+          const pending = pendingCalls.get(callId) ?? 0;
+          if (part.type === "tool-call") {
+            pendingCalls.set(callId, pending + 1);
+            timeline.push({ type: "tool", callId });
+          } else if (pending > 0) {
+            pendingCalls.set(callId, pending - 1);
+          } else timeline.push({ type: "tool", callId });
+        }
+      });
+    });
+  }
+  return { records: projectTerminalResult(result, describe), timeline };
 }
 
 function safeTool(tool: TerminalToolReference): TerminalToolReference {
@@ -274,6 +341,7 @@ export function sanitizeTerminalRecord(record: TerminalRecord): TerminalRecord {
     }
     case "tool": {
       const tool = safeTool(record);
+      const display = sanitizeToolDisplay(record.display, record.name, record.toolVersion);
       const base = {
         version: 1 as const,
         type: "tool" as const,
@@ -283,6 +351,7 @@ export function sanitizeTerminalRecord(record: TerminalRecord): TerminalRecord {
         name: tool.name,
         toolVersion: tool.toolVersion,
         step: record.step,
+        ...(display ? { display } : {}),
       };
       if (record.phase === "started") return { ...base, phase: "started" };
       if (record.status === "succeeded")
@@ -325,6 +394,31 @@ export function sanitizeTerminalRecord(record: TerminalRecord): TerminalRecord {
           text: safe(part.text),
         })),
       };
+    case "assistant.reasoning":
+      return {
+        version: 1,
+        type: record.type,
+        identity: terminalIdentity(record.identity),
+        messageIndex: record.messageIndex,
+        contentIndex: record.contentIndex,
+        text: safe(record.text),
+      };
+    case "model.completed": {
+      const usage = record.usage;
+      return {
+        version: 1,
+        type: record.type,
+        identity: terminalIdentity(record.identity),
+        requestId: safe(record.requestId),
+        step: record.step,
+        durationMs: Number.isFinite(record.durationMs) ? Math.max(0, record.durationMs) : 0,
+        ...(usage &&
+        Number.isSafeInteger(usage.inputTokens) && usage.inputTokens >= 0 &&
+        Number.isSafeInteger(usage.outputTokens) && usage.outputTokens >= 0
+          ? { usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } }
+          : {}),
+      };
+    }
     case "query.result": {
       const identity = terminalIdentity(record.identity);
       if (record.status === "failed")

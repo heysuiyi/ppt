@@ -49,11 +49,21 @@ export interface TerminalToolReference {
   readonly toolVersion: string | null;
 }
 
+/** 宿主白名单投影后的纯文本；不是工具原始输入、输出或可恢复载荷。 */
+export interface TerminalToolDisplay {
+  readonly title: string;
+  readonly input: readonly string[];
+  readonly output: readonly string[];
+  /** 可选事实统计，不占正文预览行数；旧记录缺省时 output 仍按原样展示。 */
+  readonly summary?: readonly string[];
+}
+
 export type TerminalToolRecord = TerminalRecordBase &
   TerminalToolReference & {
     readonly type: "tool";
     readonly identity: RunIdentity;
     readonly step: number;
+    readonly display?: TerminalToolDisplay;
   } & (
     | { readonly phase: "started" }
     | {
@@ -123,6 +133,37 @@ export interface TerminalAssistantMessageRecord extends TerminalRecordBase {
   readonly content: readonly TerminalTextPart[];
 }
 
+/** 只接收模型公开 reasoning，绝不读取 replayState。与可复制的最终答案分离。 */
+export interface TerminalReasoningRecord extends TerminalRecordBase {
+  readonly type: "assistant.reasoning";
+  readonly identity: RunIdentity;
+  readonly messageIndex: number;
+  readonly contentIndex: number;
+  readonly text: string;
+}
+
+/** 本次 Run 观察到的请求统计，不冒充跨 Run 或历史累计账单。 */
+export interface TerminalModelCompletedRecord extends TerminalRecordBase {
+  readonly type: "model.completed";
+  readonly identity: RunIdentity;
+  readonly requestId: string;
+  readonly step: number;
+  readonly durationMs: number;
+  readonly usage?: { readonly inputTokens: number; readonly outputTokens: number };
+}
+
+/** 宿主的只读安全时间线；缺失历史执行元数据时只报告结果记录，不猜副作用。 */
+export type TerminalHistoryEntry =
+  | { readonly role: "user" | "assistant" | "reasoning"; readonly text: string }
+  | {
+      readonly role: "tool";
+      readonly tool: {
+        readonly callId: string;
+        readonly name: string;
+        readonly result: "recorded" | "error" | "missing";
+      };
+    };
+
 export type TerminalQueryResultRecord = TerminalRecordBase & {
   readonly type: "query.result";
   readonly identity: RunIdentity;
@@ -183,6 +224,8 @@ export type TerminalRecord =
   | TerminalToolRecord
   | TerminalInteractionRecord
   | TerminalAssistantMessageRecord
+  | TerminalReasoningRecord
+  | TerminalModelCompletedRecord
   | TerminalQueryResultRecord
   | TerminalErrorRecord
   | TerminalProcessFinishedRecord;
@@ -194,6 +237,8 @@ export type TerminalTextPreview = {
   readonly requestId: string;
   readonly text: string;
   readonly truncated: boolean;
+  /** 正文缺省为 false；公开思考也以文字增量传输，但不作为最终答案输出。 */
+  readonly reasoning?: boolean;
 } & (
   | { readonly contentIndex: number; readonly previewId?: never }
   | { readonly previewId: string; readonly contentIndex?: never }
@@ -291,6 +336,7 @@ export type TerminalEditorAction =
         | "interrupt"
         | "eof"
         | "toggle-tool"
+        | "toggle-thinking"
         | "select-model";
     };
 
@@ -329,7 +375,8 @@ export type TerminalLocalCommand =
   | "status"
   | "paste"
   | "exit"
-  | "tools-output";
+  | "tools-output"
+  | "thinking";
 export type TerminalHostCommand = "new" | "model" | "connect" | "resume" | "tools";
 
 export type TerminalCommandDefinition =

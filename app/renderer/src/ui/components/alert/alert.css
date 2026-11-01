@@ -10,7 +10,6 @@
   min-width: 0;
   padding: var(--ui-alert-padding);
   border: 1px solid var(--ui-alert-border);
-  border-inline-start-width: 3px;
   border-radius: var(--ui-radius-control);
   background: var(--ui-alert-surface);
   color: var(--ui-alert-text);

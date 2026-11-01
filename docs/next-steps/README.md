@@ -4,11 +4,11 @@
 
 每个迭代或独立切片使用一个文件，设计、实施记录和验收证据保留在对应文件内。
 
-页面侧[独立 UI 设计体系执行方案](ui-design-system.md)的 U0–U2 首轮工程与行为已验收，独立预览可运行；用户反馈当前风格与信息密度不符合预期，不能据此宣称视觉方向获认可。本次完成 ChatGPT/Cursor/IDEA 与人机交互[调研整理](ui-design-system.md#111-桌面-agent-与人机交互调研)，下一步先做 [R1 默认界面去演示化](ui-design-system.md#831-r1先修订已实现的默认界面)，再推进 U3–U5。R1 仅有方案，未修改页面；仍不接后端、不切换生产 UI。CLI 的 Node 化证据单独保留。
+页面侧[独立 UI 设计体系执行方案](ui-design-system.md)保留 U0–U2 与 R1 行为基线；根据用户 DeepSeek Harness / Cursor 四张截图及[源码调研](ui-design-system.md#112-deepseek-harness-与-cursor-用户截图参考)，已完成 R2 会话工作区首页、近输入区模型选择及分类设置，不再以连接表格代表产品首页。[R2 实施与本地验收](ui-design-system.md#124-r2-会话工作区与分类设置实施记录)记录独立 UI 门禁、实际浏览器及全仓 5 项 CLI 渲染失败；用户风格仍待复核。完整 U3–U5、后端及生产 UI 切换未启动。
 
 CLI 已按[生产直切方案](cli-terminal.md#83-下一步执行方案生产-cli-一次直切)同轮实施 C1–C4：inline TUI、单输入 owner、安全配置包、Windows DPAPI、Node SQLite/模型/能力宿主及生产/开发入口；旧 CLI/Electron 桥接已删除，无双轨或预览入口。分层验收见[实施记录](cli-terminal.md#84-生产直切实施与验收记录)，包括真实 ConPTY，以及 4 次 MiMo 远程请求完成无插件对话、文件审批、跨进程恢复与落盘校验。
 
-CLI 的[状态与输入交互优化](cli-terminal.md#87-状态与输入交互优化t0t3)已实施 T0–T3，并对照本地 OMP 修正启动旧屏/旧滚动缓冲清理、紧凑主状态行和无框输入，以及 MiMo 前置 reasoning 导致正文延迟的路径。Core 仅增加通用临时正文观察事件，不改变规范消息、检查点、授权或恢复含义；print/JSONL 协议不变。真实 TTY 已在最终响应未到时观察到两段正文，具体回归、持久化证据和复杂 emoji/跨终端限制见该节，不借用前轮证据。
+CLI 的[状态与输入交互优化](cli-terminal.md#87-状态与输入交互优化t0t3)保留前序实现和验收；最新前端目标与证据统一维护于 [`cli/docs/`](../../cli/docs/README.md)。[整体交互方案](../../cli/docs/interaction-design.md)的 F0–F4 已实施并完成[本地技术验收](../../cli/docs/next-steps.md#7-交付和证据记录)：连续启动、模型名/路径上下文、会话协调交接、正文/工具时间线、面板焦点和分级错误返回；真实 Windows TTY、受控 SDK/HTTP、跨进程 waiting 恢复与冷配置保密通过。风格待用户复核；未调用远程厂商，不改变 Core 规范消息、授权、持久恢复或 JSONL 协议。
 
 ## 迭代计划
 
@@ -27,8 +27,8 @@ M0 的既有闭环与 M4 的后续消费侧迁移见[整体路线](../project-pl
 
 | 切片 | 文档 |
 | --- | --- |
-| 页面 UI 设计体系 | [独立组件、页面与使用规则执行方案](ui-design-system.md)，U0–U2 行为基线保留；新增 R1 风格/信息层级修订方案待实施，先于 U3–U5；本次仅调研整理，不接后端或生产迁移 |
-| 独立 CLI 终端 | [终端设计与生产直切方案](cli-terminal.md)，C0–C4 已实施；[生产 Node CLI 与分层验收](cli-terminal.md#84-生产直切实施与验收记录)，旧 CLI 桥接已删除，不设独立预览或兼容路径 |
+| 页面 UI 设计体系 | [独立组件、页面与使用规则执行方案](ui-design-system.md)，U0–U2 / R1 基线保留；[R2 会话与设置切片已实施](ui-design-system.md#124-r2-会话工作区与分类设置实施记录)，本地 UI 复核通过，用户风格/全仓 CLI 失败另列；未完成整个 U3–U5，不接后端或生产迁移 |
+| 独立 CLI 终端 | [前端整体方案与执行记录](../../cli/docs/README.md)，F0–F4 已完成本地技术验收、风格待用户复核；[历史终端设计](cli-terminal.md)保留 C0–C4 生产直切、前序优化及分层验收，不设独立预览或兼容路径 |
 | Tools 收敛 | [插件公开面、共享文件支撑与实施证据](tools-package.md#12-实施与验收记录)，单包五入口已实施并完成本地验收；真实安装、原始恢复、生产编辑器、四包监听与 ASAR 消费通过 |
 | 持久化职责与后端替换 | [P1/P2 实施与验收](persistence-backends.md#13-p1p2-实施与验收记录)已完成：SQLite 职责收敛、原子 Thread 准入、真实进程/CLI 恢复及包消费；未新建 SQL 包，P3/P4 和 PG/MySQL 认证待执行 |
 | 多厂商模型包 | [单一 models 包、统一创建与厂商内部模块](models-package.md#12-实施与验收记录)已落地；[后续协议补齐](models-package.md#13-旧-gateway-协议接入新模型端口)已实现 MiMo、OpenAI Chat Completions、OpenAI Responses、Anthropic Messages，并完成本地 SDK/CLI 验证 |

@@ -13,9 +13,12 @@ import { parseSubmittedText, parseTerminalArguments } from "../cli/commands/term
 import type { TerminalHost, TerminalSetupIO } from "../cli/host/host-contract.js";
 import { runCli } from "../cli/main.js";
 import * as rendererModule from "../cli/terminal/interactive-renderer.js";
-import type { TerminalView } from "../cli/terminal/renderer-contract.js";
+import type {
+  TerminalTurnSettlement,
+  TerminalView,
+} from "../cli/terminal/renderer-contract.js";
 import { statusLines } from "../cli/terminal/status-line.js";
-import type { TerminalModelItem } from "../cli/terminal/terminal-contract.js";
+import type { TerminalHistoryEntry, TerminalModelItem } from "../cli/terminal/terminal-contract.js";
 import { runTerminalController } from "../cli/terminal/terminal-controller.js";
 import { visibleWidth } from "../cli/terminal/terminal-text.js";
 import {
@@ -49,9 +52,10 @@ function handle(
   result: Promise<AgentRunResult>,
   events: readonly RuntimeEvent[] = [],
   cancel: () => void = () => {},
+  runIdentity: RunIdentity = identity,
 ): AgentRunHandle {
   return {
-    identity,
+    identity: runIdentity,
     completed: result,
     cancel,
     events: {
@@ -159,38 +163,73 @@ function surface(interactive = false) {
   };
 }
 
-function observeViews() {
+function observeViews(settlementBarrier?: Promise<void>) {
   const create = rendererModule.createTerminalRenderer;
   const views: TerminalView[] = [];
+  const bindings: Array<{
+    view: TerminalView;
+    history: readonly TerminalHistoryEntry[];
+    tools: readonly string[];
+  }> = [];
+  const runs: RunIdentity[] = [];
+  const settlements: TerminalTurnSettlement[] = [];
+  const updates: Array<"begin" | "preview" | "clear-preview" | "settle"> = [];
   const dismissals: boolean[] = [];
   const toolDismissed = Promise.withResolvers<boolean>();
   const pending: Array<{
     predicate: (view: TerminalView) => boolean;
     resolve: (view: TerminalView) => void;
   }> = [];
+  const capture = (view: TerminalView) => {
+    views.push(view);
+    for (const waiter of [...pending]) {
+      if (!waiter.predicate(view)) continue;
+      pending.splice(pending.indexOf(waiter), 1);
+      waiter.resolve(view);
+    }
+  };
   vi.spyOn(rendererModule, "createTerminalRenderer").mockImplementation((options) => {
     const renderer = create(options);
     return {
       ...renderer,
-      async dismissTool() {
-        const dismissed = await renderer.dismissTool();
+      async bindSession(view, history) {
+        await renderer.bindSession(view, history);
+        bindings.push({ view, history, tools: renderer.tools().map((tool) => tool.id) });
+        capture(view);
+      },
+      async beginRun(runIdentity) {
+        runs.push(runIdentity);
+        updates.push("begin");
+        await renderer.beginRun(runIdentity);
+      },
+      async preview(previews) {
+        updates.push(previews.length ? "preview" : "clear-preview");
+        await renderer.preview(previews);
+      },
+      async settle(settlement) {
+        settlements.push(settlement);
+        updates.push("settle");
+        await renderer.settle(settlement);
+        await settlementBarrier;
+      },
+      async dismissDetail() {
+        const dismissed = await renderer.dismissDetail();
         dismissals.push(dismissed);
         toolDismissed.resolve(dismissed);
         return dismissed;
       },
       async view(view) {
-        views.push(view);
-        for (const waiter of [...pending]) {
-          if (!waiter.predicate(view)) continue;
-          pending.splice(pending.indexOf(waiter), 1);
-          waiter.resolve(view);
-        }
+        capture(view);
         await renderer.view(view);
       },
     };
   });
   return {
     views,
+    bindings,
+    runs,
+    settlements,
+    updates,
     dismissals,
     toolDismissed: toolDismissed.promise,
     until(predicate: (view: TerminalView) => boolean) {
@@ -200,6 +239,18 @@ function observeViews() {
       pending.push({ predicate, resolve: gate.resolve });
       return gate.promise;
     },
+  };
+}
+
+function textDelta(runIdentity: RunIdentity, text: string): RuntimeEvent {
+  return {
+    kind: "stream",
+    type: "model.delta",
+    identity: runIdentity,
+    step: 1,
+    requestId: `request-${runIdentity.runId}`,
+    contentIndex: 0,
+    delta: { type: "text", text },
   };
 }
 
@@ -242,8 +293,12 @@ describe("terminal controller result and lifecycle", () => {
 
   it("a completed fact cannot replace a rejected completion promise or leak a plain SDK error", async () => {
     const io = surface();
+    const observed = observeViews();
     const completion = Promise.withResolvers<AgentRunResult>();
-    const run = handle(completion.promise, [{ kind: "fact", type: "run.completed", identity }]);
+    const run = handle(completion.promise, [
+      textDelta(identity, "temporary answer"),
+      { kind: "fact", type: "run.completed", identity },
+    ]);
     const running = runCli(["--prompt", "task", "--output", "jsonl"], {
       ...io,
       createHost: () => host({ run: async () => run }),
@@ -269,6 +324,197 @@ describe("terminal controller result and lifecycle", () => {
     });
     expect(records.at(-1).lastRun).not.toHaveProperty("status");
     expect(io.stdout + io.stderr).not.toContain("PRIVATE_KEY_SENTINEL");
+    expect(observed.updates).toEqual(["begin", "preview", "clear-preview"]);
+    expect(observed.settlements).toEqual([]);
+  });
+
+  it("hands authoritative output to one awaited settlement without an empty preview frame", async () => {
+    const io = surface();
+    const settlement = Promise.withResolvers<void>();
+    const observed = observeViews(settlement.promise);
+    let returned = false;
+    const running = runCli(["--prompt", "task"], {
+      ...io,
+      createHost: () =>
+        host({
+          run: async () =>
+            handle(Promise.resolve(finishedResult), [textDelta(identity, "noncanonical preview")]),
+        }),
+    }).then((code) => {
+      returned = true;
+      return code;
+    });
+    await io.until("authoritative answer");
+    await nextTurn();
+    expect(returned).toBe(false);
+    settlement.resolve();
+    expect(await running).toBe(0);
+    expect(observed.runs).toEqual([identity]);
+    expect(observed.updates).toEqual(["begin", "preview", "settle"]);
+    expect(observed.settlements).toHaveLength(1);
+    expect(observed.settlements[0]?.timeline).toEqual([
+      { type: "text", messageIndex: 0, contentIndex: 0, text: "authoritative answer" },
+    ]);
+    expect(io.stdout).toBe("authoritative answer\n");
+    expect(io.stdout + io.stderr).not.toContain("noncanonical preview");
+  });
+
+  it("keeps the startup editor editable but does not consume or queue early Enter", async () => {
+    const io = surface(true);
+    const observed = observeViews();
+    const opening = Promise.withResolvers<void>();
+    const run = vi.fn(async () => handle(Promise.resolve(finishedResult)));
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: host({ open: () => opening.promise, run }),
+    });
+    const startup = await observed.until((view) => view.scene === "startup");
+    expect(startup.composer.editable).toBe(true);
+    expect(startup.composer.submission.enabled).toBe(false);
+    expect(startup.context).toBeUndefined();
+    io.input.write("startup-draft\r");
+    await observed.until((view) => view.composer.draft.text === "startup-draft");
+    await nextTurn();
+    expect(run).not.toHaveBeenCalled();
+    expect(observed.views.at(-1)?.composer.draft.text).toBe("startup-draft");
+    opening.resolve();
+    const ready = await observed.until((view) => view.composer.submission.enabled);
+    expect(ready.scene).toBe("home");
+    expect(ready.context?.model).toBe("model");
+    expect(ready.composer.draft.text).toBe("startup-draft");
+    expect(run).not.toHaveBeenCalled();
+    io.input.write("\r");
+    await observed.until((view) => view.phase === "running");
+    await observed.until((view) => view.composer.submission.enabled);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith("startup-draft");
+    io.input.end();
+    expect(await running).toBe(0);
+  });
+
+  it.each(["RATE_LIMIT_OR_QUOTA", "AUTHENTICATION", "NETWORK", "MODEL_TRUNCATED"])(
+    "returns an authoritative %s model failure to input and starts a fresh Query",
+    async (code) => {
+      const io = surface(true);
+      const observed = observeViews();
+      const nextIdentity = { ...identity, queryId: "next-query", runId: "next-run" };
+      const resume = vi.fn();
+      const run = vi
+        .fn()
+        .mockResolvedValueOnce(
+          handle(
+            Promise.resolve({
+              status: "failed",
+              identity,
+              error: { code, message: "Reviewed model failure" },
+            }),
+            [textDelta(identity, "partial failure preview")],
+          ),
+        )
+        .mockResolvedValueOnce(
+          handle(
+            Promise.resolve({ ...finishedResult, identity: nextIdentity }),
+            [textDelta(identity, "STALE_PREVIOUS_RUN"), textDelta(nextIdentity, "next preview")],
+            undefined,
+            nextIdentity,
+          ),
+        );
+      const running = runTerminalController({
+        ...io,
+        command: parseTerminalArguments([]),
+        host: host({ run, resume }),
+      });
+      await observed.until((view) => view.composer.submission.enabled);
+      io.input.write("first request\r");
+      await observed.until((view) => view.phase === "running");
+      const recovered = await observed.until((view) => view.composer.submission.enabled);
+      expect(recovered.scene).toBe("conversation");
+      expect(observed.settlements[0]?.records).toContainEqual(
+        expect.objectContaining({
+          type: "query.result",
+          status: "failed",
+          error: { code, message: "Reviewed model failure" },
+        }),
+      );
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(resume).not.toHaveBeenCalled();
+      io.input.write("second request\r");
+      await observed.until((view) => view.phase === "running");
+      await observed.until((view) => view.composer.submission.enabled);
+      expect(run.mock.calls).toEqual([["first request"], ["second request"]]);
+      expect(resume).not.toHaveBeenCalled();
+      expect(observed.runs).toEqual([identity, nextIdentity]);
+      expect(observed.updates).toEqual([
+        "begin",
+        "preview",
+        "settle",
+        "begin",
+        "preview",
+        "settle",
+      ]);
+      expect(io.stdout + io.stderr).not.toContain("STALE_PREVIOUS_RUN");
+      io.input.end();
+      expect(await running).toBe(0);
+    },
+  );
+
+  it.each([
+    ["failed", "PERSISTENCE_FAILED"],
+    ["failed", "CHECKPOINT_CONFLICT"],
+    ["failed", "INVALID_MODEL_RESPONSE"],
+    ["failed", "INCOMPLETE_STREAM"],
+    ["failed", "EXECUTION_FAILED"],
+    ["failed", "UNRECOGNIZED"],
+    ["rejected", "NETWORK"],
+  ] as const)("stops interactive execution on %s %s", async (kind, code) => {
+    const io = surface(true);
+    const observed = observeViews();
+    const result = Promise.withResolvers<AgentRunResult>();
+    const run = vi.fn(async () => handle(result.promise, [textDelta(identity, "unsafe preview")]));
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: host({ run }),
+    });
+    await observed.until((view) => view.composer.submission.enabled);
+    io.input.write("task\r");
+    await observed.until((view) => view.phase === "running");
+    if (kind === "rejected") result.reject(new AgentError(code, "Reviewed rejected completion"));
+    else
+      result.resolve({ status: "failed", identity, error: { code, message: "Execution failed" } });
+    expect(await running).toBe(1);
+    expect(run).toHaveBeenCalledTimes(1);
+    const activeIndex = observed.views.findIndex((view) => view.phase === "running");
+    expect(observed.views.slice(activeIndex).some((view) => view.composer.submission.enabled)).toBe(
+      false,
+    );
+    expect(observed.updates.at(-1)).toBe(kind === "rejected" ? "clear-preview" : "settle");
+    expect(io.input.isRaw).toBe(false);
+  });
+
+  it.each([
+    { args: ["--prompt", "task"] },
+    { args: ["--print", "--prompt", "task"] },
+    { args: ["--prompt", "task", "--output", "jsonl"] },
+  ])("keeps recoverable model failure nonzero for one-shot $args", async ({ args }) => {
+    const io = surface();
+    expect(
+      await runCli(args, {
+        ...io,
+        createHost: () =>
+          host({
+            run: async () =>
+              handle(
+                Promise.resolve({
+                  status: "failed",
+                  identity,
+                  error: { code: "NETWORK", message: "Reviewed network failure" },
+                }),
+              ),
+          }),
+      }),
+    ).toBe(1);
   });
 
   it.each(["none", "completion", "close", "completion-and-close"] as const)(
@@ -388,7 +634,8 @@ describe("terminal controller result and lifecycle", () => {
         toolsMode: "read-write",
         model: {
           id: "model",
-          label: "gpt-real",
+          label: "Provider label / wrong-name",
+          modelName: "gpt-real",
           availability: {
             state: "ready",
             reason: "本地配置就绪；网络未验证，不代表连接成功。",
@@ -404,20 +651,19 @@ describe("terminal controller result and lifecycle", () => {
     const ready = await observed.until((view) => view.composer.submission.enabled);
     expect(ready.context?.modelStatus).toBeUndefined();
     const readyLines = statusLines(ready, columns - 1);
-    expect(readyLines).toHaveLength(2);
-    expect(readyLines[0]).toContain("gpt-real");
-    expect(readyLines[0]).toContain("读写");
-    expect(readyLines[0]).toContain("project");
+    expect(ready.context?.model).toBe("gpt-real");
+    expect(ready.context?.workspace).toBe("E:/project");
+    expect(ready.scene).toBe("home");
+    expect(readyLines.join("\n")).not.toContain("Provider label");
+    expect(readyLines.every((line) => visibleWidth(line) <= columns - 1)).toBe(true);
     expect(readyLines.join("\n")).not.toContain("网络未验证");
     io.input.write("task\r");
     const executing = await observed.until((view) => view.phase === "running");
     const executingLines = statusLines(executing, columns - 1);
-    expect(executingLines).toHaveLength(2);
-    expect(executingLines[0]).toContain("执行中");
-    expect(executingLines[0]).toContain("gpt-real");
-    expect(executingLines[0]).toContain("读写");
-    expect(executingLines[1]).toMatch(/Esc.*取消/u);
-    expect(executingLines.join("\n").match(/不排队/gu)).toHaveLength(1);
+    expect(executingLines.join("\n")).toContain("gpt-real");
+    expect(executingLines.every((line) => visibleWidth(line) <= columns - 1)).toBe(true);
+    expect(executing.scene).toBe("conversation");
+    expect(executing.activity).toBeTruthy();
     expect(executing.composer.submission.enabled).toBe(false);
     io.input.write("next-draft\r");
     const blocked = await observed.until((view) => view.composer.draft.text === "next-draft");
@@ -457,14 +703,91 @@ describe("terminal controller result and lifecycle", () => {
     const correction = await observed.until((view) => view.feedback?.kind === "input");
     expect(correction.context?.modelStatus).toBe(ready.context?.modelStatus);
     const correctionLines = statusLines(correction, 39);
-    expect(correctionLines).toHaveLength(3);
     expect(correctionLines.join("\n")).toContain("CREDENTIAL_REQUIRED");
-    expect(correctionLines.join("\n")).toContain("未知命令");
-    expect(correctionLines.at(-1)).toContain("Enter");
+    expect(correctionLines.join("\n")).toContain(correction.feedback!.message);
     io.input.write("x");
     const edited = await observed.until((view) => view.composer.draft.text === "/invalid!x");
     expect(edited.feedback).toBeUndefined();
     expect(edited.context?.modelStatus).toBe(ready.context?.modelStatus);
+    io.input.end();
+    expect(await running).toBe(0);
+  });
+
+  it.each([
+    [true, 40, 12, 68],
+    [true, 80, 24, 28],
+    [false, 40, 12, 63],
+    [true, 80, 11, 23],
+  ] as const)(
+    "uses the same visual navigation for prompts and drafts with cursor support=%s at %sx%s",
+    async (cursorCapable, columns, rows, expectedCursor) => {
+      const io = surface(true);
+      vi.stubEnv("TERM", cursorCapable ? "xterm-256color" : "dumb");
+      Object.assign(io.output, { isTTY: true, columns, rows });
+      const observed = observeViews();
+      const text = "a".repeat(100);
+      const run = vi.fn(async () => handle(Promise.resolve(finishedResult)));
+      const running = runTerminalController({
+        ...io,
+        command: parseTerminalArguments([]),
+        host: host({
+          open: async ({ setup }) => {
+            await setup!.text("WIDTH_PROMPT");
+          },
+          run,
+        }),
+      });
+      await observed.until((view) => view.prompt?.text === "WIDTH_PROMPT");
+      const exercise = async () => {
+        io.input.write(`\x1b[200~${text}\x1b[201~`);
+        await observed.until((view) => view.composer.draft.text === text);
+        io.input.write("\x1b[A");
+        const up = await observed.until((view) => view.composer.draft.cursor === expectedCursor);
+        expect(up.composer.draft.text).toBe(text);
+        io.input.write("\x1b[B");
+        const down = await observed.until((view) => view.composer.draft.cursor === text.length);
+        expect(down.composer.draft).toEqual({ text, cursor: text.length });
+      };
+      await exercise();
+      io.input.write("\x1b");
+      await observed.until((view) => view.composer.submission.enabled);
+      await exercise();
+      expect(run).not.toHaveBeenCalled();
+      io.input.end();
+      expect(await running).toBe(0);
+    },
+  );
+
+  it("reflows navigation after resize and plain fallback without changing the draft or cursor", async () => {
+    const io = surface(true);
+    vi.stubEnv("TERM", "xterm-256color");
+    Object.assign(io.output, { isTTY: true, columns: 80, rows: 24 });
+    const observed = observeViews();
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: host({}),
+    });
+    await observed.until((view) => view.composer.submission.enabled);
+    const text = "a".repeat(100);
+    io.input.write(`\x1b[200~${text}\x1b[201~`);
+    await observed.until((view) => view.composer.draft.text === text);
+    for (const [columns, rows, expectedCursor] of [
+      [40, 12, 68],
+      [40, 11, 63],
+      [80, 24, 28],
+    ]) {
+      const beforeResize = observed.views.length;
+      Object.assign(io.output, { columns, rows });
+      io.output.emit("resize");
+      const resized = await observed.until(() => observed.views.length > beforeResize);
+      expect(resized.composer.draft).toEqual({ text, cursor: text.length });
+      io.input.write("\x1b[A");
+      const moved = await observed.until((view) => view.composer.draft.cursor === expectedCursor);
+      expect(moved.composer.draft.text).toBe(text);
+      io.input.write("\x1b[B");
+      await observed.until((view) => view.composer.draft.cursor === text.length);
+    }
     io.input.end();
     expect(await running).toBe(0);
   });
@@ -625,6 +948,208 @@ describe("terminal controller result and lifecycle", () => {
     },
   );
 
+  it("expires selector-generation keys before confirmation and preserves waiting on confirmation Escape/EOF", async () => {
+    const io = surface(true);
+    vi.stubEnv("TERM", "xterm-256color");
+    Object.assign(io.output, { isTTY: true, columns: 80, rows: 24 });
+    const observed = observeViews();
+    const interaction = {
+      id: "must-confirm-this-id",
+      owner: "host",
+      payload: { type: "approval", version: 1, data: null },
+    };
+    const resume = vi.fn();
+    const answerInteraction = vi.fn<TerminalHost["answerInteraction"]>(
+      (request, _choice, confirmation) => {
+        if (confirmation !== request.id)
+          throw new AgentError("STALE_INTERACTION", "Confirmation must match");
+        return { type: "answer" as const, interactionId: request.id, value: true };
+      },
+    );
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: host({
+        run: async () => handle(Promise.resolve({ status: "waiting", identity, interaction })),
+        resume,
+        describeInteraction: () => ({
+          support: "supported",
+          summary: "Confirm a protected operation",
+          confirmation: "interaction-id",
+          choices: [{ id: "allow", label: "Allow", responseType: "answer" }],
+        }),
+        answerInteraction,
+      }),
+    });
+    await observed.until((view) => view.composer.submission.enabled);
+    io.input.write("task\r");
+    await observed.until((view) => !!view.interaction && !!view.selector);
+    io.input.write("\x1b[B\r\r");
+    const confirmation = await observed.until((view) => !!view.prompt);
+    await nextTurn();
+    expect(confirmation.composer.draft.text).toBe("");
+    expect(answerInteraction).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    io.input.write("\x1b");
+    const waiting = await observed.until((view) => !!view.interaction && !!view.selector);
+    expect(waiting.phase).toBe("waiting");
+    expect(waiting.selector?.selectedId).toBeNull();
+    expect(resume).not.toHaveBeenCalled();
+    io.input.end();
+    expect(await running).toBe(3);
+    expect(resume).not.toHaveBeenCalled();
+    expect(io.input.isRaw).toBe(false);
+  });
+
+  it.each(["PERSISTENCE_FAILED", "INVALID_PROTOCOL_VALUE"])(
+    "does not turn an unexpected %s answer-port exception into an input correction",
+    async (code) => {
+      const io = surface(true);
+      vi.stubEnv("TERM", "xterm-256color");
+      Object.assign(io.output, { isTTY: true, columns: 80, rows: 24 });
+      const observed = observeViews();
+      const interaction = {
+        id: "permission-id",
+        owner: "host",
+        payload: { type: "approval", version: 1, data: null },
+      };
+      const resume = vi.fn();
+      const running = runTerminalController({
+        ...io,
+        command: parseTerminalArguments([]),
+        host: host({
+          run: async () => handle(Promise.resolve({ status: "waiting", identity, interaction })),
+          resume,
+          answerInteraction: () => {
+            throw new AgentError(code, "The answer port failed");
+          },
+        }),
+      });
+      await observed.until((view) => view.composer.submission.enabled);
+      io.input.write("task\r");
+      await observed.until((view) => !!view.interaction && !!view.selector);
+      io.input.write("\x1b[B\r");
+      expect(await running).toBe(1);
+      expect(resume).not.toHaveBeenCalled();
+      expect(io.stdout + io.stderr).toContain(code);
+      expect(io.input.isRaw).toBe(false);
+    },
+  );
+
+  it.each(["new", "resume"] as const)(
+    "binds %s context and prepared history together without exposing a host's early target",
+    async (command) => {
+      const io = surface(true);
+      const observed = observeViews();
+      const published = Promise.withResolvers<void>();
+      const switchReady = Promise.withResolvers<void>();
+      const history: readonly TerminalHistoryEntry[] =
+        command === "resume"
+          ? [
+              { role: "user", text: "target question" },
+              { role: "assistant", text: "target history" },
+            ]
+          : [];
+      const target = {
+        id: "target-thread",
+        label: "Target session",
+        modelId: "target-model",
+        toolsMode: "none" as const,
+        history,
+      };
+      const switchHost = async () => {
+        Object.defineProperty(currentHost, "context", {
+          value: {
+            ...currentHost.context,
+            threadId: target.id,
+            model: { id: "target-model", label: "Provider / target", modelName: "target-name" },
+          },
+        });
+        published.resolve();
+        await switchReady.promise;
+      };
+      const currentHost = host({
+        run: async () =>
+          handle(Promise.resolve(finishedResult), [
+            {
+              kind: "fact",
+              type: "tool.completed",
+              identity,
+              step: 1,
+              invocation: {
+                identity,
+                call: { type: "tool-call", callId: "old-call", name: "old-tool", input: {} },
+                toolVersion: null,
+                state: "dispatched",
+              },
+              completion: {
+                status: "succeeded",
+                effects: "applied",
+                output: null,
+                modelContent: [],
+              },
+            },
+          ]),
+        sessions: async () => [target],
+        newSession: switchHost,
+        selectSession: async () => {
+          await switchHost();
+          return target;
+        },
+      });
+      const running = runTerminalController({
+        ...io,
+        command: parseTerminalArguments([]),
+        host: currentHost,
+      });
+      await observed.until((view) => view.composer.submission.enabled);
+      io.input.write("original question\r");
+      await observed.until((view) => view.phase === "running");
+      const original = await observed.until((view) => view.composer.submission.enabled);
+      expect(original.scene).toBe("conversation");
+      io.input.write(`/${command}\r\r`);
+      if (command === "resume") {
+        await observed.until((view) => !!view.selector);
+        io.input.write("1\r");
+      }
+      await observed.until((view) => !!view.prompt);
+      io.input.write("yes\r");
+      await published.promise;
+      expect(currentHost.context.threadId).toBe("target-thread");
+      io.input.write("draft-after-switch\r");
+      const held = await observed.until(
+        (view) => view.composer.draft.text === "draft-after-switch",
+      );
+      expect(held.context).toEqual(original.context);
+      expect(held.scene).toBe("conversation");
+      expect(held.composer.submission.enabled).toBe(false);
+      expect(observed.bindings).toHaveLength(1);
+      io.input.write("\x1b[D");
+      const positioned = await observed.until(
+        (view) => view.composer.draft.cursor === "draft-after-switch".length - 1,
+      );
+      switchReady.resolve();
+      const bound = await observed.until((view) => view.composer.submission.enabled);
+      expect(bound.context).toMatchObject({ threadId: "target-thread", model: "target-name" });
+      expect(bound.scene).toBe(command === "resume" ? "conversation" : "home");
+      expect(bound.composer.draft).toEqual(positioned.composer.draft);
+      expect(bound.interaction).toBeUndefined();
+      expect(bound.selector).toBeUndefined();
+      expect(bound.completion).toBeUndefined();
+      expect(observed.bindings).toHaveLength(2);
+      expect(observed.bindings.at(-1)?.history).toEqual(history);
+      expect(observed.bindings.at(-1)?.tools).toEqual([]);
+      const targetViews = observed.views.filter(
+        (view) => view.context?.threadId === "target-thread",
+      );
+      expect(targetViews[0]?.scene).toBe(bound.scene);
+      expect(io.stdout + io.stderr).toContain("old-tool");
+      if (command === "resume") expect(io.stdout + io.stderr).toContain("target history");
+      io.input.end();
+      expect(await running).toBe(0);
+    },
+  );
+
   it("keeps draft submission disabled during an asynchronous session transition", async () => {
     const io = surface(true);
     const observed = observeViews();
@@ -655,9 +1180,7 @@ describe("terminal controller result and lifecycle", () => {
     expect(transition.activity).toBeTruthy();
     expect(transition.input.status).toContain(transition.activity);
     const transitionLines = statusLines(transition, 39);
-    expect(transitionLines).toHaveLength(2);
-    expect(transitionLines[0]).toContain(transition.activity);
-    expect(transitionLines[1]).toContain("等待当前操作");
+    expect(transitionLines.join("\n")).toContain(transition.activity);
     io.input.write("draft-survives-switch\r");
     await nextTurn();
     expect(queries).toBe(0);
@@ -713,6 +1236,7 @@ describe("terminal controller result and lifecycle", () => {
     "preserves cancellation while a new Run is submitting %s",
     async (responseType) => {
       const io = surface(true);
+      const observed = observeViews();
       const interaction = {
         id: "permission-id",
         owner: "host",
@@ -746,6 +1270,15 @@ describe("terminal controller result and lifecycle", () => {
         ...io,
         command: parseTerminalArguments(["--thread", "thread", "--resume", "query"]),
         host: host({
+          sessions: async () => [
+            {
+              id: "thread",
+              label: "Controlled session",
+              modelId: "model",
+              toolsMode: "none",
+              history: [],
+            },
+          ],
           resume: async (_query, response) => {
             if (!response) return handle(Promise.resolve(waiting));
             entered.resolve();
@@ -754,6 +1287,7 @@ describe("terminal controller result and lifecycle", () => {
         }),
       });
       await io.until("choiceId interactionId");
+      expect(observed.views[0]?.scene).toBe("conversation");
       io.input.write(`${responseType === "cancel" ? "cancel" : "allow"} permission-id\r`);
       await entered.promise;
       process.emit("SIGINT");
@@ -770,6 +1304,8 @@ describe("terminal controller result and lifecycle", () => {
     "keeps the current binding and draft for model choice %s",
     async (choice) => {
       const io = surface(true);
+      vi.stubEnv("TERM", "xterm-256color");
+      Object.assign(io.output, { isTTY: true, columns: 40, rows: 12 });
       const observed = observeViews();
       const newSession = vi.fn(async () => {});
       const currentHost = host({
@@ -799,10 +1335,12 @@ describe("terminal controller result and lifecycle", () => {
         host: currentHost,
       });
       await observed.until((view) => view.composer.submission.enabled);
-      io.input.write("retained-draft\x1bm");
+      io.input.write("retained-draft\x1b[D\x1bm");
       const picker = await observed.until((view) => !!view.selector);
       expect(picker.selector?.selectedId).toBe("model");
       expect(picker.composer.submission.enabled).toBe(false);
+      const retained = { text: "retained-draft", cursor: "retained-draft".length - 1 };
+      expect(picker.composer.draft).toEqual(retained);
       expect(picker.selector?.navigation?.groups.map((group) => group.id)).toEqual([
         "all",
         "legacy",
@@ -816,7 +1354,7 @@ describe("terminal controller result and lifecycle", () => {
       if (choice === "same") io.input.write("\r");
       else if (choice === "cancel-picker") io.input.write("\x03");
       else {
-        io.input.write(choice === "unavailable" ? "3\r" : "1\r");
+        io.input.write(choice === "unavailable" ? "\x1b[B\r" : "\x1b[A\r");
         if (choice === "cancel-confirmation") {
           const confirmation = await observed.until((view) => !!view.prompt);
           expect(confirmation.prompt?.text).toContain("Other model");
@@ -824,19 +1362,26 @@ describe("terminal controller result and lifecycle", () => {
         }
       }
       const idle = await observed.until((view) => view.composer.submission.enabled);
-      expect(idle.composer.draft.text).toBe("retained-draft");
+      expect(idle.composer.draft).toEqual(retained);
       expect(idle.activity).toBeUndefined();
       expect(currentHost.context).toBe(initialContext);
       expect(newSession).not.toHaveBeenCalled();
       if (choice === "same") expect(observed.views.some((view) => !!view.prompt)).toBe(false);
+      if (choice !== "unavailable") {
+        io.input.write("X");
+        const edited = await observed.until(
+          (view) => view.composer.draft.text === "retained-drafXt",
+        );
+        expect(edited.input.purpose).toBe("composer");
+        expect(edited.selector).toBeUndefined();
+        expect(edited.composer.draft.cursor).toBe(retained.cursor + 1);
+      }
       if (choice === "unavailable") {
         expect(idle.feedback?.kind).toBe("blocking");
         expect(idle.feedback?.message).toContain("MISSING_LOCAL_CREDENTIAL");
         const unavailableLines = statusLines(idle, 39);
-        expect(unavailableLines).toHaveLength(3);
         expect(unavailableLines.join("\n")).toContain("MISSING_LOCAL_CREDENTIAL");
-        expect(unavailableLines.at(-1)).toContain("Enter");
-        io.input.write("-edited");
+        io.input.write("\x1b[F-edited");
         const edited = await observed.until(
           (view) => view.composer.draft.text === "retained-draft-edited",
         );
@@ -882,7 +1427,7 @@ describe("terminal controller result and lifecycle", () => {
       if (outcome === "catalog-failure") {
         catalog.reject(new Error("PRIVATE_CATALOG_ERROR"));
         const recovery = await observed.until((view) => !!view.selector);
-        expect(recovery.activity).toBeUndefined();
+        expect(recovery.activity).toBeTruthy();
         expect(recovery.composer.draft.text).toBe("retained-draft");
         // 目录失败仍保留配置入口；退出选择再核对原绑定和草稿，而非等待自动关闭。
         io.input.write("\x03");
@@ -896,7 +1441,7 @@ describe("terminal controller result and lifecycle", () => {
           { id: "model", label: "Controlled model" },
         ]);
         const picker = await observed.until((view) => !!view.selector);
-        expect(picker.activity).toBeUndefined();
+        expect(picker.activity).toBeTruthy();
         io.input.write("1\r");
         await observed.until((view) => !!view.prompt);
         io.input.write("yes\r");
@@ -918,9 +1463,13 @@ describe("terminal controller result and lifecycle", () => {
           model: { id: "other" },
         });
         expect(idle.context?.modelStatus).toBeUndefined();
+        expect(observed.bindings).toHaveLength(2);
+        expect(observed.bindings.at(-1)?.view.scene).toBe("home");
+        expect(observed.bindings.at(-1)?.tools).toEqual([]);
       } else {
         expect(currentHost.context).toBe(initialContext);
         expect(observed.views.some((view) => view.context?.threadId === "new-binding")).toBe(false);
+        expect(observed.bindings).toHaveLength(1);
       }
       if (outcome === "safe-failure") {
         expect(idle.feedback?.kind).toBe("blocking");

@@ -17,8 +17,8 @@ export function UnsavedChangesDialog({
   return (
     <ConfirmDialog
       open={open}
-      title="放弃未提交的修改？"
-      description="这些修改只存在于当前预览内存。放弃后将继续原来的关闭或切换操作。"
+      title="放弃修改？"
+      description="未保存的更改将丢失。"
       confirmLabel="放弃修改"
       cancelLabel="继续编辑"
       destructive

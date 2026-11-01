@@ -1,3 +1,4 @@
+import type { VersionedData } from "@agent-harness/core/protocol-values";
 import type {
   ImmediateToolDefinition,
   ToolExecutionContext,
@@ -79,6 +80,21 @@ export function createWrite(
     inputSchema: writeInputSchema,
     outputSchema: writeOutputSchema,
     execute: handler,
+    // 正文来自宿主关联成功调用的 input；展示协议只携带写入事实，不复制原始结果。
+    toPresentation(result): VersionedData {
+      return {
+        type: "tools.write",
+        version: 1,
+        data:
+          result.status === "succeeded"
+            ? {
+                path: result.output.path,
+                size: result.output.size,
+                operation: result.output.operation,
+              }
+            : { status: result.status },
+      };
+    },
     toModelContent(result) {
       return [
         {

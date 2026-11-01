@@ -296,7 +296,9 @@ npm.cmd run ui:build
 npm.cmd run ui:typecheck
 ```
 
-Open `http://127.0.0.1:5178/`. This browser-only entry neither starts Electron/builds Harness nor replaces the production desktop. U0–U2 provide light/dark themes, scoped portals, and a local connection form covering validation, retained failure input, unsaved changes, and cancelled/reopened operations. Use only the public `demo-key` value: no services or credential storage are connected. Changes live in memory and reset on reload; outputs stay under `.vite/ui-preview/`. See the [UI plan and evidence](docs/next-steps/ui-design-system.md#121-第一轮-u0u2-实施与验收). U3–U5 are not implemented.
+Open `http://127.0.0.1:5178/`. This browser-only entry neither starts Electron/builds Harness nor replaces the production desktop. Following the supplied DeepSeek Harness / Cursor references, it opens on a workspace and conversation view: a centered composer for empty threads, messages above a bottom composer after local submission, and per-thread drafts/model choices retained across settings navigation.
+
+“设置” (Settings) manages example models shown in the composer, connection examples, and appearance. Deterministic fault controls are under “验收工具 → 连接交互检查”. Connections accept only `demo-key`; no model calls, real directory access, or credential storage occur. State resets on reload and outputs stay under `.vite/ui-preview/`. See [R2 implementation and local verification](docs/next-steps/ui-design-system.md#124-r2-会话工作区与分类设置实施记录), including the outstanding full-suite CLI failures. Full U3–U5 remain unverified.
 
 ### Production Node CLI
 

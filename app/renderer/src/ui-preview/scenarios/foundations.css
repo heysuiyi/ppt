@@ -1,0 +1,74 @@
+.ui-root .ui-foundations {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.ui-root .ui-foundations-heading h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.ui-root .ui-foundations-heading p {
+  margin: 0;
+  color: var(--ui-text-muted);
+}
+
+.ui-root .ui-foundations-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  min-width: 0;
+}
+
+.ui-root .ui-foundations-grid > .ui-root {
+  min-width: 0;
+}
+
+.ui-root .ui-foundations-sample {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: 6px;
+  background: var(--ui-surface-raised);
+}
+
+.ui-root .ui-foundations-sample h2,
+.ui-root .ui-foundations-native h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ui-root .ui-foundations-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ui-root .ui-foundations-long {
+  overflow-wrap: anywhere;
+}
+
+.ui-root .ui-foundations-native {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ui-root .ui-foundations-native iframe {
+  display: block;
+  width: 100%;
+  height: 144px;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: 6px;
+}
+
+@media (max-width: 760px) {
+  .ui-root .ui-foundations-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

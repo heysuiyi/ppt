@@ -1,3 +1,4 @@
+import type { VersionedData } from "@agent-harness/core/protocol-values";
 import type {
   ImmediateToolDefinition,
   ToolExecutionContext,
@@ -6,6 +7,12 @@ import type {
 
 import { z } from "zod";
 import type { GrepInput, GrepOutput } from "../../tools-contract.js";
+import {
+  PRESENTATION_MAX_BYTES,
+  PRESENTATION_MAX_LINES,
+  presentationLabel,
+  presentationLine,
+} from "../presentation-preview.js";
 
 export const grepInputSchema = z
   .object({
@@ -62,6 +69,40 @@ export function createGrep(
     inputSchema: grepInputSchema,
     outputSchema: grepOutputSchema,
     execute: handler,
+    toPresentation(result): VersionedData {
+      const matches: { path: string; line: number; text: string; truncated: boolean }[] = [];
+      let remaining = PRESENTATION_MAX_BYTES;
+      let previewTruncated = false;
+      if (result.status === "succeeded") {
+        for (const match of result.output.matches) {
+          if (matches.length === PRESENTATION_MAX_LINES || remaining < 8) {
+            previewTruncated = true;
+            break;
+          }
+          const path = presentationLabel(presentationLine(match.path), remaining - 5);
+          remaining -= Buffer.byteLength(path, "utf8") + 1;
+          const source = presentationLine(match.text);
+          const text = presentationLabel(source, remaining - 1);
+          remaining -= Buffer.byteLength(text, "utf8") + 1;
+          matches.push({ path, line: match.line, text, truncated: match.truncated });
+          previewTruncated ||= path !== presentationLine(match.path) || text !== source;
+        }
+      }
+      return {
+        type: "tools.grep",
+        version: 1,
+        data:
+          result.status === "succeeded"
+            ? {
+                matches,
+                totalMatches: result.output.matches.length,
+                skippedCount: result.output.skipped.length,
+                truncated: result.output.truncated,
+                previewTruncated,
+              }
+            : { status: result.status },
+      };
+    },
     toModelContent(result) {
       return [
         {

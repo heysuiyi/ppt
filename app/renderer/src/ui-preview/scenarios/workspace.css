@@ -1,0 +1,481 @@
+.ui-root .ui-workspace-screen {
+  display: grid;
+  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-rows: 56px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+
+.ui-root .ui-workspace-screen [hidden] {
+  display: none;
+}
+
+.ui-root .ui-workspace-icon {
+  flex: 0 0 auto;
+}
+
+.ui-root .ui-workspace-sidebar {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 12px;
+  border-right: 1px solid var(--ui-border-subtle);
+  background: var(--ui-surface-raised);
+  overflow-y: auto;
+}
+
+.ui-root .ui-workspace-brand {
+  display: flex;
+  align-items: center;
+  flex: 0 0 64px;
+  padding: 0 12px;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.5px;
+}
+
+.ui-root .ui-workspace-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-surface-inset);
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-root .ui-workspace-navigation {
+  flex: 1;
+  min-height: 120px;
+  margin-top: 30px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.ui-root .ui-workspace-navigation-label {
+  margin: 0 10px 12px;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+}
+
+.ui-root .ui-workspace-group {
+  min-width: 0;
+  margin-bottom: 18px;
+}
+
+.ui-root .ui-workspace-group-button,
+.ui-root .ui-workspace-thread {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: var(--ui-font-size-14);
+  line-height: var(--ui-line-height-control);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-root .ui-workspace-group-button span,
+.ui-root .ui-workspace-thread span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-root .ui-workspace-group-button {
+  color: var(--ui-text-muted);
+}
+
+.ui-root .ui-workspace-group-button[aria-current="true"] {
+  color: var(--ui-text);
+}
+
+.ui-root .ui-workspace-thread-list {
+  display: grid;
+  gap: 3px;
+  margin: 3px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ui-root .ui-workspace-thread {
+  padding-left: 36px;
+}
+
+.ui-root .ui-workspace-thread[aria-current="page"] {
+  background: var(--ui-surface-inset);
+}
+
+.ui-root .ui-workspace-sidebar-footer {
+  flex-shrink: 0;
+  padding: 12px 0 16px;
+}
+
+.ui-root .ui-workspace-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-root .ui-workspace-topbar {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 84px 8px 28px;
+}
+
+.ui-root .ui-workspace-topbar-title {
+  overflow: hidden;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-root .ui-workspace-navigation-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  min-height: 36px;
+  padding: 6px;
+  border: 0;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-text);
+  cursor: pointer;
+}
+
+.ui-root .ui-workspace-main {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ui-root .ui-workspace-main[data-has-messages="false"] {
+  justify-content: center;
+}
+
+.ui-root .ui-workspace-message-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 32px 12px;
+  scrollbar-gutter: stable;
+}
+
+.ui-root .ui-workspace-message-column {
+  display: grid;
+  gap: 32px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.ui-root .ui-workspace-message {
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.ui-root .ui-workspace-message h2 {
+  margin: 0 0 8px;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+  font-weight: 500;
+}
+
+.ui-root .ui-workspace-message p {
+  margin: 0;
+  font-size: var(--ui-font-size-14);
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+
+.ui-root .ui-workspace-composer-area {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
+  padding: 20px 32px 28px;
+}
+
+.ui-root .ui-workspace-main[data-has-messages="true"] .ui-workspace-composer-area {
+  max-height: 60%;
+}
+
+.ui-root .ui-workspace-composer-form {
+  width: 100%;
+  max-width: 760px;
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.ui-root .ui-workspace-context {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin: 0 12px 8px;
+  color: var(--ui-text-muted);
+}
+
+.ui-root .ui-workspace-workspace-select,
+.ui-root .ui-workspace-model-select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-root .ui-workspace-workspace-select {
+  max-width: calc(100% - 28px);
+}
+
+.ui-root .ui-workspace-composer {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: 16px;
+  background: var(--ui-surface-raised);
+  transition:
+    border-color var(--ui-motion-fast),
+    box-shadow var(--ui-motion-fast);
+}
+
+.ui-root .ui-workspace-composer:focus-within {
+  border-color: var(--ui-border);
+  box-shadow: inset 0 0 0 1px var(--ui-border);
+}
+
+.ui-root .ui-workspace-input {
+  display: block;
+  field-sizing: content;
+  width: 100%;
+  min-height: 72px;
+  max-height: min(32dvh, 180px);
+  margin: 0;
+  padding: 0;
+  resize: none;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+}
+
+/* 编辑面与工具栏共用外框；按钮和选择器仍保留各自的键盘焦点。 */
+.ui-root .ui-workspace-input:focus,
+.ui-root .ui-workspace-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.ui-root .ui-workspace-input::placeholder {
+  color: var(--ui-text-muted);
+  opacity: 1;
+}
+
+.ui-root .ui-workspace-composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.ui-root .ui-workspace-model-select {
+  flex: 0 1 auto;
+  max-width: calc(100% - 44px);
+}
+
+.ui-root .ui-workspace-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--ui-action-primary);
+  border-radius: 50%;
+  background: var(--ui-action-primary);
+  color: var(--ui-action-on-primary);
+  cursor: pointer;
+}
+.ui-root .ui-workspace-send:hover:not(:disabled) {
+  background: var(--ui-action-primary-hover);
+}
+.ui-root .ui-workspace-send:active:not(:disabled) {
+  background: var(--ui-action-primary-active);
+}
+.ui-root .ui-workspace-send:disabled {
+  border-color: var(--ui-border-subtle);
+  background: var(--ui-surface-inset);
+  color: var(--ui-text-disabled);
+  cursor: not-allowed;
+}
+.ui-root .ui-workspace-model-link {
+  min-height: 32px;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ui-root .ui-workspace-model-hint,
+.ui-root .ui-workspace-local-status {
+  margin: 8px 8px 0;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+  line-height: var(--ui-line-height-body);
+  overflow-wrap: anywhere;
+}
+
+.ui-root .ui-workspace-model-hint {
+  color: var(--ui-status-error-text);
+}
+
+.ui-root .ui-workspace-group-button:focus-visible,
+.ui-root .ui-workspace-thread:focus-visible,
+.ui-root .ui-workspace-new:focus-visible,
+.ui-root .ui-workspace-settings:focus-visible,
+.ui-root .ui-workspace-navigation-toggle:focus-visible,
+.ui-root .ui-workspace-send:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .ui-root .ui-workspace-group-button:hover,
+  .ui-root .ui-workspace-thread:hover,
+  .ui-root .ui-workspace-new:hover,
+  .ui-root .ui-workspace-settings:hover,
+  .ui-root .ui-workspace-navigation-toggle:hover {
+    background: var(--ui-action-neutral-hover);
+  }
+}
+
+@media (max-width: 680px) {
+  .ui-root .ui-workspace-screen {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 56px minmax(0, 1fr);
+  }
+
+  .ui-root .ui-workspace-topbar {
+    grid-column: 1;
+    padding-left: 12px;
+  }
+
+  .ui-root .ui-workspace-navigation-toggle {
+    display: inline-flex;
+  }
+
+  .ui-root .ui-workspace-sidebar {
+    grid-column: 1;
+    grid-row: 2;
+    border-right: 0;
+    border-top: 1px solid var(--ui-border-subtle);
+  }
+
+  .ui-root .ui-workspace-brand {
+    flex-basis: 52px;
+  }
+
+  .ui-root .ui-workspace-navigation {
+    margin-top: 24px;
+  }
+
+  .ui-root .ui-workspace-main {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .ui-root .ui-workspace-message-scroll {
+    padding: 20px 16px 12px;
+  }
+
+  .ui-root .ui-workspace-composer-area {
+    padding: 16px 12px 20px;
+  }
+
+  .ui-root .ui-workspace-model-select {
+    flex: 1 1 80px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-root .ui-workspace-screen * {
+    scroll-behavior: auto;
+  }
+}
+
+@media (forced-colors: active) {
+  .ui-root .ui-workspace-thread[aria-current="page"] {
+    border-color: Highlight;
+    outline: 1px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .ui-root .ui-workspace-group-button[aria-current="true"] {
+    text-decoration: underline;
+  }
+
+  .ui-root .ui-workspace-composer:focus-within {
+    border-color: Highlight;
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+}

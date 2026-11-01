@@ -1,3 +1,4 @@
+import type { VersionedData } from "@agent-harness/core/protocol-values";
 import type {
   ImmediateToolDefinition,
   ToolExecutionContext,
@@ -56,6 +57,21 @@ export function createEdit(
     inputSchema: editInputSchema,
     outputSchema: editOutputSchema,
     execute: handler,
+    // 旧/新片段来自宿主关联成功调用的 input；这里不读取文件或扩大执行结果。
+    toPresentation(result): VersionedData {
+      return {
+        type: "tools.edit",
+        version: 1,
+        data:
+          result.status === "succeeded"
+            ? {
+                path: result.output.path,
+                size: result.output.size,
+                replacements: result.output.replacements,
+              }
+            : { status: result.status },
+      };
+    },
     toModelContent(result) {
       return [
         {

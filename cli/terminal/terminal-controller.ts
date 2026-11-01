@@ -13,6 +13,7 @@ import {
 } from "../commands/terminal-command.js";
 import type { TerminalHost, TerminalSetupIO, TerminalToolsMode } from "../host/host-contract.js";
 import { createComposer } from "./composer.js";
+import { composerContentWidth } from "./composer-layout.js";
 import type { Composer, NodeTerminal, Selector, TerminalKeyEvent } from "./input-contract.js";
 import { createTerminalRenderer } from "./interactive-renderer.js";
 import { createNodeTerminal } from "./node-terminal.js";
@@ -31,11 +32,12 @@ import type {
   TerminalModelItem,
   TerminalPhase,
   TerminalSelectionItem,
+  TerminalHistoryEntry,
 } from "./terminal-contract.js";
 import {
   interactionReference,
   projectTerminalEvent,
-  projectTerminalResult,
+  projectTerminalSettlement,
   terminalError,
 } from "./terminal-projection.js";
 
@@ -89,10 +91,30 @@ const failureOrder: readonly TerminalFailureStage[] = [
 
 type BlockingScope = "catalog" | "model" | "connection" | "binding" | "interaction";
 
+// Only authoritative failed results with these reviewed public model codes can
+// return to input. Protocol/replay, ownership, persistence and unknown failures stop.
+const recoverableModelFailures: Readonly<Record<string, true>> = {
+  ADAPTER_UNSUPPORTED: true,
+  CONFIGURATION: true,
+  MODEL_CAPABILITY: true,
+  AUTHENTICATION: true,
+  ACCESS_DENIED: true,
+  PAYMENT_REQUIRED: true,
+  RATE_LIMIT_OR_QUOTA: true,
+  SERVICE_UNAVAILABLE: true,
+  TIMEOUT: true,
+  NETWORK: true,
+  TRUNCATED: true,
+  MODEL_TRUNCATED: true,
+  MODEL_STOPPED: true,
+};
+
 /** 一个控制器拥有输入、观察消费、当前句柄及退出；等待不保留 Core Run 调用栈。 */
 export async function runTerminalController(options: TerminalControllerOptions): Promise<number> {
   const { command, host } = options;
   let phase: TerminalPhase = "starting";
+  let scene: TerminalView["scene"] = command.threadId ? "conversation" : "startup";
+  let displayContext: TerminalView["context"];
   let generation = 0;
   let focus: Focus = { type: "composer" };
   const composer = createComposer();
@@ -102,6 +124,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
     notice?: TerminalFeedback;
   } = {};
   let activity: string | undefined;
+  let runActivity = "等待模型响应";
   let modelAvailability: TerminalModelItem["availability"];
   let pendingInteraction: InteractionRequest | undefined;
   let active: AgentRunHandle | undefined;
@@ -207,7 +230,10 @@ export async function runTerminalController(options: TerminalControllerOptions):
   }
 
   function sizeEditors(): void {
-    const columns = Math.max(1, terminal.columns - 3);
+    const framed = terminal.mode === "tui" && terminal.columns >= 40 && terminal.rows >= 12;
+    const columns = framed
+      ? composerContentWidth(terminal.columns - 1)
+      : Math.max(1, terminal.columns - 3);
     composer.setColumns(columns);
     if (focus.type === "text") focus.editor.setColumns(columns);
   }
@@ -250,14 +276,14 @@ export async function runTerminalController(options: TerminalControllerOptions):
     if (completion)
       return {
         purpose: "completion",
-        status: "命令补全",
+        status: "",
         hint: narrow ? "Esc关闭 · Enter/Tab仅补全 · ↑↓选" : "Esc 关闭 · Enter/Tab 仅补全 · ↑↓ 选择",
       };
     if (settlingCancellation || phase === "cancelling")
       return {
         purpose: "composer",
-        status: "取消结算中；尚未完成",
-        hint: "等待取消结算 · 草稿不排队",
+        status: "正在结算取消",
+        hint: "",
       };
     if (phase === "waiting")
       return {
@@ -269,35 +295,31 @@ export async function runTerminalController(options: TerminalControllerOptions):
       return {
         purpose: "composer",
         status:
-          phase === "running" ? "执行中" : phase === "submitting" ? "正在提交回答" : "正在保存结果",
-        hint:
           phase === "running"
-            ? narrow
-              ? "Esc收起/取消 · 草稿不排队"
-              : "Esc 收起/取消 · 草稿不排队"
-            : "等待结算 · 草稿不排队",
+            ? runActivity
+            : phase === "submitting"
+              ? "正在提交回答"
+              : "正在保存结果",
+        hint: "",
       };
     if (!ready || phase !== "idle" || uiTask)
       return {
         purpose: "composer",
-        status: `${activity ?? (!ready ? "宿主尚未就绪" : "当前操作尚未结束")}；暂不能发送`,
-        hint: "等待当前操作 · 草稿不排队",
+        status: activity ?? (!ready ? "正在初始化" : ""),
+        hint: "",
       };
     return {
       purpose: "composer",
-      status: pasteLines ? "多行输入中；等待 /end" : "就绪",
+      status: pasteLines ? "多行输入中；等待 /end" : "",
       hint: pasteLines
         ? narrow
           ? "/end发送 · //end插入 · EOF不发送"
           : "独立行 /end 发送 · //end 插入 /end · EOF 不发送"
-        : narrow
-          ? "Enter发送 · Alt+Enter换行 · /命令"
-          : "Enter 发送 · Alt+Enter 换行 · / 命令",
+        : "",
     };
   }
 
-  async function refresh(): Promise<void> {
-    if (outputFailed || stopping || phase === "closing") return;
+  function currentView(): TerminalView {
     sizeEditors();
     const draft = focus.type === "text" && !focus.secret ? focus.editor.draft : composer.draft;
     const selector: TerminalSelectorView | undefined =
@@ -323,11 +345,24 @@ export async function runTerminalController(options: TerminalControllerOptions):
           }
         : undefined;
     const currentFeedback = feedback.blocking ?? feedback.input ?? feedback.notice;
-    const availability = modelAvailability ?? (ready ? host.context.model.availability : undefined);
-    const view: TerminalView = {
+    const availability = modelAvailability;
+    const activityText =
+      settlingCancellation || phase === "cancelling"
+        ? "正在结算取消"
+        : phase === "running"
+          ? runActivity
+          : phase === "submitting"
+            ? "正在提交回答"
+            : phase === "settling"
+              ? "正在保存结果"
+              : phase === "waiting"
+                ? "等待明确审批"
+                : (activity ?? (!ready ? "正在初始化" : undefined));
+    return {
       phase,
+      scene,
       input: inputView(),
-      ...(activity ? { activity } : {}),
+      ...(activityText ? { activity: activityText } : {}),
       composer: {
         draft: focus.type === "text" && focus.secret ? { text: "", cursor: 0 } : draft,
         editable: true,
@@ -340,16 +375,13 @@ export async function runTerminalController(options: TerminalControllerOptions):
                   phase === "starting" ? "not-ready" : phase === "waiting" ? "interaction" : "busy",
               },
       },
-      ...(ready
+      ...(displayContext
         ? {
             context: {
-              workspace: host.context.workspaceRoot,
-              threadId: host.context.threadId,
-              model: host.context.model.label,
+              ...displayContext,
               ...(availability?.state === "unavailable"
                 ? { modelStatus: availability.reason }
                 : {}),
-              capabilities: host.context.toolsMode,
             },
           }
         : {}),
@@ -377,6 +409,11 @@ export async function runTerminalController(options: TerminalControllerOptions):
         ? { feedback: { kind: currentFeedback.kind, message: currentFeedback.message } }
         : {}),
     };
+  }
+
+  async function refresh(): Promise<void> {
+    if (outputFailed || stopping || phase === "closing") return;
+    const view = currentView();
     await output(() => renderer.view(view));
   }
 
@@ -550,11 +587,11 @@ export async function runTerminalController(options: TerminalControllerOptions):
       );
       return;
     }
-    await withActivity(`正在切换模型：${selected.label}`, () =>
-      host.newSession({ modelId: selected.id }),
-    );
+    await withActivity(`正在切换模型：${selected.label}`, async () => {
+      await host.newSession({ modelId: selected.id });
+      await bindSession([]);
+    });
     modelAvailability = selected.availability;
-    await sessionRecord();
     setFeedback(
       "notice",
       `已切换模型：${host.context.model.label}；新绑定会话 ${host.context.threadId}`,
@@ -582,6 +619,32 @@ export async function runTerminalController(options: TerminalControllerOptions):
           context.toolsMode === "none" ? [] : [{ id: context.toolsMode, label: context.toolsMode }],
       }),
     );
+  }
+
+  async function bindSession(history: readonly TerminalHistoryEntry[]): Promise<void> {
+    const context = host.context;
+    // Host can publish its target before an await returns. Refreshes retain the
+    // previous display snapshot until context and history are ready together.
+    displayContext = {
+      workspace: context.workspaceRoot,
+      threadId: context.threadId,
+      model: context.model.modelName ?? context.model.id,
+      capabilities: context.toolsMode,
+    };
+    modelAvailability = context.model.availability ? { ...context.model.availability } : undefined;
+    scene = history.length ? "conversation" : "home";
+    pendingInteraction = undefined;
+    lastIdentity = undefined;
+    lastResult = undefined;
+    cancelRequested = false;
+    userCancelledQuery = false;
+    settlingCancellation = false;
+    delete feedback.input;
+    delete feedback.notice;
+    clearBlocking("binding");
+    switchFocus({ type: "composer" });
+    await output(() => renderer.bindSession(currentView(), history));
+    await sessionRecord();
   }
 
   async function answerWaiting(
@@ -621,7 +684,14 @@ export async function runTerminalController(options: TerminalControllerOptions):
         }
         try {
           return host.answerInteraction(request, split[0]!, split[1]);
-        } catch {
+        } catch (error) {
+          const code = terminalError(error).code;
+          if (
+            code !== "CLI_INTERACTION_CHOICE_INVALID" &&
+            code !== "CLI_INTERACTION_UNSUPPORTED" &&
+            code !== "STALE_INTERACTION"
+          )
+            throw error;
           setFeedback("input", "交互选项或确认身份无效；等待保持。");
           continue;
         }
@@ -652,23 +722,32 @@ export async function runTerminalController(options: TerminalControllerOptions):
       if (stopping || eof) return undefined;
       try {
         return host.answerInteraction(request, selected, confirmation);
-      } catch {
+      } catch (error) {
+        const code = terminalError(error).code;
+        if (
+          code !== "CLI_INTERACTION_CHOICE_INVALID" &&
+          code !== "CLI_INTERACTION_UNSUPPORTED" &&
+          code !== "STALE_INTERACTION"
+        )
+          throw error;
         setFeedback("input", "交互选项或确认身份无效；等待保持。");
       }
     }
     return undefined;
   }
 
-  async function executeQuery(initial: Promise<AgentRunHandle>): Promise<void> {
+  async function executeQuery(start: () => Promise<AgentRunHandle>): Promise<void> {
     phase = "running";
+    runActivity = "等待模型响应";
     cancelRequested = false;
     userCancelledQuery = false;
     await refresh();
-    let handle = await initial;
+    let handle = await start();
     for (;;) {
       active = handle;
       lastIdentity = handle.identity;
       lastResult = undefined;
+      await output(() => renderer.beginRun(handle.identity));
       if (cancelRequested && !settlingCancellation) handle.cancel("用户取消");
       const preview = createPreviewBuffer(handle.identity);
       const observing = (async () => {
@@ -683,6 +762,18 @@ export async function runTerminalController(options: TerminalControllerOptions):
               actual.runId !== expected.runId
             )
               continue;
+            const nextActivity =
+              event.type === "model.delta" || event.type === "model.preview"
+                ? "正在生成"
+                : event.type === "tool.started"
+                  ? "正在执行工具"
+                  : event.type === "tool.completed"
+                    ? "等待模型响应"
+                    : runActivity;
+            if (runActivity !== nextActivity) {
+              runActivity = nextActivity;
+              await refresh();
+            }
             const record = projectTerminalEvent(event, (request) =>
               host.describeInteraction(request),
             );
@@ -692,6 +783,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
           }
         } catch (error) {
           await report(error, "observation");
+          requestStop(true);
         }
       })();
       let result: AgentRunResult;
@@ -701,18 +793,19 @@ export async function runTerminalController(options: TerminalControllerOptions):
         await observing;
         active = undefined;
         preview.clear();
-        await output(() => renderer.preview([]));
       }
       settlingCancellation = false;
       phase = "settling";
       lastResult = result;
-      for (const record of projectTerminalResult(result, (request) =>
+      const settlement = projectTerminalSettlement(result, (request) =>
         host.describeInteraction(request),
-      ))
-        await output(() => renderer.record(record));
+      );
+      await output(() => renderer.settle(settlement));
       if (result.status === "failed") {
-        noteFailure("completion");
-        requestStop();
+        if (oneShot || stopping || !Object.hasOwn(recoverableModelFailures, result.error.code)) {
+          noteFailure("completion");
+          requestStop();
+        }
         break;
       }
       if (result.status !== "waiting") break;
@@ -741,6 +834,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       await refresh();
       if (settlingCancellation) cancelRequested = false;
       handle = await host.resume(result.identity.queryId, response);
+      runActivity = "等待模型响应";
       phase = "running";
       await refresh();
     }
@@ -753,63 +847,71 @@ export async function runTerminalController(options: TerminalControllerOptions):
 
   function launchQuery(start: () => Promise<AgentRunHandle>): void {
     if (runTask || stopping) return;
+    scene = "conversation";
     delete feedback.notice;
-    const task = executeQuery(start())
+    const task = executeQuery(start)
       .catch(async (error: unknown) => {
+        await output(() => renderer.preview([]));
         await report(error, "completion");
         requestStop();
       })
-      .finally(() => {
+      .finally(async () => {
         runTask = undefined;
         if (stopping || eof) finish();
         else {
           phase = "idle";
           cancelRequested = false;
           switchFocus({ type: "composer" });
-          void refresh();
+          await refresh();
         }
       });
     runTask = task;
   }
 
-  function launchUI(action: () => Promise<void>): void {
+  function launchUI(action: () => Promise<void>, label: string): void {
     if (uiTask || stopping) return;
     completion = undefined;
     delete feedback.input;
+    activity = label;
     uiTask = Promise.resolve()
       .then(action)
       .catch(async (error: unknown) => {
         const publicError = terminalError(error);
         if (publicError.code === "HOST_SWITCH_REJECTED") {
           setBlocking("binding", publicError.message);
-          await output(() => renderer.message(publicError.message));
         } else {
           await report(error, "activation");
           requestStop();
         }
       })
-      .finally(() => {
+      .finally(async () => {
         uiTask = undefined;
         activity = undefined;
-        void refresh();
+        await refresh();
       });
   }
 
   async function withActivity<T>(text: string, operation: () => Promise<T>): Promise<T> {
+    const previous = activity;
     activity = text;
     await refresh();
     try {
       return await operation();
     } finally {
-      activity = undefined;
+      activity = previous;
       await refresh();
     }
   }
 
-  async function confirmSwitch(target = "新会话"): Promise<boolean> {
-    const answer = await askText(
-      `目标：${target}\n将新建绑定会话；保留草稿，不迁移旧 Query。\n输入 yes 确认：`,
-    );
+  async function confirmSwitch(
+    target = "新会话",
+    operation: "new" | "resume" = "new",
+  ): Promise<boolean> {
+    const consequence =
+      operation === "resume"
+        ? "将恢复已有绑定会话；保留草稿，未完成请求按权威检查点继续。"
+        : "将新建绑定会话；保留草稿，不迁移旧 Query。";
+    const answer = await askText(`目标：${target}\n${consequence}\n输入 yes 确认：`);
     return answer?.trim() === "yes";
   }
 
@@ -835,9 +937,10 @@ export async function runTerminalController(options: TerminalControllerOptions):
         break;
       case "new":
         if (await confirmSwitch()) {
-          await withActivity("正在创建绑定会话", () => host.newSession());
-          modelAvailability = undefined;
-          await sessionRecord();
+          await withActivity("正在创建绑定会话", async () => {
+            await host.newSession();
+            await bindSession([]);
+          });
         }
         break;
       case "model":
@@ -852,24 +955,22 @@ export async function runTerminalController(options: TerminalControllerOptions):
         ];
         const selected = await askSelection("选择能力模式", modes);
         if (selected && (await confirmSwitch())) {
-          await withActivity("正在切换能力与绑定会话", () =>
-            host.newSession({ toolsMode: selected as TerminalToolsMode }),
-          );
-          modelAvailability = undefined;
-          await sessionRecord();
+          await withActivity("正在切换能力与绑定会话", async () => {
+            await host.newSession({ toolsMode: selected as TerminalToolsMode });
+            await bindSession([]);
+          });
         }
         break;
       }
       case "resume": {
         const sessions = await withActivity("正在加载会话目录", () => host.sessions());
         const selected = await askSelection("当前工作区会话", sessions);
-        if (selected && (await confirmSwitch())) {
-          const session = await withActivity("正在恢复绑定会话", () =>
-            host.selectSession(selected),
-          );
-          modelAvailability = undefined;
-          await output(() => renderer.history(session.history));
-          await sessionRecord();
+        if (selected && (await confirmSwitch(`会话 ${selected}`, "resume"))) {
+          const session = await withActivity("正在恢复绑定会话", async () => {
+            const target = await host.selectSession(selected);
+            await bindSession(target.history);
+            return target;
+          });
           if (session.unfinished) launchQuery(() => host.resume(session.unfinished!.queryId));
         }
         break;
@@ -877,6 +978,11 @@ export async function runTerminalController(options: TerminalControllerOptions):
       case "tools-output": {
         const selected = await askSelection("安全工具输出", renderer.tools());
         if (selected) await output(() => renderer.selectTool(selected));
+        break;
+      }
+      case "thinking": {
+        const selected = await askSelection("公开思考", renderer.thoughts());
+        if (selected) await output(() => renderer.selectThinking(selected));
         break;
       }
     }
@@ -1035,8 +1141,12 @@ export async function runTerminalController(options: TerminalControllerOptions):
       await output(() => renderer.toggleTool());
       return;
     }
+    if (key.action === "toggle-thinking") {
+      await output(() => renderer.toggleThinking());
+      return;
+    }
     if (key.action === "select-model") {
-      if (phase === "idle" && !uiTask) launchUI(() => localCommand("model"));
+      if (phase === "idle" && !uiTask) launchUI(() => localCommand("model"), "正在选择模型");
       else setFeedback("input", "执行或会话切换中不能切换模型。");
       await refresh();
       return;
@@ -1049,7 +1159,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       }
       let dismissed = false;
       await output(async () => {
-        dismissed = await renderer.dismissTool();
+        dismissed = await renderer.dismissDetail();
       });
       if (dismissed) return;
       if (phase === "running" && !settlingCancellation) {
@@ -1116,7 +1226,8 @@ export async function runTerminalController(options: TerminalControllerOptions):
       }
       composer.remember();
       composer.clear();
-      if (submitted.type === "command") launchUI(() => localCommand(submitted.name));
+      if (submitted.type === "command")
+        launchUI(() => localCommand(submitted.name), `正在处理 /${submitted.name}`);
       else {
         await output(() => renderer.user(submitted.text));
         launchQuery(() => host.run(submitted.text));
@@ -1132,12 +1243,14 @@ export async function runTerminalController(options: TerminalControllerOptions):
         !(key.action === "insert" && key.source === "paste") &&
         /^\/[a-z-]*$/.test(composer.draft.text)
       ) {
-        completion = createSelector(
-          LOCAL_COMMANDS.filter((name) => name.startsWith(composer.draft.text.slice(1))).map(
-            (name) => ({ id: name, label: `/${name}` }),
-          ),
-          null,
-        );
+        const items = LOCAL_COMMANDS.filter((item) =>
+          item.name.startsWith(composer.draft.text.slice(1)),
+        ).map((item) => ({
+          id: item.name,
+          label: `/${item.name}`,
+          description: item.description,
+        }));
+        completion = createSelector(items, items[0]?.id ?? null);
       } else completion = undefined;
     }
     await refresh();
@@ -1223,19 +1336,24 @@ export async function runTerminalController(options: TerminalControllerOptions):
   try {
     terminal.start();
     await refresh();
-    await withActivity("正在打开本地宿主与模型配置", () =>
-      host.open({
+    await withActivity("正在打开本地宿主与模型配置", async () => {
+      await host.open({
         ...(command.modelId ? { modelId: command.modelId } : {}),
         ...(command.threadId ? { threadId: command.threadId } : {}),
         ...(command.toolsMode ? { toolsMode: command.toolsMode } : {}),
         ...(!oneShot && terminal.mode !== "headless" ? { setup } : {}),
-      }),
-    );
-    if (!stopping) {
+      });
+      if (stopping) return;
+      const history = command.threadId
+        ? (await host.sessions()).find((session) => session.id === host.context.threadId)?.history
+        : [];
+      if (!history) throw new Error("Opened session history is unavailable");
+      activity = undefined;
       ready = true;
       phase = "idle";
-      switchFocus({ type: "composer" });
-      await sessionRecord();
+      await bindSession(history);
+    });
+    if (!stopping) {
       await refresh();
       if (command.queryId) launchQuery(() => host.resume(command.queryId!));
       else if (command.prompt !== undefined) launchQuery(() => host.run(command.prompt!));

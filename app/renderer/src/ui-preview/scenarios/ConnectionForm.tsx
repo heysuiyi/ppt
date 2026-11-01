@@ -4,6 +4,7 @@ import { Button } from "../../ui/components/button/Button";
 import { Dialog } from "../../ui/components/dialog/Dialog";
 import { Field } from "../../ui/components/field/Field";
 import { Input } from "../../ui/components/input/Input";
+import { Select } from "../../ui/components/select/Select";
 import { UnsavedChangesDialog } from "../../ui/patterns/UnsavedChangesDialog";
 import {
   type ConnectionAction,
@@ -17,9 +18,17 @@ interface ConnectionFormProps {
   state: ConnectionState;
   dispatch: Dispatch<ConnectionAction>;
   fallbackFocusRef: RefObject<HTMLElement | null>;
+  inspection: boolean;
+  onInspectionChange: (open: boolean) => void;
 }
 
-export function ConnectionForm({ state, dispatch, fallbackFocusRef }: ConnectionFormProps) {
+export function ConnectionForm({
+  state,
+  dispatch,
+  fallbackFocusRef,
+  inspection,
+  onInspectionChange,
+}: ConnectionFormProps) {
   const editor = state.editor!;
   const prefix = useId();
   const formId = `${prefix}-form`;
@@ -28,7 +37,9 @@ export function ConnectionForm({ state, dispatch, fallbackFocusRef }: Connection
   const keyRef = useRef<HTMLInputElement>(null);
   const firstErrorPending = useRef(false);
   const [outcome, setOutcome] = useState<LocalOutcome>("success");
-  const [deferred, setDeferred] = useState(true);
+  const [deferred, setDeferred] = useState(inspection);
+  // 只对显式从验收入口进入的场景提供工具；隐藏工具不重建编辑或改派发结果。
+  const inspectionAvailable = useRef(inspection);
   const pending = editor.phase === "pending";
   const other = state.connections.find((item) => item.id !== editor.targetId)!;
   useLayoutEffect(() => {
@@ -50,18 +61,17 @@ export function ConnectionForm({ state, dispatch, fallbackFocusRef }: Connection
     <Dialog
       open
       purpose="form"
-      title="编辑本地示例连接"
-      description="仅验证 UI 交互。不会连接模型、保存凭据或访问文件。"
+      title="编辑连接"
       initialFocusRef={nameRef}
       fallbackFocusRef={fallbackFocusRef}
       onRequestClose={() => dispatch({ type: "leave", intent: { kind: "close" } })}
       footer={
         <>
           <Button onClick={() => dispatch({ type: "leave", intent: { kind: "close" } })}>
-            取消编辑
+            取消
           </Button>
           <Button type="submit" form={formId} tone="primary" busy={pending}>
-            {pending ? "等待本地结果…" : "模拟提交"}
+            {pending ? "等待结果…" : "保存示例"}
           </Button>
         </>
       }
@@ -77,13 +87,7 @@ export function ConnectionForm({ state, dispatch, fallbackFocusRef }: Connection
           dispatch({ type: "submit", outcome, deferred });
         }}
       >
-        <Field
-          id={`${prefix}-name`}
-          label="显示名称"
-          error={editor.errors.name}
-          required
-          hint="仅更新本页内存中的示例名称。"
-        >
+        <Field id={`${prefix}-name`} label="名称" error={editor.errors.name} required>
           {(props) => (
             <Input
               {...props}
@@ -94,13 +98,7 @@ export function ConnectionForm({ state, dispatch, fallbackFocusRef }: Connection
             />
           )}
         </Field>
-        <Field
-          id={`${prefix}-address`}
-          label="示例连接地址"
-          error={editor.errors.address}
-          required
-          hint="仅本地检查 http / https 地址格式，不发送请求。"
-        >
+        <Field id={`${prefix}-address`} label="地址" error={editor.errors.address} required>
           {(props) => (
             <Input
               {...props}
@@ -117,102 +115,122 @@ export function ConnectionForm({ state, dispatch, fallbackFocusRef }: Connection
           label="演示 Key"
           error={editor.errors.demoKey}
           required
-          hint="仅粘贴 demo-key 或点击填入；其他输入立即拒绝，不保存、不回显。不要输入真实 Key。"
+          hint="仅 demo-key，勿填真实凭据。"
         >
           {(props) => (
-            <Input
-              {...props}
-              ref={keyRef}
-              autoComplete="off"
-              value={editor.draft.demoKey}
-              readOnly={pending}
-              spellCheck={false}
-              onChange={(event) => {
-                const action = demoKeyChange(event.currentTarget.value);
-                if (action.rejected) event.currentTarget.value = "";
-                dispatch(action);
-              }}
-            />
+            <div className="ui-preview-key-row">
+              <Input
+                {...props}
+                ref={keyRef}
+                autoComplete="off"
+                value={editor.draft.demoKey}
+                readOnly={pending}
+                spellCheck={false}
+                onChange={(event) => {
+                  const action = demoKeyChange(event.currentTarget.value);
+                  if (action.rejected) event.currentTarget.value = "";
+                  dispatch(action);
+                }}
+              />
+              <Button
+                disabled={pending}
+                onClick={() => dispatch(demoKeyChange("demo-key"))}
+                aria-label="填入 demo-key"
+              >
+                填入
+              </Button>
+            </div>
           )}
         </Field>
-        <div>
-          <Button disabled={pending} onClick={() => dispatch(demoKeyChange("demo-key"))}>
-            填入演示值 demo-key
-          </Button>
-        </div>
         {editor.failure && (
-          <Alert title="本地模拟失败，输入已保留" tone="error" announce="assertive">
-            这是显式选择的失败场景，不是网络错误。修正内容或选择本地成功后重试。
+          <Alert title="示例更新失败" tone="error" announce="assertive">
+            输入已保留，请重试。
           </Alert>
         )}
         {pending && (
-          <Alert title="本地等待中" announce="polite">
-            可释放当前结果，或取消本地等待。取消后旧结果不能更新本次编辑。
-          </Alert>
+          <p className="ui-preview-operation-status" role="status">
+            等待示例结果，可取消。
+          </p>
         )}
-        <details className="ui-preview-controls" open>
-          <summary>场景控制 · 仅本地</summary>
-          <div className="ui-preview-controls-body">
-            <label>
-              完成结果{" "}
-              <select
-                aria-label="本地完成结果"
-                value={outcome}
-                disabled={pending}
-                onChange={(event) => setOutcome(event.target.value as LocalOutcome)}
-              >
-                <option value="success">本地成功</option>
-                <option value="failure">本地失败</option>
-              </select>
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={deferred}
-                disabled={pending}
-                onChange={(event) => setDeferred(event.target.checked)}
-              />
-              暂缓完成，手动释放结果
-            </label>
-            <div className="ui-preview-actions">
-              <Button
-                disabled={!editor.operation}
-                onClick={() => {
-                  if (editor.operation) dispatch({ type: "complete", result: editor.operation });
-                }}
-              >
-                释放当前结果
-              </Button>
-              <Button
-                disabled={!state.staleResults.length}
-                onClick={() => dispatch({ type: "complete", result: state.staleResults[0] })}
-              >
-                释放旧结果
-              </Button>
-            </div>
-            <p className="ui-preview-meta" role="status">
-              已失效结果 {state.staleResults.length} · 已忽略 {state.ignoredResults} · 世代{" "}
-              {state.generation}
-            </p>
-            <div className="ui-preview-actions">
-              <Button
-                onClick={() =>
-                  dispatch({ type: "leave", intent: { kind: "target", targetId: other.id } })
-                }
-              >
-                切换到 {other.name}
-              </Button>
-              <Button
-                onClick={() =>
-                  dispatch({ type: "leave", intent: { kind: "page", page: "foundations" } })
-                }
-              >
-                离开到视觉基础
-              </Button>
-              <Button onClick={() => dispatch({ type: "reset" })}>重置本地场景</Button>
-            </div>
+        {inspectionAvailable.current && (
+          <div className="ui-preview-form-inspection">
+            <button
+              type="button"
+              className="ui-preview-text-action"
+              aria-expanded={inspection}
+              onClick={() => onInspectionChange(!inspection)}
+            >
+              {inspection ? "收起验收工具" : "验收工具"}
+            </button>
+            {inspection && (
+              <div className="ui-preview-controls">
+                <label>
+                  完成结果{" "}
+                  <Select
+                    aria-label="本地完成结果"
+                    value={outcome}
+                    disabled={pending}
+                    options={[
+                      { value: "success", label: "本地成功" },
+                      { value: "failure", label: "本地失败" },
+                    ]}
+                    onValueChange={(value) => setOutcome(value as LocalOutcome)}
+                  />
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={deferred}
+                    disabled={pending}
+                    onChange={(event) => setDeferred(event.target.checked)}
+                  />
+                  暂缓完成
+                </label>
+                <div className="ui-preview-actions">
+                  <Button
+                    disabled={!editor.operation}
+                    onClick={() => {
+                      if (editor.operation)
+                        dispatch({ type: "complete", result: editor.operation });
+                    }}
+                  >
+                    释放当前结果
+                  </Button>
+                  <Button
+                    disabled={!state.staleResults.length}
+                    onClick={() => {
+                      const result = state.staleResults[0];
+                      if (result) dispatch({ type: "complete", result });
+                    }}
+                  >
+                    释放旧结果
+                  </Button>
+                </div>
+                <p className="ui-preview-meta" role="status">
+                  已失效结果 {state.staleResults.length} · 已忽略 {state.ignoredResults} · 世代{" "}
+                  {state.generation}
+                </p>
+                <div className="ui-preview-actions">
+                  <Button
+                    onClick={() =>
+                      dispatch({ type: "leave", intent: { kind: "target", targetId: other.id } })
+                    }
+                  >
+                    切换到 {other.name}
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      dispatch({ type: "leave", intent: { kind: "page", page: "foundations" } })
+                    }
+                  >
+                    组件与样式
+                  </Button>
+                  <Button onClick={() => dispatch({ type: "reset" })}>重置示例</Button>
+                </div>
+              </div>
+            )}
           </div>
-        </details>
+        )}
       </form>
       <UnsavedChangesDialog
         open={Boolean(state.leave)}

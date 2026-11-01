@@ -24,7 +24,7 @@ Without prompt/resume, piped stdin up to EOF is one query (slash lines are text)
 JSONL and print never prompt. Waiting is preserved and exits with code 3.
 
 Interactive commands:
-  /help /hotkeys /status /paste /exit /new /model /connect /resume /tools /tools-output
+  /help /hotkeys /status /paste /exit /new /model /connect /resume /tools /tools-output /thinking
   // escapes an initial slash. /paste ends only with a separate /end line;
   //end inside /paste inserts /end. EOF never submits unfinished /paste.
   /model groups configured connections; /connect adds/configures a connection.
@@ -34,7 +34,8 @@ Keys:
   Enter send (idle only); Alt+Enter newline; arrows move through displayed input lines
   At input boundaries Up/Down browse history; returning past the newest restores the draft.
   Completion: Tab/Enter accepts text only; press Enter again to execute.
-  Ctrl+O tool detail; Alt+M model; Esc closes local UI before cancelling an active run
+  Ctrl+O tool detail; Ctrl+T public thinking detail/page; Alt+M model
+  Esc closes local UI before cancelling an active run
   Ctrl+C clear draft or request cancellation; empty Ctrl+D exit
   Approval: explicitly select then Enter; Tab never approves; Esc keeps waiting.
   Models: Left/Right or Tab switch panes; Up/Down move; Enter chooses; Esc returns.
@@ -143,18 +144,24 @@ export function parseTerminalArguments(args: readonly string[]): TerminalCommand
   };
 }
 
-export const LOCAL_COMMANDS: readonly (TerminalLocalCommand | TerminalHostCommand)[] = [
-  "help",
-  "hotkeys",
-  "status",
-  "paste",
-  "exit",
-  "new",
-  "model",
-  "connect",
-  "resume",
-  "tools",
-  "tools-output",
+export interface TerminalCommandDefinition {
+  readonly name: TerminalLocalCommand | TerminalHostCommand;
+  readonly description: string;
+}
+
+export const LOCAL_COMMANDS: readonly TerminalCommandDefinition[] = [
+  { name: "help", description: "查看可用命令与使用方式" },
+  { name: "hotkeys", description: "查看键盘快捷键" },
+  { name: "status", description: "查看模型、工作区与会话详情" },
+  { name: "paste", description: "进入多行输入，以 /end 提交" },
+  { name: "exit", description: "结束当前终端会话" },
+  { name: "new", description: "确认后创建新会话" },
+  { name: "model", description: "选择已配置模型" },
+  { name: "connect", description: "添加或配置模型连接" },
+  { name: "resume", description: "选择并恢复已有会话" },
+  { name: "tools", description: "选择当前会话的能力模式" },
+  { name: "tools-output", description: "查看工具调用的安全详情" },
+  { name: "thinking", description: "选择公开思考块，Ctrl+T 查看最新思考" },
 ];
 
 export type TerminalSubmittedText =
@@ -165,8 +172,8 @@ export type TerminalSubmittedText =
 export function parseSubmittedText(text: string): TerminalSubmittedText {
   if (text.startsWith("//")) return { type: "message", text: text.slice(1) };
   const trimmed = text.trim();
-  const command = LOCAL_COMMANDS.find((name) => trimmed === `/${name}`);
-  if (command) return { type: "command", name: command };
+  const command = LOCAL_COMMANDS.find((item) => trimmed === `/${item.name}`);
+  if (command) return { type: "command", name: command.name };
   if (trimmed.startsWith("/") && !trimmed.includes("\n")) return { type: "unknown-command" };
   return { type: "message", text };
 }

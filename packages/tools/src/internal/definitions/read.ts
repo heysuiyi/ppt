@@ -1,3 +1,4 @@
+import type { VersionedData } from "@agent-harness/core/protocol-values";
 import type {
   ImmediateToolDefinition,
   ToolExecutionContext,
@@ -6,6 +7,7 @@ import type {
 
 import { z } from "zod";
 import type { ReadInput, ReadOutput } from "../../tools-contract.js";
+import { presentationPreview } from "../presentation-preview.js";
 
 export const readInputSchema = z
   .object({
@@ -80,6 +82,24 @@ export function createRead(
     inputSchema: readInputSchema,
     outputSchema: readOutputSchema,
     execute: handler,
+    toPresentation(result): VersionedData {
+      return {
+        type: "tools.read",
+        version: 1,
+        data:
+          result.status === "succeeded"
+            ? {
+                path: result.output.path,
+                size: result.output.size,
+                startOffset: result.output.startOffset,
+                endOffset: result.output.endOffset,
+                totalCharacters: result.output.totalCharacters,
+                hasMore: result.output.hasMore,
+                ...presentationPreview(result.output.content),
+              }
+            : { status: result.status },
+      };
+    },
     toModelContent(result) {
       return [
         {

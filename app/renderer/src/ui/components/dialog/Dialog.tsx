@@ -86,7 +86,7 @@ function MountedDialog({
       onKeyDown={(event) => {
         const dialog = event.currentTarget;
         if (event.key !== "Tab" || !isTopModal(dialog)) return;
-        // 原生模态隔离背景；在首尾补齐 APG 的循环，避免经过浏览器地址栏边界。
+        // 遮罩点击可使原生 Dialog 自身获焦；与首尾控件一并处理，避免退到浏览器边界。
         const controls = Array.from(
           dialog.querySelectorAll<HTMLElement>(
             "button, input, textarea, select, a[href], summary, [tabindex]",
@@ -103,6 +103,7 @@ function MountedDialog({
         const first = controls[0];
         const last = controls[controls.length - 1];
         if (
+          document.activeElement === dialog ||
           (event.shiftKey && document.activeElement === first) ||
           (!event.shiftKey && document.activeElement === last)
         ) {
@@ -112,8 +113,12 @@ function MountedDialog({
         }
       }}
       onPointerDown={(event) => {
+        // 首个遮罩手势只收起所属自绘列表，不同时触发表单离开。
+        const popupOpen = event.currentTarget.querySelector("[data-ui-popup]:popover-open");
         outsidePointer.current =
-          event.target === event.currentTarget && outside(event.clientX, event.clientY)
+          !popupOpen &&
+          event.target === event.currentTarget &&
+          outside(event.clientX, event.clientY)
             ? event.pointerId
             : null;
       }}

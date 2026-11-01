@@ -1,3 +1,4 @@
+import type { VersionedData } from "@agent-harness/core/protocol-values";
 import type {
   ImmediateToolDefinition,
   ToolExecutionContext,
@@ -6,6 +7,7 @@ import type {
 
 import { z } from "zod";
 import type { GlobInput, GlobOutput } from "../../tools-contract.js";
+import { presentationPreview } from "../presentation-preview.js";
 
 export const globInputSchema = z
   .object({
@@ -34,6 +36,23 @@ export function createGlob(
     inputSchema: globInputSchema,
     outputSchema: globOutputSchema,
     execute: handler,
+    toPresentation(result): VersionedData {
+      const preview =
+        result.status === "succeeded" ? presentationPreview(result.output.matches) : undefined;
+      return {
+        type: "tools.glob",
+        version: 1,
+        data:
+          result.status === "succeeded"
+            ? {
+                matches: preview!.preview,
+                totalMatches: result.output.matches.length,
+                truncated: result.output.truncated,
+                previewTruncated: preview!.previewTruncated,
+              }
+            : { status: result.status },
+      };
+    },
     toModelContent(result) {
       return [
         {

@@ -28,7 +28,7 @@ export function Field({ id, label, hint, error, required = false, children }: Fi
         {label}
         {required && (
           <span className="ui-field__required" aria-hidden="true">
-            （必填）
+            *
           </span>
         )}
       </label>

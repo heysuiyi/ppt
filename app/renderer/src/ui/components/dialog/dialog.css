@@ -4,7 +4,7 @@
   max-width: none;
   max-height: calc(100% - 32px);
   padding: 0;
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--ui-border-subtle);
   border-radius: var(--ui-radius-dialog);
   background: var(--ui-surface-raised);
   color: var(--ui-text);
@@ -32,11 +32,10 @@
 }
 .ui-root .ui-dialog-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--ui-space-16);
-  padding: var(--ui-space-24);
-  border-bottom: 1px solid var(--ui-border-subtle);
+  padding: var(--ui-space-16);
   flex: 0 0 auto;
 }
 .ui-root .ui-dialog-header > .ui-button {
@@ -50,32 +49,27 @@
   overflow-wrap: anywhere;
 }
 .ui-root .ui-dialog-description {
-  margin: 8px 0 0;
+  margin: var(--ui-space-8) 0 0;
   color: var(--ui-text-muted);
   font-size: var(--ui-font-size-14);
 }
 .ui-root .ui-dialog-body {
-  padding: var(--ui-space-24);
+  padding: 0 var(--ui-space-16) var(--ui-space-16);
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+}
+.ui-root .ui-dialog-body:empty {
+  display: none;
 }
 .ui-root .ui-dialog-footer {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: var(--ui-space-8);
-  padding: var(--ui-space-16) var(--ui-space-24);
+  padding: var(--ui-space-12) var(--ui-space-16);
   border-top: 1px solid var(--ui-border-subtle);
   flex: 0 0 auto;
-}
-@media (max-width: 480px) {
-  .ui-root .ui-dialog-header,
-  .ui-root .ui-dialog-body {
-    padding: var(--ui-space-16);
-  }
-  .ui-root .ui-dialog-footer {
-    padding: var(--ui-space-16);
-  }
 }
 @media (forced-colors: active) {
   .ui-root .ui-dialog {

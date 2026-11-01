@@ -8,14 +8,33 @@ import {
 } from "../app/renderer/src/ui-preview/state/connection-state";
 
 function validEditor(): ConnectionState {
-  let state = reduce(createConnectionState(), { type: "open" });
+  let state = reduce(createConnectionState(), { type: "open", targetId: "atlas" });
   state = reduce(state, demoKeyChange("demo-key"));
   return state;
 }
 
 describe("本地连接编辑生命周期", () => {
+  it("行内编辑直接绑定指定对象，只更新该对象", () => {
+    const baseline = createConnectionState();
+    let state = reduce(baseline, { type: "open", targetId: "cedar" });
+    expect(state.editor!.targetId).toBe("cedar");
+    expect(state.editor!.draft.address).toBe(baseline.connections[1].address);
+    state = reduce(state, demoKeyChange("demo-key"));
+    state = reduce(state, {
+      type: "change",
+      field: "address",
+      value: "https://updated.example.invalid/v2",
+    });
+    state = reduce(state, { type: "submit", outcome: "success", deferred: false });
+    expect(state.connections[0]).toEqual(baseline.connections[0]);
+    expect(state.connections[1]).toEqual({
+      ...baseline.connections[1],
+      address: "https://updated.example.invalid/v2",
+    });
+  });
+
   it("字段无效不提交，非演示 Key 不进入可保留状态", () => {
-    let state = reduce(createConnectionState(), { type: "open" });
+    let state = reduce(createConnectionState(), { type: "open", targetId: "atlas" });
     state = reduce(state, { type: "change", field: "name", value: "  " });
     state = reduce(state, { type: "change", field: "address", value: "not-an-address" });
     const rejected = demoKeyChange("not-a-demo-credential");
@@ -27,7 +46,7 @@ describe("本地连接编辑生命周期", () => {
     state = reduce(state, { type: "submit", outcome: "success", deferred: false });
     expect(Object.keys(state.editor!.errors).sort()).toEqual(["address", "demoKey", "name"]);
     expect(state.editor!.phase).toBe("editing");
-    expect(state.connections[0].name).toBe("Atlas · 示例连接");
+    expect(state.connections).toEqual(createConnectionState().connections);
   });
 
   it("模拟失败保留输入，修正成功只更新目标名称/地址而不保留 Key", () => {
@@ -37,7 +56,7 @@ describe("本地连接编辑生命周期", () => {
     expect(state.editor!.failure).toBe(true);
     expect(state.editor!.draft.name).toBe("  revised atlas  ");
     expect(state.editor!.draft.demoKey).toBe("demo-key");
-    expect(state.connections[0].name).toBe("Atlas · 示例连接");
+    expect(state.connections).toEqual(createConnectionState().connections);
     state = reduce(state, {
       type: "change",
       field: "address",
@@ -47,24 +66,37 @@ describe("本地连接编辑生命周期", () => {
     expect(state.editor).toBeNull();
     expect(state.connections).toEqual([
       { id: "atlas", name: "revised atlas", address: "https://revised.example.invalid/v2" },
-      { id: "cedar", name: "Cedar · 示例连接", address: "https://cedar.example.invalid/v1" },
+      createConnectionState().connections[1],
     ]);
     expect(JSON.stringify(state)).not.toContain("demo-key");
   });
 
-  it("脏导航先确认，继续编辑保留对象和草稿，放弃后完成原导航", () => {
+  it("脏导航先确认，继续保留草稿，放弃后直接编辑原目标且拒绝旧结果", () => {
     let state = reduce(validEditor(), { type: "change", field: "name", value: "未提交名称" });
+    const originalEditorId = state.editor!.id;
+    const nextTarget = state.connections.find((item) => item.id === "cedar")!;
     expect(isEditorDirty(state)).toBe(true);
-    state = reduce(state, { type: "leave", intent: { kind: "target", targetId: "cedar" } });
-    expect(state.selectedId).toBe("atlas");
+    state = reduce(state, { type: "submit", outcome: "success", deferred: true });
+    const oldResult = state.editor!.operation!;
+    state = reduce(state, { type: "leave", intent: { kind: "target", targetId: nextTarget.id } });
+    expect(state.editor!.targetId).toBe("atlas");
     state = reduce(state, { type: "stay" });
     expect(state.editor!.draft.name).toBe("未提交名称");
-    expect(state.selectedId).toBe("atlas");
-    state = reduce(state, { type: "leave", intent: { kind: "target", targetId: "cedar" } });
+    expect(state.editor!.targetId).toBe("atlas");
+    state = reduce(state, { type: "leave", intent: { kind: "target", targetId: nextTarget.id } });
     state = reduce(state, { type: "discard" });
-    expect(state.selectedId).toBe("cedar");
-    expect(state.editor).toBeNull();
-    expect(state.connections[0].name).toBe("Atlas · 示例连接");
+    expect(state.editor!.targetId).toBe(nextTarget.id);
+    expect(state.editor!.id).not.toBe(originalEditorId);
+    expect(state.editor!.draft).toEqual({
+      name: nextTarget.name,
+      address: nextTarget.address,
+      demoKey: "",
+    });
+    expect(isEditorDirty(state)).toBe(false);
+    const nextEditor = state.editor;
+    state = reduce(state, { type: "complete", result: oldResult });
+    expect(state.editor).toEqual(nextEditor);
+    expect(state.connections).toEqual(createConnectionState().connections);
   });
 
   it("取消等待后继续编辑不复活旧操作，晚到成功不能覆盖草稿", () => {
@@ -78,7 +110,7 @@ describe("本地连接编辑生命周期", () => {
     expect(state.editor!.draft.name).toBe("继续编辑的新内容");
     expect(state.editor!.operation).toBeNull();
     expect(state.ignoredResults).toBe(1);
-    expect(state.connections[0].name).toBe("Atlas · 示例连接");
+    expect(state.connections).toEqual(createConnectionState().connections);
   });
 
   it("旧编辑的成功不能关闭同一目标重开的新实例或完成其新操作", () => {
@@ -86,7 +118,7 @@ describe("本地连接编辑生命周期", () => {
     const old = state.editor!.operation!;
     state = reduce(state, { type: "leave", intent: { kind: "close" } });
     state = reduce(state, { type: "discard" });
-    state = reduce(state, { type: "open" });
+    state = reduce(state, { type: "open", targetId: "atlas" });
     state = reduce(state, demoKeyChange("demo-key"));
     state = reduce(state, { type: "change", field: "name", value: "新实例" });
     state = reduce(state, { type: "submit", outcome: "success", deferred: true });
@@ -105,7 +137,7 @@ describe("本地连接编辑生命周期", () => {
     state = reduce(state, { type: "reset" });
     expect(state.editor).toBeNull();
     expect(state.generation).toBe(1);
-    state = reduce(state, { type: "open" });
+    state = reduce(state, { type: "open", targetId: "atlas" });
     state = reduce(state, demoKeyChange("demo-key"));
     state = reduce(state, { type: "submit", outcome: "success", deferred: true });
     const current = state.editor!.operation!;
@@ -114,7 +146,7 @@ describe("本地连接编辑生命周期", () => {
       result: { ...old, identity: { ...current.identity, generation: old.identity.generation } },
     });
     expect(state.editor!.operation).toEqual(current);
-    expect(state.connections[0].name).toBe("Atlas · 示例连接");
+    expect(state.connections).toEqual(createConnectionState().connections);
   });
 
   it("一次等待只接受一份提交，输入和结果选择不能改写派发身份", () => {
@@ -123,7 +155,7 @@ describe("本地连接编辑生命周期", () => {
     state = reduce(state, { type: "submit", outcome: "success", deferred: true });
     state = reduce(state, { type: "change", field: "name", value: "等待中不应改变" });
     expect(state.editor!.operation).toEqual(first);
-    expect(state.editor!.draft.name).toBe("Atlas · 示例连接");
+    expect(state.editor!.draft.name).toBe(createConnectionState().connections[0].name);
     state = reduce(state, { type: "complete", result: first });
     expect(state.editor!.failure).toBe(true);
   });

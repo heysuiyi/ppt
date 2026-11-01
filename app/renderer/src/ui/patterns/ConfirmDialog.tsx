@@ -83,17 +83,15 @@ export function ConfirmDialog({
             busy={pending}
             onClick={() => void confirm()}
           >
-            {pending ? "本地处理中…" : confirmLabel}
+            {pending ? "处理中…" : confirmLabel}
           </Button>
         </>
       }
     >
-      {error ? (
-        <Alert title="本地操作未完成" tone="error" announce="assertive">
-          保留当前内容，请重试或取消。
+      {error && (
+        <Alert title="操作未完成" tone="error" announce="assertive">
+          重试或取消。
         </Alert>
-      ) : (
-        <p>只有明确确认才执行此操作；关闭不会触发确认。</p>
       )}
     </Dialog>
   );

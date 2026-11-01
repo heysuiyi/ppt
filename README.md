@@ -300,7 +300,9 @@ npm.cmd run ui:build
 npm.cmd run ui:typecheck
 ```
 
-开发地址为 `http://127.0.0.1:5178/`。此入口不启动 Electron、不构建 Harness，也不替换生产桌面。当前提供 U0–U2 的明暗主题/Portal 样例及本地连接表单，可验证校验、失败保留、脏关闭和取消重开竞态。仅接受演示值 `demo-key`，不连接服务、不保存凭据；所有更改仅在内存中，刷新重置。构建与缓存位于 `.vite/ui-preview/`。范围与证据见 [UI 执行方案](docs/next-steps/ui-design-system.md#121-第一轮-u0u2-实施与验收)，U3–U5 尚未实施。
+开发地址为 `http://127.0.0.1:5178/`。此入口不启动 Electron、不构建 Harness，也不替换生产桌面。按 DeepSeek Harness / Cursor 参考改为工作区与会话首页：空会话居中输入，发送本地用户示例后输入区留在底部；切换会话或进入/返回设置保留草稿和模型选择。
+
+底部「设置」管理输入区的示例模型、连接及外观；故障场景从「验收工具 → 连接交互检查」进入。连接只接受 `demo-key`；不调用模型、不访问真实目录或保存凭据。所有状态仅在内存中，刷新恢复，产物位于 `.vite/ui-preview/`。范围、截图及全仓 CLI 失败见 [R2 实施与本地验收](docs/next-steps/ui-design-system.md#124-r2-会话工作区与分类设置实施记录)，完整 U3–U5 尚未验收。
 
 ### 生产 Node CLI
 
