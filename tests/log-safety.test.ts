@@ -1,5 +1,5 @@
-import type { LogContext, LogInput, LogRecord } from "@agent-ppt/logs/log-contract";
-import { createLogs } from "@agent-ppt/logs/logs";
+import type { LogContext, LogInput, LogRecord } from "@agent-harness/logs/log-contract";
+import { createLogs } from "@agent-harness/logs/logs";
 import { describe, expect, it } from "vitest";
 import { createLogRecord } from "../packages/logs/dist/internal/log-safety.js";
 

@@ -1,28 +1,28 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentServices } from "@agent-ppt/harness/agent-factory";
-import type { AgentPlugin, PluginContext } from "@agent-ppt/harness/extensions/plugin-contract";
+import type { AgentServices } from "@agent-harness/core/agent-factory";
+import type { AgentPlugin, PluginContext } from "@agent-harness/core/extensions/plugin-contract";
 import type {
   ModelBinding,
   ModelClient,
   ModelRequest,
   ModelResponse,
   ModelSelection,
-} from "@agent-ppt/harness/model/model-contract";
-import { AgentError, asProtocolError } from "@agent-ppt/harness/protocol-errors";
-import { sameValue, snapshot } from "@agent-ppt/harness/protocol-values";
+} from "@agent-harness/core/model/model-contract";
+import { AgentError, asProtocolError } from "@agent-harness/core/protocol-errors";
+import { sameValue, snapshot } from "@agent-harness/core/protocol-values";
 import type {
   CheckpointKey,
   CheckpointStore,
-} from "@agent-ppt/harness/session/checkpoint-contract";
+} from "@agent-harness/core/session/checkpoint-contract";
 import {
   createSessionHost,
   type SessionBindingPort,
   type SessionHost,
   type SessionHostOptions,
-} from "@agent-ppt/harness/session-host";
-import type { ToolAuthorizationPolicy } from "@agent-ppt/harness/tools/tool-contract";
+} from "@agent-harness/core/session-host";
+import type { ToolAuthorizationPolicy } from "@agent-harness/core/tools/tool-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";

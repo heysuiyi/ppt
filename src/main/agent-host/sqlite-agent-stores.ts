@@ -1,21 +1,21 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { ModelMessage, ModelSelection } from "@agent-ppt/harness/model/model-contract";
-import { AgentError } from "@agent-ppt/harness/protocol-errors";
-import { sameValue, snapshot } from "@agent-ppt/harness/protocol-values";
+import type { ModelMessage, ModelSelection } from "@agent-harness/core/model/model-contract";
+import { AgentError } from "@agent-harness/core/protocol-errors";
+import { sameValue, snapshot } from "@agent-harness/core/protocol-values";
 import type {
   CheckpointAcquireResult,
   CheckpointKey,
   CheckpointLease,
   CheckpointSaveResult,
   CheckpointStore,
-} from "@agent-ppt/harness/session/checkpoint-contract";
+} from "@agent-harness/core/session/checkpoint-contract";
 import type {
   AgentCheckpoint,
   SessionHistoryAppendResult,
   SessionHistoryStore,
-} from "@agent-ppt/harness/session/session-contract";
+} from "@agent-harness/core/session/session-contract";
 import type { ToolsMode } from "../../tools/tools";
 import {
   type HostSessionBinding,

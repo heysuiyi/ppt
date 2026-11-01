@@ -196,7 +196,7 @@ export function checkAgentBoundaries(rootDir = repositoryRoot) {
   }
   const manifest = manifestResult.config;
   if (
-    manifest.name !== "@agent-ppt/harness" ||
+    manifest.name !== "@agent-harness/core" ||
     !manifest.exports ||
     typeof manifest.exports !== "object" ||
     Array.isArray(manifest.exports)

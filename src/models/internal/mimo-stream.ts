@@ -1,4 +1,4 @@
-import type { ModelContentDelta, ModelStreamEvent } from "@agent-ppt/harness/model/model-contract";
+import type { ModelContentDelta, ModelStreamEvent } from "@agent-harness/core/model/model-contract";
 import { invalid, MimoModelError, nonempty, object, text } from "./mimo-errors";
 import { projectItem, same } from "./mimo-responses";
 

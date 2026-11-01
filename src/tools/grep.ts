@@ -2,7 +2,7 @@ import type {
   ImmediateToolDefinition,
   ToolExecutionContext,
   ToolResult,
-} from "@agent-ppt/harness/tools/tool-contract";
+} from "@agent-harness/core/tools/tool-contract";
 import { z } from "zod";
 
 export interface GrepInput {

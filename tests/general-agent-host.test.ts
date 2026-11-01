@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ModelMessage, ModelSelection } from "@agent-ppt/harness/model/model-contract";
-import type { CheckpointKey } from "@agent-ppt/harness/session/checkpoint-contract";
-import type { AgentCheckpoint } from "@agent-ppt/harness/session/session-contract";
+import type { ModelMessage, ModelSelection } from "@agent-harness/core/model/model-contract";
+import type { CheckpointKey } from "@agent-harness/core/session/checkpoint-contract";
+import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
 

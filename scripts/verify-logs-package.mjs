@@ -18,12 +18,19 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const entries = ["log-contract", "logs", "node-logs"];
 const privateEntries = [
+  "@agent-harness/logs",
+  "@agent-harness/logs/package.json",
+  "@agent-harness/logs/internal/log-runtime",
+  "@agent-harness/logs/dist/logs.js",
+  "@agent-harness/logs/dist/internal/log-safety.js",
+  "@agent-harness/logs/src/logs.ts",
+];
+const oldEntries = [
   "@agent-ppt/logs",
-  "@agent-ppt/logs/package.json",
-  "@agent-ppt/logs/internal/log-runtime",
-  "@agent-ppt/logs/dist/logs.js",
-  "@agent-ppt/logs/dist/internal/log-safety.js",
-  "@agent-ppt/logs/src/logs.ts",
+  ...entries.map((entry) => `@agent-ppt/logs/${entry}`),
+  ...privateEntries
+    .slice(1)
+    .map((entry) => entry.replace("@agent-harness/logs/", "@agent-ppt/logs/")),
 ];
 
 // Same npm-cli discovery as verify-harness-package: never interpolate a Windows shell command.
@@ -101,8 +108,8 @@ async function rejectLinks(directory) {
   }
 }
 const genericConsumer = `
-import { createLogs } from '@agent-ppt/logs/logs';
-import type { Logger, LogRecord, Logs, NodeLogsOptions, NodeLogsSettings } from '@agent-ppt/logs/log-contract';
+import { createLogs } from '@agent-harness/logs/logs';
+import type { Logger, LogRecord, Logs, NodeLogsOptions, NodeLogsSettings } from '@agent-harness/logs/log-contract';
 const records: LogRecord[] = [];
 const logs: Logs = createLogs({ outputs: [{ id: 'capture', minimumLevel: 'debug', exporter: { export(record) { records.push(record); }, async close() {} } }] });
 const logger: Logger = logs.getLogger('consumer').child({ operation: 'compile' });
@@ -112,9 +119,9 @@ const settings = (value: NodeLogsSettings): number => value.recent.capacity;
 void structural; void settings; void logs.close();
 `;
 const nodeConsumer = `
-import { createLogs } from '@agent-ppt/logs/logs';
-import { createNodeLogs } from '@agent-ppt/logs/node-logs';
-import type { LogRecord, NodeLogs, Logger } from '@agent-ppt/logs/log-contract';
+import { createLogs } from '@agent-harness/logs/logs';
+import { createNodeLogs } from '@agent-harness/logs/node-logs';
+import type { LogRecord, NodeLogs, Logger } from '@agent-harness/logs/log-contract';
 const records: LogRecord[] = [];
 const logs = createLogs({ outputs: [{ id: 'capture', minimumLevel: 'info', exporter: { export(record) { records.push(record); }, async close() {} } }] });
 const logger: Logger = logs.getLogger('consumer');
@@ -126,14 +133,15 @@ import assert from 'node:assert/strict';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createLogs } from '@agent-ppt/logs/logs';
-import { createNodeLogs } from '@agent-ppt/logs/node-logs';
+import { createLogs } from '@agent-harness/logs/logs';
+import { createNodeLogs } from '@agent-harness/logs/node-logs';
 for (const entry of ${JSON.stringify(entries)}) {
-  const specifier = '@agent-ppt/logs/' + entry;
-  assert.equal(fileURLToPath(import.meta.resolve(specifier)), path.join(process.cwd(), 'node_modules/@agent-ppt/logs/dist', entry + '.js'));
+  const specifier = '@agent-harness/logs/' + entry;
+  assert.equal(fileURLToPath(import.meta.resolve(specifier)), path.join(process.cwd(), 'node_modules/@agent-harness/logs/dist', entry + '.js'));
   await import(specifier);
 }
 for (const entry of ${JSON.stringify(privateEntries)}) await assert.rejects(() => import(entry), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+for (const entry of ${JSON.stringify(oldEntries)}) await assert.rejects(() => import(entry), { code: 'ERR_MODULE_NOT_FOUND' });
 const records = [];
 let closed = 0, failedClosed = 0;
 const logs = createLogs({ outputs: [
@@ -217,13 +225,13 @@ await node.close();
 assert.equal(node.getStatus().state, 'closed');
 await assert.rejects(node.updateSettings({ recent: { capacity: 3 } }));
 await assert.rejects(node.clearFiles());
-console.log(JSON.stringify({ publicEntries: 'resolved', privateImports: 'rejected', snapshotsAndSecurity: true, exporterFailureContained: true, borrowedLoggerHasNoManagement: true, ownedExportersClosedOnce: true, nodeFileRecentSettingsClear: true }));
+console.log(JSON.stringify({ publicEntries: 'resolved', privateImports: 'rejected', oldAliases: 'absent', snapshotsAndSecurity: true, exporterFailureContained: true, borrowedLoggerHasNoManagement: true, ownedExportersClosedOnce: true, nodeFileRecentSettingsClear: true }));
 `;
 
 async function main() {
   assert(Number(process.versions.node.split(".")[0]) >= 24, "Node 24 or newer is required");
   const npmCli = await findNpmCli();
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "agent-ppt-logs-package-"));
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "agent-harness-logs-package-"));
   try {
     assert(
       !within(await realpath(repositoryRoot), await realpath(temporaryRoot)),
@@ -258,7 +266,7 @@ async function main() {
     await writeFile(
       path.join(project, "package.json"),
       JSON.stringify({
-        name: "logs-packed-consumer",
+        name: "agent-harness-logs-packed-consumer",
         version: "1.0.0",
         private: true,
         type: "module",
@@ -281,21 +289,21 @@ async function main() {
     const tree = JSON.parse(
       (await npm(["ls", "--all", "--json"], project, "Inspect installed closure")).stdout,
     );
-    assert.deepEqual(Object.keys(tree.dependencies ?? {}), ["@agent-ppt/logs"]);
-    const dependency = tree.dependencies["@agent-ppt/logs"];
+    assert.deepEqual(Object.keys(tree.dependencies ?? {}), ["@agent-harness/logs"]);
+    const dependency = tree.dependencies["@agent-harness/logs"];
     assert(
       !dependency.missing &&
         !dependency.invalid &&
         !Object.keys(dependency.dependencies ?? {}).length,
       "Logs must have zero runtime dependencies",
     );
-    const installed = path.join(project, "node_modules/@agent-ppt/logs");
+    const installed = path.join(project, "node_modules/@agent-harness/logs");
     assert(
       within(await realpath(temporaryRoot), await realpath(installed)),
       "Install resolved back to repository",
     );
     const manifest = JSON.parse(await readFile(path.join(installed, "package.json"), "utf8"));
-    assert.equal(manifest.name, "@agent-ppt/logs");
+    assert.equal(manifest.name, "@agent-harness/logs");
     assert.equal(manifest.version, "0.1.0");
     assert.equal(manifest.private, true);
     assert.equal(manifest.type, "module");
@@ -390,7 +398,7 @@ async function main() {
       ).stdout,
     );
     return {
-      package: "@agent-ppt/logs@0.1.0",
+      package: "@agent-harness/logs@0.1.0",
       packedAlreadyBuiltPackage: true,
       isolatedOfflineInstall: true,
       installationScripts: false,

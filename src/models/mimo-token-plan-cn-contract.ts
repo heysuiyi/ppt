@@ -1,6 +1,6 @@
-import type { ModelClientFactory } from "@agent-ppt/harness/model/model-contract";
-import type { Disposable } from "@agent-ppt/harness/protocol-values";
-import type { Logger } from "@agent-ppt/logs/log-contract";
+import type { ModelClientFactory } from "@agent-harness/core/model/model-contract";
+import type { Disposable } from "@agent-harness/core/protocol-values";
+import type { Logger } from "@agent-harness/logs/log-contract";
 
 export const MIMO_TOKEN_PLAN_CN_PROVIDER_ID = "mimo-token-plan-cn" as const;
 export const MIMO_TOKEN_PLAN_CN_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1";

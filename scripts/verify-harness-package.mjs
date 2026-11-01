@@ -31,11 +31,18 @@ const entries = [
   "session-host",
 ];
 const privateEntries = [
+  "@agent-harness/core",
+  "@agent-harness/core/runtime/default-agent",
+  "@agent-harness/core/dist/agent/runtime/default-agent.js",
+  "@agent-harness/core/src/agent/protocol-errors.ts",
+  "@agent-harness/core/package.json",
+];
+const oldEntries = [
   "@agent-ppt/harness",
-  "@agent-ppt/harness/runtime/default-agent",
-  "@agent-ppt/harness/dist/agent/runtime/default-agent.js",
-  "@agent-ppt/harness/src/agent/protocol-errors.ts",
-  "@agent-ppt/harness/package.json",
+  ...entries.map((entry) => `@agent-ppt/harness/${entry}`),
+  ...privateEntries
+    .slice(1)
+    .map((entry) => entry.replace("@agent-harness/core/", "@agent-ppt/harness/")),
 ];
 
 // Invoke npm's JavaScript entry with Node: no cmd.exe quoting or shell interpolation on Windows.
@@ -120,18 +127,18 @@ async function rejectLinks(directory) {
 // This fixture has no Node typings, repository imports, aliases, or ambient package types.
 // The same real ports and Zod definitions are checked under both consumer resolution modes.
 const consumerSource = `
-import { createAgentApplication, type AgentApplication } from "@agent-ppt/harness/application/agent-application";
-import type { Agent, AgentDefinition, AgentRunHandle, AgentRunResult } from "@agent-ppt/harness/agent-contract";
-import type { AgentCreationOptions, AgentServices } from "@agent-ppt/harness/agent-factory";
-import { sameValue, snapshot, type ProtocolError } from "@agent-ppt/harness/protocol-values";
-import { AgentError, asProtocolError } from "@agent-ppt/harness/protocol-errors";
-import type { AgentPlugin } from "@agent-ppt/harness/extensions/plugin-contract";
-import type { ModelClientFactory, ModelMessage, ModelRequest, ModelResponse, ModelSelection } from "@agent-ppt/harness/model/model-contract";
-import type { ImmediateToolDefinition, ToolAuthorizationPolicy } from "@agent-ppt/harness/tools/tool-contract";
-import type { AgentCheckpoint, SessionHistory, SessionHistoryStore } from "@agent-ppt/harness/session/session-contract";
-import type { CheckpointKey, CheckpointLease, CheckpointStore } from "@agent-ppt/harness/session/checkpoint-contract";
-import type { RuntimeEvent } from "@agent-ppt/harness/session/session-events";
-import { createSessionHost, type SessionHost } from "@agent-ppt/harness/session-host";
+import { createAgentApplication, type AgentApplication } from "@agent-harness/core/application/agent-application";
+import type { Agent, AgentDefinition, AgentRunHandle, AgentRunResult } from "@agent-harness/core/agent-contract";
+import type { AgentCreationOptions, AgentServices } from "@agent-harness/core/agent-factory";
+import { sameValue, snapshot, type ProtocolError } from "@agent-harness/core/protocol-values";
+import { AgentError, asProtocolError } from "@agent-harness/core/protocol-errors";
+import type { AgentPlugin } from "@agent-harness/core/extensions/plugin-contract";
+import type { ModelClientFactory, ModelMessage, ModelRequest, ModelResponse, ModelSelection } from "@agent-harness/core/model/model-contract";
+import type { ImmediateToolDefinition, ToolAuthorizationPolicy } from "@agent-harness/core/tools/tool-contract";
+import type { AgentCheckpoint, SessionHistory, SessionHistoryStore } from "@agent-harness/core/session/session-contract";
+import type { CheckpointKey, CheckpointLease, CheckpointStore } from "@agent-harness/core/session/checkpoint-contract";
+import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
+import { createSessionHost, type SessionHost } from "@agent-harness/core/session-host";
 import { z } from "zod";
 
 function check(value: unknown, message: string): asserts value {
@@ -400,7 +407,7 @@ console.log(JSON.stringify({
 async function main() {
   assert(Number(process.versions.node.split(".")[0]) >= 24, "Node 24 or newer is required");
   const npmCli = await findNpmCli();
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "agent-ppt-harness-package-"));
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "agent-harness-core-package-"));
   try {
     const outsideRoot = await realpath(temporaryRoot);
     assert(
@@ -428,7 +435,7 @@ async function main() {
     }
     // --ignore-scripts is deliberate: the workspace must already contain distributable JS + d.ts.
     const harnessTarball = await pack(
-      ["--workspace", "@agent-ppt/harness"],
+      ["--workspace", "@agent-harness/core"],
       repositoryRoot,
       "Pack harness workspace",
     );
@@ -440,7 +447,7 @@ async function main() {
     await writeFile(
       path.join(project, "package.json"),
       JSON.stringify({
-        name: "harness-packed-consumer",
+        name: "agent-harness-core-packed-consumer",
         version: "1.0.0",
         private: true,
         type: "module",
@@ -469,7 +476,7 @@ async function main() {
     function visitDependencies(node) {
       for (const [name, dependency] of Object.entries(node.dependencies ?? {})) {
         assert(
-          ["@agent-ppt/harness", "zod"].includes(name),
+          ["@agent-harness/core", "zod"].includes(name),
           `Unexpected packed consumer dependency: ${name}`,
         );
         assert(!dependency.missing && !dependency.invalid, `Invalid installed dependency: ${name}`);
@@ -479,15 +486,15 @@ async function main() {
     }
     visitDependencies(tree);
     assert(
-      installed.has("@agent-ppt/harness") && installed.has("zod"),
+      installed.has("@agent-harness/core") && installed.has("zod"),
       "Real packed harness and Zod must be installed",
     );
-    const installedHarness = path.join(project, "node_modules/@agent-ppt/harness");
+    const installedHarness = path.join(project, "node_modules/@agent-harness/core");
     const manifest = JSON.parse(
       await readFile(path.join(installedHarness, "package.json"), "utf8"),
     );
     assert(
-      manifest.name === "@agent-ppt/harness" &&
+      manifest.name === "@agent-harness/core" &&
         manifest.version === "0.1.0" &&
         manifest.private === true &&
         manifest.type === "module",
@@ -569,15 +576,25 @@ async function main() {
     const entryProbe = `
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-for (const entry of ${JSON.stringify(entries)}) await import('@agent-ppt/harness/' + entry);
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+for (const entry of ${JSON.stringify(entries)}) {
+  const specifier = '@agent-harness/core/' + entry;
+  const output = entry === 'session-host' ? 'agent-host/session-host' : 'agent/' + entry;
+  assert.equal(fileURLToPath(import.meta.resolve(specifier)), path.join(process.cwd(), 'node_modules/@agent-harness/core/dist', output + '.js'));
+  await import(specifier);
+}
 for (const entry of ${JSON.stringify(privateEntries)}) {
   await assert.rejects(() => import(entry), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+}
+for (const entry of ${JSON.stringify(oldEntries)}) {
+  await assert.rejects(() => import(entry), { code: 'ERR_MODULE_NOT_FOUND' });
 }
 const require = createRequire(import.meta.url);
 for (const forbidden of ['electron', 'openai', 'better-sqlite3', 'sqlite3']) {
   assert.throws(() => require.resolve(forbidden), { code: 'MODULE_NOT_FOUND' });
 }
-console.log(JSON.stringify({ publicEntries: 'resolved', privateImports: 'rejected', productionDependencies: 'absent' }));
+console.log(JSON.stringify({ publicEntries: 'resolved', privateImports: 'rejected', oldAliases: 'absent', productionDependencies: 'absent' }));
 `;
     await writeFile(path.join(project, "probe.mjs"), entryProbe);
     const probe = JSON.parse(
@@ -598,7 +615,7 @@ console.log(JSON.stringify({ publicEntries: 'resolved', privateImports: 'rejecte
       ).stdout,
     );
     return {
-      package: "@agent-ppt/harness@0.1.0",
+      package: "@agent-harness/core@0.1.0",
       packedWorkspace: true,
       isolatedTarballInstall: true,
       installationScripts: false,

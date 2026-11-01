@@ -8,9 +8,9 @@ import type {
   ModelBinding,
   ModelRequest,
   ModelStreamEvent,
-} from "@agent-ppt/harness/model/model-contract";
-import { AgentError } from "@agent-ppt/harness/protocol-errors";
-import type { Logger, LogInput } from "@agent-ppt/logs/log-contract";
+} from "@agent-harness/core/model/model-contract";
+import { AgentError } from "@agent-harness/core/protocol-errors";
+import type { Logger, LogInput } from "@agent-harness/logs/log-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentConfiguration, ExecutionPlan } from "../src/main/agent-configuration";
 import { prepareConfiguredModel } from "../src/main/agent-host/configured-model-factory";

@@ -1,6 +1,6 @@
-import type { ModelSelection } from "@agent-ppt/harness/model/model-contract";
-import { AgentError } from "@agent-ppt/harness/protocol-errors";
-import { snapshot } from "@agent-ppt/harness/protocol-values";
+import type { ModelSelection } from "@agent-harness/core/model/model-contract";
+import { AgentError } from "@agent-harness/core/protocol-errors";
+import { snapshot } from "@agent-harness/core/protocol-values";
 import type { ToolsMode } from "../../tools/tools";
 
 /** 仅宿主保存的恢复边界，不进入内核协议，也不携带连接凭据或地址。 */

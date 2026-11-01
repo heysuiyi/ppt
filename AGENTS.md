@@ -2,7 +2,7 @@
 
 本项目以通用 Agent Harness 为演化方向，PPT 只是可选插件能力之一，不是内核定位或路线的中心。本文件约束本仓库的代码组织、架构演进和验证方式。修改前先确认受影响模块的公开协议、现有实现与调用方；当前目录位置不等于长期合理的模块边界。
 
-项目方向与阶段门槛见 [项目整体规划](docs/project-plan.md)，当前待执行迭代见 [下一步计划](docs/next-steps.md)。规划中的目标不代表已经实现，也不自动授权当前任务范围之外的改动；完成阶段后同步更新计划状态与验证证据。
+项目方向与阶段门槛见 [项目整体规划](docs/project-plan.md)，当前待执行迭代见 [下一步计划](docs/next-steps/README.md)。规划中的目标不代表已经实现，也不自动授权当前任务范围之外的改动；完成阶段后同步更新计划状态与验证证据。
 
 ## 1. 架构方向：通用 Harness 与模块封装
 
@@ -26,10 +26,10 @@
 
 | 位置 | 当前职责 |
 | --- | --- |
-| `packages/harness/src/agent/`、`packages/harness/src/agent-host/` | 私有 workspace 包 `@agent-ppt/harness`：通用执行协议、默认实现与 SessionHost；调用方只消费受控子路径的构建产物，不直接导入源码 |
+| `packages/harness/src/agent/`、`packages/harness/src/agent-host/` | 私有 workspace 包 `@agent-harness/core`：通用执行协议、默认实现与 SessionHost；调用方只消费受控子路径的构建产物，不直接导入源码 |
 | `src/main/agent-host/` | 当前 Electron 宿主的配置与 Gateway 适配、持久化适配、装配和独立开发入口；不是 Harness 的全部实现 |
 | `src/tools/` | `read/write/edit/glob/grep` 基础工具的约定、默认装配与内部安全读写/搜索机制；不提供独立文件功能开关 |
-| `packages/logs/src/` | 私有 workspace 包 `@agent-ppt/logs`：通用诊断日志协议、默认运行时与 Node 输出/管理；与 Harness 互不依赖，消费者借用 Logger，宿主拥有实例和关闭责任 |
+| `packages/logs/src/` | 私有 workspace 包 `@agent-harness/logs`：通用诊断日志协议、默认运行时与 Node 输出/管理；与 Harness 互不依赖，消费者借用 Logger，宿主拥有实例和关闭责任 |
 | `src/main/agent/` | 仍在生产链路中使用的旧 Agent；宿主暂时复用其网关，旧文件工具与持久化已改用 `src/tools/internal/` 中迁出的共享原语 |
 | `src/main/plugins/ppt/`、`src/ppt/`、`src/main/presentation-lifecycle/` | 现有 PPT 能力、领域模型及旧链路适配；尚未完成通用 Harness 插件接入，其迁移不构成 Harness 演进的前置要求 |
 | `src/renderer/`、`src/preload/`、`src/shared/` | 界面、现有 IPC 边界及应用共享协议；不是通用内核的依赖来源 |

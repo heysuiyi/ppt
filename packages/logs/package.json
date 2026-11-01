@@ -1,5 +1,5 @@
 {
-  "name": "@agent-ppt/logs",
+  "name": "@agent-harness/logs",
   "version": "0.1.0",
   "private": true,
   "type": "module",

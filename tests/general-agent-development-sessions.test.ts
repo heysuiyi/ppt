@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { ModelMessage } from "@agent-ppt/harness/model/model-contract";
-import type { AgentCheckpoint } from "@agent-ppt/harness/session/session-contract";
+import type { ModelMessage } from "@agent-harness/core/model/model-contract";
+import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import { listDevelopmentSessions } from "../src/main/agent-host/development-sessions";
 import type { HostSessionBinding } from "../src/main/agent-host/host-session-binding";

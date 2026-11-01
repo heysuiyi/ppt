@@ -1,20 +1,20 @@
-import type { AgentPlugin, PluginContext } from "@agent-ppt/harness/extensions/plugin-contract";
+import type { AgentPlugin, PluginContext } from "@agent-harness/core/extensions/plugin-contract";
 import type {
   ModelClientFactory,
   ModelToolCallContent,
-} from "@agent-ppt/harness/model/model-contract";
+} from "@agent-harness/core/model/model-contract";
 import type {
   InteractionRequest,
   InteractionResponse,
   RunIdentity,
   VersionedData,
-} from "@agent-ppt/harness/protocol-values";
+} from "@agent-harness/core/protocol-values";
 import type {
   ImmediateToolDefinition,
   ToolAuthorizationDecision,
   ToolExecutionContext,
   ToolSuspension,
-} from "@agent-ppt/harness/tools/tool-contract";
+} from "@agent-harness/core/tools/tool-contract";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { installPlugins } from "../packages/harness/dist/agent/extensions/plugin-manager.js";

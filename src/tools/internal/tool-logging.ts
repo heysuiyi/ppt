@@ -1,5 +1,5 @@
-import type { ImmediateToolDefinition } from "@agent-ppt/harness/tools/tool-contract";
-import type { Logger } from "@agent-ppt/logs/log-contract";
+import type { ImmediateToolDefinition } from "@agent-harness/core/tools/tool-contract";
+import type { Logger } from "@agent-harness/logs/log-contract";
 
 /** 只观察获准进入的工具体；不保存输入、路径、正文或模型投影。 */
 export function withToolLogging<TInput, TOutput>(

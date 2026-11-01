@@ -1,16 +1,16 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentServices } from "@agent-ppt/harness/agent-factory";
-import { createAgentApplication } from "@agent-ppt/harness/application/agent-application";
-import type { AgentPlugin } from "@agent-ppt/harness/extensions/plugin-contract";
+import type { AgentServices } from "@agent-harness/core/agent-factory";
+import { createAgentApplication } from "@agent-harness/core/application/agent-application";
+import type { AgentPlugin } from "@agent-harness/core/extensions/plugin-contract";
 import type {
   ModelClientFactory,
   ModelRequest,
   ModelResponse,
-} from "@agent-ppt/harness/model/model-contract";
-import type { Disposable } from "@agent-ppt/harness/protocol-values";
-import type { CheckpointStore } from "@agent-ppt/harness/session/checkpoint-contract";
+} from "@agent-harness/core/model/model-contract";
+import type { Disposable } from "@agent-harness/core/protocol-values";
+import type { CheckpointStore } from "@agent-harness/core/session/checkpoint-contract";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {

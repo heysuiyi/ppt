@@ -3,8 +3,8 @@ import type {
   ModelRequest,
   ModelResponse,
   ModelSelection,
-} from "@agent-ppt/harness/model/model-contract";
-import type { JsonObject, JsonValue } from "@agent-ppt/harness/protocol-values";
+} from "@agent-harness/core/model/model-contract";
+import type { JsonObject, JsonValue } from "@agent-harness/core/protocol-values";
 import type { ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
 import { MIMO_TOKEN_PLAN_CN_PROVIDER_ID } from "../mimo-token-plan-cn-contract";
 import { invalid, MimoModelError, nonempty, object, outputBudget, text } from "./mimo-errors";

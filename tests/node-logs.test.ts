@@ -18,7 +18,7 @@ import {
   type NodeLogs,
   type NodeLogsOptions,
   type NodeLogsSettingsPatch,
-} from "@agent-ppt/logs/node-logs";
+} from "@agent-harness/logs/node-logs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const directories: string[] = [];

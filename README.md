@@ -1,4 +1,4 @@
-# Agent PPT
+# Agent Harness
 
 [English](./README.en.md) · [文档索引](./docs/README.md) · [Docs (EN)](./docs/README.en.md)
 
@@ -8,9 +8,13 @@
 ![Vitest](https://img.shields.io/badge/Vitest-3.2-6E9F18?logo=vitest&logoColor=white)
 ![Local First](https://img.shields.io/badge/local--first-desktop-111827)
 
-Agent PPT 是一个本地优先的 AI 演示文稿工作台。它按任务需要产出可确认的 Brief、大纲、分镜、设计锁、逐页 SVG 与 PPTX，让模型像一个会使用工具并交付证据的演示设计搭档，而不是一次性吐出不可控的黑箱文件。
+本项目正在从演示文稿应用演进为通用 Agent Harness：提供模型中立执行、工具与插件装配、授权、规范历史及恢复能力。通用内核为 `@agent-harness/core`，诊断日志为独立的 `@agent-harness/logs`；PPT 是后续按公开协议接入的可选业务能力，不是内核定位。
 
-它尤其适合这些场景：
+## 现有 Electron/PPT 宿主
+
+现有生产 UI 与旧 Agent 仍是本地优先的演示文稿工作台，尚未切换到新 Harness。下方界面、PPT 功能与使用说明描述这一保留宿主，不代表通用内核已经完成生产接入。宿主的产品名、appId、`.agent-ppt` 数据目录和 `AGENT_PPT_DATA_DIR` 暂时保持兼容。
+
+该宿主适合这些场景：
 
 - 从零生成一套汇报、方案、课程或产品介绍 PPT（SVG-native 整页作者路径）
 - 在已有稿件上追加页面、改写文案或统一风格（经聊天中的 Agent / Skill，如 `ppt-beautify`）
@@ -226,8 +230,8 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `src/renderer/`：React 工作台、聊天流、实时 PPT 镜像、设置台；`src/renderer/src/App.tsx` 直接承载公共布局与工作台/设置页切换
   - 布局由容器分配空间：根节点限定窗口高度，主体通过 Flex/Grid 伸展；栏宽由 `useWorkbenchLayout` 的 CSS 变量统一控制，并通过 `ResizeObserver` 按实际容器尺寸适配。内部面板独立滚动，局部响应式使用容器查询；窗口缩小时不会覆盖用户保存的预览宽度。SVG 预览保持 16:9，作者坐标仍为 1280×720。
   - 面板尺寸拖拽统一使用 `src/renderer/src/components/ResizeHandle.tsx`：受控 `value/min/max/onValueChange`，`axis` 选择左右或上下拖动，`direction` 决定增减方向。组件统一管理 idle/hover/dragging/disabled、指针捕获、全局光标和清理；支持方向键（10px）、Home/End。取消保留最后尺寸，禁用、失焦、失去捕获、卸载或边界变化时结束拖拽；尺寸约束和持久化仍由布局层负责。
-- `packages/harness/`：私有 npm workspace 包 `@agent-ppt/harness@0.1.0`，Node >=24、ESM-only；独立生成 JS 与声明，运行时仅依赖 Zod。普通消费方使用包的精确子路径，不直接引用源码或私有 dist 文件；未接入生产 UI，现有 `src/main/agent/` 继续运行。
-  - `src/agent/application/agent-application.ts`：公开 `@agent-ppt/harness/application/agent-application` 的 `createAgentApplication()`；内部默认工厂安装插件、绑定模型、就绪后发布实例，失败回滚。应用关闭先拒绝新创建、打断并排空执行，再释放拥有的资源；调用方不直接使用默认工厂。以下子目录均位于 `src/agent/` 内，不代表可导入路径。
+- `packages/harness/`：私有 npm workspace 包 `@agent-harness/core@0.1.0`，Node >=24、ESM-only；独立生成 JS 与声明，运行时仅依赖 Zod。普通消费方使用包的精确子路径，不直接引用源码或私有 dist 文件；未接入生产 UI，现有 `src/main/agent/` 继续运行。
+  - `src/agent/application/agent-application.ts`：公开 `@agent-harness/core/application/agent-application` 的 `createAgentApplication()`；内部默认工厂安装插件、绑定模型、就绪后发布实例，失败回滚。应用关闭先拒绝新创建、打断并排空执行，再释放拥有的资源；调用方不直接使用默认工厂。以下子目录均位于 `src/agent/` 内，不代表可导入路径。
   - `scope/`：Application → Agent → Run 的资源所有权、逆序释放与注册句柄；借用的宿主服务不随 Agent 关闭。
   - `runtime/`：单实例单激活的 `run/resume`、独立事件观察通道、Query 检查点协调，以及模型步/工具步。新请求只接收用户消息，不强制转换为业务 Task；Step 在提交边界更新快照。
   - `model/`：模型中立消息、能力声明、私有重放状态、按 provider ID 注册的模型工厂；增加厂商不在循环中新增分支。
@@ -242,7 +246,7 @@ PPTX exporter (hybrid: SVG background + editable text)
   - `glob` 支持 `*`、`**`、`?`；`grep` 只做字面量逐行搜索，不执行正则或 Shell。遍历、文件字节数、搜索总字节数与结果都有上限，未完成扫描明确报告 `truncated`，二进制/过大文件明确列为跳过；搜索不授予修改资格。
   - `internal/` 中迁出的安全读写与原子持久化原语也继续服务旧生产调用方，没有旧路径别名；旧 PPT 工具名称和业务提交链路未切换。原子 I/O 限制只由新工具显式启用，不对旧持久化调用新增全局限制。
   - 可用 `createTools(options, logs.getLogger("tools"))` 注入窄 Logger；省略时不创建日志实例。执行日志关联当前 Agent/Thread/Query/Run 与工具调用 ID，只记录工具名、状态、影响、耗时和分类错误码，不采集路径、正文、搜索词或编辑载荷；审批未通过时不记录“已执行”。开发宿主已注入 Logger；工具释放不关闭借用的日志系统。
-- `packages/logs/`：私有 workspace 包 `@agent-ppt/logs@0.1.0`，Node >=24、ESM-only、无运行依赖，与 Harness 并列且互不依赖。通过 `@agent-ppt/logs/logs` 的 `createLogs()` 创建通用实例，通过 `@agent-ppt/logs/node-logs` 的 `createNodeLogs()` 使用 stderr、按日 JSONL、近期环形缓冲与管理；窄协议由 `@agent-ppt/logs/log-contract` 提供，不导出内部路径。尚未替换旧 logger、Harness 埋点或现有日志面板。
+- `packages/logs/`：私有 workspace 包 `@agent-harness/logs@0.1.0`，Node >=24、ESM-only、无运行依赖，与 Harness 并列且互不依赖。通过 `@agent-harness/logs/logs` 的 `createLogs()` 创建通用实例，通过 `@agent-harness/logs/node-logs` 的 `createNodeLogs()` 使用 stderr、按日 JSONL、近期环形缓冲与管理；窄协议由 `@agent-harness/logs/log-contract` 提供，不导出内部路径。尚未替换旧 logger、Harness 埋点或现有日志面板。
   - Logger 只负责记录与绑定上下文；输出配置、清理与关闭归宿主。记录先做有界快照和凭据遮蔽再分发，单个输出失败不阻止其他输出，日志不能替代规范历史或检查点。
   - 文件写入显式根下的 `<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，日期使用 UTC；保留与清理仅处理当前实例的托管旧日文件，不读写旧日志、应用设置或 Gateway 归档。
   - `npm run build:packages` 构建 Harness 与 logs；应用/测试/开发入口在消费前构建，dev 等待两个包首次 emit 并持续监听。`npm run verify:logs-package` 验证真实 tarball 的仓库外独立安装、原生 Node 行为及通用声明闭包；日志包不管理应用配置持久化，不提供全局单例或自动服务发现。
@@ -268,9 +272,9 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 宿主显式装配 `AgentServices`（模型工厂、授权策略、历史和检查点），调用 `createAgentApplication(services)`，通过 `application.agents.create()` 提供定义、模型选择、步数预算和插件。业务工具在插件 `setup()` 中注册；内核只调用协议，不读取 Presentation、workspace 服务或厂商配置。关闭顺序为先 `application.close()`，再关闭宿主拥有的存储和连接。
 
-需要固定 Thread 并校验宿主恢复边界时，从 `@agent-ppt/harness/session-host` 导入 `createSessionHost({ services, agent, threadId, binding })`：先等待必需的 `binding.ensure()`，再从公开 Application 创建 Agent。定义、模型、插件和授权均显式提供；`plugins: []` 不依赖工作区或 Electron。SessionHost 只拥有自己的 Application，关闭后不释放借用端口，`resume()` 不接受接管租约。当前 Electron 组合根通过 `workspace-configuration.ts` 选择文件能力、指令和审批策略，继续保存原 v2 绑定；CLI 使用方式与生产 PPT 链路不变。
+需要固定 Thread 并校验宿主恢复边界时，从 `@agent-harness/core/session-host` 导入 `createSessionHost({ services, agent, threadId, binding })`：先等待必需的 `binding.ensure()`，再从公开 Application 创建 Agent。定义、模型、插件和授权均显式提供；`plugins: []` 不依赖工作区或 Electron。SessionHost 只拥有自己的 Application，关闭后不释放借用端口，`resume()` 不接受接管租约。当前 Electron 组合根通过 `workspace-configuration.ts` 选择文件能力、指令和审批策略，继续保存原 v2 绑定；CLI 使用方式与生产 PPT 链路不变。
 
-完整包子路径与实施证据见 [M2-B 包边界](docs/next-steps.md#m2-b-独立包边界与实际消费)。`PluginContext.scope` 只提供 `PluginScope.signal/own()`，不暴露内部资源树的创建与关闭；错误使用 `@agent-ppt/harness/protocol-errors` 的同一 `AgentError`，无损 JSON 快照与值比较由 `@agent-ppt/harness/protocol-values` 提供。`ToolCompletion` 是事件/存储公共数据，`ToolExecutor` 与执行管线仍为内部协议。没有根导出、通配导出、源码别名或旧路径兼容层。
+完整包子路径见 [M2-B 清单](docs/next-steps/m2-b-package-boundary.md#m2-b-独立包边界与实际消费)，当前名称与切换证据见[通用包身份修正](docs/next-steps/package-identities.md#通用包身份修正)。`PluginContext.scope` 只提供 `PluginScope.signal/own()`，不暴露内部资源树的创建与关闭；错误使用 `@agent-harness/core/protocol-errors` 的同一 `AgentError`，无损 JSON 快照与值比较由 `@agent-harness/core/protocol-values` 提供。`ToolCompletion` 是事件/存储公共数据，`ToolExecutor` 与执行管线仍为内部协议。没有根导出、通配导出、源码别名或旧包名兼容层。
 
 `npm run check:agent-boundaries` 在包自身、node/web 三个 TypeScript 项目中校验源码与声明闭包、反向依赖、精确子路径及实际解析目标；只有指定行为测试可白盒导入同一 dist 实体。三斜线引用、继承和泛型条件类型的来源也参与检查。`typecheck` 和 `build` 自动包含该检查；它不是恶意插件沙箱。
 
@@ -350,4 +354,4 @@ Agent PPT 的默认运行方式是本地优先：
 
 ## 当前状态
 
-这是一个快速演进中的实验型桌面应用。当前重点是把“可控的 AI 演示文稿制作”跑通：从需求澄清、内容生成、排版设计、视觉质检，到审批、预览和 PPTX 导出。现行架构与尚未完成的路线图已在文档中明确分开。
+当前重点是通用 Harness 的模块边界与实际宿主消费：已独立通用执行和日志包，模型及工具能力继续按明确边界演进。现有 PPT 工作台保持运行，但不作为内核通用性的标准；生产切换、业务插件接入及尚未执行的可靠性计划分别验收，见项目规划。

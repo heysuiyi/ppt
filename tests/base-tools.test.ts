@@ -14,21 +14,21 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import type { Agent, AgentRunHandle, AgentRunResult } from "@agent-ppt/harness/agent-contract";
-import { createAgentApplication } from "@agent-ppt/harness/application/agent-application";
-import type { AgentPlugin } from "@agent-ppt/harness/extensions/plugin-contract";
+import type { Agent, AgentRunHandle, AgentRunResult } from "@agent-harness/core/agent-contract";
+import { createAgentApplication } from "@agent-harness/core/application/agent-application";
+import type { AgentPlugin } from "@agent-harness/core/extensions/plugin-contract";
 import type {
   ModelClientFactory,
   ModelRequest,
   ModelResponse,
   ModelToolCallContent,
-} from "@agent-ppt/harness/model/model-contract";
-import type { Disposable, JsonObject } from "@agent-ppt/harness/protocol-values";
+} from "@agent-harness/core/model/model-contract";
+import type { Disposable, JsonObject } from "@agent-harness/core/protocol-values";
 import type {
   ToolAuthorizationPolicy,
   ToolCompletion,
-} from "@agent-ppt/harness/tools/tool-contract";
-import { createLogs, type Logger, type LogRecord } from "@agent-ppt/logs/logs";
+} from "@agent-harness/core/tools/tool-contract";
+import { createLogs, type Logger, type LogRecord } from "@agent-harness/logs/logs";
 import { describe, expect, it, vi } from "vitest";
 import { installPlugins } from "../packages/harness/dist/agent/extensions/plugin-manager.js";
 import { PromptRegistry } from "../packages/harness/dist/agent/extensions/prompt-registry.js";

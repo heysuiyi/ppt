@@ -100,7 +100,7 @@ export function checkLogsBoundaries(rootDir = repositoryRoot) {
   const manifest = manifestResult.config;
   const publicTargets = new Map();
   if (
-    manifest.name !== "@agent-ppt/logs" ||
+    manifest.name !== "@agent-harness/logs" ||
     manifest.version !== "0.1.0" ||
     manifest.private !== true ||
     manifest.type !== "module" ||
@@ -111,7 +111,7 @@ export function checkLogsBoundaries(rootDir = repositoryRoot) {
       undefined,
       undefined,
       "manifest",
-      "Expected private @agent-ppt/logs@0.1.0, ESM, Node >=24.",
+      "Expected private @agent-harness/logs@0.1.0, ESM, Node >=24.",
     );
   if (
     Object.keys(manifest.dependencies ?? {}).length ||
@@ -153,7 +153,7 @@ export function checkLogsBoundaries(rootDir = repositoryRoot) {
       );
       continue;
     }
-    publicTargets.set(`@agent-ppt/logs/${entry}`, {
+    publicTargets.set(`@agent-harness/logs/${entry}`, {
       js: identity(path.join(packageRoot, conditions.import)),
       types: identity(path.join(packageRoot, conditions.types)),
     });
@@ -353,8 +353,8 @@ export function checkLogsBoundaries(rootDir = repositoryRoot) {
             );
         } else if (
           (target && owned(target)) ||
-          specifier === "@agent-ppt/logs" ||
-          specifier.startsWith("@agent-ppt/logs/") ||
+          specifier === "@agent-harness/logs" ||
+          specifier.startsWith("@agent-harness/logs/") ||
           /(?:^|\/)packages\/logs\/(?:src|dist)\//.test(specifier.replaceAll("\\", "/")) ||
           (target && within(path.join(root, "src/logs"), target))
         ) {

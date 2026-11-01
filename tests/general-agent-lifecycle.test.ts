@@ -1,19 +1,19 @@
-import type { AgentRunInput } from "@agent-ppt/harness/agent-contract";
-import type { AgentCreationOptions, AgentServices } from "@agent-ppt/harness/agent-factory";
-import { createAgentApplication } from "@agent-ppt/harness/application/agent-application";
-import type { AgentPlugin, PluginScope } from "@agent-ppt/harness/extensions/plugin-contract";
+import type { AgentRunInput } from "@agent-harness/core/agent-contract";
+import type { AgentCreationOptions, AgentServices } from "@agent-harness/core/agent-factory";
+import { createAgentApplication } from "@agent-harness/core/application/agent-application";
+import type { AgentPlugin, PluginScope } from "@agent-harness/core/extensions/plugin-contract";
 import type {
   ModelBinding,
   ModelClient,
   ModelRequest,
   ModelResponse,
-} from "@agent-ppt/harness/model/model-contract";
-import { sameValue, snapshot } from "@agent-ppt/harness/protocol-values";
+} from "@agent-harness/core/model/model-contract";
+import { sameValue, snapshot } from "@agent-harness/core/protocol-values";
 import type {
   CheckpointKey,
   CheckpointLease,
-} from "@agent-ppt/harness/session/checkpoint-contract";
-import type { AgentCheckpoint, SessionHistory } from "@agent-ppt/harness/session/session-contract";
+} from "@agent-harness/core/session/checkpoint-contract";
+import type { AgentCheckpoint, SessionHistory } from "@agent-harness/core/session/session-contract";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { z } from "zod";
 import { RuntimeEventStream } from "../packages/harness/dist/agent/runtime/event-stream.js";

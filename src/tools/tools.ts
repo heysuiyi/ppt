@@ -1,5 +1,5 @@
-import type { AgentPlugin } from "@agent-ppt/harness/extensions/plugin-contract";
-import type { Logger } from "@agent-ppt/logs/log-contract";
+import type { AgentPlugin } from "@agent-harness/core/extensions/plugin-contract";
+import type { Logger } from "@agent-harness/logs/log-contract";
 import { z } from "zod";
 import { createEdit } from "./edit";
 import { createGlob } from "./glob";

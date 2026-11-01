@@ -1,4 +1,4 @@
-import type { ToolResult } from "@agent-ppt/harness/tools/tool-contract";
+import type { ToolResult } from "@agent-harness/core/tools/tool-contract";
 import { AtomicWriteConflictError } from "./atomic";
 import { WorkspaceFileError } from "./workspace-file-types";
 
