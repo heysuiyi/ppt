@@ -276,13 +276,6 @@ export async function executeRun(
     threadId: env.identity.threadId,
     queryId: env.identity.queryId,
   };
-  const unfinished = await env.checkpoints.findUnfinished(key.agentId, key.threadId);
-  if (env.signal.aborted) return cancelledBeforeStart();
-  if (unfinished && unfinished.queryId !== key.queryId)
-    throw new AgentError(
-      "THREAD_PENDING",
-      "Resolve or resume the thread's pending query before starting another",
-    );
   const acquired = await env.checkpoints.acquire(
     key,
     env.identity.runId,
@@ -290,6 +283,11 @@ export async function executeRun(
       ? { replace: request.input.takeover }
       : undefined,
   );
+  if (acquired.status === "thread-pending")
+    throw new AgentError(
+      "THREAD_PENDING",
+      "Resolve or resume the thread's pending query before starting another",
+    );
   if (acquired.status !== "acquired")
     throw new AgentError(
       acquired.status === "busy" ? "WRITER_BUSY" : "STALE_TAKEOVER",

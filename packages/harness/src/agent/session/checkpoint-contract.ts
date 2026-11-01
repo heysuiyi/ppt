@@ -26,6 +26,7 @@ export interface CheckpointAcquireOptions {
 export type CheckpointAcquireResult =
   | { readonly status: "busy"; readonly lease: CheckpointLease }
   | { readonly status: "stale" }
+  | { readonly status: "thread-pending"; readonly queryId: string }
   | {
       readonly status: "acquired";
       readonly lease: CheckpointLease;
@@ -45,12 +46,16 @@ export type CheckpointSaveResult =
  * I/O 失败以拒绝结束；它们不属于 busy/conflict/stale。
  */
 export interface CheckpointStore {
-  /** 查询线程内未结束的逻辑工作；新请求不得悄悄越过待决交互。 */
+  /** 发现线程内未结束的逻辑工作；观察结果不代替 acquire 的原子准入裁决。 */
   findUnfinished(agentId: string, threadId: string): Promise<AgentCheckpoint | null>;
   /**
    * 原子地获取无属主的键，或替换显式提供的确切租约。
    * 若属主存活且没有匹配的替换，则结果为 busy，即使 ownerId 匹配。
    * 过期的替换不得获取或释放该键，即使该键已被释放也不例外。
+   * 在同一原子操作内检查同 agentId/threadId 的其他 Query：有活动属主，
+   * 或状态为 running/waiting/interrupted，均返回 thread-pending 且不修改目标。
+   * 首存前的无快照活动行、终态提交后尚未释放的行同样阻止另起 Query。
+   * 判定顺序为 replace 的 stale、目标 busy、其他 Query 的 thread-pending。
    * 成功获取会读取快照并推进写入方世代。
    */
   acquire(
