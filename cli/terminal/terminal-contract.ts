@@ -188,14 +188,16 @@ export type TerminalRecord =
   | TerminalProcessFinishedRecord;
 
 /** 仅供 mutable viewport；不属于 TerminalRecord，不进入 JSONL 或展示历史。 */
-export interface TerminalTextPreview {
+export type TerminalTextPreview = {
   readonly identity: RunIdentity;
   readonly step: number;
   readonly requestId: string;
-  readonly contentIndex: number;
   readonly text: string;
   readonly truncated: boolean;
-}
+} & (
+  | { readonly contentIndex: number; readonly previewId?: never }
+  | { readonly previewId: string; readonly contentIndex?: never }
+);
 
 export interface TerminalToolDetail extends TerminalToolReference {
   readonly owner: string;

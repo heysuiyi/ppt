@@ -1,0 +1,66 @@
+/* 基础排版与重置不越过新 UI 根；不接管宿主页的 html/body 或滚动。 */
+.ui-root,
+.ui-root *,
+.ui-root *::before,
+.ui-root *::after {
+  box-sizing: border-box;
+}
+
+.ui-root {
+  min-width: 0;
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-font-size-14);
+  line-height: var(--ui-line-height-body);
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+.ui-root :where(h1, h2, h3, h4, p) {
+  margin: 0;
+}
+
+.ui-root :where(h1) {
+  font-size: var(--ui-font-size-24);
+  line-height: 1.4;
+}
+
+.ui-root :where(h2, h3, h4) {
+  font-size: var(--ui-font-size-18);
+  line-height: 1.4;
+}
+
+.ui-root :where(button, input, textarea, select) {
+  font: inherit;
+  color: inherit;
+}
+
+.ui-root :where(code, pre, kbd, samp) {
+  font-family: var(--ui-font-mono);
+}
+
+.ui-root :where(a) {
+  color: var(--ui-focus-ring);
+  text-underline-offset: 3px;
+}
+
+.ui-root :focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-root .ui-portal-host {
+  display: contents;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-root,
+  .ui-root *,
+  .ui-root *::before,
+  .ui-root *::after {
+    scroll-behavior: auto;
+    animation: none;
+    transition: none;
+  }
+}

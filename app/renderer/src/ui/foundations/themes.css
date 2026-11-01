@@ -1,0 +1,118 @@
+/* 语义层按明暗分别映射，不通过反色、透明文字或全局主题覆盖凑出状态。 */
+.ui-root[data-ui-theme="light"] {
+  color-scheme: light;
+  --ui-surface: var(--ui-palette-slate-50);
+  --ui-surface-raised: var(--ui-palette-white);
+  --ui-surface-inset: var(--ui-palette-slate-100);
+  --ui-text: var(--ui-palette-slate-900);
+  --ui-text-muted: var(--ui-palette-slate-600);
+  --ui-text-disabled: var(--ui-palette-slate-600);
+  --ui-border: var(--ui-palette-slate-500);
+  --ui-border-subtle: var(--ui-palette-slate-300);
+  --ui-focus-ring: var(--ui-palette-indigo-700);
+  --ui-action-primary: var(--ui-palette-indigo-700);
+  --ui-action-primary-hover: var(--ui-palette-indigo-800);
+  --ui-action-primary-active: #312e81;
+  --ui-action-on-primary: var(--ui-palette-white);
+  --ui-action-neutral: var(--ui-palette-white);
+  --ui-action-neutral-hover: var(--ui-palette-slate-100);
+  --ui-action-neutral-active: var(--ui-palette-slate-200);
+  --ui-action-on-neutral: var(--ui-text);
+  --ui-action-danger: var(--ui-palette-red-700);
+  --ui-action-danger-hover: var(--ui-palette-red-800);
+  --ui-action-danger-active: var(--ui-palette-red-900);
+  --ui-action-on-danger: var(--ui-palette-white);
+  --ui-action-disabled: var(--ui-palette-slate-200);
+  --ui-status-info-surface: var(--ui-palette-blue-50);
+  --ui-status-info-text: var(--ui-palette-blue-900);
+  --ui-status-info-border: var(--ui-palette-blue-700);
+  --ui-status-success-surface: var(--ui-palette-green-50);
+  --ui-status-success-text: var(--ui-palette-green-800);
+  --ui-status-success-border: var(--ui-palette-green-700);
+  --ui-status-error-surface: var(--ui-palette-red-50);
+  --ui-status-error-text: var(--ui-palette-red-800);
+  --ui-status-error-border: var(--ui-palette-red-700);
+  --ui-shadow-dialog: 0 16px 48px #0f172a33;
+  --ui-backdrop: #0f172a80;
+}
+
+.ui-root[data-ui-theme="dark"] {
+  color-scheme: dark;
+  --ui-surface: var(--ui-palette-slate-950);
+  --ui-surface-raised: var(--ui-palette-slate-900);
+  --ui-surface-inset: var(--ui-palette-slate-800);
+  --ui-text: var(--ui-palette-slate-100);
+  --ui-text-muted: var(--ui-palette-slate-300);
+  --ui-text-disabled: var(--ui-palette-slate-300);
+  --ui-border: var(--ui-palette-slate-400);
+  --ui-border-subtle: var(--ui-palette-slate-700);
+  --ui-focus-ring: var(--ui-palette-indigo-300);
+  --ui-action-primary: var(--ui-palette-indigo-300);
+  --ui-action-primary-hover: var(--ui-palette-indigo-200);
+  --ui-action-primary-active: var(--ui-palette-indigo-100);
+  --ui-action-on-primary: var(--ui-palette-slate-950);
+  --ui-action-neutral: var(--ui-palette-slate-800);
+  --ui-action-neutral-hover: var(--ui-palette-slate-700);
+  --ui-action-neutral-active: var(--ui-palette-slate-600);
+  --ui-action-on-neutral: var(--ui-text);
+  --ui-action-danger: var(--ui-palette-red-300);
+  --ui-action-danger-hover: var(--ui-palette-red-200);
+  --ui-action-danger-active: var(--ui-palette-red-50);
+  --ui-action-on-danger: var(--ui-palette-slate-950);
+  --ui-action-disabled: var(--ui-palette-slate-800);
+  --ui-status-info-surface: var(--ui-palette-blue-950);
+  --ui-status-info-text: var(--ui-palette-blue-300);
+  --ui-status-info-border: var(--ui-palette-blue-300);
+  --ui-status-success-surface: var(--ui-palette-green-950);
+  --ui-status-success-text: var(--ui-palette-green-300);
+  --ui-status-success-border: var(--ui-palette-green-300);
+  --ui-status-error-surface: var(--ui-palette-red-950);
+  --ui-status-error-text: var(--ui-palette-red-300);
+  --ui-status-error-border: var(--ui-palette-red-300);
+  --ui-shadow-dialog: 0 16px 48px #00000080;
+  --ui-backdrop: #020617b3;
+}
+
+@media (forced-colors: active) {
+  .ui-root[data-ui-theme] {
+    --ui-surface: Canvas;
+    --ui-surface-raised: Canvas;
+    --ui-surface-inset: Canvas;
+    --ui-text: CanvasText;
+    --ui-text-muted: CanvasText;
+    --ui-text-disabled: GrayText;
+    --ui-border: ButtonText;
+    --ui-border-subtle: GrayText;
+    --ui-focus-ring: Highlight;
+    --ui-action-primary: ButtonFace;
+    --ui-action-primary-hover: Highlight;
+    --ui-action-primary-active: Highlight;
+    --ui-action-on-primary: ButtonText;
+    --ui-action-neutral: ButtonFace;
+    --ui-action-neutral-hover: Highlight;
+    --ui-action-neutral-active: Highlight;
+    --ui-action-on-neutral: ButtonText;
+    --ui-action-danger: ButtonFace;
+    --ui-action-danger-hover: Highlight;
+    --ui-action-danger-active: Highlight;
+    --ui-action-on-danger: ButtonText;
+    --ui-action-disabled: ButtonFace;
+    --ui-status-info-surface: Canvas;
+    --ui-status-info-text: CanvasText;
+    --ui-status-info-border: CanvasText;
+    --ui-status-success-surface: Canvas;
+    --ui-status-success-text: CanvasText;
+    --ui-status-success-border: CanvasText;
+    --ui-status-error-surface: Canvas;
+    --ui-status-error-text: CanvasText;
+    --ui-status-error-border: CanvasText;
+    --ui-shadow-dialog: none;
+    --ui-backdrop: Canvas;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-root {
+    --ui-motion-fast: 0ms;
+  }
+}

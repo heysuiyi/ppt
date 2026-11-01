@@ -102,7 +102,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
     notice?: TerminalFeedback;
   } = {};
   let activity: string | undefined;
-  let modelStatus: string | undefined;
+  let modelAvailability: TerminalModelItem["availability"];
   let pendingInteraction: InteractionRequest | undefined;
   let active: AgentRunHandle | undefined;
   let lastResult: AgentRunResult | undefined;
@@ -207,7 +207,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
   }
 
   function sizeEditors(): void {
-    const columns = Math.max(1, terminal.columns - 5);
+    const columns = Math.max(1, terminal.columns - 3);
     composer.setColumns(columns);
     if (focus.type === "text") focus.editor.setColumns(columns);
   }
@@ -217,81 +217,71 @@ export async function runTerminalController(options: TerminalControllerOptions):
     if (pendingInteraction && (focus.type === "selector" || focus.type === "text"))
       return {
         purpose: focus.type === "text" && focus.secret ? "secret" : "interaction",
-        status: "等待明确审批；尚未提交回答",
+        status: "等待明确审批",
         hint:
           focus.type === "selector"
             ? narrow
-              ? "↑↓选 Enter答 Esc等待 Tab不批"
-              : "↑↓ 明确选择 · Enter 确认 · Esc 保持等待 · Tab 不批准 · Ctrl+C 取消请求"
+              ? "Esc等待 · Enter答 · ↑↓选 · Tab不批"
+              : "Esc 保持等待 · Enter 确认 · ↑↓ 选择 · Tab 不批准 · Ctrl+C 取消"
             : narrow
-              ? "Enter回答 · Esc保持等待 · ^C取消"
-              : "Enter 提交明确回答 · Esc 保持等待 · Ctrl+C 取消请求",
+              ? "Esc等待 · Enter回答 · ^C取消"
+              : "Esc 保持等待 · Enter 提交回答 · Ctrl+C 取消",
       };
     if (focus.type === "text")
       return {
         purpose: focus.secret ? "secret" : "prompt",
-        status: focus.secret ? "等待安全输入；主草稿保留" : "等待当前提示输入；主草稿保留",
+        status: focus.secret ? "等待安全输入" : "等待输入",
         hint: narrow
-          ? "Enter确认 · Esc返回 · Alt+Enter换行"
-          : "Enter 确认输入 · Alt+Enter 换行 · Esc 返回",
+          ? "Esc返回 · Enter确认 · Alt+Enter换行"
+          : "Esc 返回 · Enter 确认 · Alt+Enter 换行",
       };
     if (focus.type === "selector")
       return {
         purpose: focus.navigation ? "model-selector" : "selector",
-        status: focus.navigation ? "选择模型；尚未切换会话" : "等待选择；主草稿保留",
+        status: focus.navigation ? "选择模型" : "等待选择",
         hint: focus.navigation
           ? narrow
-            ? "Tab切栏 · ↑↓选 · Enter · Esc返回"
-            : "←→/Tab 切栏 · ↑↓ 移动 · Enter 选择 · Esc 返回上层"
+            ? "Esc返回 · Enter选 · Tab切栏 · ↑↓"
+            : "Esc 返回 · Enter 选择 · ←→/Tab 切栏 · ↑↓ 移动"
           : narrow
-            ? "↑↓选 · Enter/Tab确认 · Esc返回"
-            : "输入筛选 · ↑↓ 选择 · Enter/Tab 确认 · Esc 返回",
+            ? "Esc返回 · Enter/Tab确认 · ↑↓选"
+            : "Esc 返回 · Enter/Tab 确认 · ↑↓ 选择 · 输入筛选",
       };
     if (completion)
       return {
         purpose: "completion",
-        status: "命令补全；接受后仍需提交",
-        hint: narrow
-          ? "↑↓选 · Enter/Tab仅补全 · Esc关闭"
-          : "↑↓ 选择 · Enter/Tab 仅接受补全 · Esc 关闭 · 草稿保留",
+        status: "命令补全",
+        hint: narrow ? "Esc关闭 · Enter/Tab仅补全 · ↑↓选" : "Esc 关闭 · Enter/Tab 仅补全 · ↑↓ 选择",
       };
     if (settlingCancellation || phase === "cancelling")
       return {
         purpose: "composer",
-        status: "正在取消并等待持久化结算；尚未完成",
-        hint: narrow ? "草稿不排队 · 等待取消结算" : "可编辑草稿，不排队 · 等待取消结算",
+        status: "取消结算中；尚未完成",
+        hint: "等待取消结算 · 草稿不排队",
       };
     if (phase === "waiting")
       return {
         purpose: "interaction",
-        status: "等待明确审批；尚未提交回答",
-        hint: narrow
-          ? "无默认批准 · Esc等待 · ^C取消"
-          : "无默认批准 · Esc 保持等待 · Ctrl+C 取消请求",
+        status: "等待明确审批",
+        hint: narrow ? "Esc等待 · ^C取消 · 无默认批准" : "Esc 保持等待 · Ctrl+C 取消 · 无默认批准",
       };
     if (phase === "running" || phase === "submitting" || phase === "settling")
       return {
         purpose: "composer",
         status:
-          phase === "running"
-            ? "执行中；暂不能发送"
-            : phase === "submitting"
-              ? "正在提交交互回答；暂不能发送"
-              : "正在保存执行结果；暂不能发送",
+          phase === "running" ? "执行中" : phase === "submitting" ? "正在提交回答" : "正在保存结果",
         hint:
           phase === "running"
             ? narrow
-              ? "草稿不排队 · Esc关详情/取消执行"
-              : "可编辑草稿，不排队 · Esc 先关闭工具详情，再取消执行"
-            : narrow
-              ? "草稿不排队 · 等待结算"
-              : "可编辑草稿，不排队 · 等待结算",
+              ? "Esc收起/取消 · 草稿不排队"
+              : "Esc 收起/取消 · 草稿不排队"
+            : "等待结算 · 草稿不排队",
       };
     if (!ready || phase !== "idle" || uiTask)
       return {
         purpose: "composer",
         status: `${activity ?? (!ready ? "宿主尚未就绪" : "当前操作尚未结束")}；暂不能发送`,
-        hint: narrow ? "草稿不排队 · 等待当前操作" : "可编辑草稿，不排队 · 等待当前操作完成",
+        hint: "等待当前操作 · 草稿不排队",
       };
     return {
       purpose: "composer",
@@ -333,6 +323,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
           }
         : undefined;
     const currentFeedback = feedback.blocking ?? feedback.input ?? feedback.notice;
+    const availability = modelAvailability ?? (ready ? host.context.model.availability : undefined);
     const view: TerminalView = {
       phase,
       input: inputView(),
@@ -355,8 +346,8 @@ export async function runTerminalController(options: TerminalControllerOptions):
               workspace: host.context.workspaceRoot,
               threadId: host.context.threadId,
               model: host.context.model.label,
-              ...((modelStatus ?? host.context.model.availability?.reason)
-                ? { modelStatus: modelStatus ?? host.context.model.availability?.reason }
+              ...(availability?.state === "unavailable"
+                ? { modelStatus: availability.reason }
                 : {}),
               capabilities: host.context.toolsMode,
             },
@@ -529,7 +520,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       models = [];
     }
     const currentId = host.context.model.id;
-    modelStatus = models?.find((item) => item.id === currentId)?.availability?.reason;
+    modelAvailability = models?.find((item) => item.id === currentId)?.availability;
     const selectedId = connect ? await configureConnection() : await askModel(models ?? []);
     if (!selectedId) {
       if (!feedback.notice) setFeedback("notice", "已取消模型选择；当前模型与会话保持不变。");
@@ -562,7 +553,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
     await withActivity(`正在切换模型：${selected.label}`, () =>
       host.newSession({ modelId: selected.id }),
     );
-    modelStatus = selected.availability?.reason;
+    modelAvailability = selected.availability;
     await sessionRecord();
     setFeedback(
       "notice",
@@ -696,7 +687,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
               host.describeInteraction(request),
             );
             if (record) await output(() => renderer.record(record));
-            if (event.type === "model.delta")
+            if (event.type === "model.delta" || event.type === "model.preview")
               await output(() => renderer.preview(preview.update(event)));
           }
         } catch (error) {
@@ -845,7 +836,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       case "new":
         if (await confirmSwitch()) {
           await withActivity("正在创建绑定会话", () => host.newSession());
-          modelStatus = undefined;
+          modelAvailability = undefined;
           await sessionRecord();
         }
         break;
@@ -864,7 +855,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
           await withActivity("正在切换能力与绑定会话", () =>
             host.newSession({ toolsMode: selected as TerminalToolsMode }),
           );
-          modelStatus = undefined;
+          modelAvailability = undefined;
           await sessionRecord();
         }
         break;
@@ -876,7 +867,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
           const session = await withActivity("正在恢复绑定会话", () =>
             host.selectSession(selected),
           );
-          modelStatus = undefined;
+          modelAvailability = undefined;
           await output(() => renderer.history(session.history));
           await sessionRecord();
           if (session.unfinished) launchQuery(() => host.resume(session.unfinished!.queryId));

@@ -1,5 +1,5 @@
 import { layoutComposer } from "./composer-layout.js";
-import { humanRecordOutput } from "./human-renderer.js";
+import { humanRecordOutput, interactiveRecordOutput } from "./human-renderer.js";
 import { encodeTerminalRecord } from "./jsonl-renderer.js";
 import type {
   TerminalRenderer,
@@ -48,6 +48,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
   let selectedTool: string | undefined;
   let latestTool: string | undefined;
   let usedTui = false;
+  let hasConversation = false;
   let toolPage = 0;
   let plainView = "";
   const cards = new Map<string, TerminalToolRecord>();
@@ -79,6 +80,13 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     return !closed && options.mode === "tui" && size.columns >= 40 && size.rows >= 12;
   }
 
+  async function beginDisplay(size = dimensions()): Promise<void> {
+    if (usedTui || !tuiAvailable(size)) return;
+    // 启动时先清可见屏幕再清旧滚动缓冲；后续重绘和缩放不走此路径。
+    await options.writeOutput("\x1b[?25l\x1b[H\x1b[2J\x1b[3J");
+    usedTui = true;
+  }
+
   function discardPreview(): void {
     previewGeneration += 1;
     const batch = previewBatch;
@@ -87,21 +95,25 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     previews = [];
   }
 
+  function paintPreview(batch: PreviewBatch, generation: number): void {
+    void enqueue(async () => {
+      if (closed || generation !== previewGeneration || previewBatch !== batch) return;
+      const next = batch.next;
+      previews = next.filter((part) => !endedQueries.has(queryKey(part.identity)));
+      await redraw();
+      if (previewBatch !== batch) return;
+      if (batch.next === next) previewBatch = undefined;
+      else schedulePreview(batch, generation);
+    }).catch((error: unknown) => {
+      if (previewBatch === batch) previewBatch = undefined;
+      options.onOutputError(error);
+    });
+  }
+
   function schedulePreview(batch: PreviewBatch, generation: number): void {
     batch.timer = setTimeout(() => {
       batch.timer = undefined;
-      void enqueue(async () => {
-        if (closed || generation !== previewGeneration || previewBatch !== batch) return;
-        const next = batch.next;
-        previews = next.filter((part) => !endedQueries.has(queryKey(part.identity)));
-        await redraw();
-        if (previewBatch !== batch) return;
-        if (batch.next === next) previewBatch = undefined;
-        else schedulePreview(batch, generation);
-      }).catch((error: unknown) => {
-        if (previewBatch === batch) previewBatch = undefined;
-        options.onOutputError(error);
-      });
+      paintPreview(batch, generation);
     }, 16);
   }
 
@@ -151,7 +163,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     const height = Math.max(1, size.rows - 1);
     const view = currentView;
     let statuses = view ? statusLines(view, columns) : [];
-    const minimumInput = view && !view.selector ? 3 + (view.prompt ? 2 : 0) : 0;
+    const minimumInput = view && !view.selector ? 1 + (view.prompt ? 2 : 0) : 0;
     const minimumPanel = view?.interaction
       ? view.selector
         ? 6
@@ -162,19 +174,11 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
         ? 4
         : 0;
     const statusBudget = Math.max(1, height - minimumInput - minimumPanel);
-    if (statuses.length > statusBudget)
-      statuses =
-        statusBudget === 1
-          ? statuses.slice(-1)
-          : [...statuses.slice(0, statusBudget - 1), ...statuses.slice(-1)];
-    const rule = (title: string, bottom = false): string => {
+    if (statuses.length > statusBudget) statuses = statuses.slice(-statusBudget);
+    const rule = (title: string): string => {
       const label = title ? truncateTerminalText(` ${title} `, columns - 3) : "";
-      const line = `${bottom ? "╰" : "╭"}─${label}${"─".repeat(Math.max(0, columns - visibleWidth(label) - 3))}${bottom ? "╯" : "╮"}`;
+      const line = `╭─${label}${"─".repeat(Math.max(0, columns - visibleWidth(label) - 3))}╮`;
       return options.color ? `\x1b[2m${line}\x1b[0m` : line;
-    };
-    const inset = (line: string): string => {
-      const text = truncateTerminalText(line, columns - 4);
-      return `│ ${text}${" ".repeat(Math.max(0, columns - 4 - visibleWidth(text)))} │`;
     };
     let composer: string[] = [];
     let composerCursor = 0;
@@ -183,13 +187,18 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       const secret = view.prompt?.secret === true;
       const layout = layoutComposer(
         secret ? { text: "", cursor: 0 } : view.composer.draft,
-        Math.max(1, size.columns - 5),
+        Math.max(1, size.columns - 3),
       );
       const body = layout.lines;
       const position = layout.cursorRow;
       const column = layout.cursorColumn;
-      const promptLines = view.prompt ? wrapTerminalText(view.prompt.text, columns) : [];
-      const promptBudget = Math.max(1, height - statuses.length - 3);
+      const promptLines = view.prompt
+        ? wrapTerminalText(
+            `${view.prompt.secret ? "安全输入 · 隐藏内容\n" : ""}${view.prompt.text}`,
+            columns,
+          )
+        : [];
+      const promptBudget = Math.max(1, height - statuses.length - 1);
       const prompt =
         promptLines.length <= promptBudget
           ? promptLines
@@ -205,23 +214,16 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
           : 2;
       const max = Math.max(
         1,
-        Math.min(3, Math.floor(height / 3), height - statuses.length - prompt.length - reserve - 2),
+        Math.min(3, Math.floor(height / 3), height - statuses.length - prompt.length - reserve),
       );
       const offset = Math.max(0, Math.min(position - max + 1, body.length - max));
-      const title = view.prompt
-        ? secret
-          ? "安全输入 · 隐藏输入"
-          : "确认输入"
-        : view.phase === "idle" && view.composer.submission.enabled
-          ? "输入"
-          : "草稿 · 暂不发送";
       composer = [
         ...prompt,
-        rule(title),
-        ...body.slice(offset, offset + max).map(inset),
-        rule("", true),
+        ...body
+          .slice(offset, offset + max)
+          .map((line, index) => `${index === 0 ? "› " : "  "}${line}`),
       ];
-      composerCursor = prompt.length + 1 + Math.max(0, position - offset);
+      composerCursor = prompt.length + Math.max(0, position - offset);
       composerColumn = 2 + column;
     }
     const available = Math.max(0, height - statuses.length - composer.length);
@@ -394,28 +396,20 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       );
     } else {
       for (const preview of previews) {
-        content.push(
-          truncateTerminalText(
-            `生成预览 · 步骤 ${preview.step}${preview.truncated ? " · 仅保留尾部" : ""}`,
-            columns,
-          ),
-        );
+        if (preview.truncated)
+          content.push(truncateTerminalText("… 前文已截断，仅展示当前正文尾部", columns));
         content.push(...markdownLines(preview.text, columns, true));
       }
-      if (previews.length > 0)
-        content.push(truncateTerminalText("预览尚未提交，以最终结果为准", columns));
       const latest = latestTool ? cards.get(latestTool) : undefined;
       if (latest) content.push(...toolCardLines(latest, columns, false));
-      if (content.length === 0 && view && !view.prompt) {
-        content.push(
-          truncateTerminalText(
-            view.phase === "idle" && view.composer.submission.enabled
-              ? "开始对话 · 描述任务，或输入 / 查看命令"
-              : view.activity || "状态将在此更新；草稿不会自动发送",
-            columns,
-          ),
-          "",
-        );
+      if (
+        content.length === 0 &&
+        !hasConversation &&
+        view?.phase === "idle" &&
+        view.composer.submission.enabled &&
+        !view.prompt
+      ) {
+        content.push(truncateTerminalText("开始对话 · 描述任务，或输入 / 查看命令", columns), "");
       }
     }
     const visible =
@@ -426,11 +420,13 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
           : view?.interaction || view?.selector || view?.completion
             ? content.slice(0, available)
             : content.slice(-available);
-    const lines = [...visible, ...composer, ...statuses].slice(0, height);
+    const aboveInput = composer.length > 0 ? statuses.slice(0, 1) : [];
+    const belowInput = composer.length > 0 ? statuses.slice(1) : statuses;
+    const lines = [...visible, ...aboveInput, ...composer, ...belowInput].slice(0, height);
     if (lines.length === 0) lines.push("");
     return {
       lines,
-      cursorRow: Math.min(lines.length - 1, visible.length + composerCursor),
+      cursorRow: Math.min(lines.length - 1, visible.length + aboveInput.length + composerCursor),
       cursorColumn: composerColumn,
       showCursor: !!view && (view.composer.editable || !!view.prompt) && !view.selector,
     };
@@ -493,7 +489,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       return;
     }
     plainView = "";
-    usedTui = true;
+    await beginDisplay(size);
     const resized =
       cachedSize && (cachedSize.columns !== size.columns || cachedSize.rows !== size.rows);
     if (resized) await eraseViewport();
@@ -542,6 +538,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
   }
 
   async function appendHistory(text: string, markdown = false): Promise<void> {
+    await beginDisplay();
     await eraseViewport();
     const lines = markdown
       ? markdownLines(text, Math.max(1, options.columns() - 1))
@@ -552,11 +549,17 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
 
   return {
     record(record) {
-      discardPreview();
+      if (
+        record.type === "assistant.message" ||
+        record.type === "query.result" ||
+        record.type === "error"
+      )
+        discardPreview();
       return enqueue(async () => {
         const projected = sanitizeTerminalRecord(record);
         if (projected.type === "query.result") endedQueries.add(queryKey(projected.identity));
         if (projected.type === "assistant.message") {
+          hasConversation = true;
           const key = JSON.stringify([
             projected.identity.agentId,
             projected.identity.threadId,
@@ -576,13 +579,14 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
           await options.writeOutput(encodeTerminalRecord(projected));
           return;
         }
-        const human = humanRecordOutput(projected);
+        const human =
+          options.mode === "tui" || options.mode === "plain"
+            ? interactiveRecordOutput(projected)
+            : humanRecordOutput(projected);
         if (tuiAvailable()) {
           if (projected.type === "assistant.message")
             await appendHistory(projected.content.map((part) => part.text).join(""), true);
           else if (projected.type === "tool") await appendHistory(toolSummary(projected));
-          else if (projected.type === "query.result" && projected.status === "completed")
-            await appendHistory(`Query ${projected.status}`);
           else if (human.error) await appendHistory(human.error.trimEnd());
           else await redraw();
         } else {
@@ -606,7 +610,8 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       }
       const batch: PreviewBatch = { next: filtered };
       previewBatch = batch;
-      schedulePreview(batch, previewGeneration);
+      if (previews.length === 0) paintPreview(batch, previewGeneration);
+      else schedulePreview(batch, previewGeneration);
       return Promise.resolve();
     },
     view(next) {
@@ -634,6 +639,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       discardPreview();
       return enqueue(async () => {
         if (closed || options.mode === "jsonl" || options.mode === "print") return;
+        hasConversation = true;
         if (tuiAvailable()) await appendHistory(`You: ${safe(text)}`);
         else await options.writeError(`You: ${safe(text)}\n`);
       });
@@ -642,6 +648,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       discardPreview();
       return enqueue(async () => {
         if (closed || options.mode === "jsonl" || options.mode === "print") return;
+        if (messages.length > 0) hasConversation = true;
         for (const message of messages) {
           if (tuiAvailable())
             await appendHistory(

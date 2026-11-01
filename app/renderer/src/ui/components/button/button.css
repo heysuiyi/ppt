@@ -1,0 +1,91 @@
+/* 按钮拥有自己的高度、内边距与动作配色；外部布局只安排位置。 */
+.ui-root .ui-button {
+  --ui-button-height: 36px;
+  --ui-button-padding-inline: var(--ui-space-12);
+  --ui-button-surface: var(--ui-action-neutral);
+  --ui-button-hover: var(--ui-action-neutral-hover);
+  --ui-button-active: var(--ui-action-neutral-active);
+  --ui-button-text: var(--ui-action-on-neutral);
+  --ui-button-border: var(--ui-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-8);
+  min-width: var(--ui-button-height);
+  min-height: var(--ui-button-height);
+  max-width: 100%;
+  margin: 0;
+  padding: 6px var(--ui-button-padding-inline);
+  border: 1px solid var(--ui-button-border);
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-button-surface);
+  color: var(--ui-button-text);
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-font-size-14);
+  font-weight: 600;
+  line-height: var(--ui-line-height-control);
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition:
+    background-color var(--ui-motion-fast),
+    border-color var(--ui-motion-fast),
+    color var(--ui-motion-fast);
+}
+
+.ui-root .ui-button[data-ui-tone="primary"] {
+  --ui-button-surface: var(--ui-action-primary);
+  --ui-button-hover: var(--ui-action-primary-hover);
+  --ui-button-active: var(--ui-action-primary-active);
+  --ui-button-text: var(--ui-action-on-primary);
+  --ui-button-border: var(--ui-action-primary);
+}
+
+.ui-root .ui-button[data-ui-tone="danger"] {
+  --ui-button-surface: var(--ui-action-danger);
+  --ui-button-hover: var(--ui-action-danger-hover);
+  --ui-button-active: var(--ui-action-danger-active);
+  --ui-button-text: var(--ui-action-on-danger);
+  --ui-button-border: var(--ui-action-danger);
+}
+
+@media (hover: hover) {
+  .ui-root .ui-button:not(:disabled):hover {
+    background: var(--ui-button-hover);
+  }
+}
+
+.ui-root .ui-button:not(:disabled):active {
+  background: var(--ui-button-active);
+}
+
+.ui-root .ui-button:disabled {
+  border-color: var(--ui-border);
+  background: var(--ui-action-disabled);
+  color: var(--ui-text-disabled);
+  cursor: not-allowed;
+}
+
+.ui-root .ui-button[aria-busy="true"] {
+  border-style: dashed;
+  cursor: progress;
+}
+
+@media (forced-colors: active) {
+  .ui-root .ui-button {
+    border-color: ButtonText;
+  }
+
+  .ui-root .ui-button:not(:disabled):hover,
+  .ui-root .ui-button:not(:disabled):active {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .ui-root .ui-button:disabled {
+    border-color: GrayText;
+    color: GrayText;
+  }
+}

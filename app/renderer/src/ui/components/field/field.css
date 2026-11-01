@@ -1,0 +1,43 @@
+/* Field 负责内部标签和描述间距；外部表单负责字段之间的布局。 */
+.ui-root .ui-field {
+  --ui-field-gap: var(--ui-space-8);
+  display: grid;
+  gap: var(--ui-field-gap);
+  min-width: 0;
+}
+
+.ui-root .ui-field__label {
+  color: var(--ui-text);
+  font-size: var(--ui-font-size-14);
+  font-weight: 600;
+  line-height: var(--ui-line-height-control);
+}
+
+.ui-root .ui-field__required {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+  font-weight: 400;
+}
+
+.ui-root .ui-field__hint,
+.ui-root .ui-field__error {
+  margin: 0;
+  font-size: var(--ui-font-size-12);
+  line-height: var(--ui-line-height-body);
+  overflow-wrap: anywhere;
+}
+
+.ui-root .ui-field__hint {
+  color: var(--ui-text-muted);
+}
+
+.ui-root .ui-field__error {
+  color: var(--ui-status-error-text);
+}
+
+@media (forced-colors: active) {
+  .ui-root .ui-field__error {
+    color: CanvasText;
+    font-weight: 600;
+  }
+}

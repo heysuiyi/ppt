@@ -1,0 +1,9 @@
+/* 新 UI 的样式入口；消费者显式导入，绝不加载旧 renderer 全局样式。 */
+@import "./foundations/tokens.css";
+@import "./foundations/themes.css";
+@import "./foundations/base.css";
+@import "./components/button/button.css";
+@import "./components/input/input.css";
+@import "./components/field/field.css";
+@import "./components/alert/alert.css";
+@import "./components/dialog/dialog.css";

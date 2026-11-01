@@ -110,11 +110,19 @@ export type ModelContentDelta =
     };
 
 /**
- * 增量是临时的，按最终助手内容位置索引。成功的流以恰好一个权威的完成响应结束；
- * 持久化该响应，而非重建的增量。取消或失败可能在没有 completed 的情况下终止。
+ * content-delta 按最终助手内容位置索引；text-preview 通过请求内稳定唯一的不透明
+ * previewId 提前观察正文，不承诺规范位置。提供该通道的适配器必须对该请求的
+ * 所有正文在对应 content-delta 前发出 preview；消费者可据此避免重复展示。
+ * 成功的流以恰好一个权威完成响应结束；持久化该响应，而非重建增量。
+ * 取消或失败可能在没有 completed 的情况下终止。
  */
 export type ModelStreamEvent =
   | { readonly type: "content-delta"; readonly index: number; readonly delta: ModelContentDelta }
+  | {
+      readonly type: "text-preview";
+      readonly previewId: string;
+      readonly delta: ModelTextContent;
+    }
   | { readonly type: "completed"; readonly response: ModelResponse };
 
 export interface ModelCapabilities {

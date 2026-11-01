@@ -1,0 +1,75 @@
+/* 单行输入的尺寸归此处；只读仍可聚焦和复制，禁用不冒充只读。 */
+.ui-root .ui-input {
+  --ui-input-height: 36px;
+  --ui-input-padding-inline: var(--ui-space-12);
+  --ui-input-surface: var(--ui-surface-raised);
+  --ui-input-border: var(--ui-border);
+  width: 100%;
+  min-width: 0;
+  height: var(--ui-input-height);
+  margin: 0;
+  padding: 6px var(--ui-input-padding-inline);
+  border: 1px solid var(--ui-input-border);
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-input-surface);
+  color: var(--ui-text);
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-font-size-14);
+  line-height: var(--ui-line-height-control);
+  transition:
+    background-color var(--ui-motion-fast),
+    border-color var(--ui-motion-fast);
+}
+
+.ui-root .ui-input::placeholder {
+  color: var(--ui-text-muted);
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .ui-root .ui-input:not(:disabled):not(:read-only):not([aria-invalid="true"]):hover {
+    border-color: var(--ui-text);
+  }
+}
+
+.ui-root .ui-input:not(:disabled):not(:read-only):not([aria-invalid="true"]):active {
+  border-color: var(--ui-focus-ring);
+}
+
+.ui-root .ui-input:read-only {
+  border-style: dashed;
+  background: var(--ui-surface-inset);
+}
+
+.ui-root .ui-input[aria-invalid="true"] {
+  border-color: var(--ui-status-error-border);
+}
+
+.ui-root .ui-input:disabled {
+  border-style: solid;
+  border-color: var(--ui-border);
+  background: var(--ui-action-disabled);
+  color: var(--ui-text-disabled);
+  cursor: not-allowed;
+}
+
+@media (forced-colors: active) {
+  .ui-root .ui-input {
+    background: Field;
+    color: FieldText;
+    border-color: FieldText;
+  }
+
+  .ui-root .ui-input::placeholder {
+    color: GrayText;
+  }
+
+  .ui-root .ui-input[aria-invalid="true"] {
+    border-width: 2px;
+  }
+
+  .ui-root .ui-input:disabled {
+    border-color: GrayText;
+    color: GrayText;
+  }
+}

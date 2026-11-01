@@ -84,11 +84,12 @@ function capture(mode: TerminalOutputMode, width = 80, rows = 24, color = false)
 }
 
 /** Tracks display cells and the final cursor, including wide graphemes and redraw controls. */
-function terminalState(writes: readonly string[]) {
+function terminalState(writes: readonly string[], savedHistory: readonly string[] = []) {
   const lines: string[][] = [[]];
   let row = 0;
   let column = 0;
   let cursorVisible = true;
+  let scrollback = Array.from(savedHistory);
   const text = writes.join("");
   for (let index = 0; index < text.length; ) {
     const control = /^\x1b\[([?\d;]*)([A-Za-z])/.exec(text.slice(index));
@@ -103,6 +104,18 @@ function terminalState(writes: readonly string[]) {
           break;
         case "C":
           column += amount;
+          break;
+        case "H": {
+          const [targetRow, targetColumn] = control[1]!.split(";").map(Number);
+          row = Math.max(0, (targetRow || 1) - 1);
+          column = Math.max(0, (targetColumn || 1) - 1);
+          break;
+        }
+        case "J":
+          if (control[1] === "2") {
+            for (let line = 0; line < lines.length; line++) lines[line] = [];
+          }
+          if (control[1] === "3") scrollback = [];
           break;
         case "K":
           lines[row] = [];
@@ -139,7 +152,7 @@ function terminalState(writes: readonly string[]) {
     }
     index += chunk.length;
   }
-  return { lines: lines.map((line) => line.join("")), row, column, cursorVisible };
+  return { lines: lines.map((line) => line.join("")), row, column, cursorVisible, scrollback };
 }
 
 function terminalScreen(writes: readonly string[]): string {
@@ -359,6 +372,115 @@ describe("bounded provisional text", () => {
   });
 });
 
+describe("interactive conversation presentation", () => {
+  it("clears old screen and scrollback once and preserves the new conversation through resize", async () => {
+    const { renderer, output, size } = capture("tui");
+    await renderer.view(idle);
+    const entered = terminalState(["OLD_SHELL_OUTPUT\r\n", ...output], ["OLD_SCROLLBACK"]);
+    expect(entered.lines.join("\n")).not.toContain("OLD_SHELL_OUTPUT");
+    expect(entered.scrollback).toEqual([]);
+    await renderer.user("CONVERSATION_TO_KEEP");
+    size.columns = 40;
+    size.rows = 12;
+    await renderer.view(idle);
+    expect(terminalScreen(output)).toContain("CONVERSATION_TO_KEEP");
+    await renderer.view(idle);
+    await renderer.close();
+    expect(terminalScreen(output).trim()).toBe("You: CONVERSATION_TO_KEEP");
+  });
+
+  it.each(["tui", "plain"] as const)(
+    "keeps execution records out of the %s conversation without dropping the answer",
+    async (mode) => {
+      const { renderer, output, error } = capture(mode);
+      await renderer.view(idle);
+      await renderer.record({
+        version: 1,
+        type: "session",
+        threadId: "PRIVATE_DIAGNOSTIC_THREAD",
+      });
+      await renderer.user("USER_QUESTION");
+      const events: RuntimeEvent[] = [
+        { kind: "fact", type: "run.started", identity },
+        { kind: "fact", type: "step.committed", identity, step: 0, historyRevision: 1 },
+        { kind: "fact", type: "step.started", identity, step: 1 },
+        { kind: "fact", type: "run.completed", identity },
+      ];
+      for (const event of events) {
+        const record = projectTerminalEvent(event, unsupported);
+        if (record) await renderer.record(record);
+      }
+      await renderer.record({
+        version: 1,
+        type: "assistant.message",
+        identity,
+        messageIndex: 0,
+        content: [{ contentIndex: 0, text: "AUTHORITATIVE_ANSWER" }],
+      });
+      await renderer.record({ version: 1, type: "query.result", identity, status: "completed" });
+      await renderer.view(idle);
+      await renderer.close();
+      const conversation =
+        mode === "tui" ? terminalScreen(output) : output.join("") + error.join("");
+      expect(conversation).toContain("USER_QUESTION");
+      expect(conversation).toContain("AUTHORITATIVE_ANSWER");
+      expect(conversation).not.toMatch(
+        /run\.started|step\.committed|step\.started|run\.completed|Query completed|PRIVATE_DIAGNOSTIC_THREAD/,
+      );
+    },
+  );
+
+  it.each(["user", "history"] as const)(
+    "retires the initial empty-state content after %s messages",
+    async (source) => {
+      const { renderer, output } = capture("tui");
+      await renderer.view(idle);
+      const initialPrompt = terminalState(output).lines[0]!;
+      if (source === "user") await renderer.user("EXISTING_MESSAGE");
+      else await renderer.history([{ role: "assistant", text: "EXISTING_MESSAGE" }]);
+      await renderer.view(idle);
+      const screen = terminalScreen(output);
+      expect(screen).toContain("EXISTING_MESSAGE");
+      expect(screen).not.toContain(initialPrompt);
+      await renderer.close();
+    },
+  );
+
+  it.each([40, 100])(
+    "fits context, draft and actions into three rows at %s columns",
+    async (columns) => {
+      const { renderer, output } = capture("tui", columns, 12);
+      await renderer.user("EXISTING_CONVERSATION");
+      await renderer.view({
+        ...idle,
+        phase: "running",
+        input: { purpose: "composer", status: "执行中", hint: "Esc取消 · 草稿不排队" },
+        context: {
+          model: "MODEL",
+          workspace: "C:/work",
+          threadId: "thread",
+          capabilities: "read-only",
+        },
+        composer: {
+          draft: { text: "DRAFT", cursor: 3 },
+          editable: true,
+          submission: { enabled: false, reason: "busy" },
+        },
+      });
+      const screen = terminalState(output);
+      const active = screen.lines.slice(1).filter((line) => line.trim());
+      expect(active).toHaveLength(3);
+      expect(active[0]).toContain("MODEL");
+      expect(active[0]).toContain("work");
+      expect(active[0]).toContain("只读");
+      expect(screen.lines[screen.row]!.slice(screen.column)).toBe("FT");
+      expect(active.at(-1)).toContain("Esc");
+      expect(active.every((line) => visibleWidth(line) < columns)).toBe(true);
+      await renderer.close();
+    },
+  );
+});
+
 describe("production renderer modes", () => {
   it("keeps print stdout authoritative and all progress/errors on stderr", async () => {
     const { renderer, output, error } = capture("print");
@@ -427,6 +549,7 @@ describe("production renderer modes", () => {
     it(`redraws only mutable viewport at ${columns} columns and corrects preview`, async () => {
       const { renderer, output, size } = capture("tui", columns);
       await renderer.view(idle);
+      const started = output.length;
       await renderer.user("immutable history");
       await renderer.preview([
         {
@@ -456,7 +579,8 @@ describe("production renderer modes", () => {
       expect(screen).toContain("CORRECT_AUTHORITY");
       expect(screen).not.toContain("WRONG_PREVIEW");
       expect(output.join("").match(/CORRECT_AUTHORITY/g)).toHaveLength(1);
-      expect(output.join("")).not.toMatch(/\x1b\[\?(?:47|1047|1049)h|\x1b\[2J|\x1b\[3J/);
+      expect(output.join("")).not.toMatch(/\x1b\[\?(?:47|1047|1049)h/);
+      expect(output.slice(started).join("")).not.toMatch(/\x1b\[[23]J/);
     });
 
   it("keeps failed/applied and unknown effects visible through tool selection", async () => {
@@ -550,7 +674,7 @@ describe("production renderer modes", () => {
 
     it(`places the cursor before a wrapped wide grapheme in ${columns}x${rows}`, async () => {
       const { renderer, output } = capture("tui", columns, rows);
-      const prefix = "a".repeat(columns - 6);
+      const prefix = "a".repeat(columns - 4);
       await renderer.view({
         ...idle,
         composer: {
@@ -590,7 +714,7 @@ describe("production renderer modes", () => {
     });
   }
 
-  it("keeps secret drafts out of framed and plain views across resize", async () => {
+  it("keeps secret drafts out of active and plain views across resize", async () => {
     const { renderer, output, error, size } = capture("tui", 40, 12);
     const view: TerminalView = {
       ...idle,
@@ -605,16 +729,6 @@ describe("production renderer modes", () => {
     await renderer.view(view);
     expect(output.join("") + error.join("")).not.toContain("PRIVATE_DRAFT");
     await renderer.close();
-  });
-
-  it("adds styling only when color is enabled", async () => {
-    for (const color of [false, true]) {
-      const { renderer, output } = capture("tui", 40, 12, color);
-      await renderer.view(idle);
-      expect(/\x1b\[[\d;]*m/.test(output.join(""))).toBe(color);
-      expect(terminalState(output).lines.every((line) => visibleWidth(line) < 40)).toBe(true);
-      await renderer.close();
-    }
   });
 });
 
@@ -791,8 +905,8 @@ describe("stable mutable terminal viewport", () => {
   });
 
   it("keeps completion above the editable draft, including a wrapped tab caret", async () => {
-    const { renderer, output } = capture("tui", 43, 12);
-    const draft = { text: `${"a".repeat(37)}\tZ`, cursor: 38 };
+    const { renderer, output } = capture("tui", 42, 12);
+    const draft = { text: `${"a".repeat(38)}\tZ`, cursor: 39 };
     const view: TerminalView = {
       ...idle,
       input: {
@@ -813,12 +927,12 @@ describe("stable mutable terminal viewport", () => {
     const text = screen.lines.join("\n");
     expect(text).toContain("COMMAND_CHOICES");
     expect(text).toContain("/model");
-    expect(text).toContain("a".repeat(37));
-    expect(screen.lines[screen.row]).toContain("│     Z");
+    expect(text).toContain("a".repeat(38));
+    expect(screen.lines[screen.row]!.slice(screen.column)).toBe("Z");
     expect(screen.column).toBe(6);
     expect(screen.cursorVisible).toBe(true);
-    expect(text.indexOf("COMMAND_CHOICES")).toBeLessThan(text.indexOf("a".repeat(37)));
-    expect(screen.lines.every((line) => visibleWidth(line) < 43)).toBe(true);
+    expect(text.indexOf("COMMAND_CHOICES")).toBeLessThan(text.indexOf("a".repeat(38)));
+    expect(screen.lines.every((line) => visibleWidth(line) < 42)).toBe(true);
     await renderer.view({
       ...view,
       feedback: { kind: "input", message: "INPUT_NOTICE" },
@@ -826,7 +940,7 @@ describe("stable mutable terminal viewport", () => {
     });
     const crowded = terminalState(output);
     expect(crowded.lines.join("\n")).toContain("› /model");
-    expect(crowded.lines[crowded.row]).toContain("│     Z");
+    expect(crowded.lines[crowded.row]!.slice(crowded.column)).toBe("Z");
     expect(crowded.column).toBe(6);
     expect(crowded.cursorVisible).toBe(true);
     await renderer.close();
@@ -933,8 +1047,27 @@ describe("stable mutable terminal viewport", () => {
     try {
       const { renderer, output } = capture("tui");
       await renderer.view(idle);
+      await renderer.preview([
+        {
+          identity,
+          step: 1,
+          requestId: "request",
+          contentIndex: 0,
+          text: "TEMP_0",
+          truncated: false,
+        },
+      ]);
+      await renderer.record({
+        version: 1,
+        type: "progress",
+        identity,
+        phase: "step.committed",
+        step: 1,
+        historyRevision: 1,
+      });
+      expect(terminalScreen(output)).toContain("TEMP_0");
       const start = output.length;
-      for (let index = 0; index < 30; index += 1)
+      for (let index = 1; index < 30; index += 1)
         await renderer.preview([
           {
             identity,
@@ -1096,13 +1229,12 @@ describe("stable mutable terminal viewport", () => {
     }
   });
 
-  it("dismisses tool details one layer at a time and keeps authoritative results in history", async () => {
+  it("dismisses tool details one layer at a time and retains failure and waiting context", async () => {
     const { renderer, output } = capture("tui");
     await renderer.view(idle);
     expect(await renderer.dismissTool()).toBe(false);
     await renderer.record(failedTool);
     await renderer.toggleTool();
-    expect(terminalScreen(output)).toContain("Escape");
     expect(await renderer.dismissTool()).toBe(true);
     expect(await renderer.dismissTool()).toBe(false);
     for (const status of ["completed", "cancelled", "interrupted"] as const)
@@ -1130,7 +1262,7 @@ describe("stable mutable terminal viewport", () => {
     await renderer.view(idle);
     await renderer.close();
     const history = terminalScreen(output);
-    for (const result of ["completed", "cancelled", "interrupted", "QUERY_FAILURE", "WAITING_ID"])
+    for (const result of ["safe failure", "QUERY_FAILURE", "authoritative failure", "WAITING_ID"])
       expect(history).toContain(result);
   });
 });

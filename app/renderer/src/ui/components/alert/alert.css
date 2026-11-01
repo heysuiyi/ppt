@@ -1,0 +1,51 @@
+/* Alert 跟随容器宽度，内聚持续文本的层次与留白，不限制必要信息的可见时间。 */
+.ui-root .ui-alert {
+  --ui-alert-padding: var(--ui-space-12);
+  --ui-alert-gap: var(--ui-space-4);
+  --ui-alert-surface: var(--ui-status-info-surface);
+  --ui-alert-text: var(--ui-status-info-text);
+  --ui-alert-border: var(--ui-status-info-border);
+  display: grid;
+  gap: var(--ui-alert-gap);
+  min-width: 0;
+  padding: var(--ui-alert-padding);
+  border: 1px solid var(--ui-alert-border);
+  border-inline-start-width: 3px;
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-alert-surface);
+  color: var(--ui-alert-text);
+  overflow-wrap: anywhere;
+}
+
+.ui-root .ui-alert[data-ui-tone="success"] {
+  --ui-alert-surface: var(--ui-status-success-surface);
+  --ui-alert-text: var(--ui-status-success-text);
+  --ui-alert-border: var(--ui-status-success-border);
+}
+
+.ui-root .ui-alert[data-ui-tone="error"] {
+  --ui-alert-surface: var(--ui-status-error-surface);
+  --ui-alert-text: var(--ui-status-error-text);
+  --ui-alert-border: var(--ui-status-error-border);
+}
+
+.ui-root .ui-alert__title {
+  margin: 0;
+  font-size: var(--ui-font-size-14);
+  font-weight: 600;
+  line-height: var(--ui-line-height-control);
+}
+
+.ui-root .ui-alert__content {
+  min-width: 0;
+  font-size: var(--ui-font-size-14);
+  line-height: var(--ui-line-height-body);
+}
+
+@media (forced-colors: active) {
+  .ui-root .ui-alert {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}

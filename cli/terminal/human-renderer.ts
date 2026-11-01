@@ -54,3 +54,27 @@ export function humanRecordOutput(record: TerminalRecord): HumanRecordOutput {
         : { error: `Process finished: ${record.reason} (exit ${record.exitCode})\n` };
   }
 }
+
+/** 交互会话只保留面向用户的内容；执行事实由活动区和状态栏呈现。 */
+export function interactiveRecordOutput(record: TerminalRecord): HumanRecordOutput {
+  switch (record.type) {
+    case "session":
+    case "progress":
+    case "interaction":
+    case "process.finished":
+      return {};
+    case "query.result":
+      if (record.status === "waiting")
+        return {
+          error: `等待确认：${record.interaction.interactionId}\n${record.display.support === "supported" ? record.display.summary : "不支持此交互；请使用支持的宿主回答。"}\n`,
+        };
+      if (record.status === "failed")
+        return { error: `请求失败：${record.error.code}: ${record.error.message}\n` };
+      if (record.status === "cancelled")
+        return { error: "请求已取消；已发生的操作不会自动撤销。\n" };
+      if (record.status === "interrupted") return { error: "请求已中断；可从已保存的状态恢复。\n" };
+      return {};
+    default:
+      return humanRecordOutput(record);
+  }
+}

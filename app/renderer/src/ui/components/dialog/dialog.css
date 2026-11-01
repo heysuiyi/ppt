@@ -1,0 +1,88 @@
+.ui-root .ui-dialog {
+  --ui-dialog-width: 560px;
+  width: min(var(--ui-dialog-width), calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100% - 32px);
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-dialog);
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
+  box-shadow: var(--ui-shadow-dialog);
+  font: inherit;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.ui-root .ui-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.ui-root .ui-dialog[data-purpose="confirm"] {
+  --ui-dialog-width: 400px;
+}
+.ui-root .ui-dialog[data-purpose="content"] {
+  --ui-dialog-width: 960px;
+}
+.ui-root .ui-dialog[data-purpose="fullscreen"] {
+  width: calc(100% - 32px);
+  height: calc(100% - 32px);
+}
+.ui-root .ui-dialog::backdrop {
+  background: var(--ui-backdrop);
+}
+.ui-root .ui-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ui-space-16);
+  padding: var(--ui-space-24);
+  border-bottom: 1px solid var(--ui-border-subtle);
+  flex: 0 0 auto;
+}
+.ui-root .ui-dialog-header > .ui-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ui-root .ui-dialog-title {
+  margin: 0;
+  font-size: var(--ui-font-size-18);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ui-root .ui-dialog-description {
+  margin: 8px 0 0;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-14);
+}
+.ui-root .ui-dialog-body {
+  padding: var(--ui-space-24);
+  min-height: 0;
+  overflow: auto;
+}
+.ui-root .ui-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--ui-space-8);
+  padding: var(--ui-space-16) var(--ui-space-24);
+  border-top: 1px solid var(--ui-border-subtle);
+  flex: 0 0 auto;
+}
+@media (max-width: 480px) {
+  .ui-root .ui-dialog-header,
+  .ui-root .ui-dialog-body {
+    padding: var(--ui-space-16);
+  }
+  .ui-root .ui-dialog-footer {
+    padding: var(--ui-space-16);
+  }
+}
+@media (forced-colors: active) {
+  .ui-root .ui-dialog {
+    border: 2px solid CanvasText;
+  }
+  .ui-root .ui-dialog::backdrop {
+    background: Canvas;
+    opacity: 0.75;
+  }
+}

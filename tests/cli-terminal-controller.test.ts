@@ -14,6 +14,7 @@ import type { TerminalHost, TerminalSetupIO } from "../cli/host/host-contract.js
 import { runCli } from "../cli/main.js";
 import * as rendererModule from "../cli/terminal/interactive-renderer.js";
 import type { TerminalView } from "../cli/terminal/renderer-contract.js";
+import { statusLines } from "../cli/terminal/status-line.js";
 import type { TerminalModelItem } from "../cli/terminal/terminal-contract.js";
 import { runTerminalController } from "../cli/terminal/terminal-controller.js";
 import { visibleWidth } from "../cli/terminal/terminal-text.js";
@@ -372,8 +373,68 @@ describe("terminal controller result and lifecycle", () => {
     expect(await running).toBe(0);
   });
 
+  it.each([40, 100])("keeps ready and running context compact at %i columns", async (columns) => {
+    const io = surface(true);
+    vi.stubEnv("TERM", "xterm-256color");
+    Object.assign(io.output, { isTTY: true, columns, rows: 12 });
+    const observed = observeViews();
+    const completed = Promise.withResolvers<AgentRunResult>();
+    const run = vi.fn(async () => handle(completed.promise));
+    const currentHost = host({ run });
+    Object.defineProperty(currentHost, "context", {
+      value: {
+        ...currentHost.context,
+        workspaceRoot: "E:/project",
+        toolsMode: "read-write",
+        model: {
+          id: "model",
+          label: "gpt-real",
+          availability: {
+            state: "ready",
+            reason: "本地配置就绪；网络未验证，不代表连接成功。",
+          },
+        },
+      },
+    });
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: currentHost,
+    });
+    const ready = await observed.until((view) => view.composer.submission.enabled);
+    expect(ready.context?.modelStatus).toBeUndefined();
+    const readyLines = statusLines(ready, columns - 1);
+    expect(readyLines).toHaveLength(2);
+    expect(readyLines[0]).toContain("gpt-real");
+    expect(readyLines[0]).toContain("读写");
+    expect(readyLines[0]).toContain("project");
+    expect(readyLines.join("\n")).not.toContain("网络未验证");
+    io.input.write("task\r");
+    const executing = await observed.until((view) => view.phase === "running");
+    const executingLines = statusLines(executing, columns - 1);
+    expect(executingLines).toHaveLength(2);
+    expect(executingLines[0]).toContain("执行中");
+    expect(executingLines[0]).toContain("gpt-real");
+    expect(executingLines[0]).toContain("读写");
+    expect(executingLines[1]).toMatch(/Esc.*取消/u);
+    expect(executingLines.join("\n").match(/不排队/gu)).toHaveLength(1);
+    expect(executing.composer.submission.enabled).toBe(false);
+    io.input.write("next-draft\r");
+    const blocked = await observed.until((view) => view.composer.draft.text === "next-draft");
+    expect(blocked.composer.submission.enabled).toBe(false);
+    expect(run).toHaveBeenCalledTimes(1);
+    completed.resolve(finishedResult);
+    const settled = await observed.until((view) => view.composer.submission.enabled);
+    expect(settled.composer.draft.text).toBe("next-draft");
+    expect(run).toHaveBeenCalledTimes(1);
+    io.input.end();
+    expect(await running).toBe(0);
+  });
+
   it("clears input correction feedback without clearing the current model problem", async () => {
     const io = surface(true);
+    vi.stubEnv("TERM", "xterm-256color");
+    Object.assign(io.output, { isTTY: true, columns: 40, rows: 12 });
     const observed = observeViews();
     const currentHost = host({});
     Object.defineProperty(currentHost, "context", {
@@ -395,6 +456,11 @@ describe("terminal controller result and lifecycle", () => {
     io.input.write("/invalid!\r");
     const correction = await observed.until((view) => view.feedback?.kind === "input");
     expect(correction.context?.modelStatus).toBe(ready.context?.modelStatus);
+    const correctionLines = statusLines(correction, 39);
+    expect(correctionLines).toHaveLength(3);
+    expect(correctionLines.join("\n")).toContain("CREDENTIAL_REQUIRED");
+    expect(correctionLines.join("\n")).toContain("未知命令");
+    expect(correctionLines.at(-1)).toContain("Enter");
     io.input.write("x");
     const edited = await observed.until((view) => view.composer.draft.text === "/invalid!x");
     expect(edited.feedback).toBeUndefined();
@@ -579,8 +645,7 @@ describe("terminal controller result and lifecycle", () => {
         },
       }),
     });
-    await io.until("Session: thread");
-    await nextTurn();
+    await observed.until((view) => view.composer.submission.enabled);
     io.input.write("/new\r\r");
     await io.until("yes");
     io.input.write("yes\r");
@@ -589,6 +654,10 @@ describe("terminal controller result and lifecycle", () => {
     expect(transition.composer.submission.enabled).toBe(false);
     expect(transition.activity).toBeTruthy();
     expect(transition.input.status).toContain(transition.activity);
+    const transitionLines = statusLines(transition, 39);
+    expect(transitionLines).toHaveLength(2);
+    expect(transitionLines[0]).toContain(transition.activity);
+    expect(transitionLines[1]).toContain("等待当前操作");
     io.input.write("draft-survives-switch\r");
     await nextTurn();
     expect(queries).toBe(0);
@@ -609,6 +678,7 @@ describe("terminal controller result and lifecycle", () => {
 
   it("preserves SIGTERM exit status while a confirmation prompt closes", async () => {
     const io = surface(true);
+    const observed = observeViews();
     const previousListeners = new Set(process.listeners("SIGTERM"));
     let closed = false;
     const closingHost = host({
@@ -628,8 +698,7 @@ describe("terminal controller result and lifecycle", () => {
       command: parseTerminalArguments([]),
       host: closingHost,
     });
-    await io.until("Session: thread");
-    await nextTurn();
+    await observed.until((view) => view.composer.submission.enabled);
     io.input.write("/new\r\r");
     await io.until("yes");
     for (const listener of process.listeners("SIGTERM")) {
@@ -763,6 +832,10 @@ describe("terminal controller result and lifecycle", () => {
       if (choice === "unavailable") {
         expect(idle.feedback?.kind).toBe("blocking");
         expect(idle.feedback?.message).toContain("MISSING_LOCAL_CREDENTIAL");
+        const unavailableLines = statusLines(idle, 39);
+        expect(unavailableLines).toHaveLength(3);
+        expect(unavailableLines.join("\n")).toContain("MISSING_LOCAL_CREDENTIAL");
+        expect(unavailableLines.at(-1)).toContain("Enter");
         io.input.write("-edited");
         const edited = await observed.until(
           (view) => view.composer.draft.text === "retained-draft-edited",
@@ -844,7 +917,7 @@ describe("terminal controller result and lifecycle", () => {
           threadId: "new-binding",
           model: { id: "other" },
         });
-        expect(idle.context?.modelStatus).toBe("LOCAL_READY");
+        expect(idle.context?.modelStatus).toBeUndefined();
       } else {
         expect(currentHost.context).toBe(initialContext);
         expect(observed.views.some((view) => view.context?.threadId === "new-binding")).toBe(false);

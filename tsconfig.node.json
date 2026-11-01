@@ -44,6 +44,7 @@
     "app/renderer/src/app/agent/agentRunFailure.ts",
     "app/renderer/src/app/agent/agentRunPreparation.ts",
     "app/renderer/src/app/presentation/exportExpectations.ts",
+    "app/renderer/src/ui-preview/state/**/*.ts",
     "tests/**/*.ts"
   ],
   "exclude": ["cli/dist"]

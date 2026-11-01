@@ -32,6 +32,23 @@ export async function executeModelTurn(
         throw new AgentError("INVALID_MODEL_STREAM", "Model emitted data after completion");
       if (event.type === "completed") {
         response = snapshot(event.response);
+      } else if (event.type === "text-preview") {
+        if (
+          typeof event.previewId !== "string" ||
+          !event.previewId ||
+          event.delta.type !== "text" ||
+          typeof event.delta.text !== "string"
+        )
+          throw new AgentError("INVALID_MODEL_STREAM", "Invalid text preview");
+        env.emit({
+          identity: env.identity,
+          kind: "stream",
+          type: "model.preview",
+          requestId,
+          step,
+          previewId: event.previewId,
+          delta: snapshot(event.delta),
+        });
       } else {
         if (!Number.isSafeInteger(event.index) || event.index < 0)
           throw new AgentError("INVALID_MODEL_STREAM", "Invalid content position");

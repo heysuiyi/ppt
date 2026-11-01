@@ -3,10 +3,12 @@ import { invalid, mimoError, nonempty, object, text } from "./errors.js";
 import { projectItem, same } from "./responses.js";
 
 type Delta = Extract<ModelStreamEvent, { type: "content-delta" }>;
+type Preview = Extract<ModelStreamEvent, { type: "text-preview" }>;
 interface Slot {
   type: "text" | "reasoning" | "tool-call";
   value: string;
   emitted: string;
+  previewed: string;
   done: boolean;
   observed: boolean;
   index?: number;
@@ -25,7 +27,7 @@ export class MimoStreamProjection {
   private readonly ids = new Map<string, number>();
   private terminal?: Record<string, unknown>;
 
-  accept(value: unknown): Delta[] {
+  accept(value: unknown): Array<Delta | Preview> {
     if (this.terminal) return invalid();
     const event = object(value);
     const type = text(event.type);
@@ -117,7 +119,7 @@ export class MimoStreamProjection {
         this.finishSlot(item, key, kind, text(call ? event.arguments : event.text));
       } else return invalid();
     }
-    return this.flush();
+    return [...this.previews(item, outputIndex), ...this.flush()];
   }
 
   finish(): Record<string, unknown> {
@@ -146,7 +148,7 @@ export class MimoStreamProjection {
   private slot(item: Item, key: string, type: Slot["type"]): Slot {
     let slot = item.slots.get(key);
     if (!slot) {
-      slot = { type, value: "", emitted: "", done: false, observed: false };
+      slot = { type, value: "", emitted: "", previewed: "", done: false, observed: false };
       item.slots.set(key, slot);
     } else if (slot.type !== type) return invalid();
     return slot;
@@ -210,6 +212,25 @@ export class MimoStreamProjection {
         return af === bf ? Number(ai) - Number(bi) : af === "s" ? -1 : 1;
       })
       .map(([, slot]) => slot);
+  }
+
+  private previews(item: Item, outputIndex: number): Preview[] {
+    if (item.added?.type !== "message" || !item.id) return [];
+    const result: Preview[] = [];
+    for (const [key, slot] of item.slots) {
+      if (slot.type !== "text") continue;
+      if (!slot.value.startsWith(slot.previewed)) return invalid();
+      const suffix = slot.value.slice(slot.previewed.length);
+      if (suffix) {
+        result.push({
+          type: "text-preview",
+          previewId: JSON.stringify([outputIndex, item.id, key]),
+          delta: { type: "text", text: suffix },
+        });
+        slot.previewed = slot.value;
+      }
+    }
+    return result;
   }
 
   private flush(): Delta[] {

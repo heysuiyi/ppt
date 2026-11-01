@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareConfiguredModel } from "../cli/host/configured-model-factory.js";
 import { createAgentHost } from "../cli/host/create-agent-host.js";
 import { createSqliteAgentStores } from "../cli/host/sqlite-agent-stores.js";
+import { createPreviewBuffer } from "../cli/terminal/preview-buffer.js";
 import { terminalError } from "../cli/terminal/terminal-projection.js";
 
 const adapterId = "mimo-token-plan-cn";
@@ -540,7 +541,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
     expect(observed).toHaveLength(0);
     handlers.push((_req, res) => sse(res, completedEvents().slice(0, 4), false));
     const iterator = selected.client.stream(request, signal())[Symbol.asyncIterator]();
-    expect((await iterator.next()).value).toHaveProperty("type", "content-delta");
+    await iterator.next();
     await iterator.return?.();
     await selected.dispose();
     expect(observed).toHaveLength(1);
@@ -591,7 +592,11 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
     const selected = await binding();
     const controller = new AbortController();
     const iterator = selected.client.stream(request, controller.signal)[Symbol.asyncIterator]();
-    expect((await iterator.next()).value).toMatchObject({ type: "content-delta", index: 0 });
+    expect((await iterator.next()).value).toMatchObject({
+      type: "text-preview",
+      previewId: expect.any(String),
+      delta: { type: "text", text: "答" },
+    });
     controller.abort();
     await expect(collect({ [Symbol.asyncIterator]: () => iterator })).rejects.toMatchObject({
       code: "CANCELLED",
@@ -900,6 +905,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
 function configuredRuntime(
   maxOutputTokens = 321,
   modelId = selection.modelId,
+  reasoningEffort?: string,
 ): AgentConfiguration["runtime"] {
   const plan: ExecutionPlan = {
     modelAdapter: adapterId,
@@ -908,6 +914,7 @@ function configuredRuntime(
       model: modelId,
       baseURL: baseURL,
       openaiApiMode: "responses",
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     },
     services: { timeoutMs: 2000, maxOutputTokens },
     stepLimits: { enabled: true, mainMaxSteps: 4, subMaxSteps: 2 },
@@ -930,6 +937,144 @@ function configuredRuntime(
 }
 
 describe("MiMo configured host error boundary", () => {
+  it.each(["completed", "mismatch", "cancelled"] as const)(
+    "previews body before an earlier reasoning item is done without committing provisional text (%s)",
+    async (ending) => {
+      const textEvents = itemEvents(message(), 1);
+      const reasoningEvents = itemEvents(reasoning, 0);
+      const finalReasoning = {
+        ...reasoning,
+        summary: [{ type: "summary_text", text: "late summary" }],
+      };
+      const connected = Promise.withResolvers<ServerResponse>();
+      handlers.push((_req, res) => {
+        sse(res, [...reasoningEvents.slice(0, -1), ...textEvents.slice(0, 3)], false);
+        connected.resolve(res);
+      });
+      const directory = await mkdtemp(join(tmpdir(), "mimo-host-stream-"));
+      hostCleanup.push(() => rm(directory, { recursive: true, force: true }));
+      const host = await createAgentHost({
+        configuration: configuredRuntime(321, selection.modelId, "high"),
+        applicationDataRoot: directory,
+        workspaceRoot: directory,
+        modelId: "configured-mimo",
+        threadId: "thread",
+      });
+      hostCleanup.push(() => host.close());
+      const handle = await host.run({
+        queryId: "query",
+        runId: "run",
+        input: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
+      });
+      const preview = createPreviewBuffer(handle.identity);
+      const iterator = handle.events[Symbol.asyncIterator]();
+      const nextDelta = async () => {
+        for (;;) {
+          const next = await iterator.next();
+          if (next.done) throw new Error("Run ended before the next streamed delta");
+          preview.update(next.value);
+          if (next.value.kind === "stream") return next.value;
+        }
+      };
+      let settled = false;
+      void handle.completed.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      expect(await nextDelta()).toMatchObject({
+        type: "model.preview",
+        previewId: expect.any(String),
+        delta: { type: "text", text: "答" },
+      });
+      const previewId = preview.previews[0]?.previewId;
+      expect(previewId).toEqual(expect.any(String));
+      expect(preview.previews).toMatchObject([{ previewId, text: "答" }]);
+      expect(settled).toBe(false);
+      expect(observed[0].body.stream).toBe(true);
+
+      const connection = await connected.promise;
+      const send = (events: WireEvent[]) => {
+        for (const event of events)
+          connection.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      };
+      // The server cannot send the second chunk until the consumer saw the first;
+      // no sleeps or terminal-side typing animation can satisfy this boundary.
+      send(textEvents.slice(3, 4));
+      expect(await nextDelta()).toMatchObject({
+        type: "model.preview",
+        previewId,
+        delta: { type: "text", text: "案" },
+      });
+      expect(preview.previews).toMatchObject([{ text: "答案" }]);
+      expect(settled).toBe(false);
+
+      if (ending === "cancelled") {
+        handle.cancel("cancel before the authoritative response");
+      } else {
+        send([
+          ...textEvents.slice(4),
+          {
+            type: "response.reasoning_summary_text.delta",
+            output_index: 0,
+            item_id: reasoning.id,
+            summary_index: 0,
+            delta: "late summary",
+          },
+          { type: "response.output_item.done", output_index: 0, item: finalReasoning },
+          {
+            type: "response.completed",
+            response: response([
+              finalReasoning,
+              message(ending === "mismatch" ? "不一致" : "答案"),
+            ]),
+          },
+        ]);
+        connection.end("data: [DONE]\n\n");
+      }
+      const canonicalText: Array<{ contentIndex: number; text: string }> = [];
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        preview.update(next.value);
+        if (next.value.type === "model.delta" && next.value.delta.type === "text") {
+          canonicalText.push({
+            contentIndex: next.value.contentIndex,
+            text: next.value.delta.text,
+          });
+          expect(preview.previews).toMatchObject([{ previewId, text: "答案" }]);
+        }
+      }
+      const result = await handle.completed;
+      expect(result.status).toBe(ending === "mismatch" ? "failed" : ending);
+      expect(preview.previews).toEqual([]);
+      expect(canonicalText).toEqual(
+        ending === "cancelled" ? [] : [{ contentIndex: 2, text: "答案" }],
+      );
+      await host.close();
+      const stores = createSqliteAgentStores(join(directory, "sessions.sqlite"));
+      hostCleanup.push(() => stores.dispose());
+      const history = await stores.history.read(handle.identity.threadId);
+      const assistant = history.messages.filter((entry) => entry.role === "assistant");
+      if (ending === "completed") {
+        expect(assistant).toMatchObject([
+          {
+            content: [
+              { type: "reasoning", text: "late summary" },
+              { type: "reasoning", text: reasoning.content[0].text },
+              { type: "text", text: "答案" },
+            ],
+          },
+        ]);
+      } else {
+        expect(assistant).toEqual([]);
+      }
+    },
+  );
+
   it.each([
     [401, "AUTHENTICATION", "MiMo 身份认证失败。"],
     [429, "RATE_LIMIT_OR_QUOTA", "MiMo 限流或额度受限。"],

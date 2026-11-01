@@ -23,6 +23,7 @@
       "scripts/verify-tools-package.mjs",
       "tests/fixtures/general-agent-reliability-entry.mjs",
       "scripts/check-cli-boundaries.mjs",
+      "scripts/check-ui-boundaries.mjs",
       "scripts/run-agent.mjs",
       "packages/configuration/build.mjs",
       "cli/build.mjs",

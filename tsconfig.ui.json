@@ -1,0 +1,23 @@
+{
+  // 新 UI 与浏览器预览的独立类型边界，不继承旧 renderer alias 或全局声明。
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "node"],
+    "incremental": true,
+    "tsBuildInfoFile": ".vite/ui-preview/cache/tsconfig.ui.tsbuildinfo"
+  },
+  "include": [
+    "app/renderer/src/ui/**/*.ts",
+    "app/renderer/src/ui/**/*.tsx",
+    "app/renderer/src/ui-preview/**/*.ts",
+    "app/renderer/src/ui-preview/**/*.tsx",
+    "vite.ui.config.ts"
+  ]
+}

@@ -288,6 +288,16 @@ Dependency installation establishes the workspace link. `npm run build:harness` 
 
 `tests/base-tools.test.ts` and `tests/general-agent-*.test.ts` cover real files, SQLite, Gateway/SDK transport to local HTTP endpoints, lifecycle, tool authorization, and recovery boundaries. Remote inference needs separately configured credentials; local verification is not a claim of remote LLM or production-UI cutover validation.
 
+### Independent UI preview
+
+```powershell
+npm.cmd run ui:dev
+npm.cmd run ui:build
+npm.cmd run ui:typecheck
+```
+
+Open `http://127.0.0.1:5178/`. This browser-only entry neither starts Electron/builds Harness nor replaces the production desktop. U0–U2 provide light/dark themes, scoped portals, and a local connection form covering validation, retained failure input, unsaved changes, and cancelled/reopened operations. Use only the public `demo-key` value: no services or credential storage are connected. Changes live in memory and reset on reload; outputs stay under `.vite/ui-preview/`. See the [UI plan and evidence](docs/next-steps/ui-design-system.md#121-第一轮-u0u2-实施与验收). U3–U5 are not implemented.
+
 ### Production Node CLI
 
 Node >=24 is required. Production and development share the independent Node entry, without Electron or an IPC input bridge:

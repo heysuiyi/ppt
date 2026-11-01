@@ -1,4 +1,4 @@
-import type { ModelContentDelta } from "../model/model-contract.js";
+import type { ModelContentDelta, ModelTextContent } from "../model/model-contract.js";
 import type {
   InteractionRequest,
   InteractionResponse,
@@ -87,4 +87,14 @@ export interface RuntimeStreamEvent extends RuntimeEventIdentity {
   readonly delta: ModelContentDelta;
 }
 
-export type RuntimeEvent = RuntimeFactEvent | RuntimeStreamEvent;
+/** 不透明预览身份的临时正文；不猜测尚未确定的最终 contentIndex。 */
+export interface RuntimeTextPreviewEvent extends RuntimeEventIdentity {
+  readonly kind: "stream";
+  readonly type: "model.preview";
+  readonly step: number;
+  readonly requestId: string;
+  readonly previewId: string;
+  readonly delta: ModelTextContent;
+}
+
+export type RuntimeEvent = RuntimeFactEvent | RuntimeStreamEvent | RuntimeTextPreviewEvent;

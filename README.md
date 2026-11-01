@@ -292,6 +292,16 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 新链路的回归入口为 `tests/base-tools.test.ts`、`tests/mimo-token-plan-cn.test.ts` 与 `tests/general-agent-*.test.ts`，覆盖真实文件、SQLite、原生 SDK 到本地 HTTP/SSE 的传输、生命周期、工具授权与恢复边界。远程厂商推理需要另外配置凭据；这些本地验证不代表已经完成远程 LLM 或生产 UI 的切换验证。
 
+### 独立 UI 预览
+
+```powershell
+npm.cmd run ui:dev
+npm.cmd run ui:build
+npm.cmd run ui:typecheck
+```
+
+开发地址为 `http://127.0.0.1:5178/`。此入口不启动 Electron、不构建 Harness，也不替换生产桌面。当前提供 U0–U2 的明暗主题/Portal 样例及本地连接表单，可验证校验、失败保留、脏关闭和取消重开竞态。仅接受演示值 `demo-key`，不连接服务、不保存凭据；所有更改仅在内存中，刷新重置。构建与缓存位于 `.vite/ui-preview/`。范围与证据见 [UI 执行方案](docs/next-steps/ui-design-system.md#121-第一轮-u0u2-实施与验收)，U3–U5 尚未实施。
+
 ### 生产 Node CLI
 
 需要 Node >=24。先构建一次，再直接运行生产入口；交互初始化需 Windows 安全终端与 CurrentUser DPAPI：

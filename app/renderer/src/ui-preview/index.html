@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>UI 预览 · 本地交互实验室</title>
+  </head>
+  <body>
+    <div id="ui-preview-root"></div>
+    <section aria-label="作用域外原生对照">
+      <h2>作用域外 · 原生对照</h2>
+      <p>此区不属于新 UI。切换主题不应改变这里的字体、控件或背景。</p>
+      <label for="outside-input">原生输入</label>
+      <input id="outside-input" value="原生浏览器样式" readonly />
+      <button type="button" id="outside-button">原生按钮</button>
+    </section>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

@@ -37,9 +37,11 @@ export function createPreviewBuffer(identity: RunIdentity): TerminalPreviewBuffe
     runId: identity.runId,
   });
   let previews: readonly TerminalTextPreview[] = Object.freeze([]);
+  const previewRequests = new Set<string>();
   let truncated = false;
   const clear = () => {
     previews = Object.freeze([]);
+    previewRequests.clear();
     truncated = false;
   };
   return {
@@ -61,19 +63,28 @@ export function createPreviewBuffer(identity: RunIdentity): TerminalPreviewBuffe
         return previews;
       }
       if (event.delta.type !== "text" || event.delta.text.length === 0) return previews;
+      const requestKey = JSON.stringify([event.step, event.requestId]);
+      if (event.type === "model.preview") previewRequests.add(requestKey);
+      else if (previewRequests.has(requestKey)) return previews;
+      const position =
+        event.type === "model.preview"
+          ? { previewId: event.previewId }
+          : { contentIndex: event.contentIndex };
       const next = Array.from(previews);
       const index = next.findIndex(
         (item) =>
           item.step === event.step &&
           item.requestId === event.requestId &&
-          item.contentIndex === event.contentIndex,
+          (event.type === "model.preview"
+            ? item.previewId === event.previewId
+            : item.contentIndex === event.contentIndex),
       );
       const text = (index >= 0 ? next[index]!.text : "") + event.delta.text;
-      const preview = {
+      const preview: TerminalTextPreview = {
         identity: run,
         step: event.step,
         requestId: event.requestId,
-        contentIndex: event.contentIndex,
+        ...position,
         text,
         truncated,
       };
@@ -91,10 +102,7 @@ export function createPreviewBuffer(identity: RunIdentity): TerminalPreviewBuffe
         } else {
           const tail = utf8Tail(first.text, keep);
           next[0] = {
-            identity: run,
-            step: first.step,
-            requestId: first.requestId,
-            contentIndex: first.contentIndex,
+            ...first,
             text: tail,
             truncated: true,
           };
@@ -104,10 +112,7 @@ export function createPreviewBuffer(identity: RunIdentity): TerminalPreviewBuffe
       previews = Object.freeze(
         next.map((item) =>
           Object.freeze({
-            identity: run,
-            step: item.step,
-            requestId: item.requestId,
-            contentIndex: item.contentIndex,
+            ...item,
             text: item.text,
             truncated,
           }),
