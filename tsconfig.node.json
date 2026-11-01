@@ -23,7 +23,6 @@
     "electron.vite.config.ts",
     "vitest.config.ts",
     "src/main/**/*.ts",
-    "src/logs/**/*.ts",
     "src/models/**/*.ts",
     "src/tools/**/*.ts",
     "src/ppt/**/*.ts",

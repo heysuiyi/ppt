@@ -242,9 +242,10 @@ PPTX exporter (hybrid: SVG background + editable text)
   - `glob` 支持 `*`、`**`、`?`；`grep` 只做字面量逐行搜索，不执行正则或 Shell。遍历、文件字节数、搜索总字节数与结果都有上限，未完成扫描明确报告 `truncated`，二进制/过大文件明确列为跳过；搜索不授予修改资格。
   - `internal/` 中迁出的安全读写与原子持久化原语也继续服务旧生产调用方，没有旧路径别名；旧 PPT 工具名称和业务提交链路未切换。原子 I/O 限制只由新工具显式启用，不对旧持久化调用新增全局限制。
   - 可用 `createTools(options, logs.getLogger("tools"))` 注入窄 Logger；省略时不创建日志实例。执行日志关联当前 Agent/Thread/Query/Run 与工具调用 ID，只记录工具名、状态、影响、耗时和分类错误码，不采集路径、正文、搜索词或编辑载荷；审批未通过时不记录“已执行”。开发宿主已注入 Logger；工具释放不关闭借用的日志系统。
-- `src/logs/`：独立诊断日志模块，尚未替换旧 logger、Harness 埋点或现有日志面板。`logs.ts` 的 `createLogs()` 接收显式输出，`node-logs.ts` 的 `createNodeLogs()` 内聚 stderr、按日 JSONL、近期环形缓冲与管理；协议在 `log-contract.ts`。
+- `packages/logs/`：私有 workspace 包 `@agent-ppt/logs@0.1.0`，Node >=24、ESM-only、无运行依赖，与 Harness 并列且互不依赖。通过 `@agent-ppt/logs/logs` 的 `createLogs()` 创建通用实例，通过 `@agent-ppt/logs/node-logs` 的 `createNodeLogs()` 使用 stderr、按日 JSONL、近期环形缓冲与管理；窄协议由 `@agent-ppt/logs/log-contract` 提供，不导出内部路径。尚未替换旧 logger、Harness 埋点或现有日志面板。
   - Logger 只负责记录与绑定上下文；输出配置、清理与关闭归宿主。记录先做有界快照和凭据遮蔽再分发，单个输出失败不阻止其他输出，日志不能替代规范历史或检查点。
   - 文件写入显式根下的 `<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，日期使用 UTC；保留与清理仅处理当前实例的托管旧日文件，不读写旧日志、应用设置或 Gateway 归档。
+  - `npm run build:packages` 构建 Harness 与 logs；应用/测试/开发入口在消费前构建，dev 等待两个包首次 emit 并持续监听。`npm run verify:logs-package` 验证真实 tarball 的仓库外独立安装、原生 Node 行为及通用声明闭包；日志包不管理应用配置持久化，不提供全局单例或自动服务发现。
 - `src/main/agent/`：Agent runtime、工具注册、模型网关、审批门禁、子任务
 - `src/main/agent-configuration/`：通过 `createAgentConfiguration()` 提供 `management` 和 `runtime` 两套操作，不公开 Store、凭据绑定或解密接口。
   - Renderer 只使用管理 IPC：读取无密钥快照、初始化、保存/删除厂商、保存执行偏好、修改搜索凭据、发现远程模型。厂商保存完成后才发布已提交状态；历史浏览器配置只读迁移，Main 初始化成功后清理。

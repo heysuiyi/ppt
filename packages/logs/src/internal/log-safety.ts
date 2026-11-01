@@ -1,4 +1,11 @@
-import type { LogContext, LogData, LogInput, LogLevel, LogRecord, LogValue } from "../log-contract";
+import type {
+  LogContext,
+  LogData,
+  LogInput,
+  LogLevel,
+  LogRecord,
+  LogValue,
+} from "../log-contract.js";
 
 const MAX_DEPTH = 6;
 const MAX_ITEMS = 50;

@@ -3,8 +3,8 @@ import type { AgentDefinition } from "@agent-ppt/harness/agent-contract";
 import { AgentError } from "@agent-ppt/harness/protocol-errors";
 import type { InteractionRequest } from "@agent-ppt/harness/protocol-values";
 import type { ToolAuthorizationPolicy } from "@agent-ppt/harness/tools/tool-contract";
+import type { Logger } from "@agent-ppt/logs/log-contract";
 import { z } from "zod";
-import type { Logger } from "../../logs/log-contract";
 import { createTools, type ToolsMode, type ToolsPlugin } from "../../tools/tools";
 
 export interface WorkspaceConfigurationOptions {

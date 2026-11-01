@@ -1,0 +1,35 @@
+{
+  "name": "@agent-ppt/logs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "npm run build"
+  },
+  "exports": {
+    "./log-contract": {
+      "types": "./dist/log-contract.d.ts",
+      "import": "./dist/log-contract.js"
+    },
+    "./logs": {
+      "types": "./dist/logs.d.ts",
+      "import": "./dist/logs.js"
+    },
+    "./node-logs": {
+      "types": "./dist/node-logs.d.ts",
+      "import": "./dist/node-logs.js"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  }
+}

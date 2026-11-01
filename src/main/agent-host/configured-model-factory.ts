@@ -6,7 +6,7 @@ import type {
 } from "@agent-ppt/harness/model/model-contract";
 import { AgentError } from "@agent-ppt/harness/protocol-errors";
 import { type Disposable, sameValue } from "@agent-ppt/harness/protocol-values";
-import type { Logger } from "../../logs/log-contract";
+import type { Logger } from "@agent-ppt/logs/log-contract";
 import { createMimoTokenPlanCN, MimoModelError } from "../../models/mimo-token-plan-cn";
 import {
   MIMO_TOKEN_PLAN_CN_BASE_URL,

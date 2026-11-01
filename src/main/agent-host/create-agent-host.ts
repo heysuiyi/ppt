@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { AgentError } from "@agent-ppt/harness/protocol-errors";
 import { snapshot } from "@agent-ppt/harness/protocol-values";
 import { createSessionHost, type SessionHost } from "@agent-ppt/harness/session-host";
-import { createNodeLogs, type NodeLogs } from "../../logs/node-logs";
+import { createNodeLogs, type NodeLogs } from "@agent-ppt/logs/node-logs";
 import type { ToolsMode } from "../../tools/tools";
 import type { AgentConfiguration } from "../agent-configuration";
 import { type PreparedConfiguredModel, prepareConfiguredModel } from "./configured-model-factory";

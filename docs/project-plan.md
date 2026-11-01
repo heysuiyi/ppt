@@ -42,10 +42,10 @@ PPT 只是其中一个可选插件能力，不是与 Harness 并列的项目主�
 | 端到端 | 已完成一个已配置真实模型的普通对话、读取、EOF 等待、目录变更拒绝、重启恢复、拒绝审批与取消验证 | 不代表所有厂商、业务插件或生产 UI 都已验收 |
 | 现有消费侧 | 旧 `src/main/agent/` 与现有 PPT/UI 链路继续运行 | 尚未消费新执行链；PPT 接入属于业务插件迁移，不是 Harness 内核完成的前置条件 |
 | 模块治理 | M1 公开协议/窄资源能力及门禁已落地；M2-A 分离通用 SessionHost 与工作区配置；M2-B 完成单包、声明闭包门禁、tarball 安装及实际 Electron ASAR 消费 | 未公开发布 npm，未统一不同配置的历史目录或引入动态装配，不声称完整 Harness 已完成 |
-| 日志能力 | `src/logs/` 提供通用记录与 Node 默认管理；开发宿主已向原生 MiMo 与 tools 注入关联 Logger，日志隐私和关闭有运行证据 | Harness 全生命周期和日志 UI 未迁移；旧 logger、Gateway 正文归档与历史日志保持原样，跨实例治理未实现 |
+| 日志能力 | 私有 workspace `@agent-ppt/logs` 提供通用记录与 Node 默认管理；开发宿主、原生 MiMo 与 tools 消费精确包子路径，宿主拥有实例，消费者借用 Logger | Harness 全生命周期和日志 UI 未迁移；旧 logger、Gateway 正文归档与历史日志保持原样，跨实例治理未实现 |
 | 模型适配 | `src/models/` 原生 MiMo CN Responses、发现、思考强度、流式、重放与开发宿主已贯通；本地 SDK/HTTP、Electron 设置组件及实际 Flash/high 小范围验收通过 | 不代表全部模型/档位已远程验收；旧生产聊天受理前拒绝原生 profile，不切换 UI 执行或 PPT |
 
-在 M1 公开面和 M2-A 通用装配基础上，M2-B 已建立独立构建与真实安装消费边界。logs 仍为应用内独立能力切片，models/tools/SQLite/Electron 未纳入 Harness 包；这些局部完成不等于通用 Harness 全部目标完成。
+在 M1 公开面和 M2-A 通用装配基础上，M2-B 已建立独立构建与真实安装消费边界。日志随后抽为与 Harness 互不依赖的独立包；models/tools/SQLite/Electron 未纳入 Harness 包。这些局部完成不等于通用 Harness 全部目标完成。
 
 ### 边界治理状态与后续问题
 
@@ -169,5 +169,7 @@ logs/tools 与 MiMo/CLI 能力切片的既有实现和证据保留在下一步�
 第一轮 M1 的公开协议及插件生命周期迁移保持不变；已修复审核发现的三斜线依赖和白盒导出类型图漏检，47 项隔离门禁正反例通过，见 [M1 审核修复记录](next-steps.md#m113-审核问题修复与门禁补充验收2026-11-01)。
 
 第二轮 M2-A 通用装配及本轮 M2-B 独立包边界已完成：当前组合根通过私有 `@agent-ppt/harness@0.1.0` 消费通用执行与 SessionHost；工作区配置、models/tools/logs/SQLite/Electron 仍在应用侧。M2-B 实际通过 34 项边界场景、192 文件/1632 项单测（2 项既有跳过）、类型/构建、两个 Electron CLI 集成、开发编译监听、真实 tarball 仓库外安装及 NodeNext/Bundler 声明消费；解包 Electron 实际从 ASAR 原生解析并执行包及 Zod。历史宿主源码产生的 v2 waiting 经当前包产物新进程恢复，绑定原文与 pending JSON 保持，Query 不变/Run 更新，最终 completed 且租约释放；历史宿主基线不等同完整旧二进制。详细证据和限制见 M2-B。本轮未调用远程厂商、未公开发布 npm，生产 UI/PPT 与旧 Agent/Gateway 未迁移；后续按 M3 通用扩展与可靠性门槛推进，M4 生产消费另行切片。
+
+独立能力切片 [日志包抽取](next-steps.md#独立能力切片日志包抽取)也已完成：`@agent-ppt/logs@0.1.0` 与 Harness 并列、互不依赖，全部新日志消费者改用受控产物。18 项边界隔离场景、真实 tarball 离线安装和通用/Node 声明消费、双包监听、原生日志行为及实际 Electron ASAR 文件输出通过；本轮全量仍为 192 文件/1632 项通过、2 项既有跳过，两个真实 CLI 集成通过。保留日志格式、安全处理和宿主所有权，不迁移旧 logger/日志 UI，不新增遥测、容器或内核日志协议。详细证据与安装器/签名未验证的限制见切片记录。
 
 前序已按 [mimo-token-plan-cn 具体实施方案](mimo-token-plan-cn.md)完成原生模型 provider、发现与设置/思考强度、开发宿主 Responses/工具/流式/日志/恢复，并对实际 CN `mimo-v2.6-flash` / `high` 做小范围验收。精确证据、未验收模型与 Node Fetch 421 内部重传限制见其实施记录；这些证据不代替本轮 M1 验收。

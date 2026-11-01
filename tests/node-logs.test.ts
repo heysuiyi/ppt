@@ -12,14 +12,14 @@ import {
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createNodeLogs,
   type LogRecord,
   type NodeLogs,
   type NodeLogsOptions,
   type NodeLogsSettingsPatch,
-} from "../src/logs/node-logs";
+} from "@agent-ppt/logs/node-logs";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const directories: string[] = [];
 const services: NodeLogs[] = [];

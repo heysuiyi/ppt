@@ -1,4 +1,4 @@
-export { createNodeLogs } from "./internal/node-log-service";
+export { createNodeLogs } from "./internal/node-log-service.js";
 export type {
   LogContext,
   LogFileStatus,
@@ -17,4 +17,4 @@ export type {
   NodeLogsSettings,
   NodeLogsSettingsPatch,
   RecentLogQuery,
-} from "./log-contract";
+} from "./log-contract.js";

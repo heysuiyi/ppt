@@ -2,22 +2,28 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const packageRoot = fileURLToPath(new URL("../packages/harness/", import.meta.url));
-const configPath = fileURLToPath(new URL("../packages/harness/tsconfig.json", import.meta.url));
+const packages = ["harness", "logs"];
 
-export function buildHarness() {
-  execFileSync(
-    process.execPath,
-    [fileURLToPath(new URL("../packages/harness/build.mjs", import.meta.url))],
-    {
-      cwd: packageRoot,
-      stdio: "inherit",
-    },
-  );
+export function buildPackages() {
+  for (const name of packages) {
+    execFileSync(
+      process.execPath,
+      [fileURLToPath(new URL(`../packages/${name}/build.mjs`, import.meta.url))],
+      {
+        cwd: fileURLToPath(new URL(`../packages/${name}/`, import.meta.url)),
+        stdio: "inherit",
+      },
+    );
+  }
 }
 
-/** Start the application only after the first successful emit; never alias back to source. */
-export function watchHarness() {
+export function watchPackages() {
+  return Promise.all(packages.map(watchPackage));
+}
+
+/** Start the application only after every package's successful emit; never alias to source. */
+function watchPackage(name) {
+  const configPath = fileURLToPath(new URL(`../packages/${name}/tsconfig.json`, import.meta.url));
   const ready = Promise.withResolvers();
   const formatHost = {
     getCanonicalFileName: (file) => file,
@@ -43,7 +49,7 @@ export function watchHarness() {
     const emitted = builder.emit();
     for (const diagnostic of emitted.diagnostics) report(diagnostic);
     if (emitted.emitSkipped) return;
-    process.stdout.write("[harness] Package emit ready.\n");
+    process.stdout.write(`[${name}] Package emit ready.\n`);
     queueMicrotask(() => ready.resolve(watcher));
   };
   const watcher = ts.createWatchProgram(host);

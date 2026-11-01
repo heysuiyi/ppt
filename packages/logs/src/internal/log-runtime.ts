@@ -6,8 +6,8 @@ import type {
   LogLevel,
   Logs,
   LogsStatus,
-} from "../log-contract";
-import { createLogRecord, snapshotContext } from "./log-safety";
+} from "../log-contract.js";
+import { createLogRecord, snapshotContext } from "./log-safety.js";
 
 export const levelPriority: Readonly<Record<LogLevel, number>> = Object.freeze({
   debug: 10,

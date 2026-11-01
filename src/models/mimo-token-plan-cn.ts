@@ -5,8 +5,8 @@ import type {
   ModelSelection,
   ModelStreamEvent,
 } from "@agent-ppt/harness/model/model-contract";
+import type { Logger } from "@agent-ppt/logs/log-contract";
 import OpenAI from "openai";
-import type { Logger } from "../logs/log-contract";
 import { MimoModelError, modelError, object, outputBudget } from "./internal/mimo-errors";
 import { requestBody, responseProjection } from "./internal/mimo-responses";
 import { MimoStreamProjection } from "./internal/mimo-stream";

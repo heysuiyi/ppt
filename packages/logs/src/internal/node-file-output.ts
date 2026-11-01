@@ -11,7 +11,7 @@ import {
   writeSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import type { LogFileStatus, LogRecord } from "../log-contract";
+import type { LogFileStatus, LogRecord } from "../log-contract.js";
 
 const dayMilliseconds = 86_400_000;
 const dailyName = /^diagnostic-(\d{4}-\d{2}-\d{2})\.jsonl$/;

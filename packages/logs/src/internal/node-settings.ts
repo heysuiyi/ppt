@@ -5,8 +5,8 @@ import type {
   NodeLogsSettings,
   NodeLogsSettingsPatch,
   RecentLogQuery,
-} from "../log-contract";
-import { isLogLevel, levelPriority } from "./log-runtime";
+} from "../log-contract.js";
+import { isLogLevel, levelPriority } from "./log-runtime.js";
 
 function object(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

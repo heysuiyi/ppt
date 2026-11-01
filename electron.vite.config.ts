@@ -8,13 +8,15 @@ export default defineConfig({
     plugins: [
       externalizeDepsPlugin(),
       {
-        name: "watch-harness-artifacts",
+        name: "watch-workspace-artifacts",
         buildStart() {
           // The dependency remains external; watch its emitted files to restart Main in dev.
-          const directory = resolve("packages/harness/dist");
-          for (const file of readdirSync(directory, { recursive: true })) {
-            if (typeof file === "string" && file.endsWith(".js")) {
-              this.addWatchFile(resolve(directory, file));
+          for (const name of ["harness", "logs"]) {
+            const directory = resolve(`packages/${name}/dist`);
+            for (const file of readdirSync(directory, { recursive: true })) {
+              if (typeof file === "string" && file.endsWith(".js")) {
+                this.addWatchFile(resolve(directory, file));
+              }
             }
           }
         },

@@ -1,5 +1,5 @@
+import { createLogs, type LogExporter, type LogRecord } from "@agent-ppt/logs/logs";
 import { describe, expect, it } from "vitest";
-import { createLogs, type LogExporter, type LogRecord } from "../src/logs/logs";
 
 function capture(records: LogRecord[]): LogExporter {
   return {

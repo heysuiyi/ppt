@@ -1,7 +1,7 @@
+import type { LogContext, LogInput, LogRecord } from "@agent-ppt/logs/log-contract";
+import { createLogs } from "@agent-ppt/logs/logs";
 import { describe, expect, it } from "vitest";
-import { createLogRecord } from "../src/logs/internal/log-safety";
-import type { LogContext, LogInput, LogRecord } from "../src/logs/log-contract";
-import { createLogs } from "../src/logs/logs";
+import { createLogRecord } from "../packages/logs/dist/internal/log-safety.js";
 
 function capture(name = "safety") {
   const records: LogRecord[] = [];

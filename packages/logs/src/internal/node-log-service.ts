@@ -5,10 +5,10 @@ import type {
   NodeLogsOptions,
   NodeLogsSettings,
   NodeLogsSettingsPatch,
-} from "../log-contract";
-import { createLogRuntime, type RuntimeOutputSetting } from "./log-runtime";
-import { NodeFileOutput } from "./node-file-output";
-import { initialSettings, patchSettings, RecentOutput, snapshotPatch } from "./node-settings";
+} from "../log-contract.js";
+import { createLogRuntime, type RuntimeOutputSetting } from "./log-runtime.js";
+import { NodeFileOutput } from "./node-file-output.js";
+import { initialSettings, patchSettings, RecentOutput, snapshotPatch } from "./node-settings.js";
 
 function outputSettings(settings: NodeLogsSettings): readonly RuntimeOutputSetting[] {
   return (["terminal", "file", "recent"] as const).map((id) => ({

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { buildHarness, watchHarness } from "./harness-build.mjs";
+import { buildPackages, watchPackages } from "./workspace-build.mjs";
 
 // Electron/Chromium inherits the console independently of the application logger.
 // Configure its code page before either electron-vite or Electron starts.
@@ -19,9 +19,9 @@ if (process.platform === "win32") {
 
 const command = process.argv[2];
 if (command === undefined || command === "dev") {
-  await watchHarness();
+  await watchPackages();
 } else if (command === "preview") {
-  buildHarness();
+  buildPackages();
 }
 
 const require = createRequire(import.meta.url);

@@ -1,5 +1,5 @@
-import { createLogRuntime } from "./internal/log-runtime";
-import type { Logs, LogsOptions } from "./log-contract";
+import { createLogRuntime } from "./internal/log-runtime.js";
+import type { Logs, LogsOptions } from "./log-contract.js";
 
 export type {
   LogContext,
@@ -15,7 +15,7 @@ export type {
   LogsOptions,
   LogsStatus,
   LogValue,
-} from "./log-contract";
+} from "./log-contract.js";
 
 /** 创建只含通用机制的日志实例；配置成功后由实例拥有各输出。 */
 export function createLogs(options: LogsOptions): Logs {

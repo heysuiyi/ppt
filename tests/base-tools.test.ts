@@ -28,6 +28,7 @@ import type {
   ToolAuthorizationPolicy,
   ToolCompletion,
 } from "@agent-ppt/harness/tools/tool-contract";
+import { createLogs, type Logger, type LogRecord } from "@agent-ppt/logs/logs";
 import { describe, expect, it, vi } from "vitest";
 import { installPlugins } from "../packages/harness/dist/agent/extensions/plugin-manager.js";
 import { PromptRegistry } from "../packages/harness/dist/agent/extensions/prompt-registry.js";
@@ -36,7 +37,6 @@ import { ResourceScope } from "../packages/harness/dist/agent/scope/resource-sco
 import type { ToolExecutionResult } from "../packages/harness/dist/agent/tools/tool-executor.js";
 import { ToolPipeline } from "../packages/harness/dist/agent/tools/tool-pipeline.js";
 import { ToolRegistry } from "../packages/harness/dist/agent/tools/tool-registry.js";
-import { createLogs, type Logger, type LogRecord } from "../src/logs/logs";
 import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
 import type { EditOutput } from "../src/tools/edit";
 import type { GlobOutput } from "../src/tools/glob";
