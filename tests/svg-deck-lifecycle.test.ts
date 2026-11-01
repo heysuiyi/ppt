@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PptLifecycleToolBridge, ToolContext } from "../app/main/agent/tools/tool-definition";
@@ -19,7 +20,6 @@ import {
   asQueryId,
   type BlobReference,
 } from "../src/shared/presentation-lifecycle";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const temporaryRoots: string[] = [];
 const repositories: PresentationLifecycleRepository[] = [];

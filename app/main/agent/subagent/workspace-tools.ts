@@ -2,13 +2,13 @@ import { execFile } from "node:child_process";
 import { lstat, realpath } from "node:fs/promises";
 import { delimiter, isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
-import type { AgentSearchConfig } from "@shared/agent-gateway-config";
-import { z } from "zod";
 import {
   canonicalizeWorkspaceRoot,
   WorkspaceFileError,
   WorkspaceFileService,
 } from "@agent-harness/tools/workspace-files";
+import type { AgentSearchConfig } from "@shared/agent-gateway-config";
+import { z } from "zod";
 import type { PromptStage } from "../../plugins/ppt/prompts/prompt-stage";
 import {
   SUB_AGENT_TOOL_PERMISSION_PROFILES,

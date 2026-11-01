@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WorkspaceFileError, WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import {
   editFileContract,
@@ -22,10 +23,6 @@ import {
 } from "../app/main/plugins/ppt/tools/svg-deck-locks";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
-import {
-  WorkspaceFileError,
-  WorkspaceFileService,
-} from "@agent-harness/tools/workspace-files";
 
 const temporaryRoots: string[] = [];
 

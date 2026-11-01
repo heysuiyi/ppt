@@ -7,7 +7,8 @@
   "workspaces": [
     "packages/harness",
     "packages/logs",
-    "packages/models"
+    "packages/models",
+    "packages/tools"
   ],
   "scripts": {
     "postinstall": "install-electron",
@@ -19,10 +20,12 @@
     "build:logs": "npm run build --workspace @agent-harness/logs",
     "build:models": "npm run build:harness && npm run build:logs && npm run build --workspace @agent-harness/models",
     "verify:models-package": "npm run build:packages && node scripts/verify-models-package.mjs",
+    "build:tools": "npm run build:harness && npm run build:logs && npm run build --workspace @agent-harness/tools",
+    "verify:tools-package": "npm run build:packages && node scripts/verify-tools-package.mjs",
     "build:packages": "npm run build --workspaces",
     "verify:logs-package": "npm run build:logs && node scripts/verify-logs-package.mjs",
     "verify:harness-package": "npm run build:harness && node scripts/verify-harness-package.mjs",
-    "check:agent-boundaries": "npm run build:packages && node scripts/check-agent-boundaries.mjs && node scripts/check-logs-boundaries.mjs && node scripts/check-models-boundaries.mjs",
+    "check:agent-boundaries": "npm run build:packages && node scripts/check-agent-boundaries.mjs && node scripts/check-logs-boundaries.mjs && node scripts/check-models-boundaries.mjs && node scripts/check-tools-boundaries.mjs",
     "typecheck": "npm run check:agent-boundaries && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
@@ -37,6 +40,7 @@
     "@agent-harness/core": "0.1.0",
     "@agent-harness/logs": "0.1.0",
     "@agent-harness/models": "0.1.0",
+    "@agent-harness/tools": "0.1.0",
     "@anthropic-ai/sdk": "^0.104.1",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
@@ -85,6 +89,7 @@
       "!node_modules/@agent-harness/core{,/**/*}",
       "!node_modules/@agent-harness/logs{,/**/*}",
       "!node_modules/@agent-harness/models{,/**/*}",
+      "!node_modules/@agent-harness/tools{,/**/*}",
       {
         "from": "packages/harness",
         "to": "node_modules/@agent-harness/core",
@@ -106,6 +111,15 @@
       {
         "from": "packages/models",
         "to": "node_modules/@agent-harness/models",
+        "filter": [
+          "package.json",
+          "dist/**/*.js",
+          "dist/**/*.d.ts"
+        ]
+      },
+      {
+        "from": "packages/tools",
+        "to": "node_modules/@agent-harness/tools",
         "filter": [
           "package.json",
           "dist/**/*.js",

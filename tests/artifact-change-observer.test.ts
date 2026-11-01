@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { readFileContract, writeFileContract } from "@main/plugins/ppt/workspace-files";
 import { PresentationArtifactChangeObserver } from "@main/presentation-lifecycle/artifact-change-observer";
 import type { ArtifactChangeObserverPort } from "@main/presentation-lifecycle/artifact-change-observer-types";
@@ -18,7 +19,6 @@ import {
   type ValidationReport,
 } from "@shared/presentation-lifecycle";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const NOW = "2026-07-30T00:00:00.000Z";
 const temporaryDirectories: string[] = [];

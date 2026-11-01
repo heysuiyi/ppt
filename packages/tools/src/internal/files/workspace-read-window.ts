@@ -1,4 +1,4 @@
-import { WorkspaceFileError } from "./workspace-file-types";
+import { WorkspaceFileError } from "./workspace-file-contract.js";
 
 export function assertReadWindowNumber(
   name: "offset" | "limit",

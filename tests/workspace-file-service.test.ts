@@ -13,6 +13,12 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import {
+  AtomicWriteConflictError,
+  readJsonFile,
+  writeTextFileAtomic,
+} from "@agent-harness/tools/atomic-files";
+import { globWorkspaceFiles, WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -27,17 +33,8 @@ import { executeExtraToolTool } from "../app/main/agent/tools/core/execute-extra
 import { workspaceFileTools as mainAgentWorkspaceFileTools } from "../app/main/agent/tools/core/workspace-files";
 import type { ToolContext } from "../app/main/agent/tools/tool-definition";
 import type { ToolRegistry } from "../app/main/agent/tools/tool-registry";
-import { createStarterPresentation } from "../src/shared/presentation-fixtures";
-import {
-  AtomicWriteConflictError,
-  readJsonFile,
-  writeTextFileAtomic,
-} from "@agent-harness/tools/atomic-files";
-import {
-  globWorkspaceFiles,
-  WorkspaceFileService,
-} from "@agent-harness/tools/workspace-files";
 import { createRecoveryFixture } from "../packages/tools/tests/fixtures/atomic-v1";
+import { createStarterPresentation } from "../src/shared/presentation-fixtures";
 
 async function createWorkspace(): Promise<string> {
   return await mkdtemp(join(tmpdir(), "ppt-file-service-"));
@@ -478,9 +475,7 @@ describe("WorkspaceFileService", () => {
     );
 
     for (const mainTool of mainAgentWorkspaceFileTools) {
-      expect(
-        subAgentWorkspaceFileTools.find((tool) => tool.name === mainTool.name),
-      ).toBeDefined();
+      expect(subAgentWorkspaceFileTools.find((tool) => tool.name === mainTool.name)).toBeDefined();
     }
   });
 

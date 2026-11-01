@@ -7,7 +7,8 @@
 - [AGENTS.md](../AGENTS.md)：持续适用的开发规范、架构约束与验证底线。
 - 本文：项目整体方向、模块职责和分阶段路线。
 - [下一步计划](next-steps/README.md)：当前待执行迭代的具体范围、改动落点与验收条件。
-- [独立页面 UI 设计体系](next-steps/ui-design-system.md)：先建设新使用规则、组件与本地交互预览，不接后端/Harness、不改旧生产 UI；方案已设计，实施与验收待执行，CLI 呈现另行规划。
+- [独立页面 UI 设计体系](next-steps/ui-design-system.md)：先建设新使用规则、组件与本地交互预览，不接后端/Harness、不改旧生产 UI；方案已设计，实施与验收待执行。
+- [独立 Node CLI 终端](next-steps/cli-terminal.md)：先独立建设终端呈现、输入与生命周期，和 tools 抽取并行；真实 Node 宿主与 tools 就绪后统一接入 Harness，设计不等于运行时已实现。
 - [README](../README.md)：当前产品能力、使用方式和现有执行入口。
 
 规范与计划不能代替实际实现；阶段完成后应更新状态与证据，不用修改文字掩盖未完成事项。
@@ -39,9 +40,9 @@ PPT 只是其中一个可选插件能力，不是与 Harness 并列的项目主�
 | --- | --- | --- |
 | 通用执行 | 私有 workspace `@agent-harness/core` 提供通用执行协议与默认实现；独立 ESM/声明构建、精确 exports 及仓库外 tarball 消费已通过 | 不代表通用体系的所有扩展能力或生产 UI 已完成 |
 | 宿主接入 | `@agent-harness/core/session-host` 提供固定 Thread、发布前绑定确认及公开 Application 装配；Electron 组合根负责配置与端口，CLI 原有向导/命令保持 | 仅原生 MiMo 接入当前配置；其他配置的持久适配未完成，生产 UI 未迁移，异常租约不自动接管 |
-| 基础工具 | `src/tools` 已提供 `read/write/edit/glob/grep` 及独立装配，默认只读；安全原语已从旧 Agent 目录迁出，现有生产消费者同步改用迁出实现 | 单包 tools 收敛方案已设计、待实施；观察记录不跨进程恢复，重启须重新读取，不代表生产 UI/PPT 已迁移 |
+| 基础工具 | 私有 `@agent-harness/tools` 已收敛插件、纯契约/错误、受控 Node 文件支撑五入口；全部新旧调用方迁移，无旧源码别名；独立安装、旧 waiting/磁盘恢复、实际编辑器和 ASAR 消费通过 | 观察记录不跨进程恢复，重启须重新读取；低层 Node 读可能恢复写入，不能当新只读工具；不代表生产聊天/PPT 已迁移 |
 | 端到端 | 已完成一个已配置真实模型的普通对话、读取、EOF 等待、目录变更拒绝、重启恢复、拒绝审批与取消验证 | 不代表所有厂商、业务插件或生产 UI 都已验收 |
-| 现有消费侧 | 旧 `app/main/agent/` 与现有 PPT/UI 链路继续运行；桌面与终端按根级 `app/`、`cli/` 分类，通用工具和领域模块仍在 `src/` | 尚未消费新执行链；CLI 当前仍借用 Electron 平台桥接，不等于纯 Node 运行时独立；PPT 接入属于业务插件迁移 |
+| 现有消费侧 | 旧 `app/main/agent/` 与现有 PPT/UI 链路继续运行；桌面与终端按根级 app/cli 分类，文件能力归 tools 包，其余未归属共享/领域代码仍在 src | 尚未消费新执行链；CLI 当前仍借用 Electron 平台桥接，不等于纯 Node 运行时独立；PPT 接入属于业务插件迁移 |
 | 模块治理 | M1 公开协议/窄资源能力及门禁已落地；M2-A 分离通用 SessionHost 与工作区配置；M2-B 完成单包、声明闭包门禁、tarball 安装及实际 Electron ASAR 消费 | 未公开发布 npm，未统一不同配置的历史目录或引入动态装配，不声称完整 Harness 已完成 |
 | 日志能力 | 私有 workspace `@agent-harness/logs` 提供通用记录与 Node 默认管理；开发宿主、原生 MiMo 与 tools 消费精确包子路径，宿主拥有实例，消费者借用 Logger | Harness 全生命周期和日志 UI 未迁移；旧 logger、Gateway 正文归档与历史日志保持原样，跨实例治理未实现 |
 | 模型适配 | 单一 `@agent-harness/models` 包已实施；四个公开入口内聚统一创建、纯资料、安全错误与私有 MiMo，实现真实 tarball 安装、SDK 本地 HTTP/SSE、实际 Electron 设置/凭据、旧 waiting 恢复及 ASAR 执行 | 当前真实适配器仅 MiMo；本轮不增加远程验收，不代表所有型号/档位或未来厂商已验收，生产聊天未切换 |
@@ -53,7 +54,7 @@ PPT 只是其中一个可选插件能力，不是与 Harness 并列的项目主�
 1. 已处理：`protocol-utils.ts` 删除，错误类/安全投影与无损协议值操作分别由具名公共协议提供，内核、宿主与测试调用方已迁移。
 2. 已处理：`PluginContext.scope` 使用 `PluginScope` 窄对象；资源树、默认工厂和工具执行端口保持内部，外部访问受精确依赖检查约束。
 3. 已处理：通用会话装配通过 `@agent-harness/core/session-host` 提供，工作区指令、tools 与授权仍在具体配置模块；Electron 组合根负责凭据、模型、SQLite、日志及原 v2 绑定。包独立构建、声明与安装消费、ASAR 实际闭包已验证。
-4. 新开发宿主已删除 Gateway 兼容分支，只接受明确接入的原生适配器；当前为 MiMo，其他配置在解析凭据前拒绝。原有 Gateway 仍由旧生产 Agent 使用，不能据此删除整个旧链路。文件安全和原子持久化原语已迁到 `src/tools/internal/` 并迁移调用方。
+4. 新开发宿主已删除 Gateway 兼容分支，只接受明确接入的原生适配器；当前为 MiMo，其他配置在解析凭据前拒绝。原有 Gateway 仍由旧生产 Agent 使用，不能据此删除整个旧链路。文件安全、原子持久化与旧文件服务已由 tools 包内聚，宿主、旧生产和领域消费者使用 atomic-files/workspace-files 等受控入口，旧 src/tools 已删除。
 
 以上是后续工作的输入；基础工具切片不代表 Harness 公开面收敛或其他模块迁移已完成。此前基础工具验收通过公开入口运行无插件对话、五工具真实文件操作、只读拒绝和宿主拒绝烟测，其历史证据不包含远程厂商调用；本轮 MiMo 的新增远程证据另见实施记录。
 
@@ -173,13 +174,13 @@ logs/tools 与 MiMo/CLI 能力切片的既有实现和证据保留在下一步�
 
 独立的[单包多厂商模型切片](next-steps/models-package.md#12-实施与验收记录)已完成实施与本地验收：一个 `@agent-harness/models` 包，统一创建/资料/错误入口及包内厂商模块；配置、凭据、连接指纹和步数预算留在宿主。16 项隔离门禁、三包监听、真实依赖闭包离线安装、NodeNext/Bundler 声明、实际 Electron 设置与加密凭据重启、迁移前 waiting 新进程完成及 ASAR 原生模型执行通过。当前仅 MiMo，本轮没有远程厂商调用或生产聊天迁移；并行 M3-A 的范围与证据独立保留。
 
-独立的 [Tools 收敛方案](next-steps/tools-package.md)已完成代码调研与设计，尚未实施：采用一个 `@agent-harness/tools` 包，以插件、纯契约/错误、共享原子 I/O 与旧文件服务五个入口收敛调用面，不公开全部 internal 或新建文件底座包。保留新工具与旧 WorkspaceFileService 的读取恢复、receipt 生命周期及错误身份差异；按当前 app/cli 路径完整迁移调用方，先建立迁移前 waiting/磁盘恢复基线，再验证独立安装、四包监听与实际 Electron 消费。现有语义的临时 Node 文件探针通过，不等同工具包或生产迁移验收，也不推进并行 M3/UI 工作。
+独立的 [Tools 收敛切片](next-steps/tools-package.md#12-实施与验收记录)已完成实施与本地验收：一个 @agent-harness/tools 包、五个精确入口，保留两套读取恢复/receipt 语义及唯一安全实现/错误身份，全部 app/cli/旧生产/领域调用方迁移。当前四包构建/类型/门禁通过，193 文件/1654 项回归通过、2 项既有跳过，两项真实 Electron CLI 集成及 87 文件静态检查通过；18 项隔离门禁、真实 tarball 离线安装与声明/文件行为、原工具 waiting 与原子材料恢复、实际项目编辑器拒绝外部覆盖、PTY 启动取消、四包监听和原生 ASAR 消费均已运行。没有远程厂商调用，不将并行 M3/UI/CLI 设计计入本切片。
 
 通用包身份已修正并完成本轮本地验收：`@agent-harness/core`、`@agent-harness/logs` 及根 workspace `agent-harness` 已统一，两个真实 tarball、新名实际 Electron ASAR 消费及旧名拒绝通过；全量 192 文件/1632 项通过（2 项既有跳过）、两项真实 CLI 集成通过，见[修正记录](next-steps/package-identities.md#通用包身份修正)。包身份修正阶段未开始 MiMo 抽取或 M3 实施；当时的 [M3 执行计划](next-steps/m3-reliability.md#m3-执行计划)保留以下边界：参考 Netty 的有序执行/状态隔离和 Tomcat 的发布/停止服务/资源所有权，验证现有模型而非引入线程池或新容器。计划包含能力组合、安装回滚、多 Agent 隔离、版本兼容、真实 SQLite 竞争、明确故障窗口恢复及观察独立性；优先查清 findUnfinished 与 Query acquire 分离的候选 Thread 准入竞争。该风险尚未复现，不能写成已修复；事件观察队列无容量上限，M3 不据此承诺背压、内存有界或抗拒绝服务。生产消费迁移仍按 M4 单独切片。
 
 第一轮 M1 的公开协议及插件生命周期迁移保持不变；已修复审核发现的三斜线依赖和白盒导出类型图漏检，47 项隔离门禁正反例通过，见 [M1 审核修复记录](next-steps/m1-public-api.md#m113-审核问题修复与门禁补充验收2026-11-01)。
 
-第二轮 M2-A 通用装配及 M2-B 独立包边界已完成：当前组合根通过私有 `@agent-harness/core@0.1.0` 消费通用执行与 SessionHost；工作区配置、tools/SQLite/Electron 仍在应用侧，模型与日志另为并列包。原 M2-B 实际通过 34 项边界场景、192 文件/1632 项单测（2 项既有跳过）、类型/构建、两个 Electron CLI 集成、开发编译监听、真实 tarball 仓库外安装及 NodeNext/Bundler 声明消费；解包 Electron 实际从 ASAR 原生解析并执行包及 Zod。历史宿主源码产生的 v2 waiting 经包产物新进程恢复，绑定原文与 pending JSON 保持，Query 不变/Run 更新，最终 completed 且租约释放；历史宿主基线不等同完整旧二进制。原轮证据见 M2-B，新名称切换证据见[通用包身份修正](next-steps/package-identities.md#通用包身份修正)。生产 UI/PPT 与旧 Agent/Gateway 未迁移。
+第二轮 M2-A 通用装配及 M2-B 独立包边界已完成：当前组合根通过私有 @agent-harness/core 消费通用执行与 SessionHost；工作区配置、SQLite/Electron 仍在应用侧，模型、日志与工具各为独立包。原 M2-B 实际通过 34 项边界场景、192 文件/1632 项单测（2 项既有跳过）、类型/构建、两个 Electron CLI 集成、开发编译监听、真实 tarball 仓库外安装及 NodeNext/Bundler 声明消费；解包 Electron 实际从 ASAR 原生解析并执行包及 Zod。历史宿主源码产生的 v2 waiting 经包产物新进程恢复，绑定原文与 pending JSON 保持，Query 不变/Run 更新，最终 completed 且租约释放；历史宿主基线不等同完整旧二进制。原轮证据见 M2-B，新名称切换证据见[通用包身份修正](next-steps/package-identities.md#通用包身份修正)。生产聊天/PPT 与旧 Agent/Gateway 未迁移；其共享文件入口收敛以工具包独立记录为准。
 
 独立能力切片 [日志包抽取](next-steps/logs-package.md#独立能力切片日志包抽取)也已完成，现包名为 `@agent-harness/logs@0.1.0`，与 Harness 并列、互不依赖，全部新日志消费者使用受控产物。原轮 18 项边界隔离场景、真实 tarball 离线安装和通用/Node 声明消费、双包监听、原生日志行为及实际 Electron ASAR 文件输出通过；全量为 192 文件/1632 项通过、2 项既有跳过，两个真实 CLI 集成通过。保留日志格式、安全处理和宿主所有权，不迁移旧 logger/日志 UI，不新增遥测、容器或内核日志协议。原轮记录保留实施当时包名，不提供旧名别名。
 

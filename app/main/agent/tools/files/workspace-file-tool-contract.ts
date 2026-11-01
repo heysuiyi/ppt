@@ -1,11 +1,11 @@
 import { normalize, resolve } from "node:path";
-import { z } from "zod";
 import {
   countOccurrences,
   globWorkspaceFiles,
   WorkspaceFileError,
   type WorkspaceFileService,
 } from "@agent-harness/tools/workspace-files";
+import { z } from "zod";
 import {
   type ToolPermissionProfile,
   type ToolRisk,

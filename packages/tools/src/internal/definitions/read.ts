@@ -3,26 +3,9 @@ import type {
   ToolExecutionContext,
   ToolResult,
 } from "@agent-harness/core/tools/tool-contract";
+
 import { z } from "zod";
-
-export interface ReadInput {
-  path: string;
-  offset?: number;
-  limit?: number;
-  expectedVersion?: string;
-}
-
-export interface ReadOutput {
-  path: string;
-  version: string;
-  size: number;
-  content: string;
-  startOffset: number;
-  endOffset: number;
-  totalCharacters: number;
-  hasMore: boolean;
-  nextOffset?: number;
-}
+import type { ReadInput, ReadOutput } from "../../tools-contract.js";
 
 export const readInputSchema = z
   .object({

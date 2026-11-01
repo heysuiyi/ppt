@@ -1,5 +1,6 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { writeJsonFileAtomic, writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 import type {
   ProviderTokenUsage,
   TokenTaskOutcome,
@@ -8,7 +9,6 @@ import type {
   TokenUsageStats,
 } from "@shared/token-usage";
 import { z } from "zod";
-import { writeJsonFileAtomic, writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 
 const usageTotalsSchema = {
   inputTokens: z.number().int().nonnegative(),

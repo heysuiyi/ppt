@@ -1,4 +1,4 @@
-import type { AgentRunInput } from "@agent-harness/core/agent-contract";
+import type { AgentRunHandle, AgentRunInput } from "@agent-harness/core/agent-contract";
 import type { AgentCreationOptions, AgentServices } from "@agent-harness/core/agent-factory";
 import { createAgentApplication } from "@agent-harness/core/application/agent-application";
 import type {
@@ -19,7 +19,7 @@ import type {
   CheckpointLease,
 } from "@agent-harness/core/session/checkpoint-contract";
 import type { AgentCheckpoint, SessionHistory } from "@agent-harness/core/session/session-contract";
-import type { ToolResult } from "@agent-harness/core/tools/tool-contract";
+import type { ToolExecutionContext, ToolResult } from "@agent-harness/core/tools/tool-contract";
 import { describe, expect, it, type Mock, onTestFinished, vi } from "vitest";
 import { z } from "zod";
 import { RuntimeEventStream } from "../packages/harness/dist/agent/runtime/event-stream.js";
@@ -772,6 +772,232 @@ describe("general agent installation atomicity", () => {
     expect(await f.history.read("thread")).toEqual(committedHistory);
   });
 
+  it.each(["succeeds", "fails"] as const)(
+    "late binding cleanup %s is drained and preserves creation and close errors",
+    async (outcome) => {
+      const f = fixture();
+      const bindingEntered = Promise.withResolvers<void>();
+      const bindingReady = Promise.withResolvers<void>();
+      const disposalEntered = Promise.withResolvers<void>();
+      const disposalReady = Promise.withResolvers<void>();
+      const cleanupError = new Error("late binding cleanup failed");
+      const order: string[] = [];
+      const first = resource("first", order);
+      const last = resource("last", order);
+      let bindingReleased = false;
+      let bindingSignal: AbortSignal | undefined;
+      f.bind.mockImplementation(async (_selection, signal) => {
+        bindingSignal = signal;
+        bindingEntered.resolve();
+        await bindingReady.promise;
+        return f.binding;
+      });
+      f.bindingDisposed.mockImplementation(async () => {
+        disposalEntered.resolve();
+        await disposalReady.promise;
+        if (outcome === "fails") throw cleanupError;
+        bindingReleased = true;
+      });
+      const app = createAgentApplication(f.services);
+      let creationSettled = false;
+      const creating = app.agents.create(
+        creation({
+          plugins: [
+            {
+              id: "late-binding-owner",
+              version: "1",
+              setup({ scope }) {
+                scope.own(first);
+                scope.own(last);
+              },
+            },
+          ],
+        }),
+      );
+      const creationObserved = creating.then(
+        () => {
+          creationSettled = true;
+          return undefined;
+        },
+        (error: unknown) => {
+          creationSettled = true;
+          return error;
+        },
+      );
+      let closing: Promise<void> | undefined;
+      let closeObserved: Promise<unknown> | undefined;
+      try {
+        await bindingEntered.promise;
+        let closeSettled = false;
+        closing = app.close();
+        closeObserved = closing.then(
+          () => {
+            closeSettled = true;
+            return undefined;
+          },
+          (error: unknown) => {
+            closeSettled = true;
+            return error;
+          },
+        );
+        expect(bindingSignal?.aborted).toBe(true);
+        bindingReady.resolve();
+        await disposalEntered.promise;
+        expect(creationSettled).toBe(false);
+        expect(closeSettled).toBe(false);
+        expect(bindingReleased).toBe(false);
+        expect(f.bindingDisposed).toHaveBeenCalledTimes(1);
+        expect(f.generate).not.toHaveBeenCalled();
+        await expect(app.agents.create(creation({ agentId: "after-close" }))).rejects.toMatchObject(
+          {
+            code: "application-closed",
+          },
+        );
+        expect(closeSettled).toBe(false);
+        disposalReady.resolve();
+        const [creationError, closeError] = await Promise.all([creationObserved, closeObserved]);
+        expect(creationError).toBeDefined();
+        if (outcome === "fails") {
+          expect(containsError(creationError, cleanupError)).toBe(true);
+          expect(containsError(closeError, cleanupError)).toBe(true);
+        } else {
+          expect(closeError).toBeUndefined();
+        }
+        expect(creationSettled).toBe(true);
+        expect(closeSettled).toBe(true);
+        expect(app.close()).toBe(closing);
+        expect(bindingReleased).toBe(outcome === "succeeds");
+        expect(order).toEqual(["last", "first"]);
+        for (const owned of [first, last]) {
+          expect(owned.dispose).toHaveBeenCalledTimes(1);
+          expect(owned.released).toBe(true);
+        }
+        expect(f.bind).toHaveBeenCalledTimes(1);
+        expect(f.bindingDisposed).toHaveBeenCalledTimes(1);
+        expect(f.generate).not.toHaveBeenCalled();
+        expect(f.borrowedDisposed).not.toHaveBeenCalled();
+        expect(await f.history.read("borrowed-after-late-binding")).toEqual({
+          threadId: "borrowed-after-late-binding",
+          revision: 0,
+          messages: [],
+        });
+        const acquired = await f.services.checkpoints.acquire(
+          { agentId: "borrowed", threadId: "borrowed-after-late-binding", queryId: "query" },
+          "host",
+        );
+        expect(acquired.status).toBe("acquired");
+        if (acquired.status === "acquired") await f.services.checkpoints.release(acquired.lease);
+      } finally {
+        bindingReady.resolve();
+        disposalReady.resolve();
+        await creationObserved;
+        if (closeObserved) await closeObserved;
+        else await app.close().catch(() => {});
+      }
+    },
+  );
+
+  it("preserves handoff cancellation and late binding cleanup failure before scope ownership", async () => {
+    const f = fixture();
+    const controller = new AbortController();
+    const bindingEntered = Promise.withResolvers<void>();
+    const bindingReady = Promise.withResolvers<ModelBinding>();
+    const disposalEntered = Promise.withResolvers<void>();
+    const disposalReady = Promise.withResolvers<void>();
+    const cancellationError = new Error("cancel binding handoff");
+    const cleanupError = new Error("handoff binding cleanup failed");
+    const order: string[] = [];
+    const owned = resource("plugin", order);
+    let bindingSignal: AbortSignal | undefined;
+    f.bind.mockImplementation((_selection, signal) => {
+      bindingSignal = signal;
+      bindingEntered.resolve();
+      return bindingReady.promise;
+    });
+    f.bindingDisposed.mockImplementation(async () => {
+      disposalEntered.resolve();
+      await disposalReady.promise;
+      throw cleanupError;
+    });
+    const app = createAgentApplication(f.services);
+    const creating = app.agents.create(
+      creation({
+        signal: controller.signal,
+        plugins: [
+          {
+            id: "handoff-owner",
+            version: "1",
+            setup({ scope }) {
+              scope.own(owned);
+            },
+          },
+        ],
+      }),
+    );
+    let creationSettled = false;
+    const creationObserved = creating.then(
+      () => {
+        creationSettled = true;
+        return undefined;
+      },
+      (error: unknown) => {
+        creationSettled = true;
+        return error;
+      },
+    );
+    let handoffCancellation: Promise<void> | undefined;
+    let closeObserved: Promise<unknown> | undefined;
+    try {
+      await bindingEntered.promise;
+      // 注册表的 await 已先订阅；此反应在它返回后、默认工厂取得绑定前取消。
+      handoffCancellation = bindingReady.promise.then(() => controller.abort(cancellationError));
+      bindingReady.resolve(f.binding);
+      await disposalEntered.promise;
+      await handoffCancellation;
+      expect(bindingSignal?.aborted).toBe(true);
+      expect(f.bindingDisposed).toHaveBeenCalledTimes(1);
+      expect(creationSettled).toBe(false);
+      let closeSettled = false;
+      const closing = app.close();
+      closeObserved = closing.then(
+        () => {
+          closeSettled = true;
+          return undefined;
+        },
+        (error: unknown) => {
+          closeSettled = true;
+          return error;
+        },
+      );
+      await expect(app.agents.create(creation({ agentId: "after-handoff" }))).rejects.toMatchObject(
+        {
+          code: "application-closed",
+        },
+      );
+      expect(closeSettled).toBe(false);
+      disposalReady.resolve();
+      const [creationError, closeError] = await Promise.all([creationObserved, closeObserved]);
+      for (const error of [creationError, closeError]) {
+        expect(containsError(error, cancellationError)).toBe(true);
+        expect(containsError(error, cleanupError)).toBe(true);
+      }
+      expect(app.close()).toBe(closing);
+      expect(order).toEqual(["plugin"]);
+      expect(owned.dispose).toHaveBeenCalledTimes(1);
+      expect(owned.released).toBe(true);
+      expect(f.bindingDisposed).toHaveBeenCalledTimes(1);
+      expect(f.generate).not.toHaveBeenCalled();
+      expect(f.borrowedDisposed).not.toHaveBeenCalled();
+    } finally {
+      bindingReady.resolve(f.binding);
+      disposalReady.resolve();
+      await handoffCancellation;
+      await creationObserved;
+      if (closeObserved) await closeObserved;
+      else await app.close().catch(() => {});
+    }
+  });
+
   it("drains unpublished setup on close and reports rollback failure from both creation and close", async () => {
     const f = installationFixture();
     const app = createAgentApplication(f.services);
@@ -869,18 +1095,42 @@ describe("general agent installation atomicity", () => {
 });
 
 describe("general agent activation lifecycle", () => {
-  it("settles waiting, detaches its signal, and admits a separately resumed activation", async () => {
+  it("settles waiting and reserves resume/resume before handle delivery and while in flight", async () => {
     const f = fixture();
+    const acquire = vi.spyOn(f.services.checkpoints, "acquire");
+    const toolEntered = Promise.withResolvers<void>();
+    const toolReady = Promise.withResolvers<void>();
+    const waitingSaved = Promise.withResolvers<void>();
+    const waitingReleaseEntered = Promise.withResolvers<void>();
+    const waitingReleaseReady = Promise.withResolvers<void>();
+    const save = f.services.checkpoints.save.bind(f.services.checkpoints);
+    vi.spyOn(f.services.checkpoints, "save").mockImplementation(async (...args) => {
+      const result = await save(...args);
+      if (result.status === "saved" && args[2].status === "waiting") waitingSaved.resolve();
+      return result;
+    });
+    let firstRelease = true;
+    f.hooks.beforeRelease = async () => {
+      if (!firstRelease) return;
+      firstRelease = false;
+      waitingReleaseEntered.resolve();
+      await waitingReleaseReady.promise;
+    };
     const interaction = {
       id: "approve",
       owner: "host",
       payload: { type: "approval", version: 1, data: { action: "read" } },
     };
-    const execute = vi.fn(async () => ({
-      status: "succeeded" as const,
-      output: { done: true },
-      effects: "none" as const,
-    }));
+    const execute = vi.fn(async (_input: unknown, context: ToolExecutionContext) => {
+      toolEntered.resolve();
+      await toolReady.promise;
+      context.signal.throwIfAborted();
+      return {
+        status: "succeeded" as const,
+        output: { done: true },
+        effects: "none" as const,
+      };
+    });
     f.generate.mockResolvedValueOnce({
       message: {
         role: "assistant",
@@ -893,7 +1143,6 @@ describe("general agent activation lifecycle", () => {
       authorizeTool: () => ({ type: "approval", interaction }),
     };
     const app = createAgentApplication(services);
-    onTestFinished(() => app.close());
     const agent = await app.agents.create(
       creation({
         plugins: [
@@ -919,24 +1168,108 @@ describe("general agent activation lifecycle", () => {
     );
     const signal = new AbortController();
     const waiting = await agent.run({ ...activation(), signal: signal.signal });
-    expect((await waiting.completed).status).toBe("waiting");
-    expect(execute).not.toHaveBeenCalled();
-    expect(f.bindingDisposed).not.toHaveBeenCalled();
-    expect(f.rows.get(JSON.stringify(checkpointKey("query-run")))?.lease).toBeNull();
-    signal.abort("old activation is no longer observed");
-    const pending = agent.resume({
-      threadId: "thread",
-      queryId: "query-run",
-      runId: "resumed",
-      response: { interactionId: "approve", type: "answer", value: true },
-    });
-    await expect(agent.run(activation("concurrent"))).rejects.toMatchObject({ code: "agent-busy" });
-    const resumed = await pending;
-    expect(resumed.identity.runId).toBe("resumed");
-    expect((await resumed.completed).status).toBe("completed");
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(f.generate.mock.calls.at(-1)?.[1].aborted).toBe(false);
-    await agent.dispose();
+    let pending: Promise<AgentRunHandle> | undefined;
+    try {
+      let waitingSettled = false;
+      void waiting.completed.then(() => {
+        waitingSettled = true;
+      });
+      await Promise.all([waitingSaved.promise, waitingReleaseEntered.promise]);
+      expect(waitingSettled).toBe(false);
+      expect(f.rows.get(JSON.stringify(checkpointKey("query-run")))?.checkpoint?.status).toBe(
+        "waiting",
+      );
+      const acquisitionsWhileReleasing = acquire.mock.calls.length;
+      await expect(agent.run(activation("waiting-release"))).rejects.toMatchObject({
+        code: "agent-busy",
+      });
+      await expect(
+        agent.resume({
+          threadId: "thread",
+          queryId: "query-run",
+          runId: "waiting-release",
+          response: { interactionId: "approve", type: "answer", value: true },
+        }),
+      ).rejects.toMatchObject({ code: "agent-busy" });
+      expect(acquire).toHaveBeenCalledTimes(acquisitionsWhileReleasing);
+      expect(waitingSettled).toBe(false);
+      waitingReleaseReady.resolve();
+      expect((await waiting.completed).status).toBe("waiting");
+      expect(execute).not.toHaveBeenCalled();
+      expect(f.bindingDisposed).not.toHaveBeenCalled();
+      expect(f.rows.get(JSON.stringify(checkpointKey("query-run")))?.lease).toBeNull();
+      const blocked = await agent.run(activation("cannot-bypass-waiting"));
+      await expect(blocked.completed).rejects.toMatchObject({ code: "THREAD_PENDING" });
+      const acquisitionsBeforeResume = acquire.mock.calls.length;
+      pending = agent.resume({
+        threadId: "thread",
+        queryId: waiting.identity.queryId,
+        runId: "resumed",
+        response: { interactionId: "approve", type: "answer", value: true },
+      });
+      const duplicate = agent.resume({
+        threadId: "thread",
+        queryId: waiting.identity.queryId,
+        runId: "duplicate-before-handle",
+        response: { interactionId: "approve", type: "answer", value: false },
+      });
+      expect(acquire).toHaveBeenCalledTimes(acquisitionsBeforeResume);
+      await expect(duplicate).rejects.toMatchObject({ code: "agent-busy" });
+      await expect(agent.run(activation("concurrent"))).rejects.toMatchObject({
+        code: "agent-busy",
+      });
+      const resumed = await pending;
+      await toolEntered.promise;
+      signal.abort("old activation is no longer observed");
+      waiting.cancel("old handle cannot cancel the active resume");
+      expect(execute.mock.calls[0][1].signal.aborted).toBe(false);
+      expect(resumed.identity).toEqual({
+        ...waiting.identity,
+        runId: "resumed",
+      });
+      expect(acquire).toHaveBeenCalledTimes(acquisitionsBeforeResume + 1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(f.generate).toHaveBeenCalledTimes(1);
+      await expect(
+        agent.resume({
+          threadId: "thread",
+          queryId: waiting.identity.queryId,
+          runId: "duplicate-in-flight",
+          response: { interactionId: "approve", type: "answer", value: false },
+        }),
+      ).rejects.toMatchObject({ code: "agent-busy" });
+      await expect(agent.run(activation("in-flight"))).rejects.toMatchObject({
+        code: "agent-busy",
+      });
+      expect(acquire).toHaveBeenCalledTimes(acquisitionsBeforeResume + 1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      toolReady.resolve();
+      expect((await resumed.completed).status).toBe("completed");
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(f.generate).toHaveBeenCalledTimes(2);
+      expect(f.generate.mock.calls.at(-1)?.[1].aborted).toBe(false);
+      const history = await f.history.read("thread");
+      expect(history.messages.filter((message) => message.role === "user")).toHaveLength(1);
+      expect(
+        history.messages
+          .flatMap<ModelContent>((message) => message.content)
+          .filter((content) => content.type === "tool-result"),
+      ).toHaveLength(1);
+      expect(f.rows.get(JSON.stringify(checkpointKey("query-run")))?.checkpoint).toMatchObject({
+        queryId: waiting.identity.queryId,
+        lastRunId: "resumed",
+        status: "completed",
+      });
+      expect(f.rows.get(JSON.stringify(checkpointKey("query-run")))?.lease).toBeNull();
+    } finally {
+      waitingReleaseReady.resolve();
+      toolReady.resolve();
+      await Promise.allSettled([
+        waiting.completed,
+        ...(pending ? [pending.then((handle) => handle.completed)] : []),
+      ]);
+      await app.close();
+    }
   });
 
   it("reserves run/resume before returning a handle and snapshots mutable caller input", async () => {
@@ -970,8 +1303,16 @@ describe("general agent activation lifecycle", () => {
     await agent.dispose();
   });
 
-  it("event unsubscription does not cancel work and completion waits for lease cleanup", async () => {
+  it("event unsubscription does not cancel work and saved terminal cleanup retains run/resume admission", async () => {
     const f = fixture();
+    const acquire = vi.spyOn(f.services.checkpoints, "acquire");
+    const terminalSaved = Promise.withResolvers<void>();
+    const save = f.services.checkpoints.save.bind(f.services.checkpoints);
+    vi.spyOn(f.services.checkpoints, "save").mockImplementation(async (...args) => {
+      const result = await save(...args);
+      if (result.status === "saved" && args[2].status === "completed") terminalSaved.resolve();
+      return result;
+    });
     const releasing = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     f.hooks.beforeRelease = async () => {
@@ -979,23 +1320,46 @@ describe("general agent activation lifecycle", () => {
       await release.promise;
     };
     const app = createAgentApplication(f.services);
-    onTestFinished(() => app.close());
     const agent = await app.agents.create(creation());
     const handle = await agent.run(activation());
-    const observer = handle.events[Symbol.asyncIterator]();
-    await observer.return?.();
-    let settled = false;
-    void handle.completed.then(() => {
-      settled = true;
-    });
-    await releasing.promise;
-    expect(settled).toBe(false);
-    expect(f.generate.mock.calls[0][1].aborted).toBe(false);
-    expect((await f.history.read("thread")).messages.at(-1)).toEqual(response.message);
-    release.resolve();
-    expect((await handle.completed).status).toBe("completed");
-    expect(f.rows.get(JSON.stringify(checkpointKey("query-run")))?.lease).toBeNull();
-    await agent.dispose();
+    let next: AgentRunHandle | undefined;
+    try {
+      const observer = handle.events[Symbol.asyncIterator]();
+      await observer.return?.();
+      let settled = false;
+      void handle.completed.then(() => {
+        settled = true;
+      });
+      await Promise.all([terminalSaved.promise, releasing.promise]);
+      expect(settled).toBe(false);
+      expect(f.rows.get(JSON.stringify(checkpointKey("query-run")))?.checkpoint?.status).toBe(
+        "completed",
+      );
+      expect(f.rows.get(JSON.stringify(checkpointKey("query-run")))?.lease).not.toBeNull();
+      const acquisitions = acquire.mock.calls.length;
+      await expect(agent.run(activation("while-releasing"))).rejects.toMatchObject({
+        code: "agent-busy",
+      });
+      await expect(
+        agent.resume({ threadId: "thread", queryId: "query-run", runId: "while-releasing" }),
+      ).rejects.toMatchObject({ code: "agent-busy" });
+      expect(acquire).toHaveBeenCalledTimes(acquisitions);
+      expect(settled).toBe(false);
+      expect(f.generate).toHaveBeenCalledTimes(1);
+      expect(f.generate.mock.calls[0][1].aborted).toBe(false);
+      expect((await f.history.read("thread")).messages.at(-1)).toEqual(response.message);
+      release.resolve();
+      expect((await handle.completed).status).toBe("completed");
+      expect(f.rows.get(JSON.stringify(checkpointKey("query-run")))?.lease).toBeNull();
+      next = await agent.run(activation("after-release"));
+      expect((await next.completed).status).toBe("completed");
+      expect(acquire).toHaveBeenCalledTimes(acquisitions + 1);
+      expect(f.generate).toHaveBeenCalledTimes(2);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([handle.completed, ...(next ? [next.completed] : [])]);
+      await app.close();
+    }
   });
 
   it("dispose interrupts rather than user-cancels, draining execution before owned resources", async () => {

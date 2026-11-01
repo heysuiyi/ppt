@@ -79,7 +79,15 @@ export function createDefaultAgentFactory(
         const binding = await models.create(selection, scope.signal);
         // 不合作的外部工厂可能在取消后才交付绑定，不能交给已关闭的作用域。
         if (creationSignal?.aborted || scope.signal.aborted) {
-          await binding.dispose();
+          try {
+            await binding.dispose();
+          } catch (cleanupError) {
+            // 尚未交给 scope 的绑定由本分支回收，失败必须穿过创建取消过滤。
+            throw new AggregateError(
+              [creationSignal?.reason ?? scope.signal.reason, cleanupError],
+              "模型绑定交接取消与回收失败。",
+            );
+          }
           ensureOpen();
         }
         // 模型绑定归 Agent 所有，不随单次 Run 或审批等待释放。

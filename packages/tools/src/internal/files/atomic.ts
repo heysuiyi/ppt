@@ -4,6 +4,7 @@ import { constants, realpathSync, type Stats } from "node:fs";
 import { link, lstat, mkdir, open, opendir, rename, unlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
+import { AtomicWriteConflictError } from "./atomic-errors.js";
 
 const REPLACEMENT_MANIFEST_SUFFIX = ".atomic-replace.json";
 const REPLACEMENT_BACKUP_MARKER = ".atomic-old.";
@@ -90,17 +91,6 @@ export interface AtomicTextWriteOptions {
   temporaryDirectory?: string;
   commitGuard?: AtomicCommitGuard;
   ioLimits?: AtomicIoLimits;
-}
-
-export class AtomicWriteConflictError extends Error {
-  constructor(
-    message: string,
-    readonly cause?: unknown,
-    readonly sideEffects: "none" | "uncertain" = "none",
-  ) {
-    super(message);
-    this.name = "AtomicWriteConflictError";
-  }
 }
 
 type LockedRecovery = (validatePath?: () => Promise<void>) => Promise<boolean>;

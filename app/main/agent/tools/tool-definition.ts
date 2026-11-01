@@ -1,3 +1,4 @@
+import type { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import type { AgentModelSelection } from "@shared/agent";
 import type { AgentStepLimits } from "@shared/agent-step-limits";
 import type { AgentTaskNode } from "@shared/agent-task-list";
@@ -15,7 +16,6 @@ import type {
 } from "@shared/presentation-lifecycle";
 import type { TeammateProgressListener } from "@shared/teammate-progress";
 import type { z } from "zod";
-import type { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import type { PromptStage } from "../../plugins/ppt/prompts/prompt-stage";
 import type { PptTaskPlanSession } from "../../plugins/ppt/task/ppt-task-session";
 import type { ArtifactChangeObservationSource } from "../../presentation-lifecycle/artifact-change-observer-types";

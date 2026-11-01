@@ -3,33 +3,9 @@ import type {
   ToolExecutionContext,
   ToolResult,
 } from "@agent-harness/core/tools/tool-contract";
+
 import { z } from "zod";
-
-export interface GrepInput {
-  pattern: string;
-  glob?: string;
-  caseSensitive?: boolean;
-  limit?: number;
-}
-
-export interface GrepMatch {
-  path: string;
-  version: string;
-  line: number;
-  text: string;
-  truncated: boolean;
-}
-
-export interface GrepSkippedFile {
-  path: string;
-  reason: "binary" | "too-large";
-}
-
-export interface GrepOutput {
-  matches: GrepMatch[];
-  truncated: boolean;
-  skipped: GrepSkippedFile[];
-}
+import type { GrepInput, GrepOutput } from "../../tools-contract.js";
 
 export const grepInputSchema = z
   .object({

@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import { asPresentationId } from "@shared/presentation-lifecycle";
-import type { ProjectArtifact, SessionSnapshot } from "@shared/session";
 import {
   globWorkspaceFiles,
   type WorkspaceFileReadResult,
   type WorkspaceFileReceipt,
   WorkspaceFileService,
 } from "@agent-harness/tools/workspace-files";
+import { asPresentationId } from "@shared/presentation-lifecycle";
+import type { ProjectArtifact, SessionSnapshot } from "@shared/session";
 import type {
   ArtifactChangeObservationSource,
   ArtifactChangeObserverPort,

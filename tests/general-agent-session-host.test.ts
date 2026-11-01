@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentRunHandle } from "@agent-harness/core/agent-contract";
 import type { AgentServices } from "@agent-harness/core/agent-factory";
+import { createAgentApplication } from "@agent-harness/core/application/agent-application";
 import type { AgentPlugin, PluginContext } from "@agent-harness/core/extensions/plugin-contract";
 import type {
   ModelBinding,
+  ModelCallContext,
   ModelClient,
   ModelClientFactory,
   ModelRequest,
@@ -22,6 +25,7 @@ import {
 } from "@agent-harness/core/protocol-values";
 import type {
   CheckpointKey,
+  CheckpointLease,
   CheckpointStore,
 } from "@agent-harness/core/session/checkpoint-contract";
 import {
@@ -1243,4 +1247,713 @@ describe("generic session host ownership and cancellation", () => {
     expect(f.binding.dispose).not.toHaveBeenCalled();
     expect((await f.history.read("fixed-thread")).messages).toEqual(activation().input);
   });
+});
+
+const probeOutput = z.object({ nonce: z.string().min(1) }).strict();
+
+/** 每次 create 都拥有自己的门闩和资源，模型成功只能来自真实工具结果。 */
+function lifecycleModel(holdModel = false, holdDispose = false) {
+  const bindings: Array<{
+    binding: ModelBinding;
+    entered: PromiseWithResolvers<void>;
+    proceed: PromiseWithResolvers<void>;
+    aborted: PromiseWithResolvers<void>;
+    disposeEntered: PromiseWithResolvers<void>;
+    disposeProceed: PromiseWithResolvers<void>;
+    state: { released: boolean };
+    generate: Mock<ModelClient["generate"]>;
+    dispose: Mock<() => Promise<void>>;
+  }> = [];
+  const create = vi.fn<ModelClientFactory["create"]>(async (selection, signal) => {
+    signal.throwIfAborted();
+    const entered = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    const aborted = Promise.withResolvers<void>();
+    const disposeEntered = Promise.withResolvers<void>();
+    const disposeProceed = Promise.withResolvers<void>();
+    const state = { released: false };
+    if (!holdModel) proceed.resolve();
+    if (!holdDispose) disposeProceed.resolve();
+    const generate = vi.fn<ModelClient["generate"]>(
+      async (request, runSignal, _context?: ModelCallContext) => {
+        runSignal.addEventListener("abort", () => aborted.resolve(), { once: true });
+        entered.resolve();
+        await proceed.promise;
+        runSignal.throwIfAborted();
+        if (state.released) throw new Error("Probe model binding was released.");
+        const userIndex = request.messages.findLastIndex((message) => message.role === "user");
+        const result = request.messages
+          .slice(userIndex + 1)
+          .filter((message) => message.role === "tool")
+          .flatMap((message) => message.content)
+          .find((part) => part.callId === "probe-read");
+        if (!result)
+          return {
+            message: {
+              role: "assistant",
+              content: [{ type: "tool-call", callId: "probe-read", name: "probe.read", input: {} }],
+            },
+            finishReason: "tool-calls",
+          };
+        if (result.isError) throw new Error("Expected a real successful probe result.");
+        const text = result.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("");
+        return answer(`Observed nonce:${probeOutput.parse(JSON.parse(text)).nonce}`);
+      },
+    );
+    const dispose = vi.fn(async () => {
+      disposeEntered.resolve();
+      await disposeProceed.promise;
+      state.released = true;
+    });
+    const binding: ModelBinding = {
+      client: {
+        selection: snapshot(selection),
+        capabilities: { streaming: false, toolCalls: true, images: false, reasoning: false },
+        generate,
+        async *stream(request, runSignal, context) {
+          yield { type: "completed", response: await generate(request, runSignal, context) };
+        },
+      },
+      dispose,
+    };
+    bindings.push({
+      binding,
+      entered,
+      proceed,
+      aborted,
+      disposeEntered,
+      disposeProceed,
+      state,
+      generate,
+      dispose,
+    });
+    return binding;
+  });
+  return { create, bindings };
+}
+
+/** 同一个插件对象可重复安装；路径和打开状态只属于该次安装闭包。 */
+function lifecycleProbe(paths: readonly string[], holdTool = false) {
+  const installations: Array<{
+    signal: AbortSignal;
+    aborted: PromiseWithResolvers<void>;
+    entered: PromiseWithResolvers<void>;
+    proceed: PromiseWithResolvers<void>;
+    state: { released: boolean };
+    dispose: Mock<() => Promise<void>>;
+    execute: Mock<
+      (
+        input: Record<string, never>,
+        context: ToolExecutionContext,
+      ) => Promise<ToolResult<{ nonce: string }>>
+    >;
+  }> = [];
+  const plugin: AgentPlugin = {
+    id: "lifecycle-probe",
+    version: "1",
+    setup({ tools, scope }) {
+      const path = paths[installations.length] ?? paths[0];
+      const state = { released: false };
+      const entered = Promise.withResolvers<void>();
+      const proceed = Promise.withResolvers<void>();
+      const aborted = Promise.withResolvers<void>();
+      if (!holdTool) proceed.resolve();
+      scope.signal.addEventListener("abort", () => aborted.resolve(), { once: true });
+      const dispose = vi.fn(async () => {
+        state.released = true;
+      });
+      const execute = vi.fn(
+        async (
+          _input: Record<string, never>,
+          context: ToolExecutionContext,
+        ): Promise<ToolResult<{ nonce: string }>> => {
+          entered.resolve();
+          await proceed.promise;
+          context.signal.throwIfAborted();
+          if (state.released) throw new Error("Probe resource was released before tool exit.");
+          const nonce = await readFile(path, "utf8");
+          context.signal.throwIfAborted();
+          if (state.released) throw new Error("Probe resource was released during read.");
+          return { status: "succeeded", output: probeOutput.parse({ nonce }), effects: "none" };
+        },
+      );
+      installations.push({
+        signal: scope.signal,
+        aborted,
+        entered,
+        proceed,
+        state,
+        dispose,
+        execute,
+      });
+      scope.own({ dispose });
+      tools.register({
+        name: "probe.read",
+        owner: "lifecycle-probe",
+        version: "1",
+        description: "Read this installation's fixed nonce file",
+        mode: "immediate",
+        inputSchema: z.object({}).strict(),
+        outputSchema: probeOutput,
+        execute,
+        toModelContent(result) {
+          return [
+            {
+              type: "text",
+              text:
+                result.status === "succeeded" ? JSON.stringify(result.output) : result.error.code,
+            },
+          ];
+        },
+      });
+    },
+  };
+  return { plugin, installations };
+}
+
+/** 只截获一个完整 key/ownerId 的一次 release；检查者使用原始存储。 */
+function lifecycleCheckpointGate(
+  services: Mutable<AgentServices>,
+  key: CheckpointKey,
+  ownerId: string,
+  status: "completed" | "cancelled" | "waiting" | "interrupted",
+) {
+  const store = services.checkpoints;
+  const saved = Promise.withResolvers<Parameters<CheckpointStore["save"]>[2]>();
+  const releaseEntered = Promise.withResolvers<void>();
+  const proceed = Promise.withResolvers<void>();
+  const state = { released: false };
+  let intercepted = false;
+  const matches = (lease: CheckpointLease) =>
+    sameValue(lease.key, key) && lease.ownerId === ownerId;
+  const release = vi.fn<CheckpointStore["release"]>(async (lease) => {
+    if (matches(lease) && !intercepted) {
+      intercepted = true;
+      releaseEntered.resolve();
+      await proceed.promise;
+      await store.release(lease);
+      state.released = true;
+    } else await store.release(lease);
+  });
+  services.checkpoints = {
+    findUnfinished: (...args) => store.findUnfinished(...args),
+    acquire: (...args) => store.acquire(...args),
+    async save(lease, revision, checkpoint) {
+      const result = await store.save(lease, revision, checkpoint);
+      if (matches(lease) && checkpoint.status === status && result.status === "saved")
+        saved.resolve(snapshot(checkpoint));
+      return result;
+    },
+    release,
+  };
+  return { saved, releaseEntered, proceed, release, state };
+}
+
+describe("M3-B shared Application and SessionHost lifecycle acceptance", () => {
+  it("B1-1 isolates two active Agents in one Application sharing the exact same ports and plugin", async () => {
+    const f = fixture();
+    const nonceA = randomUUID();
+    const nonceB = randomUUID();
+    const paths = [join(f.directory, "a.nonce"), join(f.directory, "b.nonce")];
+    await Promise.all([writeFile(paths[0], nonceA), writeFile(paths[1], nonceB)]);
+    const model = lifecycleModel(true);
+    const probe = lifecycleProbe(paths);
+    const sharedModels = { create: model.create, dispose: f.borrowedDisposed };
+    f.services.models = sharedModels;
+    const released = vi.fn<CheckpointStore["release"]>((lease) => f.checkpoints.release(lease));
+    f.services.checkpoints = { ...f.checkpoints, release: released };
+    const app = createAgentApplication(f.services);
+    const pending: Promise<unknown>[] = [];
+    try {
+      const a = await app.agents.create({
+        ...f.agent,
+        agentId: "agent-a",
+        plugins: [probe.plugin],
+      });
+      const b = await app.agents.create({
+        ...f.agent,
+        agentId: "agent-b",
+        plugins: [probe.plugin],
+      });
+      expect(model.bindings).toHaveLength(2);
+      expect(probe.installations).toHaveLength(2);
+      const identities = [
+        { agentId: "agent-a", threadId: "thread-a", queryId: "query-a", runId: "run-a" },
+        { agentId: "agent-b", threadId: "thread-b", queryId: "query-b", runId: "run-b" },
+      ];
+      const inputA = [
+        {
+          role: "user" as const,
+          content: [{ type: "text" as const, text: "Read installation A's fixed probe." }],
+        },
+      ];
+      const inputB = [
+        {
+          role: "user" as const,
+          content: [{ type: "text" as const, text: "Read installation B's fixed probe." }],
+        },
+      ];
+      const runA = await a.run({ ...identities[0], input: inputA });
+      pending.push(runA.completed.catch(() => {}));
+      const runB = await b.run({ ...identities[1], input: inputB });
+      pending.push(runB.completed.catch(() => {}));
+      const [bindingA, bindingB] = model.bindings;
+      expect(bindingA.binding).not.toBe(bindingB.binding);
+      const [installA, installB] = probe.installations;
+      await Promise.all([bindingA.entered.promise, bindingB.entered.promise]);
+      expect(bindingA.generate.mock.calls[0][2]?.identity).toEqual(identities[0]);
+      expect(bindingB.generate.mock.calls[0][2]?.identity).toEqual(identities[1]);
+      expect(bindingA.generate.mock.calls[0][0].messages).toContainEqual(inputA[0]);
+      expect(bindingA.generate.mock.calls[0][0].messages).not.toContainEqual(inputB[0]);
+      expect(bindingB.generate.mock.calls[0][0].messages).toContainEqual(inputB[0]);
+      expect(bindingB.generate.mock.calls[0][0].messages).not.toContainEqual(inputA[0]);
+      const signalA = bindingA.generate.mock.calls[0][1];
+      const signalB = bindingB.generate.mock.calls[0][1];
+      expect(signalA).not.toBe(signalB);
+      expect(installA.signal).not.toBe(installB.signal);
+      let bCompleted = false;
+      void runB.completed.then(
+        () => {
+          bCompleted = true;
+        },
+        () => {},
+      );
+      const closingA = a.dispose();
+      pending.push(closingA.catch(() => {}));
+      await Promise.all([bindingA.aborted.promise, installA.aborted.promise]);
+      expect(signalA.aborted).toBe(true);
+      expect(signalB.aborted).toBe(false);
+      expect(installB.signal.aborted).toBe(false);
+      expect(bindingA.state.released).toBe(false);
+      expect(installA.state.released).toBe(false);
+      bindingA.proceed.resolve();
+      expect(await runA.completed).toMatchObject({
+        status: "interrupted",
+        identity: identities[0],
+      });
+      await closingA;
+      expect(bindingA.state.released).toBe(true);
+      expect(installA.state.released).toBe(true);
+      expect(bindingA.dispose).toHaveBeenCalledTimes(1);
+      expect(installA.dispose).toHaveBeenCalledTimes(1);
+      expect(bCompleted).toBe(false);
+      expect(signalB.aborted).toBe(false);
+      expect(installB.signal.aborted).toBe(false);
+      expect(bindingB.state.released).toBe(false);
+      expect(installB.state.released).toBe(false);
+      expect(bindingB.dispose).not.toHaveBeenCalled();
+      expect(installB.dispose).not.toHaveBeenCalled();
+      expect(installA.execute).not.toHaveBeenCalled();
+      bindingB.proceed.resolve();
+      expect(await runB.completed).toMatchObject({
+        status: "completed",
+        identity: identities[1],
+        output: expect.arrayContaining([answer(`Observed nonce:${nonceB}`).message]),
+      });
+      expect(installB.execute).toHaveBeenCalledExactlyOnceWith(
+        {},
+        expect.objectContaining({ identity: identities[1], callId: "probe-read" }),
+      );
+      expect(f.authorizeTool).toHaveBeenCalledTimes(1);
+      expect(f.authorizeTool.mock.calls[0][1].identity).toEqual(identities[1]);
+      expect(bindingA.generate).toHaveBeenCalledTimes(1);
+      expect(bindingB.generate).toHaveBeenCalledTimes(2);
+      expect(
+        bindingB.generate.mock.calls.every(
+          ([, signal, context]) =>
+            signal === signalB &&
+            context?.identity.agentId === "agent-b" &&
+            context.identity.threadId === "thread-b" &&
+            context.identity.queryId === "query-b" &&
+            context.identity.runId === "run-b",
+        ),
+      ).toBe(true);
+      for (const [index, run] of [runA, runB].entries()) {
+        const completions: ToolCompletion[] = [];
+        for await (const event of run.events) {
+          expect(event.identity).toEqual(identities[index]);
+          if (event.type === "tool.started" || event.type === "tool.completed")
+            expect(event.invocation.identity).toEqual(identities[index]);
+          if (event.type === "tool.completed") completions.push(event.completion);
+        }
+        expect(completions).toEqual(
+          index === 0
+            ? []
+            : [
+                expect.objectContaining({
+                  status: "succeeded",
+                  output: { nonce: nonceB },
+                  effects: "none",
+                }),
+              ],
+        );
+        const { runId, ...key } = identities[index];
+        expect(
+          released.mock.calls.filter(
+            ([lease]) => sameValue(lease.key, key) && lease.ownerId === runId,
+          ),
+        ).toHaveLength(1);
+        const acquired = await f.checkpoints.acquire(key, `inspector-${index}`);
+        if (acquired.status !== "acquired") throw new Error("Expected each writer lease released.");
+        try {
+          expect(acquired.checkpoint).toMatchObject({
+            ...key,
+            lastRunId: runId,
+            status: index === 0 ? "interrupted" : "completed",
+          });
+        } finally {
+          await f.checkpoints.release(acquired.lease);
+        }
+      }
+      const historyA = await f.history.read("thread-a");
+      const historyB = await f.history.read("thread-b");
+      expect(historyA.messages).toEqual(inputA);
+      expect(historyB.messages).toContainEqual(inputB[0]);
+      expect(historyB.messages).not.toContainEqual(inputA[0]);
+      expect(JSON.stringify(historyA.messages)).not.toContain(nonceB);
+      expect(JSON.stringify(historyB.messages)).toContain(nonceB);
+      expect(JSON.stringify(historyB.messages)).not.toContain(nonceA);
+      await app.close();
+      expect(bindingB.state.released).toBe(true);
+      expect(installB.state.released).toBe(true);
+      expect(bindingB.dispose).toHaveBeenCalledTimes(1);
+      expect(installB.dispose).toHaveBeenCalledTimes(1);
+      expect(f.borrowedDisposed).not.toHaveBeenCalled();
+      expect((await f.history.read("thread-b")).messages).toEqual(historyB.messages);
+      expect(await f.checkpoints.findUnfinished("agent-b", "thread-b")).toBeNull();
+      const borrowedBinding = await f.services.models.create(
+        f.agent.model,
+        new AbortController().signal,
+      );
+      await borrowedBinding.dispose();
+      expect(model.bindings[2].state.released).toBe(true);
+      expect(
+        await f.services.authorizeTool(
+          { type: "tool-call", callId: "borrowed", name: "probe.read", input: {} },
+          probe.installations[1].execute.mock.calls[0][1],
+        ),
+      ).toEqual({ type: "allow" });
+    } finally {
+      for (const binding of model.bindings) {
+        binding.proceed.resolve();
+        binding.disposeProceed.resolve();
+      }
+      for (const installation of probe.installations) installation.proceed.resolve();
+      await Promise.allSettled(pending);
+      await app.close();
+    }
+  });
+
+  it("B2-1 drains the active tool, exact writer lease, and slow binding before Host.close settles", async () => {
+    const f = fixture();
+    const path = join(f.directory, "active.nonce");
+    await writeFile(path, randomUUID());
+    const model = lifecycleModel(false, true);
+    const probe = lifecycleProbe([path], true);
+    f.services.models = { create: model.create };
+    f.agent.plugins.push(probe.plugin);
+    const gate = lifecycleCheckpointGate(f.services, checkpointKey(), "run", "interrupted");
+    const host = await ownHost(f.options);
+    const pending: Promise<unknown>[] = [];
+    try {
+      const run = await host.run(activation());
+      pending.push(run.completed.catch(() => {}));
+      const binding = model.bindings[0];
+      const installed = probe.installations[0];
+      await installed.entered.promise;
+      let completed = false;
+      let closed = false;
+      void run.completed.then(
+        () => {
+          completed = true;
+        },
+        () => {},
+      );
+      const closing = host.close();
+      pending.push(closing.catch(() => {}));
+      void closing.then(
+        () => {
+          closed = true;
+        },
+        () => {},
+      );
+      expect(host.close()).toBe(closing);
+      await expect(host.run(activation("closed", "closed"))).rejects.toMatchObject({
+        code: "HOST_CLOSED",
+      });
+      await expect(host.resume({ queryId: "query", runId: "closed" })).rejects.toMatchObject({
+        code: "HOST_CLOSED",
+      });
+      await installed.aborted.promise;
+      const toolSignal = installed.execute.mock.calls[0][1].signal;
+      expect(toolSignal.aborted).toBe(true);
+      expect(completed).toBe(false);
+      expect(closed).toBe(false);
+      expect(binding.state.released).toBe(false);
+      expect(installed.state.released).toBe(false);
+      expect(binding.dispose).not.toHaveBeenCalled();
+      expect(installed.dispose).not.toHaveBeenCalled();
+      installed.proceed.resolve();
+      await gate.saved.promise;
+      await gate.releaseEntered.promise;
+      expect(completed).toBe(false);
+      expect(closed).toBe(false);
+      expect(gate.state.released).toBe(false);
+      expect(binding.dispose).not.toHaveBeenCalled();
+      expect(installed.state.released).toBe(false);
+      expect((await f.checkpoints.acquire(checkpointKey(), "inspector")).status).toBe("busy");
+      gate.proceed.resolve();
+      expect((await run.completed).status).toBe("interrupted");
+      await binding.disposeEntered.promise;
+      expect(gate.state.released).toBe(true);
+      expect(closed).toBe(false);
+      expect(binding.state.released).toBe(false);
+      expect((await inspectCheckpoint(f))?.status).toBe("interrupted");
+      binding.disposeProceed.resolve();
+      await closing;
+      expect(binding.state.released).toBe(true);
+      expect(installed.state.released).toBe(true);
+      expect(binding.dispose).toHaveBeenCalledTimes(1);
+      expect(installed.dispose).toHaveBeenCalledTimes(1);
+      expect(installed.execute).toHaveBeenCalledTimes(1);
+      expect(model.bindings[0].generate).toHaveBeenCalledTimes(1);
+      expect(gate.release).toHaveBeenCalledTimes(1);
+      expect(f.borrowedDisposed).not.toHaveBeenCalled();
+      expect(f.binding.dispose).not.toHaveBeenCalled();
+      expect((await f.history.read("fixed-thread")).messages).toEqual(
+        expect.arrayContaining(activation().input),
+      );
+    } finally {
+      gate.proceed.resolve();
+      for (const binding of model.bindings) {
+        binding.proceed.resolve();
+        binding.disposeProceed.resolve();
+      }
+      for (const installation of probe.installations) installation.proceed.resolve();
+      await Promise.allSettled(pending);
+      await host.close();
+    }
+  });
+
+  it.each([
+    ["model", "cancel-close"],
+    ["model", "close-cancel"],
+    ["tool", "cancel-close"],
+    ["tool", "close-cancel"],
+  ] as const)("B2-2 preserves interrupted for in-flight %s with %s", async (phase, order) => {
+    const f = fixture();
+    const path = join(f.directory, "interleaving.nonce");
+    await writeFile(path, randomUUID());
+    const model = lifecycleModel(phase === "model");
+    const probe = lifecycleProbe([path], phase === "tool");
+    f.services.models = { create: model.create };
+    f.agent.plugins.push(probe.plugin);
+    const gate = lifecycleCheckpointGate(f.services, checkpointKey(), "run", "interrupted");
+    gate.proceed.resolve();
+    const host = await ownHost(f.options);
+    const pending: Promise<unknown>[] = [];
+    try {
+      const run = await host.run(activation());
+      pending.push(run.completed.catch(() => {}));
+      const binding = model.bindings[0];
+      const installed = probe.installations[0];
+      await (phase === "model" ? binding.entered.promise : installed.entered.promise);
+      let settled = false;
+      void run.completed.then(
+        () => {
+          settled = true;
+        },
+        () => {},
+      );
+      if (order === "cancel-close") run.cancel("user cancellation before close");
+      const closing = host.close();
+      pending.push(closing.catch(() => {}));
+      // Host.close 的同步拒绝早于 Application.close；安装 scope 中止才证明关闭已生效。
+      await installed.aborted.promise;
+      if (order === "close-cancel") run.cancel("user cancellation after close");
+      expect(settled).toBe(false);
+      expect(binding.state.released).toBe(false);
+      expect(installed.state.released).toBe(false);
+      expect(binding.generate.mock.calls[0][1].aborted).toBe(true);
+      if (phase === "tool") expect(installed.execute.mock.calls[0][1].signal.aborted).toBe(true);
+      binding.proceed.resolve();
+      installed.proceed.resolve();
+      expect(await run.completed).toMatchObject({ status: "interrupted", identity: run.identity });
+      await closing;
+      expect((await inspectCheckpoint(f))?.status).toBe("interrupted");
+      expect(gate.state.released).toBe(true);
+      expect(gate.release).toHaveBeenCalledTimes(1);
+      expect(binding.generate).toHaveBeenCalledTimes(1);
+      expect(installed.execute).toHaveBeenCalledTimes(phase === "model" ? 0 : 1);
+      expect(binding.dispose).toHaveBeenCalledTimes(1);
+      expect(installed.dispose).toHaveBeenCalledTimes(1);
+      expect(binding.state.released).toBe(true);
+      expect(installed.state.released).toBe(true);
+      expect(f.borrowedDisposed).not.toHaveBeenCalled();
+    } finally {
+      gate.proceed.resolve();
+      for (const binding of model.bindings) {
+        binding.proceed.resolve();
+        binding.disposeProceed.resolve();
+      }
+      for (const installation of probe.installations) installation.proceed.resolve();
+      await Promise.allSettled(pending);
+      await host.close();
+    }
+  });
+
+  it.each(["completed", "cancelled", "waiting"] as const)(
+    "B2-3 keeps saved %s immutable through close and stale cancellation, then isolates a new Run",
+    async (status) => {
+      const f = fixture();
+      const nonce = randomUUID();
+      const path = join(f.directory, "committed.nonce");
+      await writeFile(path, nonce);
+      const model = lifecycleModel(status === "cancelled");
+      const probe = lifecycleProbe([path]);
+      f.services.models = { create: model.create };
+      f.agent.plugins.push(probe.plugin);
+      if (status === "waiting")
+        f.services.authorizeTool = (call, context) => ({
+          type: "approval",
+          interaction: {
+            id: `probe:${context.identity.queryId}:${call.callId}`,
+            owner: "host-policy",
+            payload: { type: "test.probe-approval", version: 1, data: {} },
+          },
+        });
+      const gate = lifecycleCheckpointGate(f.services, checkpointKey(), "run", status);
+      const first = await ownHost(f.options);
+      const pending: Promise<unknown>[] = [];
+      let nextHost: SessionHost | undefined;
+      const oldController = new AbortController();
+      const nextProceed = Promise.withResolvers<void>();
+      try {
+        const old = await first.run({ ...activation(), signal: oldController.signal });
+        pending.push(old.completed.catch(() => {}));
+        const oldBinding = model.bindings[0];
+        const oldInstall = probe.installations[0];
+        if (status === "cancelled") {
+          await oldBinding.entered.promise;
+          old.cancel("cancel before terminal selection");
+          oldBinding.proceed.resolve();
+        }
+        const saved = await gate.saved.promise;
+        await gate.releaseEntered.promise;
+        expect(saved.status).toBe(status);
+        let completed = false;
+        let closed = false;
+        void old.completed.then(
+          () => {
+            completed = true;
+          },
+          () => {},
+        );
+        const closing = first.close();
+        pending.push(closing.catch(() => {}));
+        void closing.then(
+          () => {
+            closed = true;
+          },
+          () => {},
+        );
+        await oldInstall.aborted.promise;
+        old.cancel("stale cancellation after durable save");
+        expect(completed).toBe(false);
+        expect(closed).toBe(false);
+        expect(gate.state.released).toBe(false);
+        expect(oldBinding.state.released).toBe(false);
+        expect(oldInstall.state.released).toBe(false);
+        expect((await f.checkpoints.acquire(checkpointKey(), "inspector")).status).toBe("busy");
+        gate.proceed.resolve();
+        const result = await old.completed;
+        expect(result).toMatchObject({ status, identity: old.identity });
+        await closing;
+        expect(gate.state.released).toBe(true);
+        expect(gate.release).toHaveBeenCalledTimes(1);
+        expect(await inspectCheckpoint(f)).toEqual(saved);
+        expect(oldBinding.state.released).toBe(true);
+        expect(oldInstall.state.released).toBe(true);
+        expect(oldBinding.dispose).toHaveBeenCalledTimes(1);
+        expect(oldInstall.dispose).toHaveBeenCalledTimes(1);
+        // 新实例仍共享存储与同一插件对象，但获得新的绑定和安装闭包。
+        nextHost = await ownHost(f.options);
+        const nextBinding = model.bindings[1];
+        const nextInstall = probe.installations[1];
+        expect(nextBinding).not.toBe(oldBinding);
+        expect(nextBinding.binding).not.toBe(oldBinding.binding);
+        expect(nextInstall).not.toBe(oldInstall);
+        expect(nextInstall.signal).not.toBe(oldInstall.signal);
+        // 将下一 Run 确定性停在真实工具中；旧信号的首次 abort 在这里才触发。
+        const nextEntered = Promise.withResolvers<void>();
+        const originalExecute = nextInstall.execute.getMockImplementation()!;
+        nextInstall.execute.mockImplementation(async (input, context) => {
+          nextEntered.resolve();
+          await nextProceed.promise;
+          return originalExecute(input, context);
+        });
+        let next: AgentRunHandle;
+        if (status === "waiting") {
+          if (result.status !== "waiting") throw new Error("Expected saved waiting interaction.");
+          next = await nextHost.resume({
+            queryId: "query",
+            runId: "new-run",
+            response: { type: "answer", interactionId: result.interaction.id, value: true },
+          });
+        } else {
+          const terminal = await nextHost.resume({ queryId: "query", runId: "terminal-resume" });
+          pending.push(terminal.completed.catch(() => {}));
+          await expect(terminal.completed).rejects.toMatchObject({ code: "QUERY_TERMINAL" });
+          next = await nextHost.run(activation("new-query", "new-run"));
+        }
+        pending.push(next.completed.catch(() => {}));
+        nextBinding.proceed.resolve();
+        await nextEntered.promise;
+        oldController.abort("late old external signal");
+        old.cancel("late old handle cancellation");
+        expect(nextInstall.signal.aborted).toBe(false);
+        expect(nextInstall.execute.mock.calls[0][1].signal.aborted).toBe(false);
+        // waiting 先续执行待决工具，此时还没有新模型请求。
+        if (status !== "waiting") expect(nextBinding.generate.mock.calls[0][1].aborted).toBe(false);
+        expect(nextInstall.execute.mock.calls[0][1].identity).toEqual(next.identity);
+        expect(nextBinding.state.released).toBe(false);
+        expect(nextInstall.state.released).toBe(false);
+        nextProceed.resolve();
+        expect(await next.completed).toMatchObject({
+          status: "completed",
+          identity: {
+            ...old.identity,
+            queryId: status === "waiting" ? "query" : "new-query",
+            runId: "new-run",
+          },
+          output: expect.arrayContaining([answer(`Observed nonce:${nonce}`).message]),
+        });
+        expect(nextInstall.execute).toHaveBeenCalledTimes(1);
+        expect(
+          (await inspectCheckpoint(f, status === "waiting" ? "query" : "new-query"))?.status,
+        ).toBe("completed");
+        if (status !== "waiting") expect(await inspectCheckpoint(f)).toEqual(saved);
+        await nextHost.close();
+        expect(nextBinding.state.released).toBe(true);
+        expect(nextInstall.state.released).toBe(true);
+        expect(nextBinding.dispose).toHaveBeenCalledTimes(1);
+        expect(nextInstall.dispose).toHaveBeenCalledTimes(1);
+        expect(f.borrowedDisposed).not.toHaveBeenCalled();
+      } finally {
+        gate.proceed.resolve();
+        nextProceed.resolve();
+        for (const binding of model.bindings) {
+          binding.proceed.resolve();
+          binding.disposeProceed.resolve();
+        }
+        for (const installation of probe.installations) installation.proceed.resolve();
+        await Promise.allSettled(pending);
+        await first.close();
+        await nextHost?.close();
+      }
+    },
+  );
 });

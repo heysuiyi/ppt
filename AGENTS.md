@@ -28,10 +28,10 @@
 | --- | --- |
 | `packages/harness/src/agent/`、`packages/harness/src/agent-host/` | 私有 workspace 包 `@agent-harness/core`：通用执行协议、默认实现与 SessionHost；调用方只消费受控子路径的构建产物，不直接导入源码 |
 | `app/main/agent-host/` | 当前 Electron 宿主的配置与模型端口适配、持久化适配、装配和终端开发入口的平台桥接；不是 Harness 的全部实现 |
-| `src/tools/` | `read/write/edit/glob/grep` 基础工具的约定、默认装配与内部安全读写/搜索机制；不提供独立文件功能开关 |
+| `packages/tools/src/` | 私有 `@agent-harness/tools`：文件插件、纯契约/错误及受控 Node 原子 I/O、WorkspaceFileService；五个精确入口，共享安全实现但保持新旧观察/恢复语义，不提供额外全局文件功能开关 |
 | `packages/logs/src/` | 私有 workspace 包 `@agent-harness/logs`：通用诊断日志协议、默认运行时与 Node 输出/管理；与 Harness 互不依赖，消费者借用 Logger，宿主拥有实例和关闭责任 |
 | `packages/models/src/` | 私有单包 `@agent-harness/models`：统一模型创建、纯能力资料与安全错误，厂商仅为内部模块；当前真实适配器为 MiMo Token Plan CN，不将 SDK/凭据来源带入 Core 或 renderer |
-| `app/main/agent/` | 仍在生产链路中使用的旧 Agent 与 Gateway；旧文件工具与持久化已改用 `src/tools/internal/` 中迁出的共享原语 |
+| `app/main/agent/` | 仍在生产链路中使用的旧 Agent 与 Gateway；旧文件工具、领域服务和持久化已通过 tools 包的 `workspace-files`、`atomic-files` 公开入口复用共享原语 |
 | `app/main/plugins/ppt/`、`src/ppt/`、`app/main/presentation-lifecycle/` | 现有 PPT 能力、领域模型及旧链路适配；尚未完成通用 Harness 插件接入，其迁移不构成 Harness 演进的前置要求 |
 | `app/renderer/`、`app/preload/`、`app/shared/` | 桌面界面及 IPC 边界；不是通用内核的依赖来源 |
 | `cli/` | 终端命令、模型配置向导与交互执行流程；平台能力由窄端口注入，当前 `agent:dev` 仍启动 Electron 桥接，不代表纯 Node CLI 已独立 |

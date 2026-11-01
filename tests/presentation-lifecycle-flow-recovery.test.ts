@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { canonicalJson, hashArtifactValue } from "@ppt/core/artifact-hash";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -39,7 +40,6 @@ import {
   type PresentationRevisionId,
   type QueryId,
 } from "../src/shared/presentation-lifecycle";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const temporaryRoots: string[] = [];
 const repositories: PresentationLifecycleRepository[] = [];

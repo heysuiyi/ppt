@@ -1,14 +1,15 @@
 import type { Stats } from "node:fs";
 import { lstat, readdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { AtomicFileIdentity } from "./atomic";
-import { stalePathError, WorkspaceFileError } from "./workspace-file-types";
+import type { AtomicFileIdentity } from "./atomic.js";
+import { WorkspaceFileError } from "./workspace-file-contract.js";
+import { stalePathError } from "./workspace-file-types.js";
 import {
   assertContained,
   assertSafeDirectory,
   isOutside,
   sameFileIdentity,
-} from "./workspace-path-guard";
+} from "./workspace-path-guard.js";
 
 export async function globWorkspaceFiles(
   workspaceRoot: string,

@@ -3,8 +3,8 @@ import { AgentError, asProtocolError } from "@agent-harness/core/protocol-errors
 import type { ProtocolError } from "@agent-harness/core/protocol-values";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
 import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
-import type { AgentConfigurationSnapshot } from "../../src/shared/agent-configuration";
 import { ToolsError } from "@agent-harness/tools/tools-errors";
+import type { AgentConfigurationSnapshot } from "../../src/shared/agent-configuration";
 
 export interface DevelopmentCommand {
   readonly prompt?: string;

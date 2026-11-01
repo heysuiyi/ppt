@@ -29,15 +29,6 @@ import type {
   ToolCompletion,
 } from "@agent-harness/core/tools/tool-contract";
 import { createLogs, type Logger, type LogRecord } from "@agent-harness/logs/logs";
-import { describe, expect, it, vi } from "vitest";
-import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
-import { installPlugins } from "../packages/harness/dist/agent/extensions/plugin-manager.js";
-import { PromptRegistry } from "../packages/harness/dist/agent/extensions/prompt-registry.js";
-import { ModelRegistry } from "../packages/harness/dist/agent/model/model-registry.js";
-import { ResourceScope } from "../packages/harness/dist/agent/scope/resource-scope.js";
-import type { ToolExecutionResult } from "../packages/harness/dist/agent/tools/tool-executor.js";
-import { ToolPipeline } from "../packages/harness/dist/agent/tools/tool-pipeline.js";
-import { ToolRegistry } from "../packages/harness/dist/agent/tools/tool-registry.js";
 import { createTools } from "@agent-harness/tools/tools";
 import type {
   EditOutput,
@@ -48,6 +39,15 @@ import type {
   ToolsPlugin,
   WriteOutput,
 } from "@agent-harness/tools/tools-contract";
+import { describe, expect, it, vi } from "vitest";
+import { createSqliteAgentStores } from "../app/main/agent-host/sqlite-agent-stores";
+import { installPlugins } from "../packages/harness/dist/agent/extensions/plugin-manager.js";
+import { PromptRegistry } from "../packages/harness/dist/agent/extensions/prompt-registry.js";
+import { ModelRegistry } from "../packages/harness/dist/agent/model/model-registry.js";
+import { ResourceScope } from "../packages/harness/dist/agent/scope/resource-scope.js";
+import type { ToolExecutionResult } from "../packages/harness/dist/agent/tools/tool-executor.js";
+import { ToolPipeline } from "../packages/harness/dist/agent/tools/tool-pipeline.js";
+import { ToolRegistry } from "../packages/harness/dist/agent/tools/tool-registry.js";
 
 const allow: ToolAuthorizationPolicy = () => ({ type: "allow" });
 const versionOf = (content: string) =>

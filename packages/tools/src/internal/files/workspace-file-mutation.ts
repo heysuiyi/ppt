@@ -1,14 +1,14 @@
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import type { AtomicCommitGuard } from "./atomic";
-import { assertWrittenContent, readStableSnapshot } from "./workspace-file-snapshot";
+import type { AtomicCommitGuard } from "./atomic.js";
+import { WorkspaceFileError } from "./workspace-file-contract.js";
+import { assertWrittenContent, readStableSnapshot } from "./workspace-file-snapshot.js";
 import {
   type StableFileSnapshot,
   stalePathError,
-  WorkspaceFileError,
   type WorkspacePathGuard,
-} from "./workspace-file-types";
-import { assertContained, assertSafeDirectory } from "./workspace-path-guard";
+} from "./workspace-file-types.js";
+import { assertContained, assertSafeDirectory } from "./workspace-path-guard.js";
 
 const FILE_MUTATION_LOCKS = new Map<string, Promise<void>>();
 

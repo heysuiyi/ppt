@@ -2,12 +2,9 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { TextDecoder } from "node:util";
-import {
-  type StableFileSnapshot,
-  WorkspaceFileError,
-  type WorkspaceFileReceipt,
-} from "./workspace-file-types";
-import { sameFileIdentity } from "./workspace-path-guard";
+import { WorkspaceFileError, type WorkspaceFileReceipt } from "./workspace-file-contract.js";
+import type { StableFileSnapshot } from "./workspace-file-types.js";
+import { sameFileIdentity } from "./workspace-path-guard.js";
 
 export interface SnapshotReadBudget {
   remaining: number;

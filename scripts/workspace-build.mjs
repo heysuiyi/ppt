@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const packages = ["harness", "logs", "models"];
+const packages = ["harness", "logs", "models", "tools"];
 
 export function buildPackages() {
   for (const name of packages) {

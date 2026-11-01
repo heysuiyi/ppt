@@ -32,9 +32,11 @@ export class ModelRegistry implements ModelClientFactory, ModelRegistrar, Dispos
     if (signal.aborted) {
       try {
         await binding.dispose();
-      } finally {
-        signal.throwIfAborted();
+      } catch (cleanupError) {
+        // 取消不能掩盖迟到绑定回收失败；外层尚未取得绑定，不再承担释放。
+        throw new AggregateError([signal.reason, cleanupError], "模型绑定取消与回收失败。");
       }
+      signal.throwIfAborted();
     }
     return binding;
   }

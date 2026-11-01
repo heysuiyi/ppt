@@ -1,58 +1,48 @@
 import { lstatSync, realpathSync } from "node:fs";
 import { relative, resolve } from "node:path";
-import { AtomicWriteConflictError, withAtomicFileTransaction, writeTextFileAtomic } from "./atomic";
+import { withAtomicFileTransaction, writeTextFileAtomic } from "./atomic.js";
+import { AtomicWriteConflictError } from "./atomic-errors.js";
+import {
+  type WorkspaceFileEditOptions,
+  type WorkspaceFileEditResult,
+  WorkspaceFileError,
+  type WorkspaceFileReadOptions,
+  type WorkspaceFileReadResult,
+  type WorkspaceFileReceipt,
+  type WorkspaceFileWindowReadOptions,
+  type WorkspaceFileWindowReadResult,
+  type WorkspaceFileWriteOptions,
+  type WorkspaceFileWriteResult,
+} from "./workspace-file-contract.js";
 import {
   classifyWorkspaceErrorsAfterSideEffect,
   createAtomicCommitGuard,
   ensureSafeParentDirectory,
   withFileMutationLock,
-} from "./workspace-file-mutation";
+} from "./workspace-file-mutation.js";
 import {
   assertSameSnapshot,
   assertValidUtf8Text,
   detectNewlineStyle,
   readSnapshotIfPresent,
   readStableSnapshot,
-} from "./workspace-file-snapshot";
+} from "./workspace-file-snapshot.js";
 import {
   type ObservedFileCoverage,
   type StableFileSnapshot,
   stalePathError,
-  type WorkspaceFileEditOptions,
-  type WorkspaceFileEditResult,
-  WorkspaceFileError,
-  type WorkspaceFileReadOptions,
-  type WorkspaceFileReadResult,
-  type WorkspaceFileReceipt,
-  type WorkspaceFileWindowReadOptions,
-  type WorkspaceFileWindowReadResult,
-  type WorkspaceFileWriteOptions,
-  type WorkspaceFileWriteResult,
-} from "./workspace-file-types";
-import { captureWorkspacePathGuard, resolveContainedWorkspacePath } from "./workspace-path-guard";
+} from "./workspace-file-types.js";
+import {
+  captureWorkspacePathGuard,
+  resolveContainedWorkspacePath,
+} from "./workspace-path-guard.js";
 import {
   assertReadWindowNumber,
   mergeCoverageRanges,
   splitsSurrogatePair,
   unicodeSafeEndOffset,
-} from "./workspace-read-window";
-import { countOccurrences, replaceFirst } from "./workspace-text-edit";
-
-export {
-  type WorkspaceFileEditOptions,
-  type WorkspaceFileEditResult,
-  WorkspaceFileError,
-  type WorkspaceFileErrorCode,
-  type WorkspaceFileReadOptions,
-  type WorkspaceFileReadResult,
-  type WorkspaceFileReceipt,
-  type WorkspaceFileWindowReadOptions,
-  type WorkspaceFileWindowReadResult,
-  type WorkspaceFileWriteOptions,
-  type WorkspaceFileWriteResult,
-} from "./workspace-file-types";
-export { globWorkspaceFiles } from "./workspace-glob";
-export { countOccurrences } from "./workspace-text-edit";
+} from "./workspace-read-window.js";
+import { countOccurrences, replaceFirst } from "./workspace-text-edit.js";
 
 /**
  * Runtime-scoped text-file service shared by main agents and teammates.

@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 import { formatTerminalAgentRunContent } from "@app/shared/agent-result-copy";
 import type {
   AgentRunResult,
@@ -68,7 +69,6 @@ import {
 } from "@shared/workspace";
 import { getSessionSandboxPath, isLegacyProjectSandboxPath } from "@shared/workspace-meta";
 import { z } from "zod";
-import { writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 import { createModuleLogger } from "./agent/logger";
 import { ConversationDatabase } from "./conversation-database";
 import { ExportHistoryService, GenerationJobsService } from "./deck/deck-persistence-services";

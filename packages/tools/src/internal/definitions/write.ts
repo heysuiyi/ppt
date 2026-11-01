@@ -3,29 +3,9 @@ import type {
   ToolExecutionContext,
   ToolResult,
 } from "@agent-harness/core/tools/tool-contract";
+
 import { z } from "zod";
-
-export interface WriteCreateInput {
-  path: string;
-  content: string;
-  mode: "create";
-}
-
-export interface WriteReplaceInput {
-  path: string;
-  content: string;
-  mode: "replace";
-  expectedVersion: string;
-}
-
-export type WriteInput = WriteCreateInput | WriteReplaceInput;
-
-export interface WriteOutput {
-  path: string;
-  version: string;
-  size: number;
-  operation: "created" | "replaced";
-}
+import type { WriteInput, WriteOutput } from "../../tools-contract.js";
 
 const contentSchema = z
   .string()

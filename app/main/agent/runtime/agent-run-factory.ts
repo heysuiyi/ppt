@@ -1,9 +1,9 @@
-import { getEffectiveMainMaxSteps, resolveAgentStepLimits } from "@shared/agent-step-limits";
-import type { TeammateProgressEvent } from "@shared/teammate-progress";
 import {
   canonicalizeWorkspaceRoot,
   WorkspaceFileService,
 } from "@agent-harness/tools/workspace-files";
+import { getEffectiveMainMaxSteps, resolveAgentStepLimits } from "@shared/agent-step-limits";
+import type { TeammateProgressEvent } from "@shared/teammate-progress";
 import type { ConversationDatabase } from "../../conversation-database";
 import type { AgentModelGateway } from "../gateway";
 import { createEmptySkillRegistry, type SkillRegistry } from "../skills/loadSkillsDir";

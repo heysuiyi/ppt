@@ -1,14 +1,14 @@
 import type { Stats } from "node:fs";
 import { lstat, opendir, realpath } from "node:fs/promises";
 import { isAbsolute, posix, relative, resolve, win32 } from "node:path";
-import { ToolsError } from "./errors";
-import { globToRegExp, isAtomicInternalEntry } from "./workspace-glob";
+import { ToolsError } from "../../tools-errors.js";
+import { globToRegExp, isAtomicInternalEntry } from "./workspace-glob.js";
 import {
   assertContained,
   assertSafeDirectory,
   captureWorkspacePathGuard,
   sameFileIdentity,
-} from "./workspace-path-guard";
+} from "./workspace-path-guard.js";
 
 export interface WorkspaceScanResult {
   paths: string[];

@@ -1,12 +1,12 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { hashArtifactValue, hashBytes } from "@ppt/core/artifact-hash";
 import type {
   ArtifactPointer,
   ArtifactRevision,
   ContentHash,
 } from "@shared/presentation-lifecycle";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { loadWorkspaceSvgPage } from "../plugins/ppt/svg-page-loader";
 import type {
   ArtifactChangeObserverPort,

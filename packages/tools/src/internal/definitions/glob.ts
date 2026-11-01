@@ -3,17 +3,9 @@ import type {
   ToolExecutionContext,
   ToolResult,
 } from "@agent-harness/core/tools/tool-contract";
+
 import { z } from "zod";
-
-export interface GlobInput {
-  pattern: string;
-  limit?: number;
-}
-
-export interface GlobOutput {
-  matches: string[];
-  truncated: boolean;
-}
+import type { GlobInput, GlobOutput } from "../../tools-contract.js";
 
 export const globInputSchema = z
   .object({

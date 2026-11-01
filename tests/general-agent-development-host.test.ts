@@ -4,6 +4,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getModelProfile } from "@agent-harness/models/model-profiles";
+import type { ToolsMode } from "@agent-harness/tools/tools-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AgentConfiguration, createAgentConfiguration } from "../app/main/agent-configuration";
 import { prepareConfiguredModel } from "../app/main/agent-host/configured-model-factory";
@@ -15,7 +16,6 @@ import {
   projectDevelopmentModels,
   projectDevelopmentResult,
 } from "../cli/commands/development-command";
-import type { ToolsMode } from "@agent-harness/tools/tools-contract";
 
 const mimoProfile = getModelProfile("mimo-token-plan-cn");
 if (mimoProfile?.endpoint?.kind !== "fixed")

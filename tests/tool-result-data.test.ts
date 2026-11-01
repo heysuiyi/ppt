@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { prepareToolResultData } from "../app/main/agent/runtime/tools/tool-result-data";
@@ -10,7 +11,6 @@ import {
   ToolOutputValidationError,
   validateToolOutput,
 } from "../app/main/agent/tools/tool-validation";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const temporaryRoots: string[] = [];
 

@@ -1,12 +1,12 @@
 import type { Stats } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import { WorkspaceFileError } from "./workspace-file-contract.js";
 import {
   type GuardedDirectoryIdentity,
   stalePathError,
-  WorkspaceFileError,
   type WorkspacePathGuard,
-} from "./workspace-file-types";
+} from "./workspace-file-types.js";
 
 export async function resolveContainedWorkspacePath(
   workspaceRoot: string,

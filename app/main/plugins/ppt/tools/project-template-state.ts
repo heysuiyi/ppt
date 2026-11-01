@@ -1,3 +1,4 @@
+import type { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import type { ColorScheme, DesignSystemV2 } from "@design-system";
 import { getBuiltinTemplate } from "@shared/template-catalog";
 import {
@@ -18,7 +19,6 @@ import {
   assertDesignSystemMatchesTemplate,
   resolveProjectTemplate,
 } from "@shared/template-resolver";
-import type { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 export interface WorkspaceTemplateState {
   policy: ProjectTemplatePolicy;

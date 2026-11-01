@@ -7,8 +7,8 @@ import type { AgentRunHandle, AgentRunResult } from "@agent-harness/core/agent-c
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { InteractionRequest, InteractionResponse } from "@agent-harness/core/protocol-values";
 import type { SessionHost } from "@agent-harness/core/session-host";
-import type { ConfigurationManagement } from "../src/shared/agent-configuration";
 import type { ToolsMode } from "@agent-harness/tools/tools-contract";
+import type { ConfigurationManagement } from "../src/shared/agent-configuration";
 import {
   DEVELOPMENT_HELP,
   type DevelopmentCommand,

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, join } from "node:path";
+import { readJsonFile, writeJsonFileAtomic } from "@agent-harness/tools/atomic-files";
 import {
   type AgentTaskNode,
   agentTaskNodeSchema,
@@ -10,7 +11,6 @@ import {
   hasDependencyCycle,
   type TaskCompletionPolicy,
 } from "@shared/agent-task-list";
-import { readJsonFile, writeJsonFileAtomic } from "@agent-harness/tools/atomic-files";
 
 export type TaskPermission =
   | "task:create"

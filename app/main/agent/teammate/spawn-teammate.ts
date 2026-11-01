@@ -1,3 +1,5 @@
+import { readJsonFile, writeJsonFileAtomic } from "@agent-harness/tools/atomic-files";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import {
   buildSubStepLimitMessage,
   getEffectiveSubMaxSteps,
@@ -10,8 +12,6 @@ import {
   type TeammateProgressListener,
 } from "@shared/teammate-progress";
 import { z } from "zod";
-import { readJsonFile, writeJsonFileAtomic } from "@agent-harness/tools/atomic-files";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import type {
   AgentModelContentBlock,
   AgentModelMessage,

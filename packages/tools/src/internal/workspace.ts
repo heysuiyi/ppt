@@ -1,35 +1,42 @@
-import { lstat, mkdir, realpath } from "node:fs/promises";
+import { lstat, mkdir } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import type { ToolResult } from "@agent-harness/core/tools/tool-contract";
-import type { EditInput, EditOutput } from "../edit";
-import type { GlobInput, GlobOutput } from "../glob";
-import type { GrepInput, GrepOutput } from "../grep";
-import type { ReadInput, ReadOutput } from "../read";
-import type { WriteInput, WriteOutput } from "../write";
-import { writeTextFileAtomic } from "./atomic";
-import { failedResult, safeToolsError, type ToolsEffects, ToolsError } from "./errors";
-import { createAtomicCommitGuard, withFileMutationLock } from "./workspace-file-mutation";
+import type {
+  EditInput,
+  EditOutput,
+  GlobInput,
+  GlobOutput,
+  GrepInput,
+  GrepOutput,
+  ReadInput,
+  ReadOutput,
+  WriteInput,
+  WriteOutput,
+} from "../tools-contract.js";
+import { type ToolsEffects, ToolsError } from "../tools-errors.js";
+import { failedResult, safeToolsError } from "./error-projection.js";
+import { writeTextFileAtomic } from "./files/atomic.js";
+import { createAtomicCommitGuard, withFileMutationLock } from "./files/workspace-file-mutation.js";
 import {
   assertSameSnapshot,
   assertValidUtf8Text,
   readSnapshotIfPresent,
   readStableSnapshot,
   type SnapshotReadBudget,
-} from "./workspace-file-snapshot";
-import type { StableFileSnapshot } from "./workspace-file-types";
+} from "./files/workspace-file-snapshot.js";
+import type { StableFileSnapshot } from "./files/workspace-file-types.js";
 import {
   assertSafeDirectory,
   captureWorkspacePathGuard,
   resolveContainedWorkspacePath,
-  sameFileIdentity,
-} from "./workspace-path-guard";
+} from "./files/workspace-path-guard.js";
 import {
   mergeCoverageRanges,
   splitsSurrogatePair,
   unicodeSafeEndOffset,
-} from "./workspace-read-window";
-import { assertRelativeToolPath, scanWorkspace, workspacePattern } from "./workspace-scan";
-import { countOccurrences, replaceFirst } from "./workspace-text-edit";
+} from "./files/workspace-read-window.js";
+import { assertRelativeToolPath, scanWorkspace, workspacePattern } from "./files/workspace-scan.js";
+import { countOccurrences, replaceFirst } from "./files/workspace-text-edit.js";
 
 export interface WorkspaceOptions {
   workspaceRoot: string;
@@ -46,24 +53,6 @@ interface Observation {
 
 interface MutationState {
   effects: ToolsEffects;
-}
-
-export async function prepareWorkspaceRoot(root: string): Promise<string> {
-  if (typeof root !== "string" || !root.trim() || root.includes("\0")) {
-    throw new ToolsError("INVALID_OPTIONS");
-  }
-  try {
-    const path = resolve(root);
-    const before = await lstat(path);
-    assertSafeDirectory(before, path, ".");
-    const canonical = await realpath(path);
-    const after = await lstat(path);
-    assertSafeDirectory(after, path, ".");
-    if (!sameFileIdentity(before, after)) throw new ToolsError("STALE_FILE");
-    return canonical;
-  } catch {
-    throw new ToolsError("INVALID_WORKSPACE");
-  }
 }
 
 export class Workspace {

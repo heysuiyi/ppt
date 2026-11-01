@@ -4,9 +4,9 @@ import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { InteractionRequest } from "@agent-harness/core/protocol-values";
 import type { ToolAuthorizationPolicy } from "@agent-harness/core/tools/tool-contract";
 import type { Logger } from "@agent-harness/logs/log-contract";
-import { z } from "zod";
 import { createTools } from "@agent-harness/tools/tools";
 import type { ToolsMode, ToolsPlugin } from "@agent-harness/tools/tools-contract";
+import { z } from "zod";
 
 export interface WorkspaceConfigurationOptions {
   readonly workspaceRoot: string;

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 import type { AgentModelSelection } from "@shared/agent";
 import { type AgentSettings, agentSettingsSchema } from "@shared/agent-settings";
-import { writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 
 /** Main owns execution settings; Renderer only edits a secret-free projection. */
 export class AgentSettingsStore {

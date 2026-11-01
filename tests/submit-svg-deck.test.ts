@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { requirePresentation } from "@main/plugins/ppt/context";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +17,6 @@ import {
 } from "../app/main/plugins/ppt/tools/submit-svg-deck";
 import { DEFAULT_DESIGN_SYSTEM } from "../src/design-system";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const temporaryRoots: string[] = [];
 const VALID_PIXEL_PNG =

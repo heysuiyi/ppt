@@ -1,3 +1,4 @@
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { requirePptCapability } from "@main/plugins/ppt/context";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { describe, expect, it, vi } from "vitest";
@@ -20,7 +21,6 @@ import {
   type PptJobProjection,
   pptJobProjectionSchema,
 } from "../src/shared/presentation-lifecycle";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const PRESENTATION_TOOL_NAMES = [
   "GetDesignReference",

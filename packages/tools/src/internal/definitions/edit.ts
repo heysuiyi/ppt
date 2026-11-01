@@ -3,22 +3,9 @@ import type {
   ToolExecutionContext,
   ToolResult,
 } from "@agent-harness/core/tools/tool-contract";
+
 import { z } from "zod";
-
-export interface EditInput {
-  path: string;
-  oldText: string;
-  newText: string;
-  expectedVersion: string;
-  replaceAll?: boolean;
-}
-
-export interface EditOutput {
-  path: string;
-  version: string;
-  size: number;
-  replacements: number;
-}
+import type { EditInput, EditOutput } from "../../tools-contract.js";
 
 const textSchema = z
   .string()

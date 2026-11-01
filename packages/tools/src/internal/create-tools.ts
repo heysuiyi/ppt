@@ -1,32 +1,15 @@
-import type { AgentPlugin } from "@agent-harness/core/extensions/plugin-contract";
 import type { Logger } from "@agent-harness/logs/log-contract";
 import { z } from "zod";
-import { createEdit } from "./edit";
-import { createGlob } from "./glob";
-import { createGrep } from "./grep";
-import { ToolsError } from "./internal/errors";
-import { withToolLogging } from "./internal/tool-logging";
-import { prepareWorkspaceRoot, Workspace } from "./internal/workspace";
-import { createRead } from "./read";
-import { createWrite } from "./write";
-
-export { ToolsError } from "./internal/errors";
-
-export type ToolsMode = "read-only" | "read-write";
-
-export interface ToolsOptions {
-  workspaceRoot: string;
-  mode?: ToolsMode;
-  maxFileBytes?: number;
-  maxScanEntries?: number;
-  maxSearchBytes?: number;
-}
-
-export interface ToolsPlugin extends AgentPlugin {
-  readonly workspaceRoot: string;
-  readonly mode: ToolsMode;
-  readonly toolNames: readonly string[];
-}
+import type { ToolsOptions, ToolsPlugin } from "../tools-contract.js";
+import { ToolsError } from "../tools-errors.js";
+import { createEdit } from "./definitions/edit.js";
+import { createGlob } from "./definitions/glob.js";
+import { createGrep } from "./definitions/grep.js";
+import { createRead } from "./definitions/read.js";
+import { createWrite } from "./definitions/write.js";
+import { withToolLogging } from "./tool-logging.js";
+import { Workspace } from "./workspace.js";
+import { prepareWorkspaceRoot } from "./workspace-root.js";
 
 const DEFAULT_MAX_FILE_BYTES = 65536;
 const DEFAULT_MAX_SCAN_ENTRIES = 10000;

@@ -1,7 +1,7 @@
+import type { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { TEMPLATE_PACK_PATH, templateCommunicationSignalsSchema } from "@shared/template-protocol";
 import { resolveProjectTemplate } from "@shared/template-resolver";
 import type { z } from "zod";
-import type { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import type { ToolDefinition } from "../../../agent/tools/tool-definition";
 import { requirePptCapability } from "../context";
 import { readWorkspaceTemplateState } from "./project-template-state";

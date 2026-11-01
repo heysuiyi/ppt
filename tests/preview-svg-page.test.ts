@@ -1,12 +1,12 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ToolContext } from "../app/main/agent/tools/tool-definition";
 import { previewSvgPageTool } from "../app/main/plugins/ppt/tools/preview-svg-page";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 
 const temporaryRoots: string[] = [];
 

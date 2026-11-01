@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import type {
   AgentModelContentBlock,
   AgentModelGateway,
@@ -19,7 +20,6 @@ import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { DeckExportService, DeckValidationService, inspectPptxExport } from "@ppt/core";
 import { createStarterPresentation } from "@shared/presentation-fixtures";
 import { afterEach, describe, expect, it } from "vitest";
-import { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import { createExportGoldenPresentation } from "./fixtures/export-golden-deck";
 
 const directories: string[] = [];

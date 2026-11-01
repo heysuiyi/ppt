@@ -2,7 +2,7 @@
 
 [返回计划目录](README.md) · [项目整体规划](../project-plan.md)
 
-状态：方案已设计，尚未建立 tools workspace 或实施迁移。本轮仅调研、验证现有文件语义并修改文档，不改变工具执行行为，不调用远程模型。M2-A/M2-B 的既有完成状态不变；本方案作为 M2 类型的独立收敛切片，不扩充 M3 或宿主迁移范围。
+状态：T0–T6 已实施并完成本地验收。第 1–10 节保留实施方案，第 11 节保留设计阶段观察，当前实现与实际证据见第 12 节。单个 tools 包及五个入口已落地，旧路径已删除；本轮没有远程模型调用，不把并行 M3、UI 或 CLI 终端设计工作算作本切片交付。
 
 ## 1. 结论与范围
 
@@ -238,9 +238,9 @@ npx biome check <本轮修改的受支持文件>
 
 另需四包 watch、原始 waiting 新进程恢复、实际生产编辑器和解包 Electron 烟测；测试通过不能替代这些入口。不可擅自运行旧 test:integration:agent 远程厂商测试。正常应用数据、用户凭据和共享历史不作为夹具。
 
-## 11. 本轮设计验证与未验证范围
+## 11. 设计阶段验证与当时未验证范围
 
-本轮静态核对了公开契约、共享原语、app/cli 直接消费者、相关测试和构建/打包机制。宿主路径在调研期间发生并行迁移，已按实际新位置复核；当前仅配置 Biome 语言服务器，无 TypeScript 导航服务，调用面通过导入/符号检索和代码阅读交叉确认，完整解析门禁仍为实施验收项。
+设计轮静态核对了公开契约、共享原语、app/cli 直接消费者、相关测试和构建/打包机制。宿主路径在调研期间发生并行迁移，已按实际新位置复核；当时仅配置 Biome 语言服务器，无 TypeScript 导航服务，调用面通过导入/符号检索和代码阅读交叉确认，完整解析门禁列为实施验收项。
 
 用临时 Vite SSR 产物由真实 Node 执行现有实现、仅操作自建临时文件，实际观察到：
 
@@ -249,4 +249,46 @@ npx biome check <本轮修改的受支持文件>
 - 两个新 Workspace 的观察记录隔离；成功修改后旧 observation 撤销。
 - 旧 WorkspaceFileService.inspect 不授予写资格；read 后写成功更新 receipt，可继续用新 receipt 修改。
 
-探针不是新包、不是独立安装或生产入口验收，也没有验证全部安全/恢复场景。本轮未运行全量测试、类型检查、打包或远程模型；没有把历史通过数字当成当前 tools 包证据。临时数据与编译产物由探针释放，探针脚本在交付前移除。方案实施后的真实结果另行追加，不能将本节升级为“tools 已抽取”。
+以上设计轮探针不是新包、独立安装或生产入口验收，没有验证全部安全/恢复场景；设计轮未运行全量测试、类型检查、打包或远程模型。其临时资源已清理，实施后的证据单列如下，不将前序数字升级为本轮结果。
+
+## 12. 实施与验收记录
+
+### 12.1 实际变更
+
+- 创建私有 `@agent-harness/tools@0.1.0`，Node >=24、ESM-only、独立 NodeNext 构建，仅五个精确 exports。工厂/严格根校验、纯契约/错误、受控 atomic-files/workspace-files 均可消费；没有根入口、单工具工厂出口或通配符。
+- 五工具类型唯一归 tools-contract；schema/定义/投影私有。ToolsError 与 Node 错误映射分离，旧服务的公开 receipt/options 与内部 snapshot/guard 分离。公共 atomic 写入类型只支持 mode，使用显式函数类型直接绑定同一内部实现，不额外创建 Promise、writer、锁域或 AsyncLocalStorage。
+- app/cli、配置与旧持久化、主/子 Agent、teammate、PPT、项目文件/产物观察及测试全部改用公共入口；删除旧 src/tools 的 19 个实现和空目录，无转发、别名或副本。旧模型工具契约和领域策略继续存在。
+- 保留原预算、工具/插件/definition 身份、两套观察/恢复差异、v1 磁盘格式、v2 绑定、审批和模型重放。没有修改 Core 执行代码、凭据来源或生产模型选择。
+- 原四项事务/guard 故障回归迁至 packages/tools/tests/atomic-replacement.test.ts；另将任务存储中的 guard 竞态回归迁至包内 task-store-atomic-read.test.ts，根任务消费者不取得私有 options。任务回归以真实锁调用的进入信号代替猜测等待；保留真实读写结果断言和自建目录清理。删除主/teammate 的 schema/formatter 等对象身份断言，没有重钉新身份。
+- 接入第四包 workspace/锁文件、构建顺序、首次 emit/监听、Vitest、node 项目、Biome 和 Electron 精确复制；新增 check-tools-boundaries 与 verify-tools-package。NodeNext 包内公共自引用按消费者选项解析，避免 rootDir/outDir 使 dist 声明重定向为源码的误报，实际 manifest 目标校验没有放宽。
+
+### 12.2 实际执行结果
+
+| 检查或入口 | 观察到的结果 |
+| --- | --- |
+| `npm run build` | 四包构建、四类解析门禁、node/web 类型检查、Main/preload/renderer 生产构建全部通过 |
+| `npm test` | 193 个文件通过；1654 项通过、2 项既有跳过 |
+| 包内故障及任务定向回归 | 原子恢复、任务提交窗口和根任务消费者共 3 个文件/26 项通过；此前五工具/旧服务/编辑器/宿主/会话列表定向 7 文件为 97 项通过、2 项跳过 |
+| `npm run test:integration:harness` | 两项真实 Electron CLI 集成通过，覆盖现有受控执行与 SDK 本地传输的授权、拒绝、取消、等待及恢复，不是远程厂商验收 |
+| `npm run agent:dev -- --help` | 实际 Node 启动器、Electron 桥接与帮助正常执行并退出 |
+| 实际 PTY Ctrl+C | 无配置的真实启动向导中发送终端控制字符，原启动器经 IPC 转交取消，退出码 130；工作区无文件、未创建执行数据库，夹具正常清理。范围为启动取消，不冒充模型响应过程中的 OS 信号测试 |
+| 本轮静态检查 | Biome 检查 87 个受支持文件通过，无剩余诊断 |
+| 解析门禁隔离矩阵 | 18 项正反例通过：公开运行/错误、源码/dist/单工具/旧路径绕过、浏览器工厂、preload Node、源码/JS/声明污染、纯入口工厂、反向依赖、动态加载、别名、外部测试桥接与还原后的正常图 |
+| 四包实际 watch | Core/logs/models/tools 全部首次 emit 后就绪；临时 tools 模块改动触发增量 emit，原生 Node 实际加载更新 JS；关闭监听并删除探针 |
+| `npm run verify:tools-package` | 仓库外独立缓存、离线、禁安装脚本、无 symlink 地安装真实 Core/logs/tools tarball；真实运行依赖闭包为三包、proper-lockfile 4.1.2、graceful-fs 4.2.11、retry 0.12.0、signal-exit 3.0.7、Zod 4.4.3 |
+| 独立安装声明消费 | Bundler/DOM 与 NodeNext/DOM 的 types:[]、skipLibCheck:false 消费通过，另有 Node 工厂消费与私有 options/入口拒绝；仅编译侧借用现有编译器/Node 类型，运行时不回退仓库解析 |
+| 独立包真实行为 | Core 公开 Application 执行无插件对话及全部五工具，模型消费真实文件结果；默认只读、授权前无文件效果、审批拒绝/撤权、取消前置、Unicode 全页覆盖、版本/inode 失效、安装隔离/修改撤权、旧 receipt、新旧目标竞争、JSON backup/v1 恢复、只读不恢复、不覆盖未知 winner/orphan、公开错误分类与 Logger 借用均通过 |
+| 迁移前实现 → 新包 | 两个原工具源码产生的真实 Electron/SDK 本地 SSE waiting，在新包新进程中先 EOF 保留待决交互，再批准；binding 原文与 pending 保持，Query 不变/Run 更新。create 写入真实读取随机码，replace 返回 READ_REQUIRED/effects:none 且原文件不变；两 Query 最终 completed、owner 释放，共 6 次 Responses 请求 |
+| 旧原子文件材料 | 原 atomic 实现主动退出 86 产生 v1 manifest/backup，确认写进程停止后，新公开 readJsonFile 恢复旧内容；原实现产生的 .bak 在坏 JSON 下修复成功 |
+| 实际生产项目编辑器 | 使用 out/main、真实 preload/renderer/IPC 和隔离 home/data/profile。未注册 notes.txt 保持只读；已注册 brief.md 可读取随机码、编辑并实际落盘。外部修改后再保存被拒绝，磁盘外部内容未覆盖，UI 草稿保留并显示重载提示；已观察实际画面 |
+| 实际 Electron ASAR | Windows 解包 Electron 43.8.6/内置 Node 24.22.1 从仓库外原生解析 ASAR 内五入口和 proper-lockfile，实际执行旧服务读写、JSON backup 修复和错误分类，拒绝私有路径；不是只检查文件存在 |
+
+迁移前工具原文在任何新包源码创建前读取并保留。首次探针误将整个 checkpoint 原文当作 EOF 后不变量，而 lastRunId 应正常更新；修正后，使用那 19 份预迁移原始输入重新封存生成基线，未从新包反推旧代码，按 binding/pending 不变与 Run 更新分别验收。该证据证明原工具实现到新包的兼容，不等同完整旧发行二进制。审批恢复样本始终来自真实执行，未手写检查点。
+
+### 12.3 清理与范围
+
+所有模型流量均为真实 SDK 到本地 HTTP/SSE，没有新增远程厂商用量。独立包的受控存储只证明公开端口行为；持久化跨进程证据来自单列的真实 SQLite/CLI 样本，不宣称整个 M3 已完成。
+
+实际编辑器使用生产构建，不是新 UI 预览；正常退出后隔离数据根已删除，没有修改用户项目或共享数据库。等待使用 EOF，原子故障使用明确退出 86，真实启动取消使用 PTY Ctrl+C，三者不混同。所有本轮子进程、监听、临时安装缓存、源封存副本、解包目录及探针脚本已清理，正常 dist/out 保留。
+
+本轮为 Windows 本地证据；未执行签名或安装器，未验证其他操作系统的 mode/fsync 全部行为，独立 verifier 明确 modeChecked:false。生产聊天/PPT 仍是旧执行链，只把共用文件实现迁入包；CLI 仍借用 Electron 平台桥接。本轮不实现新 CLI 终端、第二模型厂商、SQLite 抽包或 M3 后续步骤。

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { readJsonFile, writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 import {
   CREDENTIAL_STORE_FILE_NAME,
   type CredentialStatusSnapshot,
@@ -11,7 +12,6 @@ import {
   LEGACY_CREDENTIAL_STORE_FILE_NAME,
 } from "@shared/credentials";
 import { z } from "zod";
-import { readJsonFile, writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 import {
   type CredentialStatusRequest,
   credentialStatusRequestSchema,

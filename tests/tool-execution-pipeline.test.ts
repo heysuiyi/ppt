@@ -1,3 +1,4 @@
+import { WorkspaceFileError } from "@agent-harness/tools/workspace-files";
 import { createPptRuntime } from "@main/plugins/ppt/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -15,7 +16,6 @@ import { searchExtraToolsTool } from "../app/main/agent/tools/core/search-extra-
 import type { ToolContext, ToolDefinition } from "../app/main/agent/tools/tool-definition";
 import { ToolRegistry } from "../app/main/agent/tools/tool-registry";
 import { createStarterPresentation } from "../src/shared/presentation-fixtures";
-import { WorkspaceFileError } from "@agent-harness/tools/workspace-files";
 
 function gatewayFor(turns: AgentModelContentBlock[][]): AgentModelGateway & {
   requests: AgentModelRequest[];

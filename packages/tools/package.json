@@ -1,0 +1,49 @@
+{
+  "name": "@agent-harness/tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "npm run build"
+  },
+  "exports": {
+    "./tools": {
+      "types": "./dist/tools.d.ts",
+      "import": "./dist/tools.js"
+    },
+    "./tools-contract": {
+      "types": "./dist/tools-contract.d.ts",
+      "import": "./dist/tools-contract.js"
+    },
+    "./tools-errors": {
+      "types": "./dist/tools-errors.d.ts",
+      "import": "./dist/tools-errors.js"
+    },
+    "./atomic-files": {
+      "types": "./dist/atomic-files.d.ts",
+      "import": "./dist/atomic-files.js"
+    },
+    "./workspace-files": {
+      "types": "./dist/workspace-files.d.ts",
+      "import": "./dist/workspace-files.js"
+    }
+  },
+  "dependencies": {
+    "@agent-harness/core": "0.1.0",
+    "@agent-harness/logs": "0.1.0",
+    "proper-lockfile": "^4.1.2",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  }
+}
