@@ -96,7 +96,10 @@ export function createComposer(initial: TerminalDraft = { text: "", cursor: 0 })
     },
     setDraft,
     setColumns(next: number) {
-      columns = Number.isFinite(next) ? Math.max(1, Math.floor(next)) : 1;
+      const width = Number.isFinite(next) ? Math.max(1, Math.floor(next)) : 1;
+      // 重排后旧的首选显示列已失效；下次上下移动从当前字素的新位置开始。
+      if (width !== columns) preferredColumn = undefined;
+      columns = width;
     },
     remember,
     clear(keep = false) {

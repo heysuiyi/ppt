@@ -1,30 +1,45 @@
 import type { TerminalView } from "./renderer-contract.js";
 import { graphemes, truncateTerminalText, visibleWidth } from "./terminal-text.js";
 
-/** 单行状态栏：项目标识、模型、工作目录，随后是上下文刻度。 */
-export function contextLines(view: TerminalView, columns: number): string[] {
-  if (!view.context) return [];
+/** OMP 式透明状态带：分段着色，只显示宿主确实提供的数据。 */
+export function contextLines(view: TerminalView, columns: number, color = false): string[] {
+  if (!view.context || !Number.isFinite(columns) || columns < 1) return [];
+  const width = Math.floor(columns);
   const { model, workspace } = view.context;
-  const path = workspace.replaceAll("\\", "/").replace(/\/+$/, "");
-  // 当前宿主没有上下文容量契约；不可把输出预算或累计 usage 冒充上下文用量。
-  const gauge = "—% ── 上下文未知";
-  const labelBudget = Math.max(1, columns - visibleWidth(gauge) - 5);
-  const name = truncateTerminalText(`π › ${model}`, Math.max(1, Math.floor(labelBudget * 0.55)));
-  const budget = Math.max(0, labelBudget - visibleWidth(name) - 3);
-  let tail = path;
-  if (visibleWidth(path) > budget) {
-    const parts = graphemes(path);
-    let width = 1;
+  // 先按纯文本分配列宽，最后才加样式；不把 ANSI 当作可见字符或再次转义。
+  const separator = " › ";
+  const brand = "s";
+  const modelIcon = "◉ ";
+  const folderIcon = "📁 ";
+  const chromeWidth = visibleWidth(brand + separator + modelIcon + separator + folderIcon);
+  const available = Math.max(0, width - chromeWidth);
+  const name = truncateTerminalText(model, Math.max(1, Math.floor(available * 0.65)));
+  const pathBudget = Math.max(0, available - visibleWidth(name));
+  let tail = truncateTerminalText(workspace, Number.MAX_SAFE_INTEGER);
+  if (visibleWidth(tail) > pathBudget) {
+    const parts = graphemes(tail);
+    let used = 1;
     let start = parts.length;
-    while (start > 0 && width + visibleWidth(parts[start - 1]!) <= budget) {
+    while (start > 0 && used + visibleWidth(parts[start - 1]!) <= pathBudget) {
       start -= 1;
-      width += visibleWidth(parts[start]!);
+      used += visibleWidth(parts[start]!);
     }
-    tail = budget > 0 ? `…${parts.slice(start).join("")}` : "";
+    tail = pathBudget > 0 ? `…${parts.slice(start).join("")}` : "";
   }
-  const label = [name, tail].filter(Boolean).join(" › ");
-  const line = `${label} ${"─".repeat(Math.max(1, columns - visibleWidth(label) - visibleWidth(gauge) - 2))}${gauge}`;
-  return [truncateTerminalText(line, columns)];
+  const prefix = `${brand}${separator}${modelIcon}${name}`;
+  const plain = tail ? `${prefix}${separator}${folderIcon}${tail}` : prefix;
+  // 极窄场景由 plain 降级消费，仍保证单行且不输出半个宽字素。
+  if (!color || visibleWidth(plain) > width) return [truncateTerminalText(plain, width)];
+  const split = Math.max(tail.lastIndexOf("/"), tail.lastIndexOf("\\")) + 1;
+  const parent = tail.slice(0, split);
+  const leaf = tail.slice(split);
+  const content =
+    `\x1b[90m${brand}${separator}\x1b[36m${modelIcon}${name}\x1b[39m` +
+    (tail
+      ? `\x1b[90m${separator}\x1b[33m${folderIcon}\x1b[90m${parent}\x1b[39m\x1b[1m${leaf}\x1b[22;39m`
+      : "");
+  // 宿主未提供上下文容量/当前用量；不绘制假百分比、未知标签或占位刻度。
+  return [content];
 }
 
 /** Execution and durable problems are independent of the editor's focus. */

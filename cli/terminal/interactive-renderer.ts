@@ -1,28 +1,28 @@
 import type { RunIdentity } from "@agent-harness/core/protocol-values";
 import { shimmerActivity } from "./activity-shimmer.js";
+import { renderCommandCompletions } from "./completion-list.js";
 import { renderComposerFrame } from "./composer-frame.js";
 import { humanRecordOutput, interactiveRecordOutput } from "./human-renderer.js";
 import { encodeTerminalRecord } from "./jsonl-renderer.js";
 import { assistantMessageLines, userMessageLines } from "./message-block.js";
+import { type ModelPanelFrame, renderModelPanel } from "./model-panel.js";
 import { renderOutputBlock, wrapOutputBlockText } from "./output-block.js";
 import { canGroupRead, readToolGroupLines } from "./read-tool-group.js";
-import { RunStatistics } from "./run-summary.js";
-import { renderThinkingBlock } from "./thinking-block.js";
 import type {
   TerminalRenderer,
   TerminalRendererOptions,
-  TerminalSelectorView,
   TerminalTurnSettlement,
   TerminalView,
 } from "./renderer-contract.js";
+import { RunStatistics } from "./run-summary.js";
 import { activityLines, contextLines, hintLines, statusLines } from "./status-line.js";
 import type {
+  TerminalHistoryEntry,
   TerminalQueryResultRecord,
   TerminalRecord,
   TerminalSelectionItem,
   TerminalTextPreview,
   TerminalToolRecord,
-  TerminalHistoryEntry,
 } from "./terminal-contract.js";
 import { sanitizeTerminalRecord } from "./terminal-projection.js";
 import {
@@ -31,6 +31,8 @@ import {
   visibleWidth,
   wrapTerminalText,
 } from "./terminal-text.js";
+import { TerminalTitle } from "./terminal-title.js";
+import { renderThinkingBlock } from "./thinking-block.js";
 import { toolCardId, toolCardLines, toolCardPageCount, toolSelection } from "./tool-card.js";
 import { welcomeLines } from "./welcome.js";
 
@@ -48,7 +50,7 @@ interface PreviewBatch {
 
 interface ActivityAnimation {
   readonly text: string;
-  frame: number;
+  readonly startedAt: number;
   timer?: NodeJS.Timeout;
 }
 
@@ -74,20 +76,33 @@ type ActivePart = { type: "preview"; key: string } | { type: "tool"; key: string
 interface TranscriptBlock {
   readonly lines: string[];
   readonly tools?: readonly TerminalToolRecord[];
+  readonly thinking?: { readonly text: string };
 }
 
 /** 分组只改变显示，不合并调用身份；正文、思考与 Query 边界均由调用方断开。 */
-function toolBlocks(tools: readonly TerminalToolRecord[], columns: number, color: boolean): TranscriptBlock[] {
+function toolBlocks(
+  tools: readonly TerminalToolRecord[],
+  columns: number,
+  color: boolean,
+): TranscriptBlock[] {
   const blocks: TranscriptBlock[] = [];
-  for (let index = 0; index < tools.length;) {
+  for (let index = 0; index < tools.length; ) {
     const first = tools[index]!;
     let end = index + 1;
     if (canGroupRead(first))
-      while (end < tools.length && canGroupRead(tools[end]!) && queryKey(tools[end]!.invocationIdentity) === queryKey(first.invocationIdentity)) end += 1;
+      while (
+        end < tools.length &&
+        canGroupRead(tools[end]!) &&
+        queryKey(tools[end]!.invocationIdentity) === queryKey(first.invocationIdentity)
+      )
+        end += 1;
     const group = tools.slice(index, end);
     blocks.push({
       tools: group,
-      lines: group.length > 1 ? readToolGroupLines(group, columns, { color }) : toolCardLines(first, columns, false, { color }),
+      lines:
+        group.length > 1
+          ? readToolGroupLines(group, columns, { color })
+          : toolCardLines(first, columns, false, { color }),
     });
     index = end;
   }
@@ -118,6 +133,10 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
   let cachedViewport: Viewport | undefined;
   let cachedSize: { columns: number; rows: number } | undefined;
   let previewBatch: PreviewBatch | undefined;
+  let modelPanelActive = false;
+  let modelPanelFrame: ModelPanelFrame | undefined;
+  let modelPanelSize: { columns: number; rows: number } | undefined;
+  let deferredPanelHistory: readonly string[] = [];
   const archivedInteractions = new Set<string>();
   const endedQueries = new Set<string>();
   const archivedPrompts = new Set<string>();
@@ -132,6 +151,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
   let thinkingPages = 1;
   let statistics: RunStatistics | undefined;
   const summarizedRuns = new Set<string>();
+  const title = new TerminalTitle(options.mode === "tui", options.writeOutput);
 
   function enqueue<T>(action: () => Promise<T>): Promise<T> {
     const result = queue.then(action);
@@ -162,14 +182,13 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       animation.timer = undefined;
       void enqueue(async () => {
         if (activityAnimation !== animation || closed || closing) return;
-        animation.frame += 1;
         await redraw();
         scheduleActivityFrame(animation);
       }).catch((error: unknown) => {
         stopActivityAnimation();
         options.onOutputError(error);
       });
-    }, 90);
+    }, 1000 / 30);
     animation.timer.unref();
   }
 
@@ -188,6 +207,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       view?.phase !== "waiting" &&
       !view?.interaction &&
       !view?.selector &&
+      !view?.modelPanel &&
       !view?.prompt &&
       view?.feedback?.kind !== "blocking" &&
       !finishedRun
@@ -199,7 +219,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     }
     if (activityAnimation?.text === text) return;
     stopActivityAnimation();
-    activityAnimation = { text, frame: 0 };
+    activityAnimation = { text, startedAt: Date.now() };
     scheduleActivityFrame(activityAnimation);
   }
   async function beginDisplay(size = dimensions()): Promise<void> {
@@ -243,7 +263,9 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
   function thinkingText(): string | undefined {
     return selectedThinking === "live"
       ? liveThought()?.text
-      : selectedThinking ? thoughts.get(selectedThinking)?.text : undefined;
+      : selectedThinking
+        ? thoughts.get(selectedThinking)?.text
+        : undefined;
   }
 
   async function showThinkingDetail(): Promise<void> {
@@ -252,7 +274,10 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     if (tuiAvailable()) await redraw();
     else {
       const block = renderThinkingBlock(text, Math.max(40, options.columns()), {
-        color: false, expanded: true, maxRows: 22, page: thinkingPage,
+        color: false,
+        expanded: true,
+        maxRows: 22,
+        page: thinkingPage,
       });
       thinkingPages = block.pages;
       await options.writeError(`${block.lines.join("\n")}\n`);
@@ -265,6 +290,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     previewBatch = undefined;
     if (batch?.timer) clearTimeout(batch.timer);
     previews = [];
+    if (selectedThinking === "live") selectedThinking = undefined;
     activeParts = activeParts.filter((part) => part.type !== "preview");
   }
 
@@ -346,12 +372,12 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     const editorRows = view.selector
       ? view.selector.items.length + 3
       : renderComposerFrame(view.composer.draft, columns, {
-          maxRows: 8,
-          title: "",
-          focused: false,
+          maxRows: 7,
           color: false,
           secret: view.prompt?.secret === true,
-        }).lines.length + inputPromptLines(view, columns).length;
+        }).lines.length +
+        1 +
+        inputPromptLines(view, columns).length;
     const statusRows =
       inputActivityLines(view, columns).length +
       hintLines(view, columns).length +
@@ -384,41 +410,52 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     if (text) await options.writeOutput(text);
   }
 
-  function commandCompletions(
-    selector: TerminalSelectorView,
-    columns: number,
-    rows: number,
-  ): readonly string[] {
-    if (rows < 1) return [];
-    if (selector.items.length === 0) return ["没有匹配命令"];
-    const budget = Math.min(10, rows);
-    const overflow = selector.items.length > budget;
-    const capacity = Math.max(1, budget - (overflow && budget > 1 ? 1 : 0));
-    const selected = Math.max(
-      0,
-      selector.items.findIndex((item) => item.id === selector.selectedId),
+  async function leaveModelPanel(): Promise<void> {
+    if (!modelPanelActive) return;
+    // 1049 恢复主屏及进入前的光标；聊天 viewport 缓存从未借给模型面板。
+    await options.writeOutput(
+      `\x1b[?1049l${cachedViewport?.showCursor ? "\x1b[?25h" : "\x1b[?25l"}`,
     );
-    const start = Math.max(
-      0,
-      Math.min(selected - Math.floor(capacity / 2), selector.items.length - capacity),
-    );
-    const labelWidth = Math.min(
-      selector.items.reduce((width, item) => Math.max(width, visibleWidth(item.label)), 0),
-      Math.max(1, Math.floor((columns - 4) / 2)),
-    );
-    const lines = selector.items.slice(start, start + capacity).map((item, index) => {
-      const label = truncateTerminalText(item.label, labelWidth);
-      const description = item.description
-        ? truncateTerminalText(item.description, Math.max(0, columns - labelWidth - 4))
-        : "";
-      const line = `${start + index === selected ? "› " : "  "}${label}${description ? `${" ".repeat(labelWidth - visibleWidth(label) + 2)}${description}` : ""}`;
-      return options.color && start + index === selected ? `\x1b[36m${line}\x1b[0m` : line;
+    modelPanelActive = false;
+    modelPanelFrame = undefined;
+    modelPanelSize = undefined;
+  }
+
+  async function drawModelPanel(size: { columns: number; rows: number }): Promise<void> {
+    const view = currentView!;
+    if (!modelPanelActive) {
+      await beginDisplay(size);
+      // 先记录所有权；写出异常时 close 仍会尝试归还主屏。
+      modelPanelActive = true;
+      await options.writeOutput("\x1b[?1049h\x1b[?25l\x1b[H");
+    }
+    const frame = renderModelPanel(view.modelPanel?.browser ?? view.selector!, {
+      ...size,
+      color: options.color,
+      hint: view.input.hint,
+      ...(view.feedback ? { feedback: view.feedback } : {}),
+      ...(view.modelPanel ? { configuration: view } : {}),
     });
-    if (overflow && budget > 1)
-      lines.push(
-        truncateTerminalText(`${selected + 1}/${selector.items.length} · ↑↓ 查看更多命令`, columns),
-      );
-    return lines;
+    const resized =
+      modelPanelSize &&
+      (modelPanelSize.columns !== size.columns || modelPanelSize.rows !== size.rows);
+    const previous = resized ? undefined : modelPanelFrame;
+    let text = resized ? "\x1b[H\x1b[2J" : "";
+    for (let index = 0; index < frame.lines.length; index += 1) {
+      if (frame.lines[index] !== previous?.lines[index])
+        text += `\x1b[${index + 1};1H\x1b[2K${frame.lines[index]}`;
+    }
+    if (
+      text ||
+      previous?.cursorRow !== frame.cursorRow ||
+      previous?.cursorColumn !== frame.cursorColumn ||
+      previous?.showCursor !== frame.showCursor
+    ) {
+      text += `\x1b[${frame.cursorRow + 1};${frame.cursorColumn + 1}H${frame.showCursor ? "\x1b[?25h" : "\x1b[?25l"}`;
+      await options.writeOutput(text);
+    }
+    modelPanelFrame = frame;
+    modelPanelSize = size;
   }
 
   function composeViewport(size: { columns: number; rows: number }): Viewport {
@@ -427,8 +464,11 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     const view = currentView;
     const activity = view ? inputActivityLines(view, columns) : [];
     if (activityAnimation && activity[0])
-      activity[0] = shimmerActivity(activity[0], activityAnimation.frame);
-    const context = view ? contextLines(view, columns) : [];
+      activity[0] = shimmerActivity(
+        truncateTerminalText(activity[0], Math.max(0, columns - 2)),
+        Date.now() - activityAnimation.startedAt,
+      );
+    const context = view ? contextLines(view, columns, options.color) : [];
     const hints = view ? hintLines(view, columns) : [];
     const statusCount = activity.length + hints.length + (view?.selector ? context.length : 0);
     const rule = (title: string): string => {
@@ -463,17 +503,13 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
             ];
       composerFocused = view.composer.editable && (!view.interaction || !!view.prompt);
       const frame = renderComposerFrame(view.composer.draft, columns, {
-        maxRows: Math.max(3, height - statusCount - prompt.length - reserve),
-        title: context[0] ?? "",
-        focused: composerFocused,
+        maxRows: Math.max(2, height - statusCount - prompt.length - reserve - 1),
         color: options.color,
         secret,
-        ...(view.input.purpose === "composer" || view.input.purpose === "completion"
-          ? { placeholder: "输入消息，或 / 查看命令" }
-          : {}),
       });
-      composer = [...prompt, ...frame.lines];
-      composerCursor = prompt.length + frame.cursorRow;
+      // 状态带独立绘制；启动时同样预留一行，分段 ANSI 不再被草稿组件转义。
+      composer = [...prompt, context[0] ?? "", ...frame.lines];
+      composerCursor = prompt.length + 1 + frame.cursorRow;
       composerColumn = frame.cursorColumn;
     }
     const available = Math.max(0, height - statusCount - composer.length);
@@ -512,127 +548,31 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     if (view?.selector) {
       const selector = view.selector;
       const selectorAvailable = Math.max(1, available - content.length);
-      const navigation = selector.navigation;
-      if (navigation) {
-        const items = selector.items.filter((item) => item.id !== navigation.action.id);
-        const selectedModel = items.findIndex((item) => item.id === selector.selectedId);
-        const selectedGroup = navigation.groups.findIndex(
-          (item) => item.id === navigation.selectedGroupId,
+      const selected = selector.items.findIndex((item) => item.id === selector.selectedId);
+      const capacity = Math.max(1, selectorAvailable - (view.interaction ? 2 : 3));
+      const start = Math.max(
+        0,
+        Math.min(selected - Math.floor(capacity / 2), selector.items.length - capacity),
+      );
+      content.push(rule(selector.title));
+      if (!view.interaction)
+        content.push(truncateTerminalText(`搜索: ${selector.query || "输入以筛选"}`, columns));
+      for (const item of selector.items.slice(start, start + capacity)) {
+        const text = truncateTerminalText(
+          `${item.id === selector.selectedId ? "›" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`,
+          columns,
         );
-        const capacity = Math.max(1, selectorAvailable - 5);
-        const offset = (selected: number, length: number): number =>
-          Math.max(0, Math.min(selected - Math.floor(capacity / 2), length - capacity));
-        const modelStart = offset(selectedModel, items.length);
-        const groupStart = offset(selectedGroup, navigation.groups.length);
-        const rowText = (item: TerminalSelectionItem | undefined, selected: boolean): string =>
-          item
-            ? `${selected ? "›" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`
-            : "";
-        const highlight = (text: string, selected: boolean): string =>
-          options.color && selected ? `\x1b[36m${text}\x1b[0m` : text;
-        content.push(rule(selector.title));
         content.push(
-          truncateTerminalText(
-            `搜索模型: ${selector.query || "输入以筛选 · All 搜索全部"}`,
-            columns,
-          ),
-        );
-        if (size.columns >= 80) {
-          const leftWidth = Math.min(26, Math.floor(columns / 3));
-          const rightWidth = Math.max(1, columns - leftWidth - 3);
-          const pair = (left: string, right: string): string => {
-            const cell = truncateTerminalText(left, leftWidth);
-            return `${cell}${" ".repeat(Math.max(0, leftWidth - visibleWidth(cell)))} │ ${truncateTerminalText(right, rightWidth)}`;
-          };
-          content.push(
-            pair(
-              `${navigation.pane === "groups" ? "›" : " "} 厂商连接`,
-              `${navigation.pane === "models" ? "›" : " "} 模型`,
-            ),
-          );
-          for (let index = 0; index < capacity; index++) {
-            const group = navigation.groups[groupStart + index];
-            const model = items[modelStart + index];
-            if (!group && !model && index > 0) break;
-            const groupActive = group?.id === navigation.selectedGroupId;
-            const modelActive = model?.id === selector.selectedId;
-            content.push(
-              highlight(
-                pair(
-                  rowText(group, groupActive),
-                  model
-                    ? rowText(model, modelActive && navigation.pane === "models")
-                    : index === 0
-                      ? "没有匹配模型"
-                      : "",
-                ),
-                (groupActive && navigation.pane === "groups") ||
-                  (modelActive && navigation.pane === "models"),
-              ),
-            );
-          }
-        } else {
-          const group = navigation.groups[selectedGroup];
-          content.push(
-            truncateTerminalText(
-              navigation.pane === "groups"
-                ? "› 厂商连接 · Enter 返回模型"
-                : `› 模型 · ${group?.label ?? "All"}`,
-              columns,
-            ),
-          );
-          const list = navigation.pane === "groups" ? navigation.groups : items;
-          const start = navigation.pane === "groups" ? groupStart : modelStart;
-          const selected =
-            navigation.pane === "groups" ? navigation.selectedGroupId : selector.selectedId;
-          for (const item of list.slice(start, start + capacity))
-            content.push(
-              highlight(
-                truncateTerminalText(rowText(item, item.id === selected), columns),
-                item.id === selected,
-              ),
-            );
-          if (!list.length) content.push("没有匹配模型");
-        }
-        const actionSelected =
-          selector.selectedId === navigation.action.id && navigation.pane === "models";
-        content.push(
-          highlight(
-            truncateTerminalText(rowText(navigation.action, actionSelected), columns),
-            actionSelected,
-          ),
-          truncateTerminalText(
-            `连接 ${selectedGroup + 1}/${navigation.groups.length} · 模型 ${selectedModel + 1}/${items.length}${modelStart > 0 || modelStart + capacity < items.length ? " · ↑↓ 更多" : ""}`,
-            columns,
-          ),
-        );
-      } else {
-        const selected = selector.items.findIndex((item) => item.id === selector.selectedId);
-        const capacity = Math.max(1, selectorAvailable - (view.interaction ? 2 : 3));
-        const start = Math.max(
-          0,
-          Math.min(selected - Math.floor(capacity / 2), selector.items.length - capacity),
-        );
-        content.push(rule(selector.title));
-        if (!view.interaction)
-          content.push(truncateTerminalText(`搜索: ${selector.query || "输入以筛选"}`, columns));
-        for (const item of selector.items.slice(start, start + capacity)) {
-          const text = truncateTerminalText(
-            `${item.id === selector.selectedId ? "›" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`,
-            columns,
-          );
-          content.push(
-            options.color && item.id === selector.selectedId ? `\x1b[36m${text}\x1b[0m` : text,
-          );
-        }
-        if (selector.items.length === 0) content.push("没有匹配项");
-        content.push(
-          truncateTerminalText(
-            `${selected >= 0 ? selected + 1 : 0}/${selector.items.length} 项${start > 0 ? " · ↑ 上方更多" : ""}${start + capacity < selector.items.length ? " · ↓ 下方更多" : ""}`,
-            columns,
-          ),
+          options.color && item.id === selector.selectedId ? `\x1b[36m${text}\x1b[0m` : text,
         );
       }
+      if (selector.items.length === 0) content.push("没有匹配项");
+      content.push(
+        truncateTerminalText(
+          `${selected >= 0 ? selected + 1 : 0}/${selector.items.length} 项${start > 0 ? " · ↑ 上方更多" : ""}${start + capacity < selector.items.length ? " · ↓ 下方更多" : ""}`,
+          columns,
+        ),
+      );
     } else if (view?.interaction) {
       // The safe approval summary above remains visible alongside its active input.
     } else if (selectedTool && cards.has(selectedTool)) {
@@ -656,8 +596,10 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
           const preview = previewMap.get(part.key);
           if (!preview) continue;
           transcript.push({
+            ...(preview.reasoning ? { thinking: { text: preview.text } } : {}),
             lines: preview.reasoning
-              ? renderThinkingBlock(preview.text, columns, { color: options.color, live: true }).lines
+              ? renderThinkingBlock(preview.text, columns, { color: options.color, live: true })
+                  .lines
               : [
                   ...(preview.truncated
                     ? [truncateTerminalText("… 前文已截断，仅展示当前正文尾部", columns)]
@@ -680,10 +622,14 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     }
     const editorSlot = view?.selector ? content.splice(editorStart) : composer;
     const completion = view?.completion
-      ? commandCompletions(
+      ? renderCommandCompletions(
           view.completion,
           columns,
-          Math.min(available, detailCard || selectedThinking ? 4 : Math.max(2, available - content.length)),
+          Math.min(
+            available,
+            detailCard || selectedThinking ? 4 : Math.max(2, available - content.length),
+          ),
+          options.color,
         )
       : [];
     const contentBudget = Math.max(
@@ -720,12 +666,29 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
           remaining -= block.lines.length;
           continue;
         }
-        if (!block.tools) blocks.push(block.lines.slice(-remaining));
+        if (block.thinking)
+          blocks.push(
+            renderThinkingBlock(block.thinking.text, columns, {
+              color: options.color,
+              live: true,
+              maxRows: remaining,
+            }).lines,
+          );
+        else if (!block.tools) blocks.push(block.lines.slice(-remaining));
         else if (blocks.length === 0) {
-          const first = block.tools[0]!;
-          blocks.push(block.tools.length > 1
-            ? readToolGroupLines(block.tools, columns, { maxRows: remaining, color: options.color })
-            : toolCardLines(first, columns, false, { maxRows: remaining, color: options.color }));
+          const latest = block.tools.at(-1)!;
+          const grouped =
+            block.tools.length > 1
+              ? readToolGroupLines(block.tools, columns, {
+                  maxRows: remaining,
+                  color: options.color,
+                })
+              : [];
+          blocks.push(
+            grouped.length
+              ? grouped
+              : toolCardLines(latest, columns, false, { maxRows: remaining, color: options.color }),
+          );
         }
         break;
       }
@@ -738,12 +701,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
             ? content.slice(0, contentBudget)
             : content.slice(-contentBudget);
     }
-    const aboveInput = view?.selector
-      ? context.map((line) => {
-          const tail = "─".repeat(Math.max(0, columns - visibleWidth(line) - 1));
-          return tail ? `${line} ${options.color ? `\x1b[2m${tail}\x1b[0m` : tail}` : line;
-        })
-      : [];
+    const aboveInput = view?.selector ? context : [];
     const lines = [...visible, ...activity, ...aboveInput, ...editorSlot, ...completion, ...hints];
     if (lines.length === 0) lines.push("");
     return {
@@ -760,12 +718,25 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
   async function redraw(history: readonly string[] = [], animateActivity = true): Promise<void> {
     syncActivityAnimation(animateActivity);
     const size = dimensions();
+    await title.update(currentView, tuiAvailable(size));
+    if ((currentView?.modelPanel || currentView?.selector?.navigation) && tuiAvailable(size)) {
+      if (history.length) deferredPanelHistory = [...deferredPanelHistory, ...history];
+      await drawModelPanel(size);
+      return;
+    }
+    await leaveModelPanel();
+    if (deferredPanelHistory.length) {
+      history = [...deferredPanelHistory, ...history];
+      deferredPanelHistory = [];
+    }
     let historyOutput = "";
     if (history.length > 0 && tuiAvailable(size)) {
       await beginDisplay(size);
       historyOutput = `${eraseViewportText()}${history.join("\r\n")}\r\n`;
     }
     if (!tuiAvailable(size)) {
+      if (history.length)
+        await options.writeError(`${history.map((line) => safe(line)).join("\n")}\n`);
       const hadViewport = viewportRows > 0;
       await eraseViewport();
       if (hadViewport) await options.writeOutput("\x1b[?25h");
@@ -795,7 +766,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
                         "输入序号或 ID + Enter；/groups 选组，/connect 添加/配置，/back 返回，/cancel 退出。",
                       ]
                     : []),
-                  ...(groups && navigation
+                  ...(groups && navigation?.action
                     ? [`${safe(navigation.action.label)} · 输入 /connect`]
                     : []),
                   safe(`搜索: ${selector.query}`),
@@ -920,8 +891,15 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       statistics?.observe(record);
       if (record.type === "tool") updateTool(record);
       if (record.type === "assistant.reasoning") {
-        const key = JSON.stringify([queryKey(record.identity), record.messageIndex, record.contentIndex]);
-        thoughts.set(key, { text: record.text, label: `思考 · 消息 ${record.messageIndex + 1} / 块 ${record.contentIndex + 1}` });
+        const key = JSON.stringify([
+          queryKey(record.identity),
+          record.messageIndex,
+          record.contentIndex,
+        ]);
+        thoughts.set(key, {
+          text: record.text,
+          label: `思考 · 消息 ${record.messageIndex + 1} / 块 ${record.contentIndex + 1}`,
+        });
         latestThinking = key;
         if (!archivedThoughts.has(key))
           canonicalThoughts.set(JSON.stringify([record.messageIndex, record.contentIndex]), key);
@@ -936,7 +914,11 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     if (!tuiAvailable()) {
       for (const record of records) {
         if (record.type === "assistant.reasoning") {
-          const key = JSON.stringify([queryKey(record.identity), record.messageIndex, record.contentIndex]);
+          const key = JSON.stringify([
+            queryKey(record.identity),
+            record.messageIndex,
+            record.contentIndex,
+          ]);
           if (archivedThoughts.has(key)) continue;
           archivedThoughts.add(key);
         } else if (record.type === "assistant.message") {
@@ -966,7 +948,8 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     let messageIndex: number | undefined;
     let pendingTools: TerminalToolRecord[] = [];
     const flushTools = (): void => {
-      for (const block of toolBlocks(pendingTools, columns, options.color)) lines.push(...block.lines);
+      for (const block of toolBlocks(pendingTools, columns, options.color))
+        lines.push(...block.lines);
       pendingTools = [];
     };
     const flushText = (): void => {
@@ -978,8 +961,14 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       if (text) flushText();
       const card = cards.get(key);
       if (!card || archivedTools.has(key)) return;
-      retireTool(key, columns);
-      pendingTools.push(card);
+      if (card.phase === "started") {
+        flushTools();
+        lines.push(...retireTool(key, columns));
+      } else {
+        archivedTools.add(key);
+        activeParts = activeParts.filter((part) => part.type !== "tool" || part.key !== key);
+        pendingTools.push(card);
+      }
     };
     const result = records.find((record) => record.type === "query.result");
     const turnIdentity = records.flatMap((record) =>
@@ -995,7 +984,8 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
             matchedTools.has(key) ||
             card.callId !== safe(part.callId) ||
             queryKey(card.invocationIdentity) !== queryKey(turnIdentity)
-          ) continue;
+          )
+            continue;
           matchedTools.add(key);
           archiveTool(key);
           break;
@@ -1007,7 +997,9 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
         if (!key) continue;
         canonicalThoughts.delete(position);
         archivedThoughts.add(key);
-        lines.push(...renderThinkingBlock(thoughts.get(key)!.text, columns, { color: options.color }).lines);
+        lines.push(
+          ...renderThinkingBlock(thoughts.get(key)!.text, columns, { color: options.color }).lines,
+        );
       } else {
         flushTools();
         const position = JSON.stringify([part.messageIndex, part.contentIndex]);
@@ -1030,7 +1022,12 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       flushTools();
     }
     for (const record of records) {
-      if (record.type === "assistant.message" || record.type === "assistant.reasoning" || record.type === "tool") continue;
+      if (
+        record.type === "assistant.message" ||
+        record.type === "assistant.reasoning" ||
+        record.type === "tool"
+      )
+        continue;
       if (record.type === "query.result" && record.status === "waiting") continue;
       const human = interactiveRecordOutput(record);
       if (human.error) lines.push(...wrapTerminalText(human.error.trimEnd(), columns));
@@ -1078,6 +1075,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
         toolPage = 0;
         toolPages = 1;
         currentView = next;
+        title.bindSession(messages);
         welcomePending = messages.length === 0 && next.scene !== "conversation";
         displayedWelcome = [];
         if (options.mode === "jsonl" || options.mode === "print") return;
@@ -1091,17 +1089,23 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
               : ["公开思考已收起；/thinking 查看"];
           }
           if (message.role === "tool") {
-            const result = message.tool.result === "recorded" ? "工具结果已记录"
-              : message.tool.result === "error" ? "工具错误结果已记录" : "缺少对应工具结果";
+            const result =
+              message.tool.result === "recorded"
+                ? "工具结果已记录"
+                : message.tool.result === "error"
+                  ? "工具错误结果已记录"
+                  : "缺少对应工具结果";
             const rows = [
               ...wrapOutputBlockText(`调用 ${safe(message.tool.callId)} · ${result}`, columns),
               ...wrapOutputBlockText("历史未保留执行影响与安全正文；不从原始结果猜测。", columns),
             ];
             return tuiAvailable()
               ? renderOutputBlock({
-                  width: columns, header: `${safe(message.tool.name)} · 历史`,
+                  width: columns,
+                  header: `${safe(message.tool.name)} · 历史`,
                   rows: rows.map((text) => ({ kind: "content", text })),
-                  color: options.color, tone: "warning",
+                  color: options.color,
+                  tone: "warning",
                 })
               : [`${safe(message.tool.name)}: ${result}；执行影响未知`];
           }
@@ -1129,7 +1133,8 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
           activeParts = [];
           latestTool = undefined;
         }
-        if (!activeIdentity || runKey(activeIdentity) !== runKey(identity)) statistics = new RunStatistics();
+        if (!activeIdentity || runKey(activeIdentity) !== runKey(identity))
+          statistics = new RunStatistics();
         selectedThinking = undefined;
         thinkingPage = 0;
         activeIdentity = identity;
@@ -1155,10 +1160,14 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
         if (projected.type === "assistant.reasoning") {
           await settleTurn({
             records: [projected],
-            timeline: [{
-              type: "reasoning", messageIndex: projected.messageIndex,
-              contentIndex: projected.contentIndex, text: projected.text,
-            }],
+            timeline: [
+              {
+                type: "reasoning",
+                messageIndex: projected.messageIndex,
+                contentIndex: projected.contentIndex,
+                text: projected.text,
+              },
+            ],
           });
           return;
         }
@@ -1223,6 +1232,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
         }
         if (
           next.prompt &&
+          !next.modelPanel &&
           options.mode === "tui" &&
           !archivedPrompts.has(next.prompt.text) &&
           inputPromptLines(next, Math.max(1, options.columns() - 1)).length >
@@ -1243,6 +1253,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       discardPreview();
       return enqueue(async () => {
         if (closed || options.mode === "jsonl" || options.mode === "print") return;
+        title.user(text);
         const welcome = retireWelcome();
         if (tuiAvailable())
           await redraw([
@@ -1317,7 +1328,11 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     },
     thoughts(): readonly TerminalSelectionItem[] {
       return [
-        ...Array.from(thoughts, ([id, thought]) => ({ id, label: thought.label })),
+        ...Array.from(thoughts, ([id, thought]) => ({
+          id,
+          label: thought.label,
+          description: truncateTerminalText(thought.text, 80),
+        })),
         ...(liveThought() ? [{ id: "live", label: "当前公开思考预览" }] : []),
       ];
     },
@@ -1349,6 +1364,10 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
       discardPreview();
       return enqueue(async () => {
         if (closed) return;
+        const restorePrimary = modelPanelActive ? "\x1b[?1049l" : "";
+        modelPanelActive = false;
+        modelPanelFrame = undefined;
+        modelPanelSize = undefined;
         const lines = tuiAvailable()
           ? activeParts.flatMap((part) =>
               part.type === "tool" ? retireTool(part.key, Math.max(1, options.columns() - 1)) : [],
@@ -1364,10 +1383,17 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
           lines.push(
             ...wrapTerminalText(waitingNotice.trimEnd(), Math.max(1, options.columns() - 1)),
           );
-        const output = `${eraseViewportText()}${lines.length ? `${lines.join("\r\n")}\r\n` : ""}${usedTui ? "\x1b[?25h" : ""}`;
+        const pendingLines = deferredPanelHistory.length
+          ? [...deferredPanelHistory, ...lines]
+          : lines;
+        const output = `${restorePrimary}${eraseViewportText()}${pendingLines.length ? `${pendingLines.join("\r\n")}\r\n` : ""}${usedTui ? "\x1b[?25h" : ""}`;
         closed = true;
         previews = [];
-        if (output) await options.writeOutput(output);
+        try {
+          if (output) await options.writeOutput(output);
+        } finally {
+          await title.close();
+        }
       });
     },
   };

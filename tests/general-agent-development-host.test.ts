@@ -928,6 +928,63 @@ describe("independent configured Agent host", () => {
     expect(f.requests).toEqual([]);
   });
 
+  it("lists every saved connection and creation target without decrypting keys or requesting models", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("unexpected")]),
+    );
+    const configuration = await f.configure();
+    await configuration.management.saveVendor({
+      vendor: {
+        id: "empty",
+        kind: "openai",
+        label: "Empty connection",
+        protocol: "openai",
+        baseURL: "https://api.openai.com/v1",
+        enabled: false,
+        models: [],
+      },
+      credential: { type: "keep" },
+    });
+    const decrypt = vi.spyOn(fakeProtection, "decrypt");
+    const discover = vi.spyOn(configuration.management, "listRemoteModels");
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+      credentialProtection: fakeProtection,
+    });
+    cleanup.push(() => host.close());
+    expect(await host.connections()).toEqual([
+      {
+        id: "vendor:loopback",
+        label: "Native consumer fixture",
+        description: "1 个模型",
+        target: { type: "existing", vendorId: "loopback" },
+      },
+      {
+        id: "vendor:empty",
+        label: "Empty connection",
+        description: "0 个模型",
+        target: { type: "existing", vendorId: "empty" },
+      },
+      ...[
+        "mimo-token-plan-cn",
+        "openai-responses",
+        "openai-chat-completions",
+        "anthropic-messages",
+      ].map((adapterId) => ({
+        id: `create:${adapterId}`,
+        label: expect.any(String),
+        target: { type: "new", adapterId },
+      })),
+    ]);
+    expect(decrypt).not.toHaveBeenCalled();
+    expect(discover).not.toHaveBeenCalled();
+    expect(f.requests).toEqual([]);
+    await host.close();
+    await expect(host.connections()).rejects.toMatchObject({ code: "HOST_CLOSED" });
+  });
+
   it("runs no-plugin conversations through the production host and retains real persistent sessions", async () => {
     const f = await fixture((_body, response) =>
       respondNative(response, [textOutput("No plugin answer")]),
@@ -998,13 +1055,11 @@ describe("independent configured Agent host", () => {
       text: vi.fn(async () => undefined),
       notify: vi.fn(async () => {}),
     };
-    const configuring = host.configureModel(setup);
+    const target = { type: "existing", vendorId: "loopback" } as const;
+    const configuring = host.configureModel(setup, target);
     await entered.promise;
-    expect(setup.select).toHaveBeenCalledWith(
-      "选择厂商/已有连接：",
-      expect.arrayContaining([expect.objectContaining({ label: "Native consumer fixture" })]),
-    );
-    await expect(host.configureModel(setup)).rejects.toMatchObject({ code: "HOST_BUSY" });
+    expect(setup.select).toHaveBeenCalledTimes(1);
+    await expect(host.configureModel(setup, target)).rejects.toMatchObject({ code: "HOST_BUSY" });
     await expect(host.newSession()).rejects.toMatchObject({ code: "HOST_BUSY" });
     await expect(host.run("Cannot borrow setup input")).rejects.toMatchObject({
       code: "HOST_BUSY",
@@ -1067,18 +1122,19 @@ describe("independent configured Agent host", () => {
     });
     const key = "second-vendor-private-key";
     const notices: string[] = [];
-    const select = vi.fn<TerminalSetupIO["select"]>(
-      async (_title, items) =>
-        items.find((item) => item.label === "新建 OpenAI Responses 连接")?.id ?? items[0]?.id,
-    );
-    const modelId = await host.configureModel({
-      select,
-      text: async () => baseURL,
-      secret: async () => key,
-      notify: async (message) => {
-        notices.push(message);
+    const select = vi.fn<TerminalSetupIO["select"]>(async (_title, items) => items[0]?.id);
+    const modelId = await host.configureModel(
+      {
+        select,
+        text: async () => baseURL,
+        secret: async () => key,
+        notify: async (message) => {
+          notices.push(message);
+        },
       },
-    });
+      { type: "new", adapterId: "openai-responses" },
+    );
+    expect(select).toHaveBeenCalledTimes(1);
     expect(modelId).toEqual(expect.any(String));
     expect(discoveryRequests).toEqual([{ url: "/v1/models", authorization: `Bearer ${key}` }]);
     expect(host.context).toBe(original);
@@ -1140,7 +1196,9 @@ describe("independent configured Agent host", () => {
             .spyOn(configuration.management, "getSnapshot")
             .mockRejectedValueOnce(new Error(privateError))
         : undefined;
-      const failure = await host.configureModel(setup).catch((error: unknown) => error);
+      const failure = await host
+        .configureModel(setup, { type: "existing", vendorId: "loopback" })
+        .catch((error: unknown) => error);
       expect(failure).toMatchObject({ code: "HOST_CONFIGURATION_REJECTED" });
       expect(String(failure)).not.toContain(privateError);
       expect(host.context).toBe(original);
@@ -1173,13 +1231,14 @@ describe("independent configured Agent host", () => {
       text: async () => undefined,
       notify: async () => {},
     };
-    const configuring = host.configureModel(setup);
+    const target = { type: "existing", vendorId: "loopback" } as const;
+    const configuring = host.configureModel(setup, target);
     const rejected = expect(configuring).rejects.toMatchObject({ code: "HOST_CLOSED" });
     await entered.promise;
     await host.close();
     await rejected;
     pending.resolve(undefined);
-    await expect(host.configureModel(setup)).rejects.toMatchObject({ code: "HOST_CLOSED" });
+    await expect(host.configureModel(setup, target)).rejects.toMatchObject({ code: "HOST_CLOSED" });
     expect(f.requests).toEqual([]);
   });
 

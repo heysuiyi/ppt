@@ -8,6 +8,11 @@ export interface ComposerLayout {
   readonly positions: readonly { readonly row: number; readonly column: number }[];
 }
 
+/** Three prompt cells and an end-of-line caret reserve four cells. */
+export function composerContentWidth(frameColumns: number): number {
+  return Number.isFinite(frameColumns) ? Math.max(1, Math.floor(frameColumns) - 4) : 1;
+}
+
 /** Layout uses source grapheme boundaries, even when safe text expands a control character. */
 export function layoutComposer(draft: TerminalDraft, columns: number): ComposerLayout {
   const width = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : 1;

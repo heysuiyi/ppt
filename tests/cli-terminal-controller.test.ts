@@ -76,6 +76,7 @@ function host(overrides: Partial<TerminalHost>): TerminalHost {
     open: async () => {},
     close: async () => {},
     models: unsupported,
+    connections: async () => [],
     configureModel: unsupported,
     sessions: unsupported,
     newSession: unsupported,
@@ -1357,6 +1358,15 @@ describe("terminal controller result and lifecycle", () => {
           io.input.write("\x03");
         }
       }
+      if (choice === "unavailable" || choice === "cancel-confirmation") {
+        const returned = await observed.until(
+          (view) =>
+            !!view.selector?.navigation &&
+            (choice !== "unavailable" || view.feedback?.kind === "blocking"),
+        );
+        expect(returned.composer.draft).toEqual(retained);
+        io.input.write("\x03");
+      }
       const idle = await observed.until((view) => view.composer.submission.enabled);
       expect(idle.composer.draft).toEqual(retained);
       expect(idle.activity).toBeUndefined();
@@ -1499,11 +1509,24 @@ describe("terminal controller result and lifecycle", () => {
       command: parseTerminalArguments([]),
       host: host({
         models: async () => [{ id: "model", label: "Controlled model" }],
+        connections: async () => [
+          {
+            id: "create:openai-responses",
+            label: "新建 OpenAI Responses 连接",
+            target: { type: "new", adapterId: "openai-responses" },
+          },
+        ],
         configureModel,
       }),
     });
     await observed.until((view) => view.composer.submission.enabled);
     io.input.write("/connect\r\r");
+    await observed.until((view) => view.selector?.navigation?.pane === "groups");
+    io.input.write("create:openai-responses\r");
+    await observed.until(
+      (view) => !!view.selector?.navigation && view.feedback?.kind === "blocking",
+    );
+    io.input.write("\x03");
     const failed = await observed.until(
       (view) => view.composer.submission.enabled && view.feedback?.kind === "blocking",
     );
@@ -1523,6 +1546,8 @@ describe("terminal controller result and lifecycle", () => {
     expect(afterHelp.feedback).toEqual(failed.feedback);
     const beforeRetry = observed.views.length;
     io.input.write("/connect\r\r");
+    await observed.until((view) => view.selector?.navigation?.pane === "groups");
+    io.input.write("create:openai-responses\r");
     await retryEntered.promise;
     expect(observed.views.at(-1)!.feedback).toEqual(failed.feedback);
     retry.resolve("model");
@@ -1624,6 +1649,10 @@ describe("terminal controller result and lifecycle", () => {
       const observed = observeViews();
       const newSession = vi.fn(async () => {});
       const currentHost = host({
+        connections: async () => [
+          { id: "vendor:a", label: "Connection A", target: { type: "existing", vendorId: "a" } },
+          { id: "vendor:b", label: "Connection B", target: { type: "existing", vendorId: "b" } },
+        ],
         models: async () => [
           {
             id: "model",
@@ -1672,7 +1701,7 @@ describe("terminal controller result and lifecycle", () => {
       expect(groupB.selector?.items.map((item) => item.id)).toEqual([
         "other",
         "locked",
-        groupB.selector?.navigation?.action.id,
+        groupB.selector?.navigation?.action?.id,
       ]);
       io.input.write("\r");
       await observed.until((view) => view.selector?.navigation?.pane === "models");
@@ -1687,7 +1716,7 @@ describe("terminal controller result and lifecycle", () => {
       io.input.write("alpha");
       const scoped = await observed.until((view) => view.selector?.query === "alpha");
       expect(scoped.selector?.items.map((item) => item.id)).toEqual([
-        scoped.selector?.navigation?.action.id,
+        scoped.selector?.navigation?.action?.id,
       ]);
       io.input.write("\x1b[D\x1b[A\x1b[A");
       await observed.until((view) => view.selector?.navigation?.selectedGroupId === "all");
@@ -1695,10 +1724,7 @@ describe("terminal controller result and lifecycle", () => {
       await observed.until((view) => view.selector?.navigation?.pane === "models");
       io.input.write("alpha");
       const all = await observed.until((view) => view.selector?.query === "alpha");
-      expect(all.selector?.items.map((item) => item.id)).toEqual([
-        "model",
-        all.selector?.navigation?.action.id,
-      ]);
+      expect(all.selector?.items.map((item) => item.id)).toEqual(["model"]);
       io.input.write("\x1b[B\r");
       const idle = await observed.until((view) => view.composer.submission.enabled);
       expect(idle.feedback?.kind).toBe("notice");
@@ -1731,15 +1757,16 @@ describe("terminal controller result and lifecycle", () => {
         availability: { state: "ready", reason: "LOCAL_READY" },
       };
       const configureModel = vi.fn(async (setup: TerminalSetupIO) => {
-        const name = await setup.text("Connection name");
-        if (name === undefined) return undefined;
-        const provider = await setup.select("Select protocol", [
-          { id: "openai", label: "OpenAI compatible" },
-        ]);
-        if (!provider) return undefined;
-        const key = await setup.secret("API key");
+        const address = await setup.text("API Base URL");
+        if (address === undefined) return undefined;
+        const key = await setup.secret("API Key");
         if (!key) return undefined;
+        const model = await setup.select("选择支持对话的模型", [
+          { id: "actual", label: "actual-model" },
+        ]);
+        if (!model) return undefined;
         saved = true;
+        await setup.notify("CLI 默认模型已保存");
         return configured.id;
       });
       const newSession = vi.fn(async () => {
@@ -1748,6 +1775,22 @@ describe("terminal controller result and lifecycle", () => {
         });
       });
       const currentHost = host({
+        connections: async () => [
+          ...(saved
+            ? [
+                {
+                  id: "vendor:new-vendor",
+                  label: "New connection",
+                  target: { type: "existing" as const, vendorId: "new-vendor" },
+                },
+              ]
+            : []),
+          {
+            id: "create:openai-responses",
+            label: "新建 OpenAI Responses 连接",
+            target: { type: "new", adapterId: "openai-responses" },
+          },
+        ],
         models: vi.fn(async () => (saved ? [configured] : [])),
         configureModel,
         newSession,
@@ -1761,22 +1804,29 @@ describe("terminal controller result and lifecycle", () => {
       await observed.until((view) => view.composer.submission.enabled);
       io.input.write("retained-draft\x1bm");
       const picker = await observed.until((view) => !!view.selector?.navigation);
-      expect(picker.selector?.items).toEqual([picker.selector?.navigation?.action]);
-      io.input.write("1\r");
-      await observed.until((view) => view.prompt?.text === "Connection name");
+      expect(picker.selector?.items).toEqual([]);
+      io.input.write("/groups\r");
+      await observed.until((view) => view.selector?.navigation?.pane === "groups");
+      io.input.write("2\r");
+      const address = await observed.until((view) => view.prompt?.text === "API Base URL");
+      expect(address.modelPanel).toBeDefined();
       expect(currentHost.context).toBe(initialContext);
       expect(newSession).not.toHaveBeenCalled();
       if (outcome === "cancel-setup") io.input.write("\x03");
       else {
-        io.input.write("New connection\r");
-        const protocol = await observed.until((view) => view.selector?.title === "Select protocol");
-        expect(protocol.selector?.navigation).toBeUndefined();
-        io.input.write("1\r");
-        await observed.until((view) => view.prompt?.secret === true);
+        io.input.write("http://localhost/v1\r");
+        const secret = await observed.until((view) => view.prompt?.secret === true);
+        expect(secret.modelPanel).toBeDefined();
         io.input.write("PRIVATE_API_KEY\r");
+        const models = await observed.until(
+          (view) => view.selector?.title === "选择支持对话的模型",
+        );
+        expect(models.modelPanel).toBeDefined();
+        io.input.write("1\r");
         const confirmation = await observed.until(
           (view) => view.prompt?.text.includes("actual-model") === true,
         );
+        expect(confirmation.modelPanel).toBeDefined();
         expect(confirmation.prompt?.text).toContain("yes");
         expect(io.stdout + io.stderr).toContain("CLI 默认模型已保存");
         expect(io.stdout + io.stderr).not.toContain("PRIVATE_API_KEY");
@@ -1784,6 +1834,12 @@ describe("terminal controller result and lifecycle", () => {
         expect(currentHost.context).toBe(initialContext);
         expect(newSession).not.toHaveBeenCalled();
         io.input.write(outcome === "confirm" ? "yes\r" : "\x03");
+      }
+      if (outcome !== "confirm") {
+        const returned = await observed.until((view) => !!view.selector?.navigation);
+        expect(returned.composer.draft.text).toBe("retained-draft");
+        expect(currentHost.context).toBe(initialContext);
+        io.input.write("/cancel\r");
       }
       const idle = await observed.until((view) => view.composer.submission.enabled);
       expect(idle.composer.draft.text).toBe("retained-draft");
@@ -1813,7 +1869,17 @@ describe("terminal controller result and lifecycle", () => {
         if (failure === "close") throw new AgentError("HOST_CLOSE_FAILED", "Close failed");
         throw new Error("PRIVATE_CONFIGURATION_ERROR");
       });
-      const currentHost = host({ models: async () => [], configureModel });
+      const currentHost = host({
+        models: async () => [],
+        connections: async () => [
+          {
+            id: "create:openai-responses",
+            label: "新建 OpenAI Responses 连接",
+            target: { type: "new", adapterId: "openai-responses" },
+          },
+        ],
+        configureModel,
+      });
       const initialContext = currentHost.context;
       const running = runTerminalController({
         ...io,
@@ -1822,10 +1888,14 @@ describe("terminal controller result and lifecycle", () => {
       });
       await observed.until((view) => view.composer.submission.enabled);
       io.input.write("/connect\r\r");
+      await observed.until((view) => view.selector?.navigation?.pane === "groups");
+      io.input.write("2\r");
       if (failure === "safe") {
-        const idle = await observed.until(
-          (view) => view.feedback?.kind === "blocking" && view.composer.submission.enabled,
+        await observed.until(
+          (view) => view.feedback?.kind === "blocking" && !!view.selector?.navigation,
         );
+        io.input.write("\x03");
+        const idle = await observed.until((view) => view.composer.submission.enabled);
         expect(idle.activity).toBeUndefined();
         expect(currentHost.context).toBe(initialContext);
         io.input.end();
@@ -1870,9 +1940,12 @@ describe("terminal controller result and lifecycle", () => {
     expect(models.selector?.items[0]?.label).toContain("Beta");
     expect(newSession).not.toHaveBeenCalled();
     io.input.write("/connect\r");
+    await observed.until((view) => view.selector?.navigation?.pane === "groups");
+    expect(configureModel).not.toHaveBeenCalled();
+    io.input.write("/cancel\r");
     const idle = await observed.until((view) => view.composer.submission.enabled);
     expect(idle.composer.draft.text).toBe("draft");
-    expect(configureModel).toHaveBeenCalledTimes(1);
+    expect(configureModel).not.toHaveBeenCalled();
     expect(newSession).not.toHaveBeenCalled();
     io.input.end();
     expect(await running).toBe(0);

@@ -62,32 +62,3 @@ export function wrapTerminalText(text: string, columns: number): string[] {
   }
   return lines;
 }
-
-/** Markdown stays literal and copyable; no HTML, links or external escape sequences execute. */
-export function markdownLines(text: string, columns: number, viewport = false): string[] {
-  const lines: string[] = [];
-  let fence: { marker: string; length: number } | undefined;
-  for (const line of sanitizeTerminalText(text).split("\n")) {
-    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (opening) {
-      const marker = opening[1]!;
-      if (!fence) fence = { marker: marker[0]!, length: marker.length };
-      else if (
-        marker[0] === fence.marker &&
-        marker.length >= fence.length &&
-        /^ {0,3}(?:`+|~+)\s*$/.test(line)
-      )
-        fence = undefined;
-      lines.push(...wrapTerminalText(line, columns));
-      continue;
-    }
-    if (fence && !viewport) {
-      // Native soft-wrap retains the exact code line in scrollback, including tabs/spaces.
-      lines.push(line);
-    } else {
-      // Paragraphs, lists, headings and inline code retain their text and Markdown markers.
-      lines.push(...wrapTerminalText(line, columns));
-    }
-  }
-  return lines;
-}

@@ -1254,11 +1254,68 @@ describe("grouped model selector fullscreen panel", () => {
       },
     });
     const screen = terminalState(output);
-    const row = screen.lines.find((line) => line.includes(connection.label));
+    const row = screen.lines.find((line) => line.split("│")[1]?.includes(connection.label));
     expect(row).toContain(connection.description);
     expect(screen.lines.every((line) => visibleWidth(line) === 119)).toBe(true);
     await renderer.close();
   });
+
+  for (const [columns, rows] of [
+    [40, 12],
+    [80, 24],
+  ] as const)
+    it(`keeps configuration and secret entry inside the model panel at ${columns}x${rows}`, async () => {
+      const { renderer, output } = capture("tui", columns, rows);
+      await renderer.view(chat);
+      const primary = terminalState(output);
+      const configuration: TerminalView = {
+        ...chat,
+        modelPanel: { browser: selector },
+        activity: "正在配置连接",
+        input: { purpose: "secret", status: "", hint: "Esc 返回 · Enter 确认" },
+        prompt: { text: "API Key", secret: true },
+        composer: {
+          draft: { text: "PRIVATE_KEY\nSECRET", cursor: 7 },
+          editable: true,
+          submission: { enabled: false, reason: "busy" },
+        },
+      };
+      await renderer.view(configuration);
+      const secret = terminalState(output);
+      expect(secret.alternateScreen).toBe(true);
+      expect(secret.lines).toHaveLength(rows - 1);
+      expect(secret.lines.every((line) => visibleWidth(line) === columns - 1)).toBe(true);
+      expect(secret.lines.join("\n")).toContain("API Key");
+      expect(secret.lines.join("\n")).not.toMatch(/PRIVATE_|SECRET|CHAT_|DRAFT_STAYS/u);
+      expect(secret.cursorVisible).toBe(true);
+      await renderer.view({
+        ...configuration,
+        composer: {
+          ...configuration.composer,
+          draft: { text: "DIFFERENT_KEY_LENGTH", cursor: 20 },
+        },
+      });
+      expect(terminalState(output)).toEqual(secret);
+      await renderer.view({
+        ...configuration,
+        input: { purpose: "prompt", status: "", hint: "Esc 返回 · Enter 确认" },
+        prompt: {
+          text: `目标：新模型\n${"保留会话与草稿；".repeat(20)}\n输入 yes 确认：`,
+          secret: false,
+        },
+        composer: { ...configuration.composer, draft: { text: "yes", cursor: 3 } },
+      });
+      const confirmation = terminalState(output);
+      expect(confirmation.alternateScreen).toBe(true);
+      expect(confirmation.lines.join("\n")).toContain("输入 yes 确认");
+      expect(confirmation.lines.join("\n")).toContain("╰─ yes");
+      await renderer.view({ ...chat, selector });
+      expect(terminalState(output).alternateScreen).toBe(true);
+      expect(terminalScreen(output)).not.toContain("API Key");
+      await renderer.view(chat);
+      expect(terminalState(output)).toEqual(primary);
+      await renderer.close();
+    });
 
   it("keeps empty-search configuration reachable and exits/reenters around plain fallback", async () => {
     const { renderer, output, error, size } = capture("tui", 80, 24);

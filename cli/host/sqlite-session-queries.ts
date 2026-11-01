@@ -2,7 +2,7 @@ import type { ModelMessage } from "@agent-harness/core/model/model-contract";
 import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
 import { snapshotHostSessionBinding } from "./host-session-binding.js";
 import { openSqliteReader } from "./internal/sqlite/connection.js";
-import { prepareHistoryBatches } from "./internal/sqlite/history-queries.js";
+import { projectSessionHistory } from "./session-history-projection.js";
 import type { HostSessionSummary } from "./session-persistence-contract.js";
 
 /** 仅宿主的只读投影；不取得检查点租约，也不将规范历史或重放状态暴露给 CLI。 */
@@ -24,7 +24,10 @@ export function readSqliteAgentSessions(
         GROUP BY binding.thread_id
         ORDER BY COALESCE(MAX(checkpoint.updated_order), 0) DESC, binding.thread_id
       `);
-      const historyBatches = prepareHistoryBatches(connection);
+      const historyBatches = database.prepare(`
+        SELECT revision, payload FROM general_agent_history_batches
+        WHERE thread_id = ? ORDER BY revision
+      `);
       const checkpoints = database.prepare(`
         SELECT payload FROM general_agent_checkpoints
         WHERE agent_id = ? AND thread_id = ?
@@ -45,35 +48,13 @@ export function readSqliteAgentSessions(
             entry.status === "waiting" ||
             entry.status === "interrupted",
         );
-        // Query 的起点/提交消息数属于权威检查点；不可按文本或 UI 缓存猜测归属。
-        const hiddenRanges = unfinished.map((entry) => {
-          let end = Number.POSITIVE_INFINITY;
-          // 包含已经追加、尚未确认的 inflight 历史；下一个 Query 的权威起点才结束此范围。
-          for (const other of authoritative) {
-            if (other.startMessageCount > entry.startMessageCount && other.startMessageCount < end)
-              end = other.startMessageCount;
-          }
-          return { start: entry.startMessageCount, end };
-        });
-        const history: { role: "user" | "assistant"; text: string }[] = [];
-        let messageIndex = 0;
-        for (const batch of historyBatches.all(binding.threadId)) {
-          const messages = JSON.parse(batch.payload as string) as readonly ModelMessage[];
-          for (const message of messages) {
-            const index = messageIndex++;
-            if (message.role !== "user" && message.role !== "assistant") continue;
-            if (
-              message.role === "assistant" &&
-              hiddenRanges.some((range) => index >= range.start && index < range.end)
-            )
-              continue;
-            const text = message.content
-              .filter((content) => content.type === "text")
-              .map((content) => content.text)
-              .join("\n");
-            if (text.length > 0) history.push({ role: message.role, text });
-          }
-        }
+        const history = projectSessionHistory(
+          historyBatches.all(binding.threadId).map((batch) => ({
+            revision: batch.revision as number,
+            messages: JSON.parse(batch.payload as string) as readonly ModelMessage[],
+          })),
+          authoritative,
+        );
         const pending = unfinished[0];
         summaries.push({
           threadId: binding.threadId,

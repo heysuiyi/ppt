@@ -1,13 +1,13 @@
 import type { RunIdentity } from "@agent-harness/core/protocol-values";
 import type {
   TerminalComposerState,
+  TerminalHistoryEntry,
   TerminalInteractionDisplay,
   TerminalInteractionReference,
   TerminalPhase,
   TerminalRecord,
   TerminalSelectionItem,
   TerminalTextPreview,
-  TerminalHistoryEntry,
 } from "./terminal-contract.js";
 
 export type TerminalOutputMode = "tui" | "plain" | "print" | "jsonl";
@@ -21,7 +21,7 @@ export interface TerminalSelectorView {
     readonly groups: readonly TerminalSelectionItem[];
     readonly selectedGroupId: string;
     readonly pane: "groups" | "models";
-    readonly action: TerminalSelectionItem;
+    readonly action?: TerminalSelectionItem;
   };
 }
 
@@ -45,7 +45,6 @@ export interface TerminalFeedback {
 }
 
 export type TerminalScene = "startup" | "home" | "conversation";
-
 
 /** 只保留公开文本及工具位置，不向呈现层传递参数或私有模型重放。 */
 export type TerminalTimelinePart =
@@ -82,6 +81,8 @@ export interface TerminalView {
     readonly capabilities: string;
   };
   readonly selector?: TerminalSelectorView;
+  /** 配置步骤借用当前模型面板，不把主草稿或秘密输入写入浏览器快照。 */
+  readonly modelPanel?: { readonly browser: TerminalSelectorView };
   readonly completion?: TerminalSelectorView;
   readonly interaction?: {
     readonly reference: TerminalInteractionReference;

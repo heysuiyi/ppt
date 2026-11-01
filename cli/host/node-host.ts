@@ -14,6 +14,7 @@ import { prepareWorkspaceRoot } from "@agent-harness/tools/tools";
 import { type AgentHost, createAgentHost } from "./create-agent-host.js";
 import type {
   NodeHostOptions,
+  TerminalConnectionTarget,
   TerminalHost,
   TerminalHostContext,
   TerminalHostOpenOptions,
@@ -22,7 +23,7 @@ import type {
   TerminalToolsMode,
 } from "./host-contract.js";
 import { type ConfiguredModelItem, configuredModels } from "./model-catalog.js";
-import { ensureConfiguredModel } from "./model-setup.js";
+import { configuredConnections, ensureConfiguredModel } from "./model-setup.js";
 import { listHostSessions } from "./session-directory.js";
 import { parseWorkspaceApproval } from "./workspace-configuration.js";
 
@@ -208,7 +209,11 @@ export function createNodeHost(options: NodeHostIntegrationOptions): TerminalHos
       signal.removeEventListener("abort", aborted);
     }
   }
-  async function configureModel(setup: TerminalSetupIO, signal: AbortSignal) {
+  async function configureModel(
+    setup: TerminalSetupIO,
+    signal: AbortSignal,
+    target?: TerminalConnectionTarget,
+  ) {
     try {
       return await ensureConfiguredModel(
         configuration.management,
@@ -220,7 +225,7 @@ export function createNodeHost(options: NodeHostIntegrationOptions): TerminalHos
           protection,
           signal,
         },
-        true,
+        target,
       );
     } catch (error) {
       signal.throwIfAborted();
@@ -297,11 +302,16 @@ export function createNodeHost(options: NodeHostIntegrationOptions): TerminalHos
         availability,
       }));
     },
-    configureModel(setup) {
+    async connections() {
+      if (closing) throw new AgentError("HOST_CLOSED", "Node 宿主已经关闭。");
+      return configuredConnections(await configuration.management.getSnapshot());
+    },
+    configureModel(setup, target) {
       return exclusive(async () => {
         ensureOpen();
         try {
-          return await configureModel(setup, lifetime.signal);
+          if (!target) throw new AgentError("CLI_MODEL_SETUP_FAILED", "请选择要配置的连接。");
+          return await configureModel(setup, lifetime.signal, target);
         } catch {
           lifetime.signal.throwIfAborted();
           throw new AgentError(

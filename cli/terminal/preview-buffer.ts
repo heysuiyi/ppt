@@ -62,10 +62,14 @@ export function createPreviewBuffer(identity: RunIdentity): TerminalPreviewBuffe
           clear();
         return previews;
       }
-      if (event.delta.type !== "text" || event.delta.text.length === 0) return previews;
+      if (
+        (event.delta.type !== "text" && event.delta.type !== "reasoning") ||
+        event.delta.text.length === 0
+      )
+        return previews;
       const requestKey = JSON.stringify([event.step, event.requestId]);
       if (event.type === "model.preview") previewRequests.add(requestKey);
-      else if (previewRequests.has(requestKey)) return previews;
+      else if (event.delta.type === "text" && previewRequests.has(requestKey)) return previews;
       const position =
         event.type === "model.preview"
           ? { previewId: event.previewId }
@@ -87,6 +91,7 @@ export function createPreviewBuffer(identity: RunIdentity): TerminalPreviewBuffe
         ...position,
         text,
         truncated,
+        ...(event.delta.type === "reasoning" ? { reasoning: true } : {}),
       };
       if (index >= 0) next[index] = preview;
       else next.push(preview);

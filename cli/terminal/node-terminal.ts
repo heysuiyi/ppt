@@ -27,6 +27,7 @@ const keyActions: Readonly<Record<string, TerminalEditorAction["action"]>> = {
   "\x03": "interrupt",
   "\x04": "eof",
   "\x0f": "toggle-tool",
+  "\x14": "toggle-thinking",
   "\x1b\r": "newline",
   "\x1b\n": "newline",
   "\x1bm": "select-model",

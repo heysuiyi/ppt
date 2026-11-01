@@ -27,7 +27,7 @@ Interactive commands:
   /help /hotkeys /status /paste /exit /new /model /connect /resume /tools /tools-output /thinking
   // escapes an initial slash. /paste ends only with a separate /end line;
   //end inside /paste inserts /end. EOF never submits unfinished /paste.
-  /model groups configured connections; /connect adds/configures a connection.
+  /model opens the fullscreen model panel; /connect focuses its connection sidebar.
   Saving a connection/default does not switch the current session without confirmation.
 
 Keys:
@@ -40,7 +40,7 @@ Keys:
   Approval: explicitly select then Enter; Tab never approves; Esc keeps waiting.
   Models: Left/Right or Tab switch panes; Up/Down move; Enter chooses; Esc returns.
   Type to search; All searches every connection. Plain: number/id + Enter,
-  /groups returns to groups, /connect configures, /back or /cancel leaves safely.
+  /groups or /connect returns to connections, /back or /cancel leaves safely.
 
 Exit: 0 success, 1 failure, 2 arguments, 3 waiting, 130 user cancellation,
       143 host termination, 141 broken output pipe.

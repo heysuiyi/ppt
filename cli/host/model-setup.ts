@@ -10,7 +10,11 @@ import type { RemoteModelInfo } from "@agent-harness/configuration/remote-models
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import { configuredModelAdapter } from "./configured-model-factory.js";
-import type { TerminalSetupIO } from "./host-contract.js";
+import type {
+  TerminalConnectionItem,
+  TerminalConnectionTarget,
+  TerminalSetupIO,
+} from "./host-contract.js";
 import { configuredModels } from "./model-catalog.js";
 
 const mimoProfile = getModelProfile("mimo-token-plan-cn");
@@ -18,6 +22,63 @@ if (mimoProfile?.endpoint?.kind !== "fixed")
   throw new Error("MiMo Token Plan CN requires its fixed endpoint profile.");
 const mimoBaseURL = mimoProfile.endpoint.url;
 const mimoMaxOutputTokens = mimoProfile.maxOutputTokens;
+
+const connectionAdapters = [
+  {
+    adapterId: "mimo-token-plan-cn",
+    label: "新建 MiMo Token Plan 中国连接",
+    vendorLabel: "MiMo Token Plan 中国",
+    kind: "mimo-token-plan-cn",
+    protocol: "openai",
+    apiMode: "responses",
+    defaultURL: mimoBaseURL,
+  },
+  {
+    adapterId: "openai-responses",
+    label: "新建 OpenAI Responses 连接",
+    vendorLabel: "OpenAI Responses",
+    kind: "openai",
+    protocol: "openai",
+    apiMode: "responses",
+    defaultURL: "https://api.openai.com/v1",
+  },
+  {
+    adapterId: "openai-chat-completions",
+    label: "新建 OpenAI Chat Completions 兼容连接",
+    vendorLabel: "OpenAI Chat Completions",
+    kind: "openai",
+    protocol: "openai",
+    apiMode: "chat-completions",
+    defaultURL: "https://api.openai.com/v1",
+  },
+  {
+    adapterId: "anthropic-messages",
+    label: "新建 Anthropic Messages 连接",
+    vendorLabel: "Anthropic Messages",
+    kind: "anthropic",
+    protocol: "anthropic",
+    apiMode: "responses",
+    defaultURL: "https://api.anthropic.com",
+  },
+] as const;
+
+export function configuredConnections(
+  snapshot: AgentConfigurationSnapshot | undefined,
+): readonly TerminalConnectionItem[] {
+  return [
+    ...(snapshot?.settings.vendors ?? []).map((vendor) => ({
+      id: `vendor:${vendor.id}`,
+      label: vendor.label,
+      description: `${vendor.models.length} 个模型`,
+      target: { type: "existing" as const, vendorId: vendor.id },
+    })),
+    ...connectionAdapters.map((adapter) => ({
+      id: `create:${adapter.adapterId}`,
+      label: adapter.label,
+      target: { type: "new" as const, adapterId: adapter.adapterId },
+    })),
+  ];
+}
 
 type SetupIO = TerminalSetupIO & {
   readonly protection: CredentialProtection;
@@ -223,7 +284,7 @@ async function chooseVendorModel(
 export async function ensureConfiguredModel(
   management: ConfigurationManagement,
   io: SetupIO,
-  force = false,
+  target?: TerminalConnectionTarget,
 ): Promise<string | undefined> {
   let snapshot: AgentConfigurationSnapshot;
   try {
@@ -238,7 +299,7 @@ export async function ensureConfiguredModel(
   }
   const defaultModelId = snapshot.settings.cli?.defaultModelId;
   if (
-    !force &&
+    target === undefined &&
     configuredModels(snapshot).some(
       (model) => model.id === defaultModelId && model.status === "ready",
     )
@@ -247,30 +308,32 @@ export async function ensureConfiguredModel(
   if (snapshot.credentials.storage.state === "unavailable") {
     throw setupError("凭据存储不可用，无法设置 CLI 模型。请先恢复系统凭据存储。");
   }
-  const vendors = snapshot.settings.vendors;
-  const index = await choose(io, "选择厂商/已有连接：", [
-    ...vendors.map((vendor) => vendor.label),
-    "新建 MiMo Token Plan 中国连接",
-    "新建 OpenAI Responses 连接",
-    "新建 OpenAI Chat Completions 兼容连接",
-    "新建 Anthropic Messages 连接",
-  ]);
-  if (index === undefined) return undefined;
-  const isNew = index >= vendors.length;
+  if (target === undefined) {
+    const connections = configuredConnections(snapshot);
+    const index = await choose(
+      io,
+      "选择厂商/已有连接：",
+      connections.map((item) => item.label),
+    );
+    if (index === undefined) return undefined;
+    target = connections[index]!.target;
+  }
   let vendor: VendorConfiguration;
   let apiMode: "responses" | "chat-completions" | undefined;
-  if (isNew) {
-    const type = index - vendors.length;
-    const anthropic = type === 3;
-    apiMode = type === 2 ? "chat-completions" : "responses";
-    const defaultURL =
-      type === 0
-        ? mimoBaseURL
-        : anthropic
-          ? "https://api.anthropic.com"
-          : "https://api.openai.com/v1";
+  const isNew = target.type === "new";
+  if (target.type === "existing") {
+    const { vendorId } = target;
+    const existing = snapshot.settings.vendors.find((entry) => entry.id === vendorId);
+    if (!existing) throw setupError("所选连接已不存在，请重新选择连接。");
+    vendor = existing;
+  } else if (target.type === "new") {
+    const { adapterId } = target;
+    const adapter = connectionAdapters.find((entry) => entry.adapterId === adapterId);
+    if (!adapter) throw setupError("所选连接类型无效，请重新选择连接。");
+    apiMode = adapter.apiMode;
+    const defaultURL = adapter.defaultURL;
     let baseURL = defaultURL;
-    if (type !== 0) {
+    if (adapter.adapterId !== "mimo-token-plan-cn") {
       const input = await io.text(`API Base URL（留空使用 ${defaultURL}）：`);
       if (input === undefined) return undefined;
       try {
@@ -290,22 +353,15 @@ export async function ensureConfiguredModel(
     }
     vendor = {
       id: randomUUID(),
-      kind: type === 0 ? "mimo-token-plan-cn" : anthropic ? "anthropic" : "openai",
-      label:
-        type === 0
-          ? "MiMo Token Plan 中国"
-          : anthropic
-            ? "Anthropic Messages"
-            : apiMode === "responses"
-              ? "OpenAI Responses"
-              : "OpenAI Chat Completions",
-      protocol: anthropic ? "anthropic" : "openai",
+      kind: adapter.kind,
+      label: adapter.vendorLabel,
+      protocol: adapter.protocol,
       baseURL,
       enabled: true,
       models: [],
     };
   } else {
-    vendor = vendors[index]!;
+    throw setupError("所选连接类型无效，请重新选择连接。");
   }
   if (
     vendor.kind === "mimo-token-plan-cn" &&

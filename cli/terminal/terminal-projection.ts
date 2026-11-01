@@ -258,7 +258,11 @@ export function projectTerminalSettlement(
       message.content.forEach((part, contentIndex) => {
         if (message.role === "assistant" && part.type === "text" && part.text.length > 0) {
           timeline.push({ type: "text", messageIndex, contentIndex, text: safe(part.text) });
-        } else if (message.role === "assistant" && part.type === "reasoning" && part.text.length > 0) {
+        } else if (
+          message.role === "assistant" &&
+          part.type === "reasoning" &&
+          part.text.length > 0
+        ) {
           timeline.push({ type: "reasoning", messageIndex, contentIndex, text: safe(part.text) });
         } else if (part.type === "tool-call" || part.type === "tool-result") {
           const callId = safe(part.callId);
@@ -413,8 +417,10 @@ export function sanitizeTerminalRecord(record: TerminalRecord): TerminalRecord {
         step: record.step,
         durationMs: Number.isFinite(record.durationMs) ? Math.max(0, record.durationMs) : 0,
         ...(usage &&
-        Number.isSafeInteger(usage.inputTokens) && usage.inputTokens >= 0 &&
-        Number.isSafeInteger(usage.outputTokens) && usage.outputTokens >= 0
+        Number.isSafeInteger(usage.inputTokens) &&
+        usage.inputTokens >= 0 &&
+        Number.isSafeInteger(usage.outputTokens) &&
+        usage.outputTokens >= 0
           ? { usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } }
           : {}),
       };

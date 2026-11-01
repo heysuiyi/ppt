@@ -11,11 +11,18 @@ import {
   TERMINAL_HELP,
   type TerminalCommand,
 } from "../commands/terminal-command.js";
-import type { TerminalHost, TerminalSetupIO, TerminalToolsMode } from "../host/host-contract.js";
+import type {
+  TerminalConnectionItem,
+  TerminalConnectionTarget,
+  TerminalHost,
+  TerminalSetupIO,
+  TerminalToolsMode,
+} from "../host/host-contract.js";
 import { createComposer } from "./composer.js";
 import { composerContentWidth } from "./composer-layout.js";
 import type { Composer, NodeTerminal, Selector, TerminalKeyEvent } from "./input-contract.js";
 import { createTerminalRenderer } from "./interactive-renderer.js";
+import { modelPanelEditorWidth } from "./model-panel.js";
 import { createNodeTerminal } from "./node-terminal.js";
 import { createPreviewBuffer } from "./preview-buffer.js";
 import type {
@@ -29,10 +36,10 @@ import { createSelector } from "./selector.js";
 import type {
   TerminalExitDecision,
   TerminalFailureStage,
+  TerminalHistoryEntry,
   TerminalModelItem,
   TerminalPhase,
   TerminalSelectionItem,
-  TerminalHistoryEntry,
 } from "./terminal-contract.js";
 import {
   interactionReference,
@@ -53,10 +60,20 @@ export interface TerminalControllerOptions {
 
 interface ModelNavigation {
   readonly models: readonly TerminalModelItem[];
+  readonly connections: readonly TerminalConnectionItem[];
+  readonly actionId: string;
   groups: Selector;
-  readonly action: TerminalSelectionItem;
+  action?: TerminalSelectionItem;
   pane: "groups" | "models";
 }
+
+type ModelPanelSelection =
+  | { readonly type: "model"; readonly modelId: string }
+  | {
+      readonly type: "configure";
+      readonly connection: TerminalConnectionTarget;
+      readonly groupId: string;
+    };
 
 type Focus =
   | { readonly type: "composer" }
@@ -146,6 +163,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
   let failure: TerminalFailureStage | undefined;
   let pasteLines: string[] | undefined;
   let renderer: TerminalRenderer;
+  let modelPanelBrowser: TerminalSelectorView | undefined;
   let terminal: NodeTerminal;
   let events = Promise.resolve();
   const { promise: finished, resolve: finish } = Promise.withResolvers<void>();
@@ -166,6 +184,8 @@ export async function runTerminalController(options: TerminalControllerOptions):
 
   function resolveFocus(value: string | undefined): void {
     const current = focus;
+    if (current.type === "selector" && current.navigation)
+      modelPanelBrowser = currentView().selector;
     delete feedback.input;
     switchFocus({ type: "composer" });
     if (current.type !== "composer") current.resolve(value);
@@ -235,7 +255,12 @@ export async function runTerminalController(options: TerminalControllerOptions):
       ? composerContentWidth(terminal.columns - 1)
       : Math.max(1, terminal.columns - 3);
     composer.setColumns(columns);
-    if (focus.type === "text") focus.editor.setColumns(columns);
+    if (focus.type === "text")
+      focus.editor.setColumns(
+        framed && modelPanelBrowser
+          ? modelPanelEditorWidth(modelPanelBrowser, terminal.columns)
+          : columns,
+      );
   }
 
   function inputView(): TerminalInputView {
@@ -268,7 +293,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
         hint: focus.navigation
           ? narrow
             ? "Esc返回 · Enter选 · Tab切栏 · ↑↓"
-            : "Esc 返回 · Enter 选择 · ←→/Tab 切栏 · ↑↓ 移动"
+            : "Esc 返回 · Enter 选择 · ←→/Tab 切栏 · ↑↓ 移动 · 输入搜索"
           : narrow
             ? "Esc返回 · Enter/Tab确认 · ↑↓选"
             : "Esc 返回 · Enter/Tab 确认 · ↑↓ 选择 · 输入筛选",
@@ -277,7 +302,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       return {
         purpose: "completion",
         status: "",
-        hint: narrow ? "Esc关闭 · Enter/Tab仅补全 · ↑↓选" : "Esc 关闭 · Enter/Tab 仅补全 · ↑↓ 选择",
+        hint: "",
       };
     if (settlingCancellation || phase === "cancelling")
       return {
@@ -338,7 +363,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
                     groups: focus.navigation.groups.items,
                     selectedGroupId: focus.navigation.groups.selectedId!,
                     pane: focus.navigation.pane,
-                    action: focus.navigation.action,
+                    ...(focus.navigation.action ? { action: focus.navigation.action } : {}),
                   },
                 }
               : {}),
@@ -386,6 +411,9 @@ export async function runTerminalController(options: TerminalControllerOptions):
           }
         : {}),
       ...(selector ? { selector } : {}),
+      ...(modelPanelBrowser && !selector?.navigation
+        ? { modelPanel: { browser: modelPanelBrowser } }
+        : {}),
       ...(completion
         ? {
             completion: {
@@ -459,49 +487,56 @@ export async function runTerminalController(options: TerminalControllerOptions):
       )
       .map((model) => ({
         id: model.id,
-        label: `${model.modelName ?? model.label}${model.id === host.context.model.id ? " · 当前" : ""}${model.availability?.state === "unavailable" ? " · 不可用" : ""}`,
+        label: `${model.modelName ? `${model.vendor ? `${model.vendor.label}/` : ""}${model.modelName}` : model.label}${model.id === host.context.model.id ? " · 当前" : ""}${model.availability?.state === "unavailable" ? " · 不可用" : ""}`,
         description: `${model.vendor?.label ?? "已配置连接"} · ${model.availability?.reason ?? "本地状态未提供"}`,
       }));
-    current.sourceItems = [...items, navigation.action];
+    const connection = navigation.connections.find((item) => item.id === group);
+    navigation.action =
+      connection?.target.type === "existing"
+        ? { id: navigation.actionId, label: "配置此连接 / 发现模型" }
+        : undefined;
+    current.sourceItems = navigation.action ? [...items, navigation.action] : items;
     const filtered = createSelector(items);
     // Plain 数字是当前组的稳定序号，不作为搜索条件；配置动作永不被搜索隐藏。
     filtered.search(terminal.mode === "plain" && /^\d+$/.test(current.typed) ? "" : current.typed);
     current.selector = createSelector(
-      [...filtered.items, navigation.action],
+      navigation.action ? [...filtered.items, navigation.action] : filtered.items,
       current.selector.selectedId,
     );
   }
 
-  async function askModel(models: readonly TerminalModelItem[]): Promise<string | undefined> {
+  async function askModel(
+    models: readonly TerminalModelItem[],
+    connections: readonly TerminalConnectionItem[],
+    selectedGroupId = "all",
+    pane: ModelNavigation["pane"] = "models",
+  ): Promise<ModelPanelSelection | undefined> {
     if (stopping || eof) return undefined;
-    const groups: TerminalSelectionItem[] = [{ id: "all", label: "All · 全部连接" }];
+    const groups: TerminalSelectionItem[] = [
+      { id: "all", label: "All · 全部模型", description: `${models.length} 个模型` },
+      ...connections.filter((item) => item.target.type === "existing"),
+    ];
     for (const model of models) {
       const id = model.vendor ? `vendor:${model.vendor.id}` : "legacy";
       if (!groups.some((group) => group.id === id))
-        groups.push({
-          id,
-          label: model.vendor?.label ?? "已配置连接",
-          description: `${
-            models.filter((item) => (item.vendor ? `vendor:${item.vendor.id}` : "legacy") === id)
-              .length
-          } 个模型`,
-        });
+        groups.push({ id, label: model.vendor?.label ?? "已配置连接" });
     }
+    groups.push(...connections.filter((item) => item.target.type === "new"));
     let actionId = "__configure_connection";
     while (models.some((model) => model.id === actionId)) actionId += "_";
-    const action = { id: actionId, label: "+ 添加/配置连接" };
     const { promise, resolve } = Promise.withResolvers<string | undefined>();
     const next: Extract<Focus, { type: "selector" }> = {
       type: "selector",
-      title: "选择已配置模型 · 仅检查本地配置",
+      title: "Models",
       selector: createSelector([], host.context.model.id),
       sourceItems: [],
       typed: "",
       navigation: {
         models,
-        groups: createSelector(groups, "all"),
-        pane: "models",
-        action,
+        connections,
+        actionId,
+        groups: createSelector(groups, selectedGroupId),
+        pane,
       },
       resolve,
     };
@@ -510,7 +545,13 @@ export async function runTerminalController(options: TerminalControllerOptions):
     switchFocus(next);
     await refresh();
     const selected = await promise;
-    return selected === actionId ? await configureConnection() : selected;
+    if (!selected) return undefined;
+    if (selected === actionId) {
+      const groupId = next.navigation!.groups.selectedId!;
+      const connection = connections.find((item) => item.id === groupId);
+      return connection ? { type: "configure", connection: connection.target, groupId } : undefined;
+    }
+    return { type: "model", modelId: selected };
   }
 
   async function loadModels(): Promise<readonly TerminalModelItem[] | undefined> {
@@ -527,23 +568,32 @@ export async function runTerminalController(options: TerminalControllerOptions):
     });
   }
 
-  async function configureConnection(): Promise<string | undefined> {
+  async function loadConnections(): Promise<readonly TerminalConnectionItem[]> {
+    return withActivity("正在加载连接目录", async () => {
+      try {
+        return await host.connections();
+      } catch (error) {
+        setBlocking("catalog", `连接目录加载失败：${terminalError(error).message}`);
+        return [];
+      }
+    });
+  }
+
+  async function configureConnection(
+    target: TerminalConnectionTarget,
+  ): Promise<string | undefined> {
     let selected: string | undefined;
     try {
-      selected = await withActivity("正在配置连接", () => host.configureModel(setup));
+      selected = await withActivity("正在配置连接", () => host.configureModel(setup, target));
     } catch (error) {
       if (terminalError(error).code !== "HOST_CONFIGURATION_REJECTED") throw error;
       setBlocking(
         "connection",
         `连接配置未完成：${terminalError(error).message}；当前会话保持不变。`,
       );
-      await output(() => renderer.message(feedback.blocking!.message));
       return undefined;
     }
-    if (!selected) {
-      setFeedback("notice", "已取消连接配置；当前会话与草稿保持不变。");
-      return undefined;
-    }
+    if (!selected) return undefined;
     clearBlocking("connection");
     setFeedback("notice", "连接与 CLI 默认模型已保存；当前会话未切换，须另确认新建绑定。");
     await output(() => renderer.message(feedback.notice!.message));
@@ -551,59 +601,79 @@ export async function runTerminalController(options: TerminalControllerOptions):
   }
 
   async function chooseModel(connect: boolean): Promise<void> {
-    let models = await loadModels();
-    if (!models && !connect) {
-      // 即便目录读取失败，仍保留进入真实配置向导的入口。
-      models = [];
+    try {
+      let models = (await loadModels()) ?? [];
+      let connections = await loadConnections();
+      let groupId = "all";
+      let pane: ModelNavigation["pane"] = connect ? "groups" : "models";
+      for (;;) {
+        const currentId = host.context.model.id;
+        modelAvailability = models.find((item) => item.id === currentId)?.availability;
+        const choice = await askModel(models, connections, groupId, pane);
+        if (!choice) return;
+        groupId = modelPanelBrowser?.navigation?.selectedGroupId ?? "all";
+        let selectedId: string | undefined;
+        if (choice.type === "configure") {
+          selectedId = await configureConnection(choice.connection);
+          groupId = choice.groupId;
+          pane = "groups";
+        } else {
+          selectedId = choice.modelId;
+          pane = "models";
+        }
+        // 配置可能改变目录；绑定前重读权威状态，取消配置仍返回同一面板。
+        models = (await loadModels()) ?? [];
+        connections = await loadConnections();
+        if (!selectedId) continue;
+        const selected = models.find((item) => item.id === selectedId);
+        if (!selected) {
+          setBlocking("model", "未找到所选模型；当前会话保持不变。已保存的连接配置不会删除。");
+          continue;
+        }
+        if (selected.availability?.state !== "unavailable") clearBlocking("model");
+        if (selected.id === currentId) {
+          setFeedback("notice", "当前模型已选中；未创建新会话。");
+          return;
+        }
+        if (selected.availability?.state === "unavailable") {
+          setBlocking("model", `模型不可用：${selected.availability.reason}`);
+          continue;
+        }
+        if (!(await confirmSwitch(`模型 ${selected.label}`))) {
+          setFeedback(
+            "notice",
+            "已取消模型切换；当前模型、会话与草稿保持不变；已保存的连接/默认配置保留。",
+          );
+          continue;
+        }
+        await withActivity(`正在切换模型：${selected.label}`, async () => {
+          await host.newSession({ modelId: selected.id });
+          modelPanelBrowser = undefined;
+          await bindSession([]);
+        });
+        modelAvailability = selected.availability;
+        setFeedback(
+          "notice",
+          `已切换模型：${host.context.model.label}；新绑定会话 ${host.context.threadId}`,
+        );
+        await output(() => renderer.message(feedback.notice!.message));
+        return;
+      }
+    } finally {
+      modelPanelBrowser = undefined;
     }
-    const currentId = host.context.model.id;
-    modelAvailability = models?.find((item) => item.id === currentId)?.availability;
-    const selectedId = connect ? await configureConnection() : await askModel(models ?? []);
-    if (!selectedId) {
-      if (!feedback.notice) setFeedback("notice", "已取消模型选择；当前模型与会话保持不变。");
-      return;
-    }
-    // 向导可能新增连接或更新既有模型；确认绑定前重新读取权威本地目录。
-    models = await loadModels();
-    const selected = models?.find((item) => item.id === selectedId);
-    if (!selected) {
-      setBlocking("model", "未找到所选模型；当前会话保持不变。已保存的连接配置不会删除。");
-      return;
-    }
-    if (selected.availability?.state !== "unavailable") clearBlocking("model");
-    if (selected.id === currentId) {
-      setFeedback("notice", "当前模型已选中；未创建新会话。");
-      return;
-    }
-    if (selected.availability?.state === "unavailable") {
-      setBlocking("model", `模型不可用：${selected.availability.reason}`);
-      await output(() => renderer.message(feedback.blocking!.message));
-      return;
-    }
-    if (!(await confirmSwitch(`模型 ${selected.label}`))) {
-      setFeedback(
-        "notice",
-        "已取消模型切换；当前模型、会话与草稿保持不变；已保存的连接/默认配置保留。",
-      );
-      return;
-    }
-    await withActivity(`正在切换模型：${selected.label}`, async () => {
-      await host.newSession({ modelId: selected.id });
-      await bindSession([]);
-    });
-    modelAvailability = selected.availability;
-    setFeedback(
-      "notice",
-      `已切换模型：${host.context.model.label}；新绑定会话 ${host.context.threadId}`,
-    );
-    await output(() => renderer.message(feedback.notice!.message));
   }
 
   const setup: TerminalSetupIO = {
     text: (prompt) => askText(prompt),
     secret: (prompt) => askText(prompt, true),
     select: askSelection,
-    notify: (text) => output(() => renderer.message(text)),
+    notify: async (text) => {
+      if (modelPanelBrowser) {
+        setFeedback("input", text);
+        await refresh();
+      } else await output(() => renderer.message(text));
+    },
   };
 
   async function sessionRecord(): Promise<void> {
@@ -763,13 +833,15 @@ export async function runTerminalController(options: TerminalControllerOptions):
             )
               continue;
             const nextActivity =
-              event.type === "model.delta" || event.type === "model.preview"
-                ? "正在生成"
-                : event.type === "tool.started"
-                  ? "正在执行工具"
-                  : event.type === "tool.completed"
-                    ? "等待模型响应"
-                    : runActivity;
+              event.type === "model.delta" && event.delta.type === "reasoning"
+                ? "正在思考"
+                : event.type === "model.delta" || event.type === "model.preview"
+                  ? "正在生成"
+                  : event.type === "tool.started"
+                    ? "正在执行工具"
+                    : event.type === "tool.completed"
+                      ? "等待模型响应"
+                      : runActivity;
             if (runActivity !== nextActivity) {
               runActivity = nextActivity;
               await refresh();
@@ -981,8 +1053,12 @@ export async function runTerminalController(options: TerminalControllerOptions):
         break;
       }
       case "thinking": {
-        const selected = await askSelection("公开思考", renderer.thoughts());
-        if (selected) await output(() => renderer.selectThinking(selected));
+        const items = renderer.thoughts();
+        if (!items.length) await output(() => renderer.message("当前会话没有可展示的公开思考。"));
+        else {
+          const selected = await askSelection("公开思考", items);
+          if (selected) await output(() => renderer.selectThinking(selected));
+        }
         break;
       }
     }
@@ -1077,7 +1153,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
           const query = current.typed.trim();
           if (terminal.mode === "plain" && query.startsWith("/")) {
             current.typed = "";
-            if (query === "/connect") resolveFocus(navigation.action.id);
+            if (query === "/connect") navigation.pane = "groups";
             else if (query === "/cancel") resolveFocus(undefined);
             else if (query === "/groups" || query === "/back") {
               if (query === "/back" && navigation.pane === "groups") resolveFocus(undefined);
@@ -1093,11 +1169,21 @@ export async function runTerminalController(options: TerminalControllerOptions):
                   (query ? undefined : navigation.groups.accept()));
             if (selected) {
               navigation.groups = createSelector(navigation.groups.items, selected);
-              navigation.pane = "models";
+              const connection = navigation.connections.find((item) => item.id === selected);
+              if (connection?.target.type === "new") resolveFocus(navigation.actionId);
+              else navigation.pane = "models";
               current.typed = "";
               filterModels(current);
             }
           } else {
+            if (
+              navigation.connections.find((item) => item.id === navigation.groups.selectedId)
+                ?.target.type === "new"
+            ) {
+              resolveFocus(navigation.actionId);
+              await refresh();
+              return;
+            }
             const index = terminal.mode === "plain" && /^\d+$/.test(query) ? Number(query) - 1 : -1;
             const selected =
               index >= 0

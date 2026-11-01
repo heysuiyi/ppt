@@ -6,7 +6,7 @@ import type { VendorConfiguration } from "@agent-harness/configuration/configura
 import type { CredentialProtection } from "@agent-harness/configuration/credential-contract";
 import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TerminalSetupIO } from "../cli/host/host-contract.js";
+import type { TerminalConnectionTarget, TerminalSetupIO } from "../cli/host/host-contract.js";
 import { ensureConfiguredModel } from "../cli/host/model-setup.js";
 
 const roots: string[] = [];
@@ -103,22 +103,29 @@ describe("Node CLI secure model setup", () => {
   });
 
   it.each([
-    ["1", "openai", "responses", "https://api.openai.com/v1"],
-    ["2", "openai", "chat-completions", "https://compatible.example.test/v1"],
-    ["3", "anthropic", "responses", "https://api.anthropic.com"],
+    ["openai-responses", "openai", "responses", "https://api.openai.com/v1"],
+    ["openai-chat-completions", "openai", "chat-completions", "https://compatible.example.test/v1"],
+    ["anthropic-messages", "anthropic", "responses", "https://api.anthropic.com"],
   ] as const)(
-    "saves protocol choice %s as a reusable native default",
-    async (choice, protocol, mode, baseURL) => {
+    "saves adapter %s as a reusable native default",
+    async (adapterId, protocol, mode, baseURL) => {
       const { config, port } = await configuration();
       vi.spyOn(config.management, "listRemoteModels").mockResolvedValue({
         models: [{ id: "compatible-conversation", supported: true }],
       });
-      const modelId = await ensureConfiguredModel(config.management, {
-        ...input([choice, "0"]),
-        text: async () => baseURL,
-        protection: port,
-        signal: new AbortController().signal,
-      });
+      const io = input(["0"]);
+      const select = vi.spyOn(io, "select");
+      const modelId = await ensureConfiguredModel(
+        config.management,
+        {
+          ...io,
+          text: async () => baseURL,
+          protection: port,
+          signal: new AbortController().signal,
+        },
+        { type: "new", adapterId },
+      );
+      expect(select).toHaveBeenCalledTimes(1);
       const snapshot = (await config.management.getSnapshot())!;
       expect(snapshot.settings.cli?.defaultModelId).toBe(modelId);
       const plan = await config.runtime.loadExecutionPlan(modelId!);
@@ -136,11 +143,11 @@ describe("Node CLI secure model setup", () => {
     const { config, port } = await configuration(false);
     const io = input(["0"]);
     await expect(
-      ensureConfiguredModel(config.management, {
-        ...io,
-        protection: port,
-        signal: new AbortController().signal,
-      }),
+      ensureConfiguredModel(
+        config.management,
+        { ...io, protection: port, signal: new AbortController().signal },
+        { type: "new", adapterId: "mimo-token-plan-cn" },
+      ),
     ).rejects.toMatchObject({ code: "CLI_MODEL_SETUP_FAILED" });
     expect(io.secret).not.toHaveBeenCalled();
     expect((await config.management.getSnapshot())?.settings.vendors).toEqual([]);
@@ -152,11 +159,11 @@ describe("Node CLI secure model setup", () => {
       models: [{ id: "mimo-v2.6-flash", supported: true }],
     });
     await expect(
-      ensureConfiguredModel(config.management, {
-        ...input(["0", undefined]),
-        protection: port,
-        signal: new AbortController().signal,
-      }),
+      ensureConfiguredModel(
+        config.management,
+        { ...input([undefined]), protection: port, signal: new AbortController().signal },
+        { type: "new", adapterId: "mimo-token-plan-cn" },
+      ),
     ).resolves.toBeUndefined();
     const snapshot = (await config.management.getSnapshot())!;
     expect(snapshot.settings.vendors).toEqual([]);
@@ -194,7 +201,32 @@ describe("Node CLI secure model setup", () => {
     );
   });
 
-  it("reopens vendor selection for a ready default and selects an existing model without discovery", async () => {
+  it("selects a saved connection during startup when no CLI default has been set", async () => {
+    const { config, port } = await configuration();
+    await config.management.initialize();
+    await config.management.saveVendor({
+      vendor: vendor(),
+      credential: { type: "replace", apiKey: "saved-key" },
+    });
+    const io = input(["0", "0"]);
+    const select = vi.spyOn(io, "select");
+    const discover = vi.spyOn(config.management, "listRemoteModels");
+    await expect(
+      ensureConfiguredModel(config.management, {
+        ...io,
+        protection: port,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toBe("saved-model");
+    expect(select).toHaveBeenCalledTimes(2);
+    expect(io.secret).not.toHaveBeenCalled();
+    expect(discover).not.toHaveBeenCalled();
+    expect((await config.management.getSnapshot())?.settings.cli?.defaultModelId).toBe(
+      "saved-model",
+    );
+  });
+
+  it("configures an explicit existing connection without discovery or a second connection selection", async () => {
     const { config, port } = await configuration();
     await config.management.initialize();
     await config.management.saveVendor({
@@ -203,22 +235,79 @@ describe("Node CLI secure model setup", () => {
     });
     await config.management.saveCliPreferences({ defaultModelId: "saved-model" });
     const discover = vi.spyOn(config.management, "listRemoteModels");
-    const io = input(["0", "0"]);
+    const io = input(["0"]);
     const select = vi.spyOn(io, "select");
     await expect(
       ensureConfiguredModel(
         config.management,
         { ...io, protection: port, signal: new AbortController().signal },
-        true,
+        { type: "existing", vendorId: "saved" },
       ),
     ).resolves.toBe("saved-model");
-    expect(select.mock.calls[0]).toEqual([
-      "选择厂商/已有连接：",
-      expect.arrayContaining([expect.objectContaining({ label: "Configured MiMo" })]),
-    ]);
-    expect(select).toHaveBeenCalledTimes(2);
+    expect(select).toHaveBeenCalledTimes(1);
     expect(io.secret).not.toHaveBeenCalled();
     expect(discover).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { type: "existing", vendorId: "removed-connection" },
+    { type: "new", adapterId: "unknown-adapter" },
+  ])("rejects a stale or invalid connection target before collecting input: %j", async (target) => {
+    const { config, port } = await configuration();
+    await config.management.initialize();
+    await config.management.saveVendor({
+      vendor: vendor(),
+      credential: { type: "replace", apiKey: "saved-key" },
+    });
+    await config.management.saveCliPreferences({ defaultModelId: "saved-model" });
+    const before = await config.management.getSnapshot();
+    const io = input(["0"]);
+    const select = vi.spyOn(io, "select");
+    const text = vi.spyOn(io, "text");
+    const discover = vi.spyOn(config.management, "listRemoteModels");
+    await expect(
+      ensureConfiguredModel(
+        config.management,
+        { ...io, protection: port, signal: new AbortController().signal },
+        target as TerminalConnectionTarget,
+      ),
+    ).rejects.toMatchObject({ code: "CLI_MODEL_SETUP_FAILED" });
+    expect(select).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
+    expect(io.secret).not.toHaveBeenCalled();
+    expect(discover).not.toHaveBeenCalled();
+    expect(await config.management.getSnapshot()).toEqual(before);
+  });
+
+  it("discovers models for an explicit saved connection with no local models", async () => {
+    const { config, port } = await configuration();
+    await config.management.initialize();
+    await config.management.saveVendor({
+      vendor: { ...vendor(), models: [] },
+      credential: { type: "replace", apiKey: "saved-key" },
+    });
+    const discover = vi.spyOn(config.management, "listRemoteModels").mockResolvedValue({
+      models: [{ id: "mimo-v2.6-flash", supported: true }],
+    });
+    const io = input(["0"]);
+    const select = vi.spyOn(io, "select");
+    const modelId = await ensureConfiguredModel(
+      config.management,
+      { ...io, protection: port, signal: new AbortController().signal },
+      { type: "existing", vendorId: "saved" },
+    );
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(io.secret).not.toHaveBeenCalled();
+    expect(discover).toHaveBeenCalledWith(
+      { type: "saved-vendor", vendorId: "saved" },
+      expect.any(AbortSignal),
+    );
+    const snapshot = (await config.management.getSnapshot())!;
+    expect(snapshot.settings.vendors).toHaveLength(1);
+    expect(snapshot.settings.vendors[0]?.models).toEqual([
+      expect.objectContaining({ id: modelId, model: "mimo-v2.6-flash" }),
+    ]);
+    expect(snapshot.settings.cli?.defaultModelId).toBe(modelId);
   });
 
   it("rejects a copied execution plan rather than resolving its credential", async () => {

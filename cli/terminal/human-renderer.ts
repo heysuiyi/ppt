@@ -9,6 +9,10 @@ export interface HumanRecordOutput {
 /** No layout wrapping in print/plain: pipes receive authoritative text, not screen rows. */
 export function humanRecordOutput(record: TerminalRecord): HumanRecordOutput {
   switch (record.type) {
+    case "assistant.reasoning":
+    case "model.completed":
+      // 自动化 stdout 仍只有最终答案；公开思考与统计由 TUI/具名 JSONL 记录消费。
+      return {};
     case "assistant.message": {
       const text = record.content.map((part) => part.text).join("");
       return text.length > 0 ? { output: text.endsWith("\n") ? text : `${text}\n` } : {};
