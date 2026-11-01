@@ -335,7 +335,8 @@ export async function cliSdkServer(
                 id: `reasoning-${requests.length}`,
                 type: "reasoning",
                 summary: [],
-                content: [{ type: "reasoning_text", text: "PRIVATE_REPLAY_SENTINEL" }],
+                content: [{ type: "reasoning_text", text: "PUBLIC_REASONING_SAMPLE" }],
+                encrypted_content: "PRIVATE_REPLAY_SENTINEL",
               },
               {
                 id: `function-${requests.length}`,

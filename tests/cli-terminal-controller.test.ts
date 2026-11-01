@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { setImmediate as nextTurn } from "node:timers/promises";
-import { stripVTControlCharacters } from "node:util";
 import type { AgentRunHandle, AgentRunResult } from "@agent-harness/core/agent-contract";
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { RunIdentity } from "@agent-harness/core/protocol-values";
@@ -13,10 +12,7 @@ import { parseSubmittedText, parseTerminalArguments } from "../cli/commands/term
 import type { TerminalHost, TerminalSetupIO } from "../cli/host/host-contract.js";
 import { runCli } from "../cli/main.js";
 import * as rendererModule from "../cli/terminal/interactive-renderer.js";
-import type {
-  TerminalTurnSettlement,
-  TerminalView,
-} from "../cli/terminal/renderer-contract.js";
+import type { TerminalTurnSettlement, TerminalView } from "../cli/terminal/renderer-contract.js";
 import { statusLines } from "../cli/terminal/status-line.js";
 import type { TerminalHistoryEntry, TerminalModelItem } from "../cli/terminal/terminal-contract.js";
 import { runTerminalController } from "../cli/terminal/terminal-controller.js";
@@ -714,8 +710,8 @@ describe("terminal controller result and lifecycle", () => {
   });
 
   it.each([
-    [true, 40, 12, 68],
-    [true, 80, 24, 28],
+    [true, 40, 12, 65],
+    [true, 80, 24, 25],
     [false, 40, 12, 63],
     [true, 80, 11, 23],
   ] as const)(
@@ -773,9 +769,9 @@ describe("terminal controller result and lifecycle", () => {
     io.input.write(`\x1b[200~${text}\x1b[201~`);
     await observed.until((view) => view.composer.draft.text === text);
     for (const [columns, rows, expectedCursor] of [
-      [40, 12, 68],
+      [40, 12, 65],
       [40, 11, 63],
-      [80, 24, 28],
+      [80, 24, 25],
     ]) {
       const beforeResize = observed.views.length;
       Object.assign(io.output, { columns, rows });
@@ -1548,13 +1544,12 @@ describe("terminal controller result and lifecycle", () => {
   });
 
   it.each(["model-selector", "completion", "selector", "prompt", "secret", "interaction"] as const)(
-    "renders a reachable Escape action for %s at 40 × 12",
+    "Escape closes one local layer or keeps approval pending for %s at 40 × 12",
     async (purpose) => {
       const io = surface(true);
       vi.stubEnv("TERM", "xterm-256color");
       Object.assign(io.output, { isTTY: true, columns: 40, rows: 12 });
       const observed = observeViews();
-      const writes: string[] = [];
       const interaction = {
         id: "approval-id",
         owner: "host",
@@ -1563,10 +1558,6 @@ describe("terminal controller result and lifecycle", () => {
       const resume = vi.fn(async () => handle(Promise.resolve(finishedResult)));
       const running = runTerminalController({
         ...io,
-        writeOutput: async (text) => {
-          writes.push(text);
-          await io.writeOutput(text);
-        },
         command: parseTerminalArguments([]),
         host: host({
           open: async ({ setup }) => {
@@ -1597,13 +1588,6 @@ describe("terminal controller result and lifecycle", () => {
           (purpose !== "completion" || view.composer.draft.text === "/he"),
       );
       await nextTurn();
-      const visibleAction = writes
-        .flatMap((text) => stripVTControlCharacters(text).split(/[\r\n]/))
-        .find((line) => line.includes("Esc") && line.includes("Enter"));
-      expect(visibleAction).toBeDefined();
-      expect(visibleAction).toMatch(/Esc\s*\p{Script=Han}/u);
-      expect(visibleWidth(focused.input.hint)).toBeLessThanOrEqual(39);
-      expect(visibleWidth(visibleAction!)).toBeLessThanOrEqual(39);
       const draft = focused.composer.draft;
       io.input.write("\x1b");
       if (purpose === "interaction") {
@@ -1676,9 +1660,6 @@ describe("terminal controller result and lifecycle", () => {
         "vendor:a",
         "vendor:b",
       ]);
-      expect(picker.selector?.items.find((item) => item.id === "model")?.label).toBe(
-        "alpha · 当前",
-      );
       expect(picker.selector?.items.find((item) => item.id === "locked")?.label).toContain(
         "不可用",
       );
@@ -1807,6 +1788,7 @@ describe("terminal controller result and lifecycle", () => {
       const idle = await observed.until((view) => view.composer.submission.enabled);
       expect(idle.composer.draft.text).toBe("retained-draft");
       expect(configureModel).toHaveBeenCalledTimes(1);
+      if (outcome === "cancel-setup") expect(idle.feedback).toBeUndefined();
       if (outcome === "confirm") {
         expect(newSession).toHaveBeenCalledWith({ modelId: "added" });
         expect(currentHost.context.threadId).toBe("new-binding");

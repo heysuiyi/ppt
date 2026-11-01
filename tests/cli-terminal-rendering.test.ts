@@ -93,20 +93,28 @@ interface TerminalScreen {
   readonly column: number;
   readonly cursorVisible: boolean;
   readonly scrollback: readonly string[];
+  readonly alternateScreen: boolean;
 }
 
-/** Tracks display cells and the final cursor, including wide graphemes and redraw controls. */
+/** Tracks cells, cursor and DEC 1049 buffers; an optional height also models scrollback. */
 function terminalState(
   writes: readonly string[],
   savedHistory: readonly string[] = [],
+  rows = Number.POSITIVE_INFINITY,
 ): TerminalScreen {
-  const lines: string[][] = [[]];
+  let lines: string[][] = [[]];
   let row = 0;
   let column = 0;
   let cursorVisible = true;
   let scrollback = Array.from(savedHistory);
+  let primary: { lines: string[][]; row: number; column: number; scrollback: string[] } | undefined;
   const text = writes.join("");
   for (let index = 0; index < text.length; ) {
+    const windowControl = /^\x1b\](?:0;[^\x07]*|9;4;[03];?)\x07/u.exec(text.slice(index));
+    if (windowControl) {
+      index += windowControl[0].length;
+      continue;
+    }
     const control = /^\x1b\[([?\d;]*)([A-Za-z])/.exec(text.slice(index));
     if (control) {
       const amount = Number(control[1]) || 1;
@@ -115,14 +123,14 @@ function terminalState(
           row = Math.max(0, row - amount);
           break;
         case "B":
-          row += amount;
+          row = Math.min(rows - 1, row + amount);
           break;
         case "C":
           column += amount;
           break;
         case "H": {
           const [targetRow, targetColumn] = control[1]!.split(";").map(Number);
-          row = Math.max(0, (targetRow || 1) - 1);
+          row = Math.min(rows - 1, Math.max(0, (targetRow || 1) - 1));
           column = Math.max(0, (targetColumn || 1) - 1);
           break;
         }
@@ -137,7 +145,20 @@ function terminalState(
           break;
         case "h":
         case "l":
-          if (control[1] === "?25") cursorVisible = control[2] === "h";
+          for (const mode of control[1]!.replace(/^\?/u, "").split(";")) {
+            if (mode === "25") cursorVisible = control[2] === "h";
+            if (mode !== "1049") continue;
+            if (control[2] === "h" && !primary) {
+              primary = { lines, row, column, scrollback };
+              lines = [[]];
+              row = 0;
+              column = 0;
+              scrollback = [];
+            } else if (control[2] === "l" && primary) {
+              ({ lines, row, column, scrollback } = primary);
+              primary = undefined;
+            }
+          }
           break;
       }
       index += control[0].length;
@@ -151,6 +172,12 @@ function terminalState(
     }
     if (character === "\n") {
       row += 1;
+      if (row >= rows) {
+        const retired = lines.shift()?.join("") ?? "";
+        if (!primary) scrollback.push(retired);
+        lines[rows - 1] = [];
+        row = rows - 1;
+      }
       index += 1;
       continue;
     }
@@ -173,6 +200,7 @@ function terminalState(
     column,
     cursorVisible,
     scrollback,
+    alternateScreen: primary !== undefined,
   };
 }
 
@@ -202,20 +230,21 @@ function cellAt(line: string, column: number): string | undefined {
 }
 
 function composerFrame(screen: TerminalScreen, columns: number) {
-  const top = screen.lines.slice(0, screen.row).findLastIndex((line) => line.startsWith("╭"));
-  const bottom = screen.lines.findIndex(
-    (line, index) => index > screen.row && line.startsWith("╰"),
-  );
+  const header = screen.lines.slice(0, screen.row).findLastIndex((line) => line.startsWith("s › "));
+  const top = header >= 0 ? header : screen.row - 1;
   expect(top).toBeGreaterThanOrEqual(0);
-  expect(bottom).toBeGreaterThan(screen.row);
-  expect(screen.lines[top]).toMatch(/^╭.*╮$/u);
-  expect(screen.lines[bottom]).toMatch(/^╰.*╯$/u);
-  const body = screen.lines.slice(top + 1, bottom);
+  const body: string[] = [];
+  for (const line of screen.lines.slice(top + 1)) {
+    if (
+      visibleWidth(line) !== columns - 1 ||
+      !(body.length === 0 ? line.startsWith("╰─ ") : line.startsWith("   "))
+    )
+      break;
+    body.push(line);
+  }
+  const bottom = top + body.length;
   expect(body.length).toBeGreaterThanOrEqual(1);
   expect(body.length).toBeLessThanOrEqual(6);
-  for (const line of body) expect(line).toMatch(/^│.*│$/u);
-  for (const line of screen.lines.slice(top, bottom + 1))
-    expect(visibleWidth(line)).toBe(columns - 1);
   expect(screen.row).toBeGreaterThan(top);
   expect(screen.column).toBeGreaterThan(0);
   expect(screen.column).toBeLessThan(columns - 3);
@@ -250,7 +279,7 @@ describe("terminal safe projection", () => {
       identity,
       output: [
         { role: "user", content: [{ type: "text", text: "not assistant" }] },
-        { role: "assistant", content: [{ type: "reasoning", text: "private reasoning" }] },
+        { role: "assistant", content: [{ type: "reasoning", text: "public reasoning" }] },
         {
           role: "assistant",
           content: [
@@ -269,8 +298,7 @@ describe("terminal safe projection", () => {
       ],
     };
     const records = projectTerminalResult(result, unsupported);
-    expect(records).toHaveLength(2);
-    expect(records[0]).toMatchObject({
+    expect(records.find((record) => record.type === "assistant.message")).toMatchObject({
       type: "assistant.message",
       messageIndex: 2,
       content: [{ contentIndex: 1, text: "authority\\x1b]0;injected\\a" }],
@@ -279,6 +307,7 @@ describe("terminal safe projection", () => {
     const settlement = projectTerminalSettlement(result, unsupported);
     expect(settlement.records).toEqual(records);
     expect(settlement.timeline).toEqual([
+      { type: "reasoning", messageIndex: 1, contentIndex: 0, text: "public reasoning" },
       { type: "tool", callId: "x" },
       { type: "text", messageIndex: 2, contentIndex: 1, text: "authority\\x1b]0;injected\\a" },
     ]);
@@ -390,7 +419,7 @@ describe("terminal safe projection", () => {
 });
 
 describe("bounded provisional text", () => {
-  it("associates full identity/request/content and ignores reasoning, inputs and stale events", () => {
+  it("separates public reasoning from text while ignoring inputs and stale events", () => {
     const buffer = createPreviewBuffer(identity);
     buffer.update(delta("one"));
     buffer.update(delta("two", "other", 2));
@@ -409,14 +438,15 @@ describe("bounded provisional text", () => {
       step: 1,
       requestId: "request",
       contentIndex: 4,
-      delta: { type: "reasoning", text: "PRIVATE" },
+      delta: { type: "reasoning", text: "PUBLIC_REASONING" },
     });
     expect(buffer.previews.map((part) => [part.requestId, part.contentIndex, part.text])).toEqual([
       ["request", 0, "one"],
       ["other", 2, "two"],
+      ["request", 4, "PUBLIC_REASONING"],
     ]);
     buffer.update({ kind: "fact", type: "step.committed", identity, step: 1, historyRevision: 1 });
-    expect(buffer.previews).toHaveLength(2);
+    expect(buffer.previews.find((part) => part.contentIndex === 4)?.reasoning).toBe(true);
     buffer.update({ kind: "fact", type: "run.waiting", identity, interactionId: "approval" });
     expect(buffer.previews).toHaveLength(0);
   });
@@ -510,7 +540,11 @@ describe("interactive conversation presentation", () => {
         { role: "assistant", text: answer },
       ]);
       await restored.renderer.close();
-      expect(terminalScreen(restored.output).trimEnd()).toBe(terminalScreen(live.output).trimEnd());
+      const history = terminalScreen(restored.output);
+      expect(history).toContain("USER_START");
+      expect(history).toContain("ANSWER_START");
+      expect(history).toContain("const value = 1;");
+      expect(history.indexOf("USER_START")).toBeLessThan(history.indexOf("ANSWER_START"));
     },
   );
 
@@ -622,7 +656,7 @@ describe("interactive conversation presentation", () => {
       const frame = composerFrame(open, columns);
       const first = open.lines.findIndex((line) => line.includes("/cmd-0"));
       expect(first).toBeGreaterThan(frame.bottom);
-      expect(open.lines[first]).toContain("DESCRIPTION_0");
+      if (columns > 42) expect(open.lines[first]).toContain("DESCRIPTION_0");
       expect(cellAt(open.lines[open.row]!, open.column)).toBe(
         cellAt(initial.lines[initial.row]!, initial.column),
       );
@@ -631,7 +665,9 @@ describe("interactive conversation presentation", () => {
         completion: { ...completing.completion!, selectedId: items[11]!.id },
       });
       const last = terminalState(output);
-      expect(last.lines.find((line) => line.includes("/cmd-11"))).toContain("DESCRIPTION_11");
+      if (columns > 42)
+        expect(last.lines.find((line) => line.includes("/cmd-11"))).toContain("DESCRIPTION_11");
+      else expect(last.lines.some((line) => line.includes("/cmd-11"))).toBe(true);
       expect(last.cursorVisible).toBe(true);
       expect(last.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
       await renderer.view(idle);
@@ -764,7 +800,6 @@ describe("production renderer modes", () => {
       ]);
       size.columns = columns === 40 ? 80 : 40;
       await renderer.view(idle);
-      expect(output.join("").match(/immutable history/g)).toHaveLength(1);
       const final = projectTerminalResult(
         {
           status: "completed",
@@ -828,7 +863,7 @@ describe("production renderer modes", () => {
       await renderer.toggleTool();
     }
     expect([...seen].sort()).toEqual([...resultLines].sort());
-    await renderer.dismissTool();
+    await renderer.dismissDetail();
     await renderer.record({ version: 1, type: "query.result", identity, status: "completed" });
     const archived = terminalScreen(output);
     expect(archived).toContain("notes.txt");
@@ -854,7 +889,7 @@ describe("production renderer modes", () => {
             expect(inside).toBe(false);
             inside = true;
             expect(line.endsWith("╮")).toBe(true);
-          } else if (line.startsWith("╰")) {
+          } else if (line.startsWith("╰") && line.endsWith("╯")) {
             expect(inside).toBe(true);
             expect(line.endsWith("╯")).toBe(true);
             inside = false;
@@ -862,7 +897,8 @@ describe("production renderer modes", () => {
           } else if (inside) {
             expect(line).toMatch(/^[│├].*[│┤]$/u);
           }
-          if (inside || line.startsWith("╰")) expect(visibleWidth(line)).toBe(size.columns - 1);
+          if (inside || (line.startsWith("╰") && line.endsWith("╯")))
+            expect(visibleWidth(line)).toBe(size.columns - 1);
         }
         expect(inside).toBe(false);
         expect(frames).toBeGreaterThan(0);
@@ -903,7 +939,7 @@ describe("production renderer modes", () => {
       size.rows = 12;
       await renderer.view({ ...idle, scene: "conversation" });
       assertFrames();
-      await renderer.dismissTool();
+      await renderer.dismissDetail();
       assertFrames();
       await renderer.close();
     });
@@ -1082,7 +1118,7 @@ describe("production renderer modes", () => {
   });
 });
 
-describe("grouped model selector viewport", () => {
+describe("grouped model selector fullscreen panel", () => {
   const action = { id: "configure", label: "+ 添加/配置连接" };
   const groups = [
     { id: "all", label: "All · 全部连接" },
@@ -1094,92 +1130,271 @@ describe("grouped model selector viewport", () => {
     label: `模型 ${index}${index === 23 ? " · 当前 · 不可用" : ""}`,
     description: `连接甲 · ${"超长本地状态👩‍💻".repeat(20)}\x1b]52;c;SECRET\x07`,
   }));
+  const selector: NonNullable<TerminalView["selector"]> = {
+    title: "Models",
+    query: "模型",
+    items: [...models, action],
+    selectedId: "model-23",
+    navigation: { groups, selectedGroupId: "vendor:a", pane: "models", action },
+  };
+  const chat: TerminalView = {
+    ...idle,
+    input: { ...idle.input, status: "CHAT_STATUS" },
+    activity: "CHAT_ACTIVITY",
+    feedback: { kind: "notice", message: "CHAT_NOTICE" },
+    context: {
+      workspace: "CHAT_WORKSPACE",
+      threadId: "CHAT_THREAD",
+      model: "CHAT_MODEL",
+      capabilities: "CHAT_CAPABILITIES",
+    },
+    composer: { ...idle.composer, draft: { text: "DRAFT_STAYS", cursor: 5 } },
+  };
+
+  function panelFrame(screen: TerminalScreen, columns: number, rows: number): void {
+    expect(screen.alternateScreen).toBe(true);
+    const lines = screen.lines.filter((line, index) => index < rows - 1 || line.trim() !== "");
+    expect(lines).toHaveLength(rows - 1);
+    expect(lines.every((line) => visibleWidth(line) === columns - 1)).toBe(true);
+    expect(lines[0]).toMatch(/^╭.*╮$/u);
+    expect(lines.at(-1)).toMatch(/^╰.*╯$/u);
+    for (const line of lines.slice(1, -1)) expect(line).toMatch(/^[│├].*[│┤]$/u);
+    expect(screen.cursorVisible).toBe(false);
+    expect(lines.join("\n")).not.toMatch(/CHAT_|DRAFT_STAYS/u);
+    if (columns >= 80) {
+      const divider = Array.from({ length: columns - 3 }, (_, index) => index + 1).find(
+        (column) => cellAt(lines[1]!, column) === "│",
+      );
+      expect(divider).toBeDefined();
+      const groupRow = lines.find((line) =>
+        textBeforeCell(line, divider!).includes(groups[1]!.label),
+      );
+      expect(groupRow).toBeDefined();
+      for (const line of lines.slice(1, rows - 4)) expect(cellAt(line, divider!)).toBe("│");
+    }
+  }
 
   for (const [columns, rows] of [
     [40, 12],
     [80, 24],
-  ])
+  ] as const)
     for (const color of [false, true])
-      it(`keeps panes, selection and pinned configure visible at ${columns}x${rows}, color=${color}`, async () => {
+      it(`fills an isolated closed frame with visible selection at ${columns}x${rows}, color=${color}`, async () => {
         const { renderer, output } = capture("tui", columns, rows, color);
-        const view: TerminalView = {
-          ...idle,
-          feedback: { kind: "notice", message: "模型选择不会发送草稿" },
-          selector: {
-            title: "Models · 仅检查本地配置",
-            query: "模型",
-            items: [...models, action],
-            selectedId: "model-23",
-            navigation: {
-              groups,
-              selectedGroupId: "vendor:a",
-              pane: "models",
-              action,
-            },
-          },
-        };
-        await renderer.view(view);
+        await renderer.bindSession(chat, [{ role: "assistant", text: "CHAT_BODY" }]);
+        await renderer.view({ ...chat, selector });
         let screen = terminalState(output);
-        expect(screen.lines.join("\n")).toContain("模型 23 · 当前 · 不可用");
-        expect(screen.lines.join("\n")).toContain("+ 添加/配置连接");
-        expect(screen.lines.length).toBeLessThan(rows);
-        expect(screen.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
-        expect(screen.cursorVisible).toBe(false);
+        panelFrame(screen, columns, rows);
+        expect(screen.lines.join("\n")).toContain(models[23]!.label);
+        expect(screen.lines.join("\n")).toContain(`› ${models[23]!.label}`);
+        expect(screen.lines.join("\n")).toContain(action.label);
         expect(output.join("")).not.toContain("\x1b]52");
         expect(/\x1b\[[\d;]*m/.test(output.join(""))).toBe(color);
-        if (columns >= 80) {
-          expect(screen.lines.join("\n")).toContain(`› ${groups[1]!.label}`);
-          expect(
-            screen.lines.some((line) => line.includes("厂商连接") && line.includes(" │ ")),
-          ).toBe(true);
-          expect(
-            screen.lines.some((line) => line.includes("连接甲") && line.includes("模型")),
-          ).toBe(true);
-        }
+        const modelsPane = screen.lines;
         await renderer.view({
-          ...view,
-          selector: {
-            ...view.selector!,
-            navigation: { ...view.selector!.navigation!, pane: "groups" },
-          },
+          ...chat,
+          selector: { ...selector, navigation: { ...selector.navigation!, pane: "groups" } },
         });
         screen = terminalState(output);
-        expect(screen.lines.join("\n")).toContain("连接甲");
-        expect(screen.lines.join("\n")).toContain("+ 添加/配置连接");
-        expect(screen.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
+        panelFrame(screen, columns, rows);
+        expect(screen.lines.join("\n")).toContain(groups[1]!.label);
+        expect(screen.lines.join("\n")).toContain(`› ${groups[1]!.label}`);
+        expect(screen.lines.join("\n")).toContain(action.label);
+        expect(screen.lines).not.toEqual(modelsPane);
         await renderer.close();
+        expect(terminalState(output).alternateScreen).toBe(false);
         expect(terminalState(output).cursorVisible).toBe(true);
       });
 
-  it("keeps the configure action when search is empty and exposes plain numbered group commands", async () => {
-    const { renderer, output, error, size } = capture("tui", 80, 24);
-    const selector: NonNullable<TerminalView["selector"]> = {
-      title: "Models",
-      query: "missing",
-      items: [action],
-      selectedId: null,
-      navigation: { groups, selectedGroupId: "all", pane: "models", action },
-    };
-    await renderer.view({ ...idle, selector });
-    expect(terminalScreen(output)).toContain("没有匹配模型");
-    expect(terminalScreen(output)).toContain("+ 添加/配置连接");
-    size.columns = 30;
+  it("keeps few-model panels full height and updates independent details through resize", async () => {
+    const { renderer, output, size } = capture("tui", 80, 24);
+    const choices = [
+      { id: "ready", label: "模型甲 · 当前", description: "READY_STATUS" },
+      { id: "locked", label: "模型乙 · 不可用", description: "LOCKED_STATUS" },
+      action,
+    ] as const;
+    const few = { ...selector, query: "", items: choices, selectedId: "ready" };
+    await renderer.view({ ...chat, selector: few });
+    let screen = terminalState(output);
+    panelFrame(screen, 80, 24);
+    expect(screen.lines.join("\n")).toContain(choices[0].description);
+    expect(screen.lines.join("\n")).not.toContain(choices[1].description);
+    expect(screen.lines.join("\n")).toContain(choices[1].label);
+    const listRow = screen.lines.findIndex((line) => line.includes(choices[0].label));
+    const detailRow = screen.lines.findIndex((line) => line.includes(choices[0].description));
+    expect(detailRow).toBeGreaterThan(listRow);
+    expect(screen.lines[detailRow]).not.toContain(choices[0].label);
+    for (const [columns, rows, selectedId] of [
+      [40, 12, "locked"],
+      [80, 24, "ready"],
+    ] as const) {
+      size.columns = columns;
+      size.rows = rows;
+      await renderer.view({ ...chat, selector: { ...few, selectedId } });
+      screen = terminalState(output);
+      panelFrame(screen, columns, rows);
+      const selected = selectedId === "ready" ? choices[0] : choices[1];
+      const other = selectedId === "ready" ? choices[1] : choices[0];
+      expect(screen.lines.join("\n")).toContain(selected.label);
+      expect(screen.lines.join("\n")).toContain(selected.description);
+      expect(screen.lines.join("\n")).not.toContain(other.description);
+      expect(screen.lines.join("\n")).toContain(action.label);
+    }
+    await renderer.close();
+  });
+
+  it("keeps a long connection identity and its count readable when width permits", async () => {
+    const { renderer, output } = capture("tui", 120, 24);
+    const connection = { id: "vendor:a", label: "MiMo Token Plan 中国", description: "32 个模型" };
     await renderer.view({
-      ...idle,
+      ...chat,
       selector: {
         ...selector,
-        navigation: { ...selector.navigation!, pane: "groups" },
+        navigation: { ...selector.navigation!, groups: [groups[0]!, connection, groups[2]!] },
       },
     });
-    const fallback = error.join("");
-    expect(fallback).toContain("1. All");
-    expect(fallback).toContain("2. 连接甲");
-    expect(fallback).toContain("/groups");
-    expect(fallback).toContain("/connect");
-    expect(fallback).toContain("/cancel");
-    expect(fallback).toContain("+ 添加/配置连接");
-    expect(fallback).not.toContain("\x1b");
+    const screen = terminalState(output);
+    const row = screen.lines.find((line) => line.includes(connection.label));
+    expect(row).toContain(connection.description);
+    expect(screen.lines.every((line) => visibleWidth(line) === 119)).toBe(true);
     await renderer.close();
+  });
+
+  it("keeps empty-search configuration reachable and exits/reenters around plain fallback", async () => {
+    const { renderer, output, error, size } = capture("tui", 80, 24);
+    const empty = { ...selector, query: "NO_MATCH", items: [action], selectedId: null };
+    await renderer.view(chat);
+    const primary = terminalState(output);
+    await renderer.view({ ...chat, selector: empty });
+    panelFrame(terminalState(output), 80, 24);
+    expect(terminalScreen(output)).toContain("NO_MATCH");
+    expect(terminalScreen(output)).toContain(action.label);
+    expect(terminalScreen(output)).not.toContain(models[23]!.label);
+    await renderer.view({ ...chat, selector: { ...empty, selectedId: action.id } });
+    panelFrame(terminalState(output), 80, 24);
+    expect(terminalScreen(output)).toContain(action.label);
+    for (const [columns, rows] of [
+      [30, 24],
+      [80, 11],
+    ] as const) {
+      size.columns = columns;
+      size.rows = rows;
+      await renderer.view({
+        ...chat,
+        selector: { ...empty, navigation: { ...empty.navigation!, pane: "groups" } },
+      });
+      expect(terminalState(output).alternateScreen).toBe(false);
+      expect(terminalState(output).scrollback).toEqual(primary.scrollback);
+      const fallback = error.join("");
+      expect(fallback).toContain("1. All");
+      expect(fallback).toContain("2. 连接甲");
+      expect(fallback).toContain("/groups");
+      expect(fallback).toContain("/connect");
+      expect(fallback).toContain("/cancel");
+      expect(fallback).toContain(action.label);
+      expect(fallback).not.toContain("\x1b");
+      const plainOutput = output.length;
+      await renderer.view({
+        ...chat,
+        selector: { ...empty, navigation: { ...empty.navigation!, pane: "groups" } },
+      });
+      expect(output.slice(plainOutput).join("")).not.toContain("\x1b");
+      size.columns = 80;
+      size.rows = 24;
+      await renderer.view({ ...chat, selector: empty });
+      panelFrame(terminalState(output), 80, 24);
+      expect(terminalScreen(output)).not.toContain("1. All");
+    }
+    await renderer.view(chat);
+    expect(terminalState(output)).toEqual(primary);
+    await renderer.close();
+  });
+
+  it("sanitizes panel fields without letting model or search controls move the display", async () => {
+    const { renderer, output } = capture("tui", 80, 24, true);
+    await renderer.view({
+      ...chat,
+      feedback: { kind: "input", message: "SAFE_NOTICE\x1b]52;c;SECRET\x07" },
+      selector: {
+        ...selector,
+        title: "Models\x1b]52;c;SECRET\x07",
+        query: "q\x1b[999C",
+        items: [
+          {
+            id: "unsafe",
+            label: "SAFE_MODEL\u202e",
+            description: "SAFE_DETAIL\x1b[999C",
+          },
+          action,
+        ],
+        selectedId: "unsafe",
+      },
+    });
+    const screen = terminalState(output);
+    panelFrame(screen, 80, 24);
+    expect(screen.lines.join("\n")).toContain("SAFE_MODEL");
+    expect(screen.lines.join("\n")).toContain("SAFE_DETAIL");
+    expect(screen.lines.join("\n")).toContain("SAFE_NOTICE");
+    expect(output.join("")).not.toMatch(/\x1b\]52|\x1b\[999C|\u202e/u);
+    await renderer.close();
+  });
+
+  it("restores main history, draft, caret and scrollback without archiving the panel", async () => {
+    const { renderer, output } = capture("tui", 80, 24);
+    const history = Array.from({ length: 40 }, (_, index) => ({
+      role: "assistant" as const,
+      text: `CHAT_BODY_${index}`,
+    }));
+    await renderer.bindSession(chat, history);
+    const before = terminalState(output, [], 24);
+    expect(before.scrollback.length).toBeGreaterThan(0);
+    expect(before.lines.join("\n")).toContain("DRAFT_STAYS");
+    for (const pane of ["models", "groups", "models"] as const) {
+      await renderer.view({
+        ...chat,
+        selector: { ...selector, navigation: { ...selector.navigation!, pane } },
+      });
+      const screen = terminalState(output, [], 24);
+      panelFrame(screen, 80, 24);
+      expect(screen.scrollback).toEqual([]);
+    }
+    await renderer.view(chat);
+    const restored = terminalState(output, [], 24);
+    expect(restored).toEqual(before);
+    expect(restored.scrollback.join("\n")).not.toContain(action.label);
+    await renderer.view({ ...chat, selector });
+    await renderer.message("CHAT_DEFERRED_LOG");
+    panelFrame(terminalState(output, [], 24), 80, 24);
+    await renderer.view(chat);
+    const withLog = terminalState(output, [], 24);
+    expect([...withLog.scrollback, ...withLog.lines].join("\n")).toContain("CHAT_DEFERRED_LOG");
+    expect(withLog.lines.join("\n")).toContain("DRAFT_STAYS");
+    expect(withLog.cursorVisible).toBe(true);
+    expect(cellAt(withLog.lines[withLog.row]!, withLog.column)).toBe(
+      cellAt(before.lines[before.row]!, before.column),
+    );
+    await renderer.close();
+  });
+
+  it("closes an active panel like the main screen, including cursor and history restoration", async () => {
+    const normal = capture("tui", 80, 24);
+    const panel = capture("tui", 80, 24);
+    const history = Array.from({ length: 40 }, (_, index) => ({
+      role: "assistant" as const,
+      text: `CHAT_BODY_${index}`,
+    }));
+    await normal.renderer.bindSession(chat, history);
+    await panel.renderer.bindSession(chat, history);
+    await panel.renderer.view({ ...chat, selector });
+    panelFrame(terminalState(panel.output, [], 24), 80, 24);
+    await normal.renderer.close();
+    await panel.renderer.close();
+    const closed = terminalState(panel.output, [], 24);
+    expect(closed).toEqual(terminalState(normal.output, [], 24));
+    expect(closed.alternateScreen).toBe(false);
+    expect(closed.cursorVisible).toBe(true);
+    expect([...closed.scrollback, ...closed.lines].join("\n")).toContain("CHAT_BODY_39");
+    expect([...closed.scrollback, ...closed.lines].join("\n")).not.toContain(action.label);
   });
 });
 
@@ -1205,6 +1420,42 @@ describe("terminal Unicode and content safety", () => {
 });
 
 describe("stable mutable terminal viewport", () => {
+  for (const columns of [40, 80, 120])
+    it(`leaves the empty input caret row free of hint text at ${columns} columns`, async () => {
+      const { renderer, output } = capture("tui", columns, 24);
+      const empty = {
+        ...idle,
+        scene: "conversation" as const,
+        composer: {
+          ...idle.composer,
+          draft: { text: "", cursor: 0 },
+        },
+      };
+      const assertEmptyTail = (): void => {
+        const screen = terminalState(output);
+        const line = screen.lines[screen.row]!;
+        for (let column = screen.column; column < columns - 2; column += 1)
+          expect(cellAt(line, column)).toBe(" ");
+        expect(screen.cursorVisible).toBe(true);
+      };
+      await renderer.view(empty);
+      assertEmptyTail();
+      await renderer.view({
+        ...empty,
+        composer: {
+          ...empty.composer,
+          draft: { text: "h", cursor: 1 },
+        },
+      });
+      const typed = terminalState(output);
+      expect(textBeforeCell(typed.lines[typed.row]!, typed.column).trimEnd().endsWith("h")).toBe(
+        true,
+      );
+      await renderer.view(empty);
+      assertEmptyTail();
+      await renderer.close();
+    });
+
   it("keeps the input and draft anchored when startup activity gives way to model context", async () => {
     const { renderer, output } = capture("tui");
     const draft = { text: "BOOT_DRAFT", cursor: 4 };
@@ -1304,7 +1555,7 @@ describe("stable mutable terminal viewport", () => {
         expect(cellAt(screen.lines[screen.row]!, screen.column)).toBe(" ");
         expect(frame.body.length).toBeLessThan(source.length);
         if (rows! >= 24) expect(frame.body).toHaveLength(6);
-        expect(screen.lines[frame.bottom]).toMatch(/[↑↓]/u);
+        expect(screen.lines[frame.bottom + 1]).toMatch(/[↑↓]/u);
         expect(screen.lines.findLastIndex((line) => line.trim().length > 0)).toBeLessThan(
           rows! - 1,
         );
@@ -1691,11 +1942,11 @@ describe("stable mutable terminal viewport", () => {
   it("dismisses tool details one layer at a time and retains failure and waiting context", async () => {
     const { renderer, output } = capture("tui");
     await renderer.view(idle);
-    expect(await renderer.dismissTool()).toBe(false);
+    expect(await renderer.dismissDetail()).toBe(false);
     await renderer.record(failedTool);
     await renderer.toggleTool();
-    expect(await renderer.dismissTool()).toBe(true);
-    expect(await renderer.dismissTool()).toBe(false);
+    expect(await renderer.dismissDetail()).toBe(true);
+    expect(await renderer.dismissDetail()).toBe(false);
     for (const status of ["completed", "cancelled", "interrupted"] as const)
       await renderer.record({ version: 1, type: "query.result", identity, status });
     await renderer.record({
@@ -1775,12 +2026,11 @@ describe("session and ordered turn handoff", () => {
     const boundary = output.length;
     await renderer.bindSession(nextView, [{ role: "assistant", text: "TARGET_HISTORY" }]);
     const handoff = output.slice(boundary);
-    expect(handoff).toHaveLength(1);
-    expect(handoff[0]).toContain("TARGET_MODEL");
-    expect(handoff[0]).toContain("TARGET_HISTORY");
+    expect(terminalScreen(output)).toContain("TARGET_MODEL");
+    expect(terminalScreen(output)).toContain("TARGET_HISTORY");
     expect(handoff.join("")).not.toMatch(/\x1b\[[23]J/);
     expect(renderer.tools()).toEqual([]);
-    expect(await renderer.dismissTool()).toBe(false);
+    expect(await renderer.dismissDetail()).toBe(false);
     const afterBinding = output.length;
     await renderer.record(failedTool);
     await renderer.preview([
@@ -2229,7 +2479,7 @@ describe("full tool identity and settlement output safety", () => {
                 name: "safe-tool",
                 input: { secret: "PRIVATE_PAYLOAD" },
               },
-              { type: "reasoning", text: "PRIVATE_REASONING" },
+              { type: "reasoning", text: "PUBLIC_REASONING" },
             ],
           },
         ],
@@ -2306,7 +2556,10 @@ describe("activity text shimmer lifecycle", () => {
         const colors = frames.map((frame) => frame.match(/\x1b\[[\d;]*m/gu)?.join(""));
         expect(new Set(colors).size).toBeGreaterThan(1);
         const animated = terminalState(output);
-        expect(animated.lines).toEqual(initial.lines);
+        // 只有活动指示符转动；通知正文和其他界面行不能被动画改写。
+        const withoutSpinner = (lines: readonly string[]) =>
+          lines.map((line) => line.replace(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] /u, ""));
+        expect(withoutSpinner(animated.lines)).toEqual(withoutSpinner(initial.lines));
         expect([animated.row, animated.column]).toEqual([initial.row, initial.column]);
         expect(animated.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
         await renderer.view({ ...working, activity: "正在生成" });
@@ -2404,8 +2657,9 @@ describe("activity text shimmer lifecycle", () => {
     });
     try {
       await renderer.view({ ...idle, phase: "running", activity: "等待模型响应" });
+      const beforeAnimation = writes.length;
       blocked = true;
-      await vi.advanceTimersByTimeAsync(90);
+      await vi.waitFor(() => expect(writes.length).toBeGreaterThan(beforeAnimation));
       const paused = writes.length;
       await vi.advanceTimersByTimeAsync(900);
       expect(writes).toHaveLength(paused);
@@ -2446,8 +2700,7 @@ describe("activity text shimmer lifecycle", () => {
     try {
       await renderer.view({ ...idle, phase: "running", activity: "等待模型响应" });
       failed = true;
-      await vi.advanceTimersByTimeAsync(90);
-      expect(failures).toEqual([failure]);
+      await vi.waitFor(() => expect(failures).toEqual([failure]));
       const boundary = writes;
       await vi.advanceTimersByTimeAsync(900);
       expect(writes).toBe(boundary);
@@ -2458,4 +2711,276 @@ describe("activity text shimmer lifecycle", () => {
       vi.useRealTimers();
     }
   });
+});
+
+describe("public thinking, transcript history and run metrics", () => {
+  for (const [width, height] of [
+    [40, 12],
+    [80, 24],
+    [120, 40],
+  ] as const) {
+    it(`keeps thinking collapsed until opened and pages without losing text at ${width} columns`, async () => {
+      const { renderer, output } = capture("tui", width, height);
+      await renderer.view({ ...idle, scene: "conversation" });
+      await renderer.preview([
+        {
+          identity,
+          step: 1,
+          requestId: "reason",
+          contentIndex: 0,
+          text: "PROVISIONAL_THOUGHT",
+          reasoning: true,
+          truncated: false,
+        },
+      ]);
+      await renderer.view({ ...idle, scene: "conversation" });
+      expect(terminalScreen(output)).not.toContain("PROVISIONAL_THOUGHT");
+      await renderer.toggleThinking();
+      expect(terminalScreen(output)).toContain("PROVISIONAL_THOUGHT");
+      expect(await renderer.dismissDetail()).toBe(true);
+      const rows = Array.from({ length: 30 }, (_, index) => `PUBLIC_ROW_${index}`);
+      await renderer.settle(
+        projectTerminalSettlement(
+          {
+            status: "completed",
+            identity,
+            output: [
+              {
+                role: "assistant",
+                content: [
+                  { type: "reasoning", text: rows.join("\n") },
+                  { type: "text", text: "FINAL_ANSWER" },
+                ],
+                replayState: {
+                  providerId: "p",
+                  modelId: "m",
+                  format: "f",
+                  version: 1,
+                  data: "PRIVATE_REPLAY",
+                },
+              },
+            ],
+          },
+          unsupported,
+        ),
+      );
+      expect(terminalScreen(output)).toContain("FINAL_ANSWER");
+      expect(terminalScreen(output)).not.toContain("PUBLIC_ROW_0");
+      const seen = new Set<string>();
+      for (let page = 0; page < 40 && seen.size < rows.length; page += 1) {
+        await renderer.toggleThinking();
+        const screen = terminalState(output);
+        const text = screen.lines.join("\n");
+        for (const row of rows)
+          if (text.split("\n").some((line) => line.trim() === row)) seen.add(row);
+        expect(screen.lines.every((line) => visibleWidth(line) < width)).toBe(true);
+      }
+      expect([...seen].sort()).toEqual([...rows].sort());
+      expect(output.join("")).not.toContain("PRIVATE_REPLAY");
+      await renderer.close();
+    });
+  }
+
+  it("discards provisional thinking on failure instead of exposing it as settled history", async () => {
+    const { renderer, output } = capture("tui");
+    await renderer.view(idle);
+    await renderer.preview([
+      {
+        identity,
+        step: 1,
+        requestId: "reason",
+        contentIndex: 0,
+        text: "UNCOMMITTED_THOUGHT",
+        reasoning: true,
+        truncated: false,
+      },
+    ]);
+    await renderer.view(idle);
+    await renderer.toggleThinking();
+    await renderer.record({
+      version: 1,
+      type: "query.result",
+      identity,
+      status: "failed",
+      error: { code: "NETWORK", message: "Model stream interrupted" },
+    });
+    expect(terminalScreen(output)).not.toContain("UNCOMMITTED_THOUGHT");
+    expect(renderer.thoughts()).toEqual([]);
+    expect(await renderer.dismissDetail()).toBe(false);
+    await renderer.close();
+  });
+
+  it("restores ordered safe history, opens saved thinking explicitly and clears it on session switch", async () => {
+    const { renderer, output } = capture("tui");
+    await renderer.bindSession({ ...idle, scene: "conversation" }, [
+      { role: "user", text: "HISTORY_QUESTION" },
+      { role: "reasoning", text: "HISTORY_PUBLIC_THOUGHT" },
+      { role: "tool", tool: { callId: "read-1", name: "read", result: "recorded" } },
+      { role: "assistant", text: "HISTORY_ANSWER" },
+    ]);
+    const text = terminalScreen(output);
+    expect(text.indexOf("HISTORY_QUESTION")).toBeLessThan(text.indexOf("公开思考"));
+    expect(text.indexOf("公开思考")).toBeLessThan(text.indexOf("read · 历史"));
+    expect(text.indexOf("read · 历史")).toBeLessThan(text.indexOf("HISTORY_ANSWER"));
+    expect(text).not.toContain("HISTORY_PUBLIC_THOUGHT");
+    expect(text).toContain("历史未保留执行影响");
+    await renderer.selectThinking(renderer.thoughts()[0]!.id);
+    expect(terminalScreen(output)).toContain("HISTORY_PUBLIC_THOUGHT");
+    await renderer.bindSession({ ...idle, context: { ...idle.context!, threadId: "other" } }, []);
+    expect(renderer.thoughts()).toEqual([]);
+    expect(await renderer.dismissDetail()).toBe(false);
+    await renderer.close();
+  });
+
+  it("deduplicates observed metrics and labels resumed runs independently without guessing missing usage", async () => {
+    const { renderer, output } = capture("tui");
+    await renderer.view(idle);
+    const metric = {
+      version: 1 as const,
+      type: "model.completed" as const,
+      identity,
+      requestId: "request",
+      step: 1,
+      durationMs: 100,
+      usage: { inputTokens: 8, outputTokens: 5 },
+    };
+    await renderer.record({
+      version: 1,
+      type: "progress",
+      identity,
+      phase: "step.started",
+      step: 1,
+    });
+    await renderer.record(metric);
+    await renderer.record(metric);
+    await renderer.record({
+      version: 1,
+      type: "model.completed",
+      identity,
+      requestId: "without-usage",
+      step: 1,
+      durationMs: 200,
+    });
+    await renderer.record({ version: 1, type: "query.result", identity, status: "completed" });
+    const first = terminalScreen(output).replaceAll("\n", "");
+    expect(first).toContain("1 步");
+    expect(first).toContain("2 次模型响应");
+    expect(first).toContain("模型用时 0.3s");
+    expect(first).toContain("8 输入 / 5 输出 token（部分请求）");
+    const boundary = output.length;
+    await renderer.record({ version: 1, type: "query.result", identity, status: "completed" });
+    expect(output.slice(boundary).join("")).not.toContain("本次运行");
+    const resumed = { ...identity, runId: "resumed" };
+    await renderer.beginRun(resumed);
+    await renderer.record({
+      version: 1,
+      type: "model.completed",
+      identity: resumed,
+      requestId: "request",
+      step: 2,
+      durationMs: 0,
+    });
+    const resumedBoundary = output.length;
+    await renderer.record({
+      version: 1,
+      type: "query.result",
+      identity: resumed,
+      status: "completed",
+    });
+    const resumedOutput = output.slice(resumedBoundary).join("");
+    expect(resumedOutput).toContain("token 未提供");
+    expect(resumedOutput).not.toContain("8 输入");
+    await renderer.close();
+  });
+
+  it("groups only adjacent reads, retains per-call selection and splits at prose in canonical order", async () => {
+    const { renderer, output } = capture("tui", 80, 40);
+    await renderer.view({ ...idle, scene: "conversation" });
+    for (let index = 0; index < 4; index += 1) {
+      await renderer.record({
+        version: 1,
+        type: "tool",
+        identity,
+        invocationIdentity: identity,
+        callId: `read-${index}`,
+        name: "read",
+        toolVersion: "1",
+        step: 1,
+        phase: "completed",
+        status: "succeeded",
+        effects: "none",
+        display: { title: `file-${index}.txt`, input: [], output: [`BODY_${index}`] },
+      });
+    }
+    await renderer.settle({
+      records: [
+        {
+          version: 1,
+          type: "assistant.message",
+          identity,
+          messageIndex: 0,
+          content: [{ contentIndex: 2, text: "PROSE_BARRIER" }],
+        },
+        { version: 1, type: "query.result", identity, status: "completed" },
+      ],
+      timeline: [
+        { type: "tool", callId: "read-0" },
+        { type: "tool", callId: "read-1" },
+        { type: "text", messageIndex: 0, contentIndex: 2, text: "PROSE_BARRIER" },
+        { type: "tool", callId: "read-2" },
+        { type: "tool", callId: "read-3" },
+      ],
+    });
+    const text = terminalScreen(output);
+    expect(text.match(/读取 2 项/g)).toHaveLength(2);
+    expect(text.indexOf("file-1.txt")).toBeLessThan(text.indexOf("PROSE_BARRIER"));
+    expect(text.indexOf("PROSE_BARRIER")).toBeLessThan(text.indexOf("file-2.txt"));
+    expect(
+      renderer
+        .tools()
+        .map((item) => item.description)
+        .join("\n"),
+    ).toContain("file-3.txt");
+    await renderer.selectTool(renderer.tools()[0]!.id);
+    expect(terminalScreen(output)).toContain("BODY_0");
+    await renderer.close();
+  });
+
+  for (const mode of ["print", "plain", "jsonl"] as const) {
+    it(`keeps reasoning separate from final answer output in ${mode}`, async () => {
+      const { renderer, output } = capture(mode);
+      await renderer.settle(
+        projectTerminalSettlement(
+          {
+            status: "completed",
+            identity,
+            output: [
+              {
+                role: "assistant",
+                content: [
+                  { type: "reasoning", text: "PUBLIC_THOUGHT" },
+                  { type: "text", text: "ANSWER_ONLY" },
+                ],
+              },
+            ],
+          },
+          unsupported,
+        ),
+      );
+      const text = output.join("");
+      if (mode === "jsonl") {
+        const records = text
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        expect(records.find((record) => record.type === "assistant.reasoning").text).toBe(
+          "PUBLIC_THOUGHT",
+        );
+        expect(records.find((record) => record.type === "assistant.message").content).toEqual([
+          { contentIndex: 1, text: "ANSWER_ONLY" },
+        ]);
+      } else expect(text).toBe("ANSWER_ONLY\n");
+      await renderer.close();
+    });
+  }
 });

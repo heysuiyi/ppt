@@ -1045,7 +1045,9 @@ describe("MiMo configured host error boundary", () => {
             contentIndex: next.value.contentIndex,
             text: next.value.delta.text,
           });
-          expect(preview.previews).toMatchObject([{ previewId, text: "答案" }]);
+          expect(preview.previews.filter((part) => !part.reasoning)).toMatchObject([
+            { previewId, text: "答案" },
+          ]);
         }
       }
       const result = await handle.completed;

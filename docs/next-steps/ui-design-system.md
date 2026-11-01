@@ -400,7 +400,7 @@ npm run check:ui-boundaries # 检查真实 TS/CSS 依赖及作用域
 | U2：首个完整纵向场景 | Button、Input、Field、Alert、Dialog 及确认/脏关闭；本地连接表单 | 可输入、校验、取消、演示提交成功/失败；旧异步结果不能影响新实例；键盘与窄窗口通过 | 行为与 R1 默认呈现本地复验通过 |
 | R1：默认界面去演示化 | 收敛说明与工具、连接行内编辑、工作台视觉层级 | 普通任务无需阅读验收说明；验收能力仍可显式进入；原行为不倒退，视觉另行复核 | 工程与本地复核通过；工作台入口问题转入 R2 |
 | R2：会话工作区与分类设置 | 以 DeepSeek/Cursor 截图校正首页；工作区/会话、输入区、模型设置与连接编辑有消费关系 | 不再打开即设置表；草稿/模型隔离、模型显示开关及设置返回可操作；不冒充模型执行 | 已实施并完成本地 UI 复核，见 12.4；用户风格待复核 |
-| U3：反馈、选择与卡片组件 | 完成其余首轮组件、独立尺寸、Toast 管理和嵌套场景 | 所有组件都有正确/错误示例、内容边界和必要回归；Menu/Select/Popover 不混语义 | 待执行 |
+| U3：反馈、选择与卡片组件 | 完成其余首轮组件、独立尺寸、Toast 管理和嵌套场景 | 所有组件都有正确/错误示例、内容边界和必要回归；Menu/Select/Popover 不混语义 | 单选 Select 切片已实现，见 12.4.2；其余待执行 |
 | U4：页面整合 | 工作台、会话、设置、文件、内容查看页面，全部消费新公开入口 | 第 6 节本地交互逐项可操作；无无效按钮/假后端成功；切页规则有效 | 待执行 |
 | U5：综合验收与记录 | 行为检查、独立构建、浏览器视觉/键盘/状态验证；更新本文证据 | 首轮范围全部满足，旧入口未被切换，明确已验证和未验证范围 | 待执行 |
 
@@ -447,7 +447,7 @@ U2 用纵向场景验证契约，不等全部组件做完才发现规则不可�
 | Checkbox / Radio / Switch | `checked,onCheckedChange`；Radio 以同名原生组表达单选；Switch 有稳定标签和开关语义；不支持 readOnly | 同意条款/选值/即时开关各用其语义 / 多选不使用 Radio，提交动作不使用 Switch |
 | Tabs | `value,onValueChange,items`；tablist/tab/tabpanel 关联；方向键移动、Home/End、手动 Enter/Space 激活；卸载规则由页面明确 | 同一区域视图 / 不取代路由导航；切换不隐式丢草稿 |
 | Menu | `open,onOpenChange,items,onAction`；仅命令/导航，roving focus、方向键/Home/End，Enter/Space 执行；Escape/outside 返回触发点 | “重命名/移除” / 选值改 Select，表单改 Dialog |
-| 单选 Select | `value,onValueChange,options`；`variant=field/compact,align,disabled,placeholder` 与具名标签/描述关联；自绘 select-only combobox/listbox，方向键跳过禁用项、Home/End、Enter/Space、字母定位；Escape 仅收起当前列表，Tab 正常移焦，打开/高亮不改变值 | 选一个配置值 / 不装命令或交互表单，不隐含输入搜索与多选；菜单归属所属主题/模态，边缘翻转限高 |
+| 单选 Select | `value,onValueChange,options`；`variant=field/compact,align,disabled,placeholder` 与具名标签/描述关联；自绘 select-only combobox/listbox，方向键跳过禁用项、Home/End、Enter/Space、字母定位；Escape 仅收起当前列表，Tab 正常移焦，打开/高亮不改变值；空 options 禁用触发器，不自动改选 | 选一个配置值 / 不装命令或交互表单，不隐含输入搜索与多选；菜单归属所属主题/模态，边缘翻转限高，触发器完全被滚动区裁切时关闭 |
 | Popover | `open,onOpenChange,trigger,children`；关联轻量内容；交互内容具名、Escape/outside 关闭且返回触发点；复杂内容升级 Dialog | 轻量说明/操作 / 不无保护承载草稿或强制决定 |
 | Popconfirm | `open,onRequestClose,onConfirm,pending`；对象明确、短文本、两个显式动作；Escape/outside 仅取消；初始焦点非破坏性 | 简短可解释确认 / 多段后果、额外输入或高风险升级确认 Dialog |
 | Tooltip | `content,children`，简短纯文本；hover/focus 出现、Escape 隐藏、指针可移入；本身不可聚焦；卸载清理延时 | 非必需补充 / 操作改 Popover，重要说明写入页面 |
@@ -527,7 +527,7 @@ R1 的设置表单只证明基础交互可用，没有展示 Agent 产品的主�
 前置：U2 行为基线保留且 R2 默认主界面完成复核；先稳定共享交互底座，再分片扩展，不回到「先铺组件后确定页面」。
 
 - [ ] 补齐 IconButton、Textarea、Checkbox、Radio、Switch、Tabs、加载/空/错误呈现，保持原生语义和字段关联。
-- [ ] 实现 Menu、单选 Select、Popover、Popconfirm、Tooltip；复用所属 Portal、顶层事件与定位机制，验证长内容、视口边缘和滚动。
+- [ ] 实现 Menu、单选 Select、Popover、Popconfirm、Tooltip；复用所属 Portal、顶层事件与定位机制，验证长内容、视口边缘和滚动。单选 Select 及 Dialog 内组合已完成，见 12.4.2；不据此勾选整组。
 - [ ] 实现 Toast 队列、同 ID 更新、暂停/恢复、操作提示不超时与卸载清理；完成 Alert/Banner 的持续问题和公告场景。
 - [ ] 实现 Card 的标题/正文/操作区及宽内容/全屏 Dialog；容器不拥有业务实体或复制业务状态机。
 - [ ] 每个首轮组件补齐正确/错误示例、尺寸及内容边界；完成 Dialog 内 Select/Menu、Tooltip 与模态、通知与模态的组合场景。
@@ -860,3 +860,35 @@ Enter 提交、Shift+Enter 多行及合成 composition 事件的防误发均完�
 
 本次文档核验：本文 UTF-8、代码围栏及新增记录标题通过，4 处本地链接目标存在；未验证外部站点和其他锚点。已关闭本轮浏览器标签和自有 5184 服务，未停止既有预览服务；6 张截图保留在隔离缓存，未新增临时脚本。
 
+
+#### 12.4.2 自绘下拉列表
+
+依据用户对浏览器默认下拉的反馈，新增 `ui/components/select/Select.tsx`、组件样式和 `internal/useAnchoredPosition.ts`，迁移工作区、模型、本地完成结果及预览主题四处入口，移除对应原生 select 样式。未修改生产页面，也未新增依赖。
+
+- 触发器与列表均自绘：field/compact 配方、连续焦点边框、圆角面板、中性活动态、选中勾选及禁用态；长标签换行，不再把短触发器的菜单撑满页面。
+- `popover="auto"` 只提供平台 top layer/light-dismiss；不是默认 select 外观，也不将该单选控件当成可输入搜索的 Combobox。列表归属当前 Provider/Dialog 的 Portal，不挂到独立全局主题。
+- 值保持受控；打开、键盘高亮和目录变化不提交值。隐藏的当前模型仍显示为禁用选项；没有选项时禁用触发器、保留“请选择模型”及模型设置恢复入口，不弹出空面板。
+- 仅展开期间监听尺寸、滚动、所属祖先可见性及相交变化；视口边缘翻转/限高，滚动区完全裁切锚点时关闭；关闭/卸载断开观察并取消待执行帧。
+- Dialog 首个遮罩手势只关闭所属列表，不继续关闭表单或触发离开确认；Escape 先关闭列表，后续 Escape 才交给 Dialog，Tab 保持正常焦点顺序。
+
+真实 Chromium 操作与本机截图位于 `.vite/ui-preview/evidence-selects/`：
+
+| 场景 | 实际观察 | 截图 |
+| --- | --- | --- |
+| 默认模型与底部输入 | 自绘选中/活动行；重复点击触发器收起；消息态模型菜单向上展开，底部与触发器相隔 4px | `model-dark-1280.png`、`model-above-1280.png` |
+| 键盘与禁用项 | Home 后向下跳过已归档项；End 只滚动列表并保留旧值，Enter 才提交；字母 c 定位 Charts；点击禁用项不提交，Escape 不改值 | Foundation 的实际键鼠操作 |
+| 明暗及内容边界 | 浅色样例列表在深色外层保留浅色；20 项内部滚动，中文、长路径不会扩大菜单到页面宽度 | `long-list-light-768.png` |
+| 模态组合及缩放 | Select 的 Portal 位于所属 Dialog；Escape/首个遮罩点击仅收起列表，Tab 留在 Dialog；768px、200% CSS zoom 下菜单仍位于视口内 | `modal-light-zoom200-768.png` |
+| 窄屏 | 320px 工作区菜单横坐标 47–247，页面宽度仍为 320；浅色模型菜单可展开 | `workspace-dark-320.png`、`model-light-320.png` |
+| 动态状态与页面隐藏 | 隐藏当前 Atlas 后仍保留 atlas-chat、方向键定位 Cedar 而不自动提交；全部隐藏后新会话模型触发器禁用，无空菜单；切入设置无遗留列表 | 实际模型开关、新会话及设置往返 |
+| 待完成结果 | 选择本地失败→延迟保存期间 Select 禁用；释放失败后重新可选、仍保留 failure，表单提示输入已保留；取消仍走放弃确认 | 连接检查的真实按钮和下拉操作 |
+| 滚动裁切 | 1280×500 的连接表单内将触发器滚到 Dialog footer 后，锚点仍在视口但完全离开 body 裁切区；修复前列表残留，修复后只关闭列表、不关 Dialog | 修复前后实际滚动及弹层计数 |
+| 系统偏好模拟 | forced-colors/reduced-motion 查询均匹配；菜单使用系统黑底/白边，阴影为 none | `forced-colors-768.png` |
+
+本轮运行时页面原生 select 数为 0，浏览器错误列表为空；上述为 Chromium 和 CSS zoom/系统偏好模拟，不是跨浏览器、读屏、真实 OS 高对比度或菜单缩放认证。仅完成 U3 的单选切片，Menu/Tooltip/Toast 等没有据此标为完成；独立预览不增加远程模型执行能力。
+
+工程检查：Biome 对 35 个源码支持文件检查并格式收敛，无诊断；`npm.cmd run ui:build` 的 UI 边界、独立类型及 53 模块构建通过；既有 UI 边界/连接/工作区 3 文件、14 项回归通过。另行执行 node/web/CLI 三个 `tsc --noEmit` 均通过。
+
+`npm.cmd run typecheck` **未通过**：包构建、Agent/Logging 边界通过后，`scripts/check-models-boundaries.mjs:296` 调用 TypeScript `getSymbolAtLocation` 时崩溃，错误为读取 undefined 的 members；后续 tools/CLI 门禁未由该串行命令执行。不将编译器项目单独通过描述成全仓门禁通过；未修改或重跑模型门禁，也未重跑已有 CLI 失败的全仓测试。
+
+已关闭本轮浏览器和自有 5185 服务，未停止既有 5178；7 张本机截图保留在隔离缓存，未新增永久测试或临时检查脚本。文档只更新本文的单选契约、U3 部分进度及本节证据，不改变后续组件范围。

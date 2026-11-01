@@ -501,19 +501,18 @@ function expectObservation(
   expect(events.indexOf(inputCommits[0])).toBeLessThan(
     events.findIndex((event) => event.type === "step.started"),
   );
-  expect(
-    events
-      .filter((event) => event.type !== "step.committed" || event.step !== 0)
-      .map((event) => event.type),
-  ).toEqual([
-    "run.started",
-    "step.started",
-    "model.delta",
-    "model.delta",
-    "model.delta",
-    "step.committed",
-    "run.completed",
-  ]);
+  const started = events.findIndex((event) => event.type === "step.started");
+  const committed = events.findIndex(
+    (event) => event.type === "step.committed" && event.step === 1,
+  );
+  expect(started).toBeGreaterThan(events.findIndex((event) => event.type === "run.started"));
+  for (const [index, event] of events.entries()) {
+    if (event.type === "model.delta") {
+      expect(index).toBeGreaterThan(started);
+      expect(index).toBeLessThan(committed);
+    }
+  }
+  expect(events.findIndex((event) => event.type === "run.completed")).toBeGreaterThan(committed);
   expect(events.filter((event) => event.type === "step.started")).toEqual([
     { kind: "fact", type: "step.started", identity: run.identity, step: 1 },
   ]);

@@ -137,6 +137,9 @@ describe.skipIf(process.platform !== "win32")(
           content: [{ contentIndex: 0, text: `read:${notes}` }],
         });
         expect(result.stdout).not.toContain("PRIVATE_REPLAY_SENTINEL");
+        expect(records.find((record) => record.type === "assistant.reasoning")).toMatchObject({
+          text: "PUBLIC_REASONING_SAMPLE",
+        });
         expect(records.some((record) => record.type === "model.delta")).toBe(false);
         expect(await readFile(join(root, "workspace", "notes.txt"), "utf8")).toBe(notes);
         const { identity } = queryRecord(result);

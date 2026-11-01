@@ -25,6 +25,7 @@ export async function executeModelTurn(
   }
   let response: ModelResponse | undefined;
   const context = { identity: env.identity, requestId, step };
+  const startedAt = performance.now();
   if (env.model.capabilities.streaming) {
     for await (const event of env.model.stream(snapshot(request), env.signal, context)) {
       env.signal.throwIfAborted();
@@ -103,5 +104,25 @@ export async function executeModelTurn(
   }
   if (response.finishReason === "tool-calls" && ids.size === 0)
     throw new AgentError("INVALID_MODEL_RESPONSE", "Tool finish without any tool calls");
+  env.emit({
+    identity: env.identity,
+    kind: "fact",
+    type: "model.completed",
+    requestId,
+    step,
+    durationMs: performance.now() - startedAt,
+    ...(response.usage &&
+    Number.isSafeInteger(response.usage.inputTokens) &&
+    response.usage.inputTokens >= 0 &&
+    Number.isSafeInteger(response.usage.outputTokens) &&
+    response.usage.outputTokens >= 0
+      ? {
+          usage: {
+            inputTokens: response.usage.inputTokens,
+            outputTokens: response.usage.outputTokens,
+          },
+        }
+      : {}),
+  });
   return response;
 }

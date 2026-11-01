@@ -200,7 +200,7 @@ const privateReasoning = {
   type: "reasoning",
   status: "completed",
   summary: [],
-  content: [{ type: "reasoning_text", text: "private reasoning must not reach the terminal" }],
+  content: [{ type: "reasoning_text", text: "public reasoning provided by the model" }],
   encrypted_content: "opaque-private-replay",
 };
 function respondNative(response: ServerResponse, output: Record<string, unknown>[]) {
@@ -392,7 +392,7 @@ describe("independent configured Agent host", () => {
     }
     const publicOutput = JSON.stringify(projections);
     expect(publicOutput).toContain("The approved file was created.");
-    expect(publicOutput).not.toContain("private reasoning");
+    expect(publicOutput).toContain("public reasoning provided by the model");
     expect(publicOutput).not.toContain("replayState");
     expect(publicOutput).not.toContain("stored-key");
     expect(publicOutput).not.toContain("opaque-private-replay");
@@ -1298,7 +1298,9 @@ describe("independent configured Agent host", () => {
     expect((await resumed.completed).status).toBe("completed");
     expect((await resumedHost.sessions())[0]?.history).toEqual([
       { role: "user", text: "Read notes.txt" },
+      { role: "reasoning", text: "public reasoning provided by the model" },
       { role: "assistant", text: "Inspecting notes." },
+      { role: "tool", tool: { callId: "read-1", name: "read", result: "recorded" } },
       { role: "assistant", text: "Approved read complete" },
     ]);
   });

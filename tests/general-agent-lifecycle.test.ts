@@ -11,6 +11,7 @@ import type {
 } from "@agent-harness/core/extensions/plugin-contract";
 import type {
   ModelBinding,
+  ModelCallContext,
   ModelClient,
   ModelContent,
   ModelRequest,
@@ -198,6 +199,249 @@ function fixture() {
 function checkpointKey(queryId: string): CheckpointKey {
   return { agentId: "agent", threadId: "thread", queryId };
 }
+
+describe.each([false, true])("model completion observations (streaming: %s)", (streaming) => {
+  it("reports per-request duration and authoritative usage without private response data", async () => {
+    const f = fixture();
+    const entered = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+    const finish = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+    const contexts: ModelCallContext[] = [];
+    const enteredAt: number[] = [];
+    const privateValue = "PRIVATE_RESPONSE_METRICS_SENTINEL";
+    const responses: ModelResponse[] = [
+      {
+        message: {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: privateValue },
+            { type: "tool-call", callId: "metrics-call", name: "metrics.echo", input: {} },
+          ],
+          replayState: {
+            providerId: "test",
+            modelId: "model",
+            format: "private",
+            version: 1,
+            data: privateValue,
+          },
+        },
+        finishReason: "tool-calls",
+        usage: Object.assign({ inputTokens: 23, outputTokens: 7 }, { privateValue }),
+      },
+      { ...response, usage: { inputTokens: 0, outputTokens: 0 } },
+    ];
+    const generate: ModelClient["generate"] = async (_request, signal, context) => {
+      if (!context) throw new Error("Expected a model request identity.");
+      const index = contexts.length;
+      contexts.push(context);
+      enteredAt.push(performance.now());
+      entered[index].resolve();
+      await finish[index].promise;
+      signal.throwIfAborted();
+      return responses[index];
+    };
+    f.bind.mockResolvedValue({
+      ...f.binding,
+      client: {
+        ...f.binding.client,
+        capabilities: { ...f.binding.client.capabilities, streaming },
+        generate,
+        async *stream(request, signal, context) {
+          yield { type: "completed", response: await generate(request, signal, context) };
+        },
+      },
+    });
+    const app = createAgentApplication(f.services);
+    onTestFinished(async () => {
+      for (const gate of finish) gate.resolve();
+      await app.close();
+    });
+    const agent = await app.agents.create(
+      creation({
+        plugins: [
+          {
+            id: "metrics",
+            version: "1",
+            setup({ tools }) {
+              tools.register({
+                name: "metrics.echo",
+                owner: "metrics",
+                version: "1",
+                description: "Return an observation test result",
+                mode: "immediate",
+                inputSchema: z.object({}),
+                outputSchema: z.object({}),
+                execute: async () => ({ status: "succeeded", output: {}, effects: "none" }),
+                toModelContent: () => [{ type: "text", text: "done" }],
+              });
+            },
+          },
+        ],
+      }),
+    );
+    const run = await agent.run(activation());
+    const minimumDurations: number[] = [];
+    for (let index = 0; index < entered.length; index += 1) {
+      await entered[index].promise;
+      minimumDurations.push(performance.now() - enteredAt[index]);
+      finish[index].resolve();
+    }
+    expect((await run.completed).status).toBe("completed");
+    const events: RuntimeEvent[] = [];
+    for await (const event of run.events) events.push(event);
+    const completed = events.filter((event) => event.type === "model.completed");
+    expect(completed).toHaveLength(2);
+    expect(contexts[0].requestId).not.toBe(contexts[1].requestId);
+    for (const [index, event] of completed.entries()) {
+      expect(event).toEqual({
+        identity: run.identity,
+        kind: "fact",
+        type: "model.completed",
+        requestId: contexts[index].requestId,
+        step: index + 1,
+        durationMs: expect.any(Number),
+        usage: {
+          inputTokens: responses[index].usage?.inputTokens,
+          outputTokens: responses[index].usage?.outputTokens,
+        },
+      });
+      expect(Number.isFinite(event.durationMs)).toBe(true);
+      expect(event.durationMs).toBeGreaterThanOrEqual(minimumDurations[index]);
+      const position = events.indexOf(event);
+      expect(position).toBeGreaterThan(
+        events.findIndex(
+          (candidate) => candidate.type === "step.started" && candidate.step === event.step,
+        ),
+      );
+      expect(position).toBeLessThan(
+        events.findIndex(
+          (candidate) => candidate.type === "step.committed" && candidate.step === event.step,
+        ),
+      );
+    }
+    expect(JSON.stringify(completed)).not.toContain(privateValue);
+  });
+
+  it.each([
+    { label: "missing", usage: undefined },
+    { label: "negative input", usage: { inputTokens: -1, outputTokens: 2 } },
+    { label: "negative output", usage: { inputTokens: 1, outputTokens: -2 } },
+    { label: "fractional", usage: { inputTokens: 1, outputTokens: 0.5 } },
+    {
+      label: "unsafe integer",
+      usage: { inputTokens: Number.MAX_SAFE_INTEGER + 1, outputTokens: 2 },
+    },
+  ])("omits $label usage without changing model success", async ({ usage }) => {
+    const f = fixture();
+    f.generate.mockResolvedValue(usage ? { ...response, usage } : response);
+    f.bind.mockResolvedValue({
+      ...f.binding,
+      client: {
+        ...f.binding.client,
+        capabilities: { ...f.binding.client.capabilities, streaming },
+      },
+    });
+    const app = createAgentApplication(f.services);
+    onTestFinished(() => app.close());
+    const agent = await app.agents.create(creation());
+    const run = await agent.run(activation());
+    expect((await run.completed).status).toBe("completed");
+    const completed = [];
+    for await (const event of run.events) {
+      if (event.type === "model.completed") completed.push(event);
+    }
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).not.toHaveProperty("usage");
+    expect((await f.history.read("thread")).messages.at(-1)).toEqual(response.message);
+  });
+
+  it.each([
+    {
+      label: "truncated",
+      result: { ...response, finishReason: "length" as const },
+      code: "MODEL_TRUNCATED",
+    },
+    {
+      label: "stopped",
+      result: { ...response, finishReason: "other" as const },
+      code: "MODEL_STOPPED",
+    },
+    {
+      label: "invalid tool finish",
+      result: { ...response, finishReason: "tool-calls" as const },
+      code: "INVALID_MODEL_RESPONSE",
+    },
+    {
+      label: "NaN usage",
+      result: { ...response, usage: { inputTokens: Number.NaN, outputTokens: 1 } },
+      code: "INVALID_PROTOCOL_VALUE",
+    },
+    {
+      label: "infinite usage",
+      result: { ...response, usage: { inputTokens: 1, outputTokens: Number.POSITIVE_INFINITY } },
+      code: "INVALID_PROTOCOL_VALUE",
+    },
+    { label: "provider failure", result: null, code: "EXECUTION_FAILED" },
+  ])("does not report completion for $label", async ({ result, code }) => {
+    const f = fixture();
+    if (result) f.generate.mockResolvedValue(result);
+    else f.generate.mockRejectedValue(new Error("private provider failure"));
+    f.bind.mockResolvedValue({
+      ...f.binding,
+      client: {
+        ...f.binding.client,
+        capabilities: { ...f.binding.client.capabilities, streaming },
+      },
+    });
+    const app = createAgentApplication(f.services);
+    onTestFinished(() => app.close());
+    const agent = await app.agents.create(creation());
+    const run = await agent.run(activation());
+    expect(await run.completed).toMatchObject({ status: "failed", error: { code } });
+    const types: string[] = [];
+    for await (const event of run.events) types.push(event.type);
+    expect(types).not.toContain("model.completed");
+    expect((await f.history.read("thread")).messages).toEqual(activation().input);
+  });
+});
+
+describe("model stream completion boundary", () => {
+  it.each([
+    { suffix: "late delta", code: "INVALID_MODEL_STREAM" },
+    { suffix: "duplicate completion", code: "INVALID_MODEL_STREAM" },
+    { suffix: "late failure", code: "EXECUTION_FAILED" },
+  ])("does not report a response followed by $suffix as complete", async ({ suffix, code }) => {
+    const f = fixture();
+    f.bind.mockResolvedValue({
+      ...f.binding,
+      client: {
+        ...f.binding.client,
+        capabilities: { ...f.binding.client.capabilities, streaming: true },
+        async *stream() {
+          yield {
+            type: "completed",
+            response: { ...response, usage: { inputTokens: 3, outputTokens: 1 } },
+          };
+          if (suffix === "late delta") {
+            yield { type: "content-delta", index: 0, delta: { type: "text", text: "late" } };
+          } else if (suffix === "duplicate completion") {
+            yield { type: "completed", response };
+          } else {
+            throw new Error("private late provider failure");
+          }
+        },
+      },
+    });
+    const app = createAgentApplication(f.services);
+    onTestFinished(() => app.close());
+    const agent = await app.agents.create(creation());
+    const run = await agent.run(activation());
+    expect(await run.completed).toMatchObject({ status: "failed", error: { code } });
+    const types: string[] = [];
+    for await (const event of run.events) types.push(event.type);
+    expect(types).not.toContain("model.completed");
+    expect((await f.history.read("thread")).messages).toEqual(activation().input);
+  });
+});
 
 describe("general agent creation ownership", () => {
   it("detaches creation cancellation after publication and never closes borrowed ports", async () => {
@@ -1514,12 +1758,10 @@ describe("public runtime observation channel with SQLite", () => {
         expect(event.value.identity).toEqual(handle.identity);
         if (event.value.type === "model.delta") break;
       }
-      expect(observed.map((event) => event.type)).toEqual([
-        "run.started",
-        "step.committed",
-        "step.started",
-        "model.delta",
-      ]);
+      expect(observed[0].type).toBe("run.started");
+      expect(observed.findIndex((event) => event.type === "step.started")).toBeLessThan(
+        observed.findIndex((event) => event.type === "model.delta"),
+      );
       expect(observed.at(-1)).toMatchObject({
         delta: { type: "text", text: "temporary:first" },
       });
@@ -1581,23 +1823,17 @@ describe("public runtime observation channel with SQLite", () => {
       // 已有队列时，两个未 await 的 next 各自立即取走一个事件，不是 busy。
       const started = iterator.next();
       const inputCommitted = iterator.next();
-      const prefix = [
-        await started,
-        await inputCommitted,
-        await iterator.next(),
-        await iterator.next(),
-      ];
       const events: RuntimeEvent[] = [];
-      for (const next of prefix) {
+      for (const next of [await started, await inputCommitted]) {
         if (next.done) throw new Error("Expected the queued prefix before the model gate.");
         events.push(next.value);
       }
-      expect(events.map((event) => event.type)).toEqual([
-        "run.started",
-        "step.committed",
-        "step.started",
-        "model.delta",
-      ]);
+      while (events.at(-1)?.type !== "model.delta") {
+        const next = await iterator.next();
+        if (next.done) throw new Error("Expected a delta before the model gate.");
+        events.push(next.value);
+      }
+      expect(events[0].type).toBe("run.started");
       expect(events.at(-1)).toMatchObject({
         delta: { type: "text", text: "temporary:first" },
       });
@@ -1627,15 +1863,13 @@ describe("public runtime observation channel with SQLite", () => {
         if (next.done) break;
         events.push(next.value);
       }
-      expect(events.map((event) => event.type)).toEqual([
-        "run.started",
-        "step.committed",
-        "step.started",
-        "model.delta",
-        "model.delta",
-        "step.committed",
-        "run.completed",
-      ]);
+      const committed = events.findIndex(
+        (event) => event.type === "step.committed" && event.step === 1,
+      );
+      expect(committed).toBeGreaterThan(events.indexOf(resumed.value));
+      expect(events.findIndex((event) => event.type === "run.completed")).toBeGreaterThan(
+        committed,
+      );
       for (const event of events) expect(event.identity).toEqual(handle.identity);
       expect(await iterator.next()).toEqual({ done: true, value: undefined });
       expect(() => handle.events[Symbol.asyncIterator]()).toThrow(

@@ -40,6 +40,18 @@ export type RuntimeFactEvent = RuntimeEventIdentity &
       }
     | {
         readonly kind: "fact";
+        /** 完整有效的模型响应已收到；不承诺助手消息或步骤已持久化。 */
+        readonly type: "model.completed";
+        readonly requestId: string;
+        readonly step: number;
+        readonly durationMs: number;
+        readonly usage?: {
+          readonly inputTokens: number;
+          readonly outputTokens: number;
+        };
+      }
+    | {
+        readonly kind: "fact";
         readonly type: "step.committed";
         readonly step: number;
         readonly historyRevision: number;

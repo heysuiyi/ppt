@@ -2,11 +2,12 @@ import { PassThrough, Writable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createComposer } from "../cli/terminal/composer.js";
-import { layoutComposer } from "../cli/terminal/composer-layout.js";
+import { renderComposerFrame } from "../cli/terminal/composer-frame.js";
+import { composerContentWidth, layoutComposer } from "../cli/terminal/composer-layout.js";
 import type { NodeTerminal, TerminalKeyEvent } from "../cli/terminal/input-contract.js";
 import { createNodeTerminal } from "../cli/terminal/node-terminal.js";
 import { createSelector } from "../cli/terminal/selector.js";
-import { visibleWidth } from "../cli/terminal/terminal-text.js";
+import { graphemes, visibleWidth } from "../cli/terminal/terminal-text.js";
 
 class TerminalInput extends PassThrough {
   isTTY = true;
@@ -261,6 +262,79 @@ describe("composer display layout", () => {
       expect(draft).toEqual({ text: "中👨‍👩‍👧‍👦\t\x1b\n", cursor: 4 });
     },
   );
+});
+
+describe("open composer surface", () => {
+  const options = {
+    maxRows: 8,
+    color: false,
+    secret: false,
+  };
+  const cellAt = (line: string, column: number) => {
+    let width = 0;
+    for (const cluster of graphemes(line)) {
+      if (width === column) return cluster;
+      width += visibleWidth(cluster);
+      if (width > column) return undefined;
+    }
+    return undefined;
+  };
+  const assertFits = (lines: readonly string[], columns: number) => {
+    expect(lines.length).toBeLessThanOrEqual(8);
+    for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(columns);
+  };
+
+  it("keeps CJK, tabs, cross-line carets and exact-width EOL inside the body", () => {
+    const columns = 39;
+    const text = `中é👩‍💻\tZ\n${"x".repeat(composerContentWidth(columns))}\nNEXT`;
+    const clusters = graphemes(text);
+    for (let cursor = 0; cursor <= clusters.length; cursor += 1) {
+      const draft = { text, cursor };
+      const frame = renderComposerFrame(draft, columns, options);
+      assertFits(frame.lines, columns);
+      expect(frame.cursorRow).toBeGreaterThanOrEqual(0);
+      expect(frame.cursorRow).toBeLessThan(frame.lines.length);
+      expect(frame.cursorColumn).toBeGreaterThan(0);
+      expect(frame.cursorColumn).toBeLessThan(columns);
+      const expected = clusters[cursor];
+      expect(cellAt(frame.lines[frame.cursorRow]!, frame.cursorColumn)).toBe(
+        expected === undefined || expected === "\n" || expected === "\t" ? " " : expected,
+      );
+      expect(draft).toEqual({ text, cursor });
+    }
+  });
+
+  it("scrolls no more than six body rows around the caret across budgets and resize", () => {
+    const source = Array.from({ length: 12 }, (_, index) => `ROW_${index}_中文`);
+    const text = source.join("\n");
+    for (const index of [0, 5, 11]) {
+      const cursor = graphemes(source.slice(0, index).join("\n")).length + (index ? 1 : 0);
+      const draft = { text, cursor };
+      for (const columns of [39, 79]) {
+        for (const maxRows of [3, 5, 8, 20]) {
+          const frame = renderComposerFrame(draft, columns, { ...options, maxRows });
+          assertFits(frame.lines, columns);
+          expect(frame.lines.length).toBeLessThanOrEqual(maxRows);
+          expect(frame.lines[frame.cursorRow]).toContain(source[index]);
+          expect(cellAt(frame.lines[frame.cursorRow]!, frame.cursorColumn)).toBe("R");
+          expect(frame.lines.at(-1)).toMatch(/[↑↓]/u);
+          expect(draft).toEqual({ text, cursor });
+        }
+      }
+    }
+  });
+
+  it("leaks no secret content, length or line count", () => {
+    const empty = { text: "", cursor: 0 };
+    const hiddenEmpty = renderComposerFrame(empty, 39, { ...options, secret: true });
+    for (const text of ["PRIVATE_DRAFT", "PRIVATE\nMULTILINE\n中👩‍💻", ""]) {
+      const draft = { text, cursor: graphemes(text).length };
+      const hidden = renderComposerFrame(draft, 39, { ...options, secret: true });
+      expect(hidden).toEqual(hiddenEmpty);
+      expect(hidden.lines.join("")).not.toContain("PRIVATE");
+      expect(draft).toEqual({ text, cursor: graphemes(text).length });
+    }
+  });
 });
 
 describe("data-backed selector", () => {

@@ -1133,10 +1133,14 @@ describe("general Agent execution and recovery", () => {
       const agent = own(
         await own(createAgentApplication(services(stores, streaming))).agents.create(options([])),
       );
-      expect(await (await agent.run(input("query", "run-1"))).completed).toMatchObject({
+      const run = await agent.run(input("query", "run-1"));
+      expect(await run.completed).toMatchObject({
         status: "failed",
         error: { code: "INCOMPLETE_MODEL_STREAM" },
       });
+      const types: string[] = [];
+      for await (const event of run.events) types.push(event.type);
+      expect(types).not.toContain("model.completed");
       expect((await stores.history.read("thread")).messages.map((message) => message.role)).toEqual(
         ["user"],
       );
