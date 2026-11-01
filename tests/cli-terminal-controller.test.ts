@@ -3,23 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { setImmediate as nextTurn } from "node:timers/promises";
+import { stripVTControlCharacters } from "node:util";
 import type { AgentRunHandle, AgentRunResult } from "@agent-harness/core/agent-contract";
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { RunIdentity } from "@agent-harness/core/protocol-values";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  LOCAL_COMMANDS,
-  parseSubmittedText,
-  parseTerminalArguments,
-  TERMINAL_HELP,
-} from "../cli/commands/terminal-command.js";
+import { parseSubmittedText, parseTerminalArguments } from "../cli/commands/terminal-command.js";
 import type { TerminalHost, TerminalSetupIO } from "../cli/host/host-contract.js";
 import { runCli } from "../cli/main.js";
 import * as rendererModule from "../cli/terminal/interactive-renderer.js";
 import type { TerminalView } from "../cli/terminal/renderer-contract.js";
 import type { TerminalModelItem } from "../cli/terminal/terminal-contract.js";
 import { runTerminalController } from "../cli/terminal/terminal-controller.js";
+import { visibleWidth } from "../cli/terminal/terminal-text.js";
 import {
   type CliChild,
   cliChild,
@@ -164,6 +161,8 @@ function surface(interactive = false) {
 function observeViews() {
   const create = rendererModule.createTerminalRenderer;
   const views: TerminalView[] = [];
+  const dismissals: boolean[] = [];
+  const toolDismissed = Promise.withResolvers<boolean>();
   const pending: Array<{
     predicate: (view: TerminalView) => boolean;
     resolve: (view: TerminalView) => void;
@@ -172,6 +171,12 @@ function observeViews() {
     const renderer = create(options);
     return {
       ...renderer,
+      async dismissTool() {
+        const dismissed = await renderer.dismissTool();
+        dismissals.push(dismissed);
+        toolDismissed.resolve(dismissed);
+        return dismissed;
+      },
       async view(view) {
         views.push(view);
         for (const waiter of [...pending]) {
@@ -185,6 +190,8 @@ function observeViews() {
   });
   return {
     views,
+    dismissals,
+    toolDismissed: toolDismissed.promise,
     until(predicate: (view: TerminalView) => boolean) {
       const latest = views.at(-1);
       if (latest && predicate(latest)) return Promise.resolve(latest);
@@ -333,8 +340,228 @@ describe("terminal controller result and lifecycle", () => {
     },
   );
 
+  it("expires draft-clear notices when editing or recalling a draft for a new request", async () => {
+    const io = surface(true);
+    const observed = observeViews();
+    const run = vi.fn(async () => handle(Promise.resolve(finishedResult)));
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: host({ run }),
+    });
+    await observed.until((view) => view.composer.submission.enabled);
+    io.input.write("task\r");
+    await observed.until((view) => view.phase === "running");
+    await observed.until((view) => view.composer.submission.enabled);
+    io.input.write("\x03");
+    await observed.until((view) => view.feedback?.kind === "notice");
+    io.input.write("\x1b[A");
+    const recalled = await observed.until((view) => view.composer.draft.text === "task");
+    expect(recalled.feedback).toBeUndefined();
+    io.input.write("\r");
+    await observed.until((view) => view.phase === "running");
+    const idle = await observed.until((view) => view.composer.submission.enabled);
+    expect(idle.feedback).toBeUndefined();
+    expect(run).toHaveBeenCalledTimes(2);
+    io.input.write("\x03");
+    await observed.until((view) => view.feedback?.kind === "notice");
+    io.input.write("edited-draft");
+    const edited = await observed.until((view) => view.composer.draft.text === "edited-draft");
+    expect(edited.feedback).toBeUndefined();
+    io.input.end();
+    expect(await running).toBe(0);
+  });
+
+  it("clears input correction feedback without clearing the current model problem", async () => {
+    const io = surface(true);
+    const observed = observeViews();
+    const currentHost = host({});
+    Object.defineProperty(currentHost, "context", {
+      value: {
+        ...currentHost.context,
+        model: {
+          ...currentHost.context.model,
+          availability: { state: "unavailable", reason: "CREDENTIAL_REQUIRED" },
+        },
+      },
+    });
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: currentHost,
+    });
+    const ready = await observed.until((view) => view.composer.submission.enabled);
+    expect(ready.context?.modelStatus).toBe("CREDENTIAL_REQUIRED");
+    io.input.write("/invalid!\r");
+    const correction = await observed.until((view) => view.feedback?.kind === "input");
+    expect(correction.context?.modelStatus).toBe(ready.context?.modelStatus);
+    io.input.write("x");
+    const edited = await observed.until((view) => view.composer.draft.text === "/invalid!x");
+    expect(edited.feedback).toBeUndefined();
+    expect(edited.context?.modelStatus).toBe(ready.context?.modelStatus);
+    io.input.end();
+    expect(await running).toBe(0);
+  });
+
+  it("keeps completion on the composer and closes it without changing the draft or cursor", async () => {
+    const io = surface(true);
+    const observed = observeViews();
+    const run = vi.fn(async () => handle(Promise.resolve(finishedResult)));
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: host({ run }),
+    });
+    await observed.until((view) => view.composer.submission.enabled);
+    io.input.write("/he");
+    const completing = await observed.until(
+      (view) => !!view.completion && view.composer.draft.text === "/he",
+    );
+    expect(completing.input.purpose).toBe("completion");
+    expect(completing.selector).toBeUndefined();
+    expect(completing.composer.draft).toEqual({ text: "/he", cursor: 3 });
+    io.input.write("\x1b");
+    const closed = await observed.until((view) => !view.completion);
+    expect(closed.composer.draft).toEqual(completing.composer.draft);
+    expect(run).not.toHaveBeenCalled();
+    io.input.write("l");
+    const reopened = await observed.until(
+      (view) => !!view.completion && view.composer.draft.text === "/hel",
+    );
+    const accepted = reopened.completion!.items[0]!.id;
+    io.input.write("\r");
+    const completed = await observed.until(
+      (view) => !view.completion && view.composer.draft.text === `/${accepted}`,
+    );
+    expect(completed.input.purpose).toBe("composer");
+    expect(run).not.toHaveBeenCalled();
+    io.input.end();
+    expect(await running).toBe(0);
+  });
+
+  it("uses one Escape to dismiss tool details and a later Escape to cancel execution", async () => {
+    const io = surface(true);
+    const observed = observeViews();
+    const completed = Promise.withResolvers<AgentRunResult>();
+    const cancel = vi.fn(() => completed.resolve({ status: "cancelled", identity }));
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: host({
+        run: async () =>
+          handle(
+            completed.promise,
+            [
+              {
+                kind: "fact",
+                type: "tool.started",
+                identity,
+                step: 1,
+                invocation: {
+                  identity,
+                  call: { type: "tool-call", callId: "call", name: "controlled-tool", input: {} },
+                  toolVersion: null,
+                  state: "dispatched",
+                },
+              },
+            ],
+            cancel,
+          ),
+      }),
+    });
+    await observed.until((view) => view.composer.submission.enabled);
+    io.input.write("task\r");
+    await io.until("controlled-tool");
+    io.input.write("next-draft\x1b[D\x0f");
+    await nextTurn();
+    const draft = observed.views.at(-1)!.composer.draft;
+    io.input.write("\x1b");
+    await observed.toolDismissed;
+    expect(observed.dismissals).toEqual([true]);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(observed.views.at(-1)!.composer.draft).toEqual(draft);
+    io.input.write("\x1b");
+    await observed.until((view) => view.composer.submission.enabled);
+    expect(observed.dismissals).toEqual([true, false]);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(observed.views.at(-1)!.composer.draft).toEqual(draft);
+    io.input.end();
+    expect(await running).toBe(0);
+  });
+
+  it.each(["answer", "cancel"] as const)(
+    "requires explicit approval, retains waiting after Escape, and clears waiting feedback on %s",
+    async (response) => {
+      const io = surface(true);
+      vi.stubEnv("TERM", "xterm-256color");
+      Object.assign(io.output, { isTTY: true, columns: 80, rows: 24 });
+      const observed = observeViews();
+      const interaction = {
+        id: "permission-id",
+        owner: "host",
+        payload: { type: "approval", version: 1, data: null },
+      };
+      const resume = vi.fn(async () => handle(Promise.resolve(finishedResult)));
+      const answerInteraction = vi.fn(() => ({
+        interactionId: interaction.id,
+        type: "answer" as const,
+        value: true,
+      }));
+      const running = runTerminalController({
+        ...io,
+        command: parseTerminalArguments([]),
+        host: host({
+          run: async () => handle(Promise.resolve({ status: "waiting", identity, interaction })),
+          resume,
+          answerInteraction,
+        }),
+      });
+      await observed.until((view) => view.composer.submission.enabled);
+      io.input.write("task\r");
+      const waiting = await observed.until((view) => !!view.interaction && !!view.selector);
+      expect(waiting.input.purpose).toBe("interaction");
+      expect(waiting.selector?.selectedId).toBeNull();
+      io.input.write("\r\t");
+      await nextTurn();
+      expect(answerInteraction).not.toHaveBeenCalled();
+      expect(resume).not.toHaveBeenCalled();
+      io.input.write("\x1b[B");
+      const selected = await observed.until((view) => view.selector?.selectedId === "allow");
+      io.input.write("\t");
+      await nextTurn();
+      expect(answerInteraction).not.toHaveBeenCalled();
+      expect(resume).not.toHaveBeenCalled();
+      io.input.write("\x1b");
+      const kept = await observed.until((view) => view.feedback?.kind === "input");
+      expect(kept.phase).toBe("waiting");
+      expect(kept.interaction).toEqual(waiting.interaction);
+      expect(kept.composer.draft).toEqual(selected.composer.draft);
+      expect(answerInteraction).not.toHaveBeenCalled();
+      expect(resume).not.toHaveBeenCalled();
+      if (response === "cancel") {
+        io.input.write("\x1b[B");
+        await observed.until((view) => view.selector?.selectedId === "__cancel");
+      }
+      io.input.write("\r");
+      const idle = await observed.until((view) => view.composer.submission.enabled);
+      expect(idle.feedback?.kind).not.toBe("input");
+      expect(idle.interaction).toBeUndefined();
+      expect(
+        observed.views
+          .slice(observed.views.indexOf(kept) + 1)
+          .filter((view) => view.phase !== "waiting")
+          .some((view) => view.feedback?.message === kept.feedback?.message),
+      ).toBe(false);
+      expect(answerInteraction).toHaveBeenCalledTimes(response === "answer" ? 1 : 0);
+      expect(resume).toHaveBeenCalledTimes(1);
+      io.input.end();
+      expect(await running).toBe(0);
+    },
+  );
+
   it("keeps draft submission disabled during an asynchronous session transition", async () => {
     const io = surface(true);
+    const observed = observeViews();
     const switching = Promise.withResolvers<void>();
     const entered = Promise.withResolvers<void>();
     let queries = 0;
@@ -358,9 +585,17 @@ describe("terminal controller result and lifecycle", () => {
     await io.until("yes");
     io.input.write("yes\r");
     await entered.promise;
+    const transition = observed.views.at(-1)!;
+    expect(transition.composer.submission.enabled).toBe(false);
+    expect(transition.activity).toBeTruthy();
+    expect(transition.input.status).toContain(transition.activity);
     io.input.write("draft-survives-switch\r");
     await nextTurn();
     expect(queries).toBe(0);
+    const blocked = observed.views.at(-1)!;
+    expect(blocked.composer.draft.text).toBe("draft-survives-switch");
+    expect(blocked.input.status).toBe(transition.input.status);
+    expect(blocked.composer.submission.enabled).toBe(false);
     switching.resolve();
     await nextTurn();
     io.input.write("\r");
@@ -525,8 +760,15 @@ describe("terminal controller result and lifecycle", () => {
       expect(currentHost.context).toBe(initialContext);
       expect(newSession).not.toHaveBeenCalled();
       if (choice === "same") expect(observed.views.some((view) => !!view.prompt)).toBe(false);
-      if (choice === "unavailable")
-        expect(io.stdout + io.stderr).toContain("MISSING_LOCAL_CREDENTIAL");
+      if (choice === "unavailable") {
+        expect(idle.feedback?.kind).toBe("blocking");
+        expect(idle.feedback?.message).toContain("MISSING_LOCAL_CREDENTIAL");
+        io.input.write("-edited");
+        const edited = await observed.until(
+          (view) => view.composer.draft.text === "retained-draft-edited",
+        );
+        expect(edited.feedback).toEqual(idle.feedback);
+      }
       io.input.end();
       expect(await running).toBe(0);
     },
@@ -589,6 +831,7 @@ describe("terminal controller result and lifecycle", () => {
         const changing = observed.views.at(-1)!;
         expect(changing.activity).toBeTruthy();
         expect(changing.composer.submission.enabled).toBe(false);
+        expect(changing.input.status).toContain(changing.activity);
         if (outcome === "safe-failure")
           switching.reject(new AgentError("HOST_SWITCH_REJECTED", "Original binding retained"));
         else switching.resolve();
@@ -606,18 +849,162 @@ describe("terminal controller result and lifecycle", () => {
         expect(currentHost.context).toBe(initialContext);
         expect(observed.views.some((view) => view.context?.threadId === "new-binding")).toBe(false);
       }
+      if (outcome === "safe-failure") {
+        expect(idle.feedback?.kind).toBe("blocking");
+        io.input.write("-edited");
+        const edited = await observed.until(
+          (view) => view.composer.draft.text === "retained-draft-edited",
+        );
+        expect(edited.feedback).toEqual(idle.feedback);
+        expect(edited.context).toEqual(idle.context);
+      }
       expect(io.stdout + io.stderr).not.toContain("PRIVATE_CATALOG_ERROR");
       io.input.end();
       expect(await running).toBe(0);
     },
   );
 
-  it("exposes /connect as a real parsed command and documented completion", () => {
+  it("retains connection problems through editing and unrelated help until configuration succeeds", async () => {
+    const io = surface(true);
+    const observed = observeViews();
+    const retry = Promise.withResolvers<string | undefined>();
+    const retryEntered = Promise.withResolvers<void>();
+    let attempts = 0;
+    const configureModel = vi.fn(async () => {
+      if (attempts++ === 0)
+        throw new AgentError("HOST_CONFIGURATION_REJECTED", "Connection requires correction");
+      retryEntered.resolve();
+      return retry.promise;
+    });
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: host({
+        models: async () => [{ id: "model", label: "Controlled model" }],
+        configureModel,
+      }),
+    });
+    await observed.until((view) => view.composer.submission.enabled);
+    io.input.write("/connect\r\r");
+    const failed = await observed.until(
+      (view) => view.composer.submission.enabled && view.feedback?.kind === "blocking",
+    );
+    io.input.write("retained-draft");
+    const edited = await observed.until((view) => view.composer.draft.text === "retained-draft");
+    expect(edited.feedback).toEqual(failed.feedback);
+    io.input.write("\x03");
+    await observed.until((view) => view.composer.draft.text === "");
+    const beforeHelp = observed.views.length;
+    io.input.write("/help\r\r");
+    const afterHelp = await observed.until(
+      (view) =>
+        observed.views.length > beforeHelp &&
+        view.composer.submission.enabled &&
+        view.composer.draft.text === "",
+    );
+    expect(afterHelp.feedback).toEqual(failed.feedback);
+    const beforeRetry = observed.views.length;
+    io.input.write("/connect\r\r");
+    await retryEntered.promise;
+    expect(observed.views.at(-1)!.feedback).toEqual(failed.feedback);
+    retry.resolve("model");
+    const recovered = await observed.until(
+      (view) =>
+        observed.views.length > beforeRetry &&
+        view.composer.submission.enabled &&
+        view.composer.draft.text === "",
+    );
+    expect(recovered.feedback?.kind).not.toBe("blocking");
+    expect(configureModel).toHaveBeenCalledTimes(2);
+    io.input.end();
+    expect(await running).toBe(0);
+  });
+
+  it("parses /connect while retaining escaped command text as a message", () => {
     expect(parseSubmittedText("/connect")).toEqual({ type: "command", name: "connect" });
-    expect(LOCAL_COMMANDS).toContain("connect");
-    expect(TERMINAL_HELP).toContain("/connect");
     expect(parseSubmittedText("//connect")).toEqual({ type: "message", text: "/connect" });
   });
+
+  it.each(["model-selector", "completion", "selector", "prompt", "secret", "interaction"] as const)(
+    "renders a reachable Escape action for %s at 40 × 12",
+    async (purpose) => {
+      const io = surface(true);
+      vi.stubEnv("TERM", "xterm-256color");
+      Object.assign(io.output, { isTTY: true, columns: 40, rows: 12 });
+      const observed = observeViews();
+      const writes: string[] = [];
+      const interaction = {
+        id: "approval-id",
+        owner: "host",
+        payload: { type: "approval", version: 1, data: null },
+      };
+      const resume = vi.fn(async () => handle(Promise.resolve(finishedResult)));
+      const running = runTerminalController({
+        ...io,
+        writeOutput: async (text) => {
+          writes.push(text);
+          await io.writeOutput(text);
+        },
+        command: parseTerminalArguments([]),
+        host: host({
+          open: async ({ setup }) => {
+            if (purpose === "selector")
+              await setup!.select("Choose an option", [{ id: "one", label: "Option" }]);
+            else if (purpose === "prompt") await setup!.text("Enter a value");
+            else if (purpose === "secret") await setup!.secret("Enter a secret");
+          },
+          models: async () => [{ id: "model", label: "Controlled model" }],
+          run: async () => handle(Promise.resolve({ status: "waiting", identity, interaction })),
+          resume,
+        }),
+      });
+      if (purpose === "model-selector" || purpose === "completion" || purpose === "interaction") {
+        await observed.until((view) => view.composer.submission.enabled);
+        io.input.write(
+          purpose === "model-selector"
+            ? "retained-draft\x1bm"
+            : purpose === "completion"
+              ? "/he"
+              : "task\r",
+        );
+      }
+      const focused = await observed.until(
+        (view) =>
+          view.input.purpose === purpose &&
+          (purpose !== "interaction" || !!view.selector) &&
+          (purpose !== "completion" || view.composer.draft.text === "/he"),
+      );
+      await nextTurn();
+      const visibleAction = writes
+        .flatMap((text) => stripVTControlCharacters(text).split(/[\r\n]/))
+        .find((line) => line.includes("Esc") && line.includes("Enter"));
+      expect(visibleAction).toBeDefined();
+      expect(visibleAction).toMatch(/Esc\s*\p{Script=Han}/u);
+      expect(visibleWidth(focused.input.hint)).toBeLessThanOrEqual(39);
+      expect(visibleWidth(visibleAction!)).toBeLessThanOrEqual(39);
+      const draft = focused.composer.draft;
+      io.input.write("\x1b");
+      if (purpose === "interaction") {
+        const kept = await observed.until((view) => view.feedback?.kind === "input");
+        expect(kept.phase).toBe("waiting");
+        expect(kept.interaction).toEqual(focused.interaction);
+        expect(resume).not.toHaveBeenCalled();
+      } else if (purpose === "model-selector") {
+        const groups = await observed.until((view) => view.selector?.navigation?.pane === "groups");
+        expect(groups.composer.draft).toEqual(draft);
+        io.input.write("\x1b");
+        const closed = await observed.until((view) => view.composer.submission.enabled);
+        expect(closed.composer.draft).toEqual(draft);
+      } else {
+        const closed = await observed.until(
+          (view) => view.input.purpose === "composer" && view.composer.submission.enabled,
+        );
+        expect(closed.composer.draft).toEqual(draft);
+      }
+      io.input.end();
+      expect(await running).toBe(purpose === "interaction" ? 3 : 0);
+    },
+  );
 
   it.each([
     { columns: 40, rows: 12 },
@@ -711,7 +1098,7 @@ describe("terminal controller result and lifecycle", () => {
       ]);
       io.input.write("\x1b[B\r");
       const idle = await observed.until((view) => view.composer.submission.enabled);
-      expect(idle.notification).toContain("当前模型已选中");
+      expect(idle.feedback?.kind).toBe("notice");
       expect(idle.composer.draft.text).toBe("retained-draft");
       expect(newSession).not.toHaveBeenCalled();
       io.input.write("\x1bm");
@@ -833,9 +1220,7 @@ describe("terminal controller result and lifecycle", () => {
       io.input.write("/connect\r\r");
       if (failure === "safe") {
         const idle = await observed.until(
-          (view) =>
-            view.notification?.includes("连接配置未完成") === true &&
-            view.composer.submission.enabled,
+          (view) => view.feedback?.kind === "blocking" && view.composer.submission.enabled,
         );
         expect(idle.activity).toBeUndefined();
         expect(currentHost.context).toBe(initialContext);

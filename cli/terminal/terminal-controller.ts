@@ -17,7 +17,13 @@ import type { Composer, NodeTerminal, Selector, TerminalKeyEvent } from "./input
 import { createTerminalRenderer } from "./interactive-renderer.js";
 import { createNodeTerminal } from "./node-terminal.js";
 import { createPreviewBuffer } from "./preview-buffer.js";
-import type { TerminalRenderer, TerminalSelectorView, TerminalView } from "./renderer-contract.js";
+import type {
+  TerminalFeedback,
+  TerminalInputView,
+  TerminalRenderer,
+  TerminalSelectorView,
+  TerminalView,
+} from "./renderer-contract.js";
 import { createSelector } from "./selector.js";
 import type {
   TerminalExitDecision,
@@ -81,6 +87,8 @@ const failureOrder: readonly TerminalFailureStage[] = [
   "configuration",
 ];
 
+type BlockingScope = "catalog" | "model" | "connection" | "binding" | "interaction";
+
 /** 一个控制器拥有输入、观察消费、当前句柄及退出；等待不保留 Core Run 调用栈。 */
 export async function runTerminalController(options: TerminalControllerOptions): Promise<number> {
   const { command, host } = options;
@@ -88,7 +96,11 @@ export async function runTerminalController(options: TerminalControllerOptions):
   let generation = 0;
   let focus: Focus = { type: "composer" };
   const composer = createComposer();
-  let notification: string | undefined;
+  const feedback: {
+    input?: TerminalFeedback;
+    blocking?: TerminalFeedback & { readonly scope: BlockingScope };
+    notice?: TerminalFeedback;
+  } = {};
   let activity: string | undefined;
   let modelStatus: string | undefined;
   let pendingInteraction: InteractionRequest | undefined;
@@ -126,10 +138,12 @@ export async function runTerminalController(options: TerminalControllerOptions):
     generation++;
     terminal.setGeneration(generation);
     focus = next;
+    completion = undefined;
   }
 
   function resolveFocus(value: string | undefined): void {
     const current = focus;
+    delete feedback.input;
     switchFocus({ type: "composer" });
     if (current.type !== "composer") current.resolve(value);
   }
@@ -143,15 +157,19 @@ export async function runTerminalController(options: TerminalControllerOptions):
     return typeof error === "object" && error !== null && "code" in error && error.code === "EPIPE";
   }
 
+  function onOutputError(error: unknown): void {
+    outputFailed = true;
+    if (isPipeError(error)) brokenPipe = true;
+    else noteFailure("output");
+    requestStop(true);
+  }
+
   async function output(action: () => Promise<void>): Promise<void> {
     if (outputFailed) return;
     try {
       await action();
     } catch (error) {
-      outputFailed = true;
-      if (isPipeError(error)) brokenPipe = true;
-      else noteFailure("output");
-      requestStop(true);
+      onOutputError(error);
     }
   }
 
@@ -176,8 +194,121 @@ export async function runTerminalController(options: TerminalControllerOptions):
     if (!runTask) finish();
   }
 
+  function setFeedback(kind: "input" | "notice", message: string): void {
+    feedback[kind] = { kind, message };
+  }
+
+  function setBlocking(scope: BlockingScope, message: string): void {
+    feedback.blocking = { kind: "blocking", scope, message };
+  }
+
+  function clearBlocking(scope: BlockingScope): void {
+    if (feedback.blocking?.scope === scope) delete feedback.blocking;
+  }
+
+  function sizeEditors(): void {
+    const columns = Math.max(1, terminal.columns - 5);
+    composer.setColumns(columns);
+    if (focus.type === "text") focus.editor.setColumns(columns);
+  }
+
+  function inputView(): TerminalInputView {
+    const narrow = terminal.columns < 60;
+    if (pendingInteraction && (focus.type === "selector" || focus.type === "text"))
+      return {
+        purpose: focus.type === "text" && focus.secret ? "secret" : "interaction",
+        status: "等待明确审批；尚未提交回答",
+        hint:
+          focus.type === "selector"
+            ? narrow
+              ? "↑↓选 Enter答 Esc等待 Tab不批"
+              : "↑↓ 明确选择 · Enter 确认 · Esc 保持等待 · Tab 不批准 · Ctrl+C 取消请求"
+            : narrow
+              ? "Enter回答 · Esc保持等待 · ^C取消"
+              : "Enter 提交明确回答 · Esc 保持等待 · Ctrl+C 取消请求",
+      };
+    if (focus.type === "text")
+      return {
+        purpose: focus.secret ? "secret" : "prompt",
+        status: focus.secret ? "等待安全输入；主草稿保留" : "等待当前提示输入；主草稿保留",
+        hint: narrow
+          ? "Enter确认 · Esc返回 · Alt+Enter换行"
+          : "Enter 确认输入 · Alt+Enter 换行 · Esc 返回",
+      };
+    if (focus.type === "selector")
+      return {
+        purpose: focus.navigation ? "model-selector" : "selector",
+        status: focus.navigation ? "选择模型；尚未切换会话" : "等待选择；主草稿保留",
+        hint: focus.navigation
+          ? narrow
+            ? "Tab切栏 · ↑↓选 · Enter · Esc返回"
+            : "←→/Tab 切栏 · ↑↓ 移动 · Enter 选择 · Esc 返回上层"
+          : narrow
+            ? "↑↓选 · Enter/Tab确认 · Esc返回"
+            : "输入筛选 · ↑↓ 选择 · Enter/Tab 确认 · Esc 返回",
+      };
+    if (completion)
+      return {
+        purpose: "completion",
+        status: "命令补全；接受后仍需提交",
+        hint: narrow
+          ? "↑↓选 · Enter/Tab仅补全 · Esc关闭"
+          : "↑↓ 选择 · Enter/Tab 仅接受补全 · Esc 关闭 · 草稿保留",
+      };
+    if (settlingCancellation || phase === "cancelling")
+      return {
+        purpose: "composer",
+        status: "正在取消并等待持久化结算；尚未完成",
+        hint: narrow ? "草稿不排队 · 等待取消结算" : "可编辑草稿，不排队 · 等待取消结算",
+      };
+    if (phase === "waiting")
+      return {
+        purpose: "interaction",
+        status: "等待明确审批；尚未提交回答",
+        hint: narrow
+          ? "无默认批准 · Esc等待 · ^C取消"
+          : "无默认批准 · Esc 保持等待 · Ctrl+C 取消请求",
+      };
+    if (phase === "running" || phase === "submitting" || phase === "settling")
+      return {
+        purpose: "composer",
+        status:
+          phase === "running"
+            ? "执行中；暂不能发送"
+            : phase === "submitting"
+              ? "正在提交交互回答；暂不能发送"
+              : "正在保存执行结果；暂不能发送",
+        hint:
+          phase === "running"
+            ? narrow
+              ? "草稿不排队 · Esc关详情/取消执行"
+              : "可编辑草稿，不排队 · Esc 先关闭工具详情，再取消执行"
+            : narrow
+              ? "草稿不排队 · 等待结算"
+              : "可编辑草稿，不排队 · 等待结算",
+      };
+    if (!ready || phase !== "idle" || uiTask)
+      return {
+        purpose: "composer",
+        status: `${activity ?? (!ready ? "宿主尚未就绪" : "当前操作尚未结束")}；暂不能发送`,
+        hint: narrow ? "草稿不排队 · 等待当前操作" : "可编辑草稿，不排队 · 等待当前操作完成",
+      };
+    return {
+      purpose: "composer",
+      status: pasteLines ? "多行输入中；等待 /end" : "就绪",
+      hint: pasteLines
+        ? narrow
+          ? "/end发送 · //end插入 · EOF不发送"
+          : "独立行 /end 发送 · //end 插入 /end · EOF 不发送"
+        : narrow
+          ? "Enter发送 · Alt+Enter换行 · /命令"
+          : "Enter 发送 · Alt+Enter 换行 · / 命令",
+    };
+  }
+
   async function refresh(): Promise<void> {
     if (outputFailed || stopping || phase === "closing") return;
+    sizeEditors();
     const draft = focus.type === "text" && !focus.secret ? focus.editor.draft : composer.draft;
     const selector: TerminalSelectorView | undefined =
       focus.type === "selector"
@@ -200,16 +331,11 @@ export async function runTerminalController(options: TerminalControllerOptions):
                 }
               : {}),
           }
-        : completion
-          ? {
-              title: "命令补全 · 接受后仍需再次 Enter",
-              query: "",
-              items: completion.items,
-              selectedId: completion.selectedId,
-            }
-          : undefined;
+        : undefined;
+    const currentFeedback = feedback.blocking ?? feedback.input ?? feedback.notice;
     const view: TerminalView = {
       phase,
+      input: inputView(),
       ...(activity ? { activity } : {}),
       composer: {
         draft: focus.type === "text" && focus.secret ? { text: "", cursor: 0 } : draft,
@@ -237,6 +363,16 @@ export async function runTerminalController(options: TerminalControllerOptions):
           }
         : {}),
       ...(selector ? { selector } : {}),
+      ...(completion
+        ? {
+            completion: {
+              title: "命令补全 · 接受后仍需再次 Enter",
+              query: "",
+              items: completion.items,
+              selectedId: completion.selectedId,
+            },
+          }
+        : {}),
       ...(pendingInteraction
         ? {
             interaction: {
@@ -246,7 +382,9 @@ export async function runTerminalController(options: TerminalControllerOptions):
           }
         : {}),
       ...(focus.type === "text" ? { prompt: { text: focus.prompt, secret: focus.secret } } : {}),
-      ...(notification ? { notification } : {}),
+      ...(currentFeedback
+        ? { feedback: { kind: currentFeedback.kind, message: currentFeedback.message } }
+        : {}),
     };
     await output(() => renderer.view(view));
   }
@@ -350,10 +488,12 @@ export async function runTerminalController(options: TerminalControllerOptions):
   async function loadModels(): Promise<readonly TerminalModelItem[] | undefined> {
     return withActivity("正在加载模型目录", async () => {
       try {
-        return await host.models();
+        const models = await host.models();
+        clearBlocking("catalog");
+        return models;
       } catch (error) {
-        notification = `模型目录加载失败：${terminalError(error).message}`;
-        await output(() => renderer.message(notification!));
+        setBlocking("catalog", `模型目录加载失败：${terminalError(error).message}`);
+        await output(() => renderer.message(feedback.blocking!.message));
         return undefined;
       }
     });
@@ -365,16 +505,20 @@ export async function runTerminalController(options: TerminalControllerOptions):
       selected = await withActivity("正在配置连接", () => host.configureModel(setup));
     } catch (error) {
       if (terminalError(error).code !== "HOST_CONFIGURATION_REJECTED") throw error;
-      notification = `连接配置未完成：${terminalError(error).message}；当前会话保持不变。`;
-      await output(() => renderer.message(notification!));
+      setBlocking(
+        "connection",
+        `连接配置未完成：${terminalError(error).message}；当前会话保持不变。`,
+      );
+      await output(() => renderer.message(feedback.blocking!.message));
       return undefined;
     }
     if (!selected) {
-      notification = "已取消连接配置；当前会话与草稿保持不变。";
+      setFeedback("notice", "已取消连接配置；当前会话与草稿保持不变。");
       return undefined;
     }
-    notification = "连接与 CLI 默认模型已保存；当前会话未切换，须另确认新建绑定。";
-    await output(() => renderer.message(notification!));
+    clearBlocking("connection");
+    setFeedback("notice", "连接与 CLI 默认模型已保存；当前会话未切换，须另确认新建绑定。");
+    await output(() => renderer.message(feedback.notice!.message));
     return selected;
   }
 
@@ -388,27 +532,31 @@ export async function runTerminalController(options: TerminalControllerOptions):
     modelStatus = models?.find((item) => item.id === currentId)?.availability?.reason;
     const selectedId = connect ? await configureConnection() : await askModel(models ?? []);
     if (!selectedId) {
-      notification ??= "已取消模型选择；当前模型与会话保持不变。";
+      if (!feedback.notice) setFeedback("notice", "已取消模型选择；当前模型与会话保持不变。");
       return;
     }
     // 向导可能新增连接或更新既有模型；确认绑定前重新读取权威本地目录。
     models = await loadModels();
     const selected = models?.find((item) => item.id === selectedId);
     if (!selected) {
-      notification = "未找到所选模型；当前会话保持不变。已保存的连接配置不会删除。";
+      setBlocking("model", "未找到所选模型；当前会话保持不变。已保存的连接配置不会删除。");
       return;
     }
+    if (selected.availability?.state !== "unavailable") clearBlocking("model");
     if (selected.id === currentId) {
-      notification = "当前模型已选中；未创建新会话。";
+      setFeedback("notice", "当前模型已选中；未创建新会话。");
       return;
     }
     if (selected.availability?.state === "unavailable") {
-      notification = `模型不可用：${selected.availability.reason}`;
-      await output(() => renderer.message(notification!));
+      setBlocking("model", `模型不可用：${selected.availability.reason}`);
+      await output(() => renderer.message(feedback.blocking!.message));
       return;
     }
     if (!(await confirmSwitch(`模型 ${selected.label}`))) {
-      notification = "已取消模型切换；当前模型、会话与草稿保持不变；已保存的连接/默认配置保留。";
+      setFeedback(
+        "notice",
+        "已取消模型切换；当前模型、会话与草稿保持不变；已保存的连接/默认配置保留。",
+      );
       return;
     }
     await withActivity(`正在切换模型：${selected.label}`, () =>
@@ -416,8 +564,11 @@ export async function runTerminalController(options: TerminalControllerOptions):
     );
     modelStatus = selected.availability?.reason;
     await sessionRecord();
-    notification = `已切换模型：${host.context.model.label}；新绑定会话 ${host.context.threadId}`;
-    await output(() => renderer.message(notification!));
+    setFeedback(
+      "notice",
+      `已切换模型：${host.context.model.label}；新绑定会话 ${host.context.threadId}`,
+    );
+    await output(() => renderer.message(feedback.notice!.message));
   }
 
   const setup: TerminalSetupIO = {
@@ -428,6 +579,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
   };
 
   async function sessionRecord(): Promise<void> {
+    clearBlocking("binding");
     const context = host.context;
     await output(() =>
       renderer.record({
@@ -467,19 +619,19 @@ export async function runTerminalController(options: TerminalControllerOptions):
         }
         const split = text.trim().split(/\s+/);
         if (split.length !== 2 || split[1] !== request.id) {
-          notification = "必须输入当前完整 interactionId。";
+          setFeedback("input", "必须输入当前完整 interactionId。");
           await refresh();
           continue;
         }
         if (split[0] === "cancel") return { type: "cancel", interactionId: request.id };
         if (display.support !== "supported") {
-          notification = "不支持此交互格式；只能取消或保留等待。";
+          setBlocking("interaction", "不支持此交互格式；只能取消或保留等待。");
           continue;
         }
         try {
           return host.answerInteraction(request, split[0]!, split[1]);
         } catch {
-          notification = "交互选项或确认身份无效；等待保持。";
+          setFeedback("input", "交互选项或确认身份无效；等待保持。");
           continue;
         }
       }
@@ -497,7 +649,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       if (selected === "__cancel") return { type: "cancel", interactionId: request.id };
       if (selected === undefined) {
         if (eof || stopping) return undefined;
-        notification = "等待保持，未批准或拒绝。";
+        setFeedback("input", "等待保持，未批准或拒绝。");
         continue;
       }
       if (display.support !== "supported") continue;
@@ -510,7 +662,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       try {
         return host.answerInteraction(request, selected, confirmation);
       } catch {
-        notification = "交互选项或确认身份无效；等待保持。";
+        setFeedback("input", "交互选项或确认身份无效；等待保持。");
       }
     }
     return undefined;
@@ -589,6 +741,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
           ? undefined
           : await answerWaiting(result.interaction);
       if (!response) break;
+      clearBlocking("interaction");
       if (response.type === "cancel") userCancelledQuery = true;
       settlingCancellation = response.type === "cancel";
       phase = "submitting";
@@ -598,6 +751,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       if (settlingCancellation) cancelRequested = false;
       handle = await host.resume(result.identity.queryId, response);
       phase = "running";
+      await refresh();
     }
     pendingInteraction = lastResult?.status === "waiting" ? lastResult.interaction : undefined;
     if (stopping || oneShot || eof || lastResult?.status === "waiting") {
@@ -608,6 +762,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
 
   function launchQuery(start: () => Promise<AgentRunHandle>): void {
     if (runTask || stopping) return;
+    delete feedback.notice;
     const task = executeQuery(start())
       .catch(async (error: unknown) => {
         await report(error, "completion");
@@ -628,12 +783,14 @@ export async function runTerminalController(options: TerminalControllerOptions):
 
   function launchUI(action: () => Promise<void>): void {
     if (uiTask || stopping) return;
+    completion = undefined;
+    delete feedback.input;
     uiTask = Promise.resolve()
       .then(action)
       .catch(async (error: unknown) => {
         const publicError = terminalError(error);
         if (publicError.code === "HOST_SWITCH_REJECTED") {
-          notification = publicError.message;
+          setBlocking("binding", publicError.message);
           await output(() => renderer.message(publicError.message));
         } else {
           await report(error, "activation");
@@ -649,7 +806,6 @@ export async function runTerminalController(options: TerminalControllerOptions):
 
   async function withActivity<T>(text: string, operation: () => Promise<T>): Promise<T> {
     activity = text;
-    notification = undefined;
     await refresh();
     try {
       return await operation();
@@ -684,7 +840,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
         break;
       case "paste":
         pasteLines = [];
-        notification = "多行输入：独立行 /end 发送，//end 插入 /end；EOF 不发送。";
+        setFeedback("notice", "多行输入：独立行 /end 发送，//end 插入 /end；EOF 不发送。");
         break;
       case "new":
         if (await confirmSwitch()) {
@@ -739,7 +895,16 @@ export async function runTerminalController(options: TerminalControllerOptions):
   async function dispatch(event: TerminalKeyEvent): Promise<void> {
     if (event.generation !== generation || stopping) return;
     const key = event.key;
-    if (key.action === "insert") notification = undefined;
+    sizeEditors();
+    if (
+      key.action === "insert" ||
+      key.action === "backspace" ||
+      key.action === "delete" ||
+      key.action === "newline"
+    ) {
+      delete feedback.input;
+      delete feedback.notice;
+    }
     if (
       key.action === "interrupt" &&
       (phase === "running" ||
@@ -851,6 +1016,8 @@ export async function runTerminalController(options: TerminalControllerOptions):
       if (key.action === "eof" && phase === "waiting") {
         eof = true;
         requestStop();
+      } else if (key.action === "escape" && pendingInteraction) {
+        setFeedback("input", "等待保持，未批准或拒绝。");
       } else if (key.action === "escape" || key.action === "interrupt" || key.action === "eof")
         resolveFocus(undefined);
       else if (key.action === "up") focus.selector.move(-1);
@@ -861,7 +1028,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       } else if (key.action === "backspace") {
         focus.typed = Array.from(focus.typed).slice(0, -1).join("");
         focus.selector.search(focus.typed);
-      } else if (key.action === "submit" || key.action === "tab") {
+      } else if (key.action === "submit" || (key.action === "tab" && !pendingInteraction)) {
         const query = focus.typed.trim();
         const index = /^\d+$/.test(query) ? Number(query) - 1 : -1;
         const selected =
@@ -879,7 +1046,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
     }
     if (key.action === "select-model") {
       if (phase === "idle" && !uiTask) launchUI(() => localCommand("model"));
-      else notification = "执行或会话切换中不能切换模型。";
+      else setFeedback("input", "执行或会话切换中不能切换模型。");
       await refresh();
       return;
     }
@@ -889,7 +1056,12 @@ export async function runTerminalController(options: TerminalControllerOptions):
         await refresh();
         return;
       }
-      if (phase === "running") {
+      let dismissed = false;
+      await output(async () => {
+        dismissed = await renderer.dismissTool();
+      });
+      if (dismissed) return;
+      if (phase === "running" && !settlingCancellation) {
         cancelRequested = true;
         phase = "cancelling";
         active?.cancel("用户取消");
@@ -901,13 +1073,13 @@ export async function runTerminalController(options: TerminalControllerOptions):
       composer.clear(true);
       completion = undefined;
       pasteLines = undefined;
-      notification = "草稿已清除，可用输入历史召回。";
+      setFeedback("notice", "草稿已清除，可用输入历史召回。");
       await refresh();
       return;
     }
     if (key.action === "eof") {
       if (!composer.draft.text) requestStop();
-      else notification = "草稿非空；Ctrl+D 不会提交或丢弃。";
+      else setFeedback("input", "草稿非空；Ctrl+D 不会提交或丢弃。");
       await refresh();
       return;
     }
@@ -927,7 +1099,6 @@ export async function runTerminalController(options: TerminalControllerOptions):
     }
     if (key.action === "submit") {
       if (phase !== "idle" || !ready || uiTask) {
-        notification = "当前尚不能发送；草稿保留，不排队。";
         await refresh();
         return;
       }
@@ -948,7 +1119,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       if (!text.trim()) return;
       const submitted = parseSubmittedText(text);
       if (submitted.type === "unknown-command") {
-        notification = "未知命令；正文以 / 开头请使用 //。";
+        setFeedback("input", "未知命令；正文以 / 开头请使用 //。");
         await refresh();
         return;
       }
@@ -960,7 +1131,9 @@ export async function runTerminalController(options: TerminalControllerOptions):
         launchQuery(() => host.run(submitted.text));
       }
     } else {
+      const previousText = composer.draft.text;
       composer.edit(key);
+      if (composer.draft.text !== previousText) delete feedback.notice;
       if (
         phase === "idle" &&
         !pasteLines &&
@@ -1022,6 +1195,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
     rows: () => terminal.rows,
     writeOutput: options.writeOutput,
     writeError: options.writeError,
+    onOutputError,
   });
   const onInterrupt = () => {
     if (settlingCancellation) return;
@@ -1048,12 +1222,6 @@ export async function runTerminalController(options: TerminalControllerOptions):
   };
   const onTerminate = () => {
     terminated = true;
-    requestStop(true);
-  };
-  const onOutputError = (error: unknown) => {
-    if (isPipeError(error)) brokenPipe = true;
-    else noteFailure("output");
-    outputFailed = true;
     requestStop(true);
   };
   process.on("SIGINT", onInterrupt);

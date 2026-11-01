@@ -1,12 +1,14 @@
 # 下一步计划目录
 
-[通用包身份修正](package-identities.md)及[单包多厂商 models 抽取](models-package.md#12-实施与验收记录)已完成本地验收。M3 的 [A](m3-a-composition.md#10-后续独立复核与完成结论)、[B](m3-b-lifecycle.md#10-后续独立审核与完成结论)、[C](m3-c-persistence.md#12-c1c3-增量实施与验收记录)、[D](m3-d-recovery.md#12-本轮实施与验收记录)、[E](m3-e-observation.md#8-本轮实施与验收记录)均已验收，M3 本轮计划范围完成。E 补齐有限观察、CLI 持久闭环和输出结算，实际生产/开发 Node 入口、本地 SDK、包消费与全仓门禁通过；无新增远程厂商调用。
+[通用包身份修正](package-identities.md)及[单包多厂商 models 抽取](models-package.md#12-实施与验收记录)已完成本地验收。M3 的 [A](m3-a-composition.md#10-后续独立复核与完成结论)、[B](m3-b-lifecycle.md#10-后续独立审核与完成结论)、[C](m3-c-persistence.md#12-c1c3-增量实施与验收记录)、D/E 均已验收；独立审核提出的 D 内容断言缺口已补齐并通过 [最终门禁](m3-d-recovery.md#137-修复实施与最终验收记录)，M3 本轮计划范围完成最终收口。E 的独立通过保持，不因本次收口启动 M4/PPT 或第二后端。
 
 每个迭代或独立切片使用一个文件，设计、实施记录和验收证据保留在对应文件内。
 
 页面侧[独立 UI 设计体系执行方案](ui-design-system.md)的前置宿主分类已完成本地验收：根级 `app/` 承载桌面，`cli/` 承载终端，证据见方案第 12 节。随后 CLI 已独立为生产 Node 入口，不再借用 Electron。UI 的 U0–U5 仍待执行，先完成契约再进入独立预览和 U2 表单闭环；未接新后端或切换生产 UI。
 
 CLI 已按[生产直切方案](cli-terminal.md#83-下一步执行方案生产-cli-一次直切)同轮实施 C1–C4：inline TUI、单输入 owner、安全配置包、Windows DPAPI、Node SQLite/模型/能力宿主及生产/开发入口；旧 CLI/Electron 桥接已删除，无双轨或预览入口。分层验收见[实施记录](cli-terminal.md#84-生产直切实施与验收记录)，包括真实 ConPTY，以及 4 次 MiMo 远程请求完成无插件对话、文件审批、跨进程恢复与落盘校验。
+
+CLI 的[状态与输入交互优化](cli-terminal.md#87-状态与输入交互优化t0t3)已实施 T0–T3：统一状态与按键说明、审批上下文、补全与草稿、显示行导航及差异刷新。定向/全量回归、类型/边界和 Windows 真实终端场景通过；复杂 emoji 原生显示及其他终端的限制见该节证据。不复刻参考截图，不改 Harness、授权语义或 print/JSONL 协议，不借用 C0–C4 的历史证据。
 
 ## 迭代计划
 
@@ -15,9 +17,9 @@ CLI 已按[生产直切方案](cli-terminal.md#83-下一步执行方案生产-cl
 | M1：Harness 公开面收敛 | 已完成本地验收及审核修复 | [公开协议、插件作用域与边界门禁](m1-public-api.md) |
 | M2-A：通用会话宿主装配 | 已完成本地验收 | [通用机制与具体运行配置分离](m2-a-session-host.md) |
 | M2-B：独立包边界与实际消费 | 已完成本地验收 | [构建、包导出、tarball 与 Electron 消费](m2-b-package-boundary.md) |
-| M3：扩展与可靠性通用验收 | A～E 均已完成本地验收，计划范围完成 | [总计划](m3-reliability.md)；[A：组合](m3-a-composition.md)；[B：隔离与排空](m3-b-lifecycle.md)；[C：持久并发与兼容](m3-c-persistence.md)；[D：故障恢复](m3-d-recovery.md)；[E：观察与入口](m3-e-observation.md) |
+| M3：扩展与可靠性通用验收 | A～E 已验收，独立审核修复通过，最终收口完成 | [总计划](m3-reliability.md)；[A：组合](m3-a-composition.md)；[B：隔离与排空](m3-b-lifecycle.md)；[C：持久并发与兼容](m3-c-persistence.md)；[D：最终验收](m3-d-recovery.md#137-修复实施与最终验收记录)；[E：观察与入口](m3-e-observation.md) |
 
-M3 完成证据与限制见 [E 的集中收口](m3-e-observation.md#8-本轮实施与验收记录)。下一阶段按具体宿主需求规划 M4 消费侧迁移，不自动切换生产 UI/PPT 或删除旧链路；P3 第二后端与 P4 迁移/包化继续独立安排。有限观察验收不等于容量有界或任意 OS 管道阻塞下仍可推进。
+M3 的既有集中证据与限制见 [E 的验收记录](m3-e-observation.md#8-本轮实施与验收记录)，独立审核修复、第三 PID 完整内容及最终门禁见 [D 第 13.7 节](m3-d-recovery.md#137-修复实施与最终验收记录)。M3 本轮收口完成；M4 仍按具体宿主需求单列，不自动切换生产 UI/PPT 或删除旧链路。P3 第二后端与 P4 迁移/包化继续独立安排；有限观察验收不等于容量有界或任意 OS 管道阻塞下仍可推进。
 
 M0 的既有闭环与 M4 的后续消费侧迁移见[整体路线](../project-plan.md#6-通用-harness-演进路线)；没有独立详细计划的阶段不新增占位文件。生产 UI/PPT、旧 Agent/Gateway 未因本次文档拆分而迁移。
 

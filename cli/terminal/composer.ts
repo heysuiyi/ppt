@@ -1,11 +1,7 @@
+import { layoutComposer } from "./composer-layout.js";
 import type { Composer } from "./input-contract.js";
 import type { TerminalDraft, TerminalEditorAction } from "./terminal-contract.js";
-
-const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-
-function graphemes(text: string): string[] {
-  return Array.from(segmenter.segment(text), (part) => part.segment);
-}
+import { graphemes } from "./terminal-text.js";
 
 export function createComposer(initial: TerminalDraft = { text: "", cursor: 0 }): Composer {
   let text = initial.text.replace(/\r\n?/g, "\n");
@@ -15,6 +11,18 @@ export function createComposer(initial: TerminalDraft = { text: "", cursor: 0 })
   let historyIndex = 0;
   let savedDraft: TerminalDraft | undefined;
   let preferredColumn: number | undefined;
+  let columns = 80;
+
+  function leaveHistory(): void {
+    historyIndex = history.length;
+    preferredColumn = undefined;
+  }
+
+  function moveCursor(next: number): void {
+    if (next === cursor) return;
+    cursor = next;
+    leaveHistory();
+  }
 
   function setDraft(draft: TerminalDraft): void {
     text = draft.text.replace(/\r\n?/g, "\n");
@@ -36,16 +44,14 @@ export function createComposer(initial: TerminalDraft = { text: "", cursor: 0 })
     text = prefix + cells.slice(start + count).join("");
     cells = graphemes(text);
     cursor = graphemes(prefix).length;
-    historyIndex = history.length;
-    savedDraft = undefined;
-    preferredColumn = undefined;
+    leaveHistory();
   }
 
   function recall(direction: -1 | 1): void {
     if (history.length === 0) return;
     if (historyIndex === history.length) {
       if (direction > 0) return;
-      savedDraft = { text, cursor };
+      savedDraft ??= { text, cursor };
     }
     historyIndex = Math.max(0, Math.min(history.length, historyIndex + direction));
     const draft = historyIndex === history.length ? savedDraft : history[historyIndex];
@@ -54,31 +60,34 @@ export function createComposer(initial: TerminalDraft = { text: "", cursor: 0 })
     cells = graphemes(text);
     cursor = draft.cursor;
     preferredColumn = undefined;
+    if (historyIndex === history.length) savedDraft = undefined;
   }
 
   function vertical(direction: -1 | 1): void {
-    if (!cells.includes("\n")) {
+    if (historyIndex < history.length) {
       recall(direction);
       return;
     }
-    let start = cursor;
-    while (start > 0 && cells[start - 1] !== "\n") start--;
-    preferredColumn ??= cursor - start;
-    if (direction < 0) {
-      if (start === 0) return;
-      const end = start - 1;
-      start = end;
-      while (start > 0 && cells[start - 1] !== "\n") start--;
-      cursor = Math.min(end, start + preferredColumn);
-    } else {
-      let end = cursor;
-      while (end < cells.length && cells[end] !== "\n") end++;
-      if (end === cells.length) return;
-      start = end + 1;
-      end = start;
-      while (end < cells.length && cells[end] !== "\n") end++;
-      cursor = Math.min(end, start + preferredColumn);
+    const layout = layoutComposer({ text, cursor }, columns);
+    const current = layout.positions[cursor]!;
+    const row = current.row + direction;
+    if (row < 0 || row >= layout.lines.length) {
+      recall(direction);
+      return;
     }
+    preferredColumn ??= current.column;
+    let target: number | undefined;
+    let distance = Infinity;
+    for (let index = 0; index < layout.positions.length; index++) {
+      const position = layout.positions[index]!;
+      if (position.row !== row) continue;
+      const nextDistance = Math.abs(position.column - preferredColumn);
+      if (nextDistance < distance) {
+        target = index;
+        distance = nextDistance;
+      }
+    }
+    if (target !== undefined) cursor = target;
   }
 
   return {
@@ -86,16 +95,18 @@ export function createComposer(initial: TerminalDraft = { text: "", cursor: 0 })
       return { text, cursor };
     },
     setDraft,
+    setColumns(next: number) {
+      columns = Number.isFinite(next) ? Math.max(1, Math.floor(next)) : 1;
+    },
     remember,
     clear(keep = false) {
       if (keep) remember();
       setDraft({ text: "", cursor: 0 });
     },
     edit(action: TerminalEditorAction) {
-      if (action.action !== "up" && action.action !== "down") preferredColumn = undefined;
       switch (action.action) {
         case "insert":
-          replace(cursor, 0, action.text.replace(/\r\n?/g, "\n"));
+          if (action.text) replace(cursor, 0, action.text.replace(/\r\n?/g, "\n"));
           break;
         case "newline":
           replace(cursor, 0, "\n");
@@ -107,17 +118,23 @@ export function createComposer(initial: TerminalDraft = { text: "", cursor: 0 })
           if (cursor < cells.length) replace(cursor, 1, "");
           break;
         case "left":
-          cursor = Math.max(0, cursor - 1);
+          moveCursor(Math.max(0, cursor - 1));
           break;
         case "right":
-          cursor = Math.min(cells.length, cursor + 1);
+          moveCursor(Math.min(cells.length, cursor + 1));
           break;
-        case "home":
-          while (cursor > 0 && cells[cursor - 1] !== "\n") cursor--;
+        case "home": {
+          let start = cursor;
+          while (start > 0 && cells[start - 1] !== "\n") start--;
+          moveCursor(start);
           break;
-        case "end":
-          while (cursor < cells.length && cells[cursor] !== "\n") cursor++;
+        }
+        case "end": {
+          let end = cursor;
+          while (end < cells.length && cells[end] !== "\n") end++;
+          moveCursor(end);
           break;
+        }
         case "up":
           vertical(-1);
           break;

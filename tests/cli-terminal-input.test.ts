@@ -2,9 +2,11 @@ import { PassThrough, Writable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createComposer } from "../cli/terminal/composer.js";
+import { layoutComposer } from "../cli/terminal/composer-layout.js";
 import type { NodeTerminal, TerminalKeyEvent } from "../cli/terminal/input-contract.js";
 import { createNodeTerminal } from "../cli/terminal/node-terminal.js";
 import { createSelector } from "../cli/terminal/selector.js";
+import { visibleWidth } from "../cli/terminal/terminal-text.js";
 
 class TerminalInput extends PassThrough {
   isTTY = true;
@@ -100,12 +102,13 @@ describe("terminal grapheme composer", () => {
 
   it("preserves multiline paste and preferred columns across short lines", () => {
     const composer = createComposer();
+    composer.setColumns(40);
     composer.edit({ action: "insert", text: "中文ab\r\nx\r\n12345", source: "paste" });
     composer.edit({ action: "left" });
     composer.edit({ action: "up" });
     expect(composer.draft.cursor).toBe(6);
     composer.edit({ action: "up" });
-    expect(composer.draft.cursor).toBe(4);
+    expect(composer.draft.cursor).toBe(2);
     composer.edit({ action: "down" });
     composer.edit({ action: "down" });
     expect(composer.draft).toEqual({ text: "中文ab\nx\n12345", cursor: 11 });
@@ -124,11 +127,140 @@ describe("terminal grapheme composer", () => {
     expect(composer.draft).toEqual({ text: "first", cursor: 2 });
     composer.edit({ action: "down" });
     expect(composer.draft).toEqual({ text: "unsent", cursor: 6 });
-    composer.setDraft({ text: "a\nb", cursor: 0 });
-    composer.edit({ action: "up" });
-    expect(composer.draft).toEqual({ text: "a\nb", cursor: 0 });
-    expect(createComposer().draft.text).toBe("");
   });
+
+  it("browses multiline history without moving inside recalled entries and restores the unsent cursor", () => {
+    const composer = createComposer({ text: "older\nentry", cursor: 7 });
+    composer.clear(true);
+    composer.setDraft({ text: "newer\nentry", cursor: 3 });
+    composer.clear(true);
+    composer.setDraft({ text: "草稿\n未提交", cursor: 1 });
+    composer.edit({ action: "up" });
+    expect(composer.draft).toEqual({ text: "newer\nentry", cursor: 3 });
+    composer.edit({ action: "up" });
+    expect(composer.draft).toEqual({ text: "older\nentry", cursor: 7 });
+    composer.edit({ action: "down" });
+    expect(composer.draft).toEqual({ text: "newer\nentry", cursor: 3 });
+    composer.edit({ action: "down" });
+    expect(composer.draft).toEqual({ text: "草稿\n未提交", cursor: 1 });
+  });
+
+  it.each(["edit", "position"] as const)(
+    "leaves history browsing after a real %s without losing the saved draft",
+    (kind) => {
+      const composer = createComposer({ text: "older", cursor: 5 });
+      composer.clear(true);
+      composer.setDraft({ text: "ab\ncd", cursor: 4 });
+      composer.clear(true);
+      composer.setDraft({ text: "pending", cursor: 2 });
+      composer.edit({ action: "up" });
+      if (kind === "edit") composer.edit({ action: "insert", text: "X", source: "keyboard" });
+      else composer.edit({ action: "left" });
+      composer.edit({ action: "up" });
+      expect(composer.draft).toEqual(
+        kind === "edit" ? { text: "ab\ncXd", cursor: 2 } : { text: "ab\ncd", cursor: 0 },
+      );
+      composer.edit({ action: "up" });
+      expect(composer.draft).toEqual({ text: "ab\ncd", cursor: 4 });
+      composer.edit({ action: "down" });
+      expect(composer.draft).toEqual({ text: "pending", cursor: 2 });
+    },
+  );
+
+  it("moves through soft wraps using display columns across CJK, tabs and short lines", () => {
+    const composer = createComposer({ text: "中ab\txy\nZ\n123456", cursor: 14 });
+    composer.setColumns(6);
+    for (const cursor of [8, 5, 2]) {
+      composer.edit({ action: "up" });
+      expect(composer.draft.cursor).toBe(cursor);
+    }
+    for (const cursor of [5, 8, 14]) {
+      composer.edit({ action: "down" });
+      expect(composer.draft.cursor).toBe(cursor);
+    }
+    expect(composer.draft.text).toBe("中ab\txy\nZ\n123456");
+  });
+
+  it("uses the new row's tab stop when moving vertically and inserting after a wrapped tab", () => {
+    const composer = createComposer({ text: "abcde\txy\n12345", cursor: 13 });
+    composer.setColumns(6);
+    composer.edit({ action: "up" });
+    expect(composer.draft).toEqual({ text: "abcde\txy\n12345", cursor: 6 });
+    composer.edit({ action: "down" });
+    expect(composer.draft.cursor).toBe(13);
+    composer.edit({ action: "up" });
+    composer.edit({ action: "insert", text: "Q", source: "keyboard" });
+    expect(composer.draft).toEqual({ text: "abcde\tQxy\n12345", cursor: 7 });
+  });
+
+  it("keeps draft, cursor and history ownership through resize while updating navigation geometry", () => {
+    const composer = createComposer({ text: "first\nsecond", cursor: 8 });
+    composer.clear(true);
+    composer.setDraft({ text: "abcdefghij", cursor: 7 });
+    composer.setColumns(10);
+    composer.setColumns(4);
+    expect(composer.draft).toEqual({ text: "abcdefghij", cursor: 7 });
+    composer.edit({ action: "up" });
+    expect(composer.draft.cursor).toBe(3);
+    composer.edit({ action: "up" });
+    expect(composer.draft).toEqual({ text: "first\nsecond", cursor: 8 });
+    composer.setColumns(2);
+    expect(composer.draft).toEqual({ text: "first\nsecond", cursor: 8 });
+    composer.edit({ action: "down" });
+    expect(composer.draft).toEqual({ text: "abcdefghij", cursor: 3 });
+  });
+
+  it("does not move the cursor at a history boundary when there is no history", () => {
+    const composer = createComposer({ text: "abc\nxy", cursor: 2 });
+    composer.setColumns(10);
+    composer.edit({ action: "up" });
+    expect(composer.draft).toEqual({ text: "abc\nxy", cursor: 2 });
+    composer.edit({ action: "down" });
+    expect(composer.draft.cursor).toBe(6);
+    composer.edit({ action: "down" });
+    expect(composer.draft).toEqual({ text: "abc\nxy", cursor: 6 });
+  });
+});
+
+describe("composer display layout", () => {
+  it("maps source graphemes to safe physical cells through emoji, tabs, newlines and controls", () => {
+    const layout = layoutComposer({ text: "中e\u0301👩🏽‍💻\tX\n\x1b\u202e", cursor: 3 }, 8);
+    expect(layout.lines).toEqual(["中e\u0301👩🏽‍💻   ", "X", "\\x1b", "\\u202e"]);
+    expect(layout.positions).toEqual([
+      { row: 0, column: 0 },
+      { row: 0, column: 2 },
+      { row: 0, column: 3 },
+      { row: 0, column: 5 },
+      { row: 1, column: 0 },
+      { row: 1, column: 1 },
+      { row: 2, column: 0 },
+      { row: 3, column: 0 },
+      { row: 3, column: 6 },
+    ]);
+    expect([layout.cursorRow, layout.cursorColumn]).toEqual([0, 5]);
+    expect(layout.lines.join("")).not.toMatch(/[\x00-\x1f\u202e]/u);
+  });
+
+  it.each([0, 1, 2])(
+    "keeps narrow layouts bounded without changing source cursor boundaries at width %s",
+    (columns) => {
+      const draft = { text: "中👨‍👩‍👧‍👦\t\x1b\n", cursor: 4 };
+      const layout = layoutComposer(draft, columns);
+      const width = Math.max(1, columns);
+      expect(layout.positions).toHaveLength(6);
+      for (const line of layout.lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+      for (const position of layout.positions) {
+        expect(position.row).toBeLessThan(layout.lines.length);
+        expect(position.column).toBeGreaterThanOrEqual(0);
+        expect(position.column).toBeLessThanOrEqual(width);
+      }
+      expect([layout.cursorRow, layout.cursorColumn]).toEqual([
+        layout.positions[4]!.row,
+        layout.positions[4]!.column,
+      ]);
+      expect(draft).toEqual({ text: "中👨‍👩‍👧‍👦\t\x1b\n", cursor: 4 });
+    },
+  );
 });
 
 describe("data-backed selector", () => {

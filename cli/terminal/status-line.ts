@@ -1,58 +1,31 @@
 import type { TerminalView } from "./renderer-contract.js";
 import { truncateTerminalText, visibleWidth } from "./terminal-text.js";
 
+/** 输入归属、提交条件及按键说明只由控制器提供。 */
 export function statusLines(view: TerminalView, columns: number): string[] {
-  const context = view.context;
-  const phases: Record<TerminalView["phase"], string> = {
-    starting: "启动中",
-    idle: "就绪",
-    running: "执行中",
-    settling: "收尾中",
-    waiting: "等待确认",
-    submitting: "提交中",
-    cancelling: "取消中",
-    closing: "关闭中",
-  };
-  const phase = ` · ${phases[view.phase]}`;
-  const lines = [
-    `${truncateTerminalText(context?.model || "未选择模型", Math.max(0, columns - visibleWidth(phase)))}${phase}`,
-  ];
-  const state = [context?.modelStatus, view.activity].filter((value): value is string => !!value);
-  if (state.length > 0) {
-    const budget = Math.max(0, Math.floor((columns - (state.length - 1) * 3) / state.length));
-    lines.push(state.map((value) => truncateTerminalText(value, budget)).join(" · "));
-  }
-  if (context) {
-    const workspace = context.workspace.replaceAll("\\", "/").replace(/\/+$/, "");
-    const location = columns < 80 ? workspace.split("/").pop() || workspace : workspace;
-    const tools = `工具 ${context.capabilities}`;
-    const session = `会话 ${context.threadId}`;
-    const toolsBudget = Math.min(visibleWidth(tools), Math.floor(columns / 3));
-    const sessionBudget = Math.min(visibleWidth(session), Math.floor(columns / 3));
-    lines.push(
-      [
-        truncateTerminalText(location, Math.max(0, columns - toolsBudget - sessionBudget - 6)),
-        truncateTerminalText(session, sessionBudget),
-        truncateTerminalText(tools, toolsBudget),
-      ].join(" · "),
+  const lines = [view.input.status];
+  if (view.feedback) lines.push(view.feedback.message);
+  if (view.context?.modelStatus) lines.push(view.context.modelStatus);
+  if (view.context) {
+    const { model, capabilities } = view.context;
+    const workspace = view.context.workspace.replaceAll("\\", "/").replace(/\/+$/, "");
+    const location = columns < 80 ? workspace.split("/").at(-1) || workspace : workspace;
+    const mode =
+      capabilities === "read-only"
+        ? "只读"
+        : capabilities === "read-write"
+          ? "读写"
+          : capabilities === "none"
+            ? "无"
+            : capabilities;
+    const tools = truncateTerminalText(`工具 ${mode}`, Math.floor(columns / 3));
+    const name = truncateTerminalText(model, Math.max(0, Math.floor(columns / 2) - 3));
+    const path = truncateTerminalText(
+      location,
+      Math.max(0, columns - visibleWidth(name) - visibleWidth(tools) - 6),
     );
+    lines.push([name, tools, path].filter(Boolean).join(" · "));
   }
-  const hint = view.selector
-    ? view.selector.navigation
-      ? columns < 60
-        ? "Tab 切栏 · ↑↓ · Enter 选 · Esc 返回"
-        : "←→/Tab 切栏 · ↑↓ 移动 · Enter 选择 · Esc 返回"
-      : "↑↓ 选择 · Enter 确认 · Esc 返回"
-    : view.prompt
-      ? "Enter 确认输入 · Esc 返回"
-      : view.interaction || view.phase === "waiting"
-        ? "等待明确选择 · Ctrl+C 取消"
-        : view.phase === "running"
-          ? "Esc 取消 · 草稿保留，不排队"
-          : view.phase !== "idle" || !view.composer.submission.enabled
-            ? "暂不能发送 · 草稿保留"
-            : "Enter 发送 · Alt+Enter 换行 · / 命令";
-  if (view.notification) lines.push(truncateTerminalText(view.notification, columns));
-  lines.push(truncateTerminalText(hint, columns));
+  lines.push(view.input.hint);
   return lines.map((line) => truncateTerminalText(line, columns));
 }

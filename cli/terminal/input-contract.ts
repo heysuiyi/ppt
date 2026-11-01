@@ -37,6 +37,7 @@ export interface Composer {
   readonly draft: TerminalDraft;
   edit(action: TerminalEditorAction): void;
   setDraft(draft: TerminalDraft): void;
+  setColumns(columns: number): void;
   clear(remember?: boolean): void;
   remember(): void;
 }

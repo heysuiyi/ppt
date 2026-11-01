@@ -23,8 +23,28 @@ export interface TerminalSelectorView {
   };
 }
 
+/** 当前输入归属与操作说明由控制器统一派生，呈现层不重建按键规则。 */
+export interface TerminalInputView {
+  readonly purpose:
+    | "composer"
+    | "completion"
+    | "selector"
+    | "model-selector"
+    | "prompt"
+    | "secret"
+    | "interaction";
+  readonly status: string;
+  readonly hint: string;
+}
+
+export interface TerminalFeedback {
+  readonly kind: "input" | "blocking" | "notice";
+  readonly message: string;
+}
+
 export interface TerminalView {
   readonly phase: TerminalPhase;
+  readonly input: TerminalInputView;
   readonly activity?: string;
   readonly composer: TerminalComposerState;
   readonly context?: {
@@ -35,12 +55,13 @@ export interface TerminalView {
     readonly capabilities: string;
   };
   readonly selector?: TerminalSelectorView;
+  readonly completion?: TerminalSelectorView;
   readonly interaction?: {
     readonly reference: TerminalInteractionReference;
     readonly display: TerminalInteractionDisplay;
   };
   readonly prompt?: { readonly text: string; readonly secret: boolean };
-  readonly notification?: string;
+  readonly feedback?: TerminalFeedback;
 }
 
 export interface TerminalRenderer {
@@ -53,6 +74,7 @@ export interface TerminalRenderer {
   ): Promise<void>;
   message(text: string): Promise<void>;
   toggleTool(): Promise<void>;
+  dismissTool(): Promise<boolean>;
   tools(): readonly TerminalSelectionItem[];
   selectTool(id: string): Promise<void>;
   close(): Promise<void>;
@@ -65,4 +87,6 @@ export interface TerminalRendererOptions {
   readonly rows: () => number;
   readonly writeOutput: (text: string) => Promise<void>;
   readonly writeError: (text: string) => Promise<void>;
+  /** 定时合并预览的输出故障仍交由唯一控制器处理，不能在后台吞掉。 */
+  readonly onOutputError: (error: unknown) => void;
 }

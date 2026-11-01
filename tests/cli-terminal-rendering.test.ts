@@ -3,11 +3,10 @@ import type { AgentRunResult } from "@agent-harness/core/agent-contract";
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { RunIdentity } from "@agent-harness/core/protocol-values";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createTerminalRenderer } from "../cli/terminal/interactive-renderer.js";
 import { createPreviewBuffer } from "../cli/terminal/preview-buffer.js";
 import type { TerminalOutputMode, TerminalView } from "../cli/terminal/renderer-contract.js";
-import { statusLines } from "../cli/terminal/status-line.js";
 import type { TerminalToolRecord } from "../cli/terminal/terminal-contract.js";
 import {
   projectTerminalEvent,
@@ -31,6 +30,11 @@ const identity: RunIdentity = {
 const unsupported = () => ({ support: "unsupported" as const });
 const idle: TerminalView = {
   phase: "idle",
+  input: {
+    purpose: "composer",
+    status: "可编辑任务",
+    hint: "Enter 发送 · Alt+Enter 换行 · / 命令",
+  },
   composer: {
     draft: { text: "中文👩‍💻é", cursor: 4 },
     editable: true,
@@ -59,6 +63,7 @@ function delta(
 function capture(mode: TerminalOutputMode, width = 80, rows = 24, color = false) {
   const output: string[] = [];
   const error: string[] = [];
+  const failures: unknown[] = [];
   const size = { columns: width, rows };
   const renderer = createTerminalRenderer({
     mode,
@@ -71,8 +76,11 @@ function capture(mode: TerminalOutputMode, width = 80, rows = 24, color = false)
     writeError: async (text) => {
       error.push(text);
     },
+    onOutputError: (failure) => {
+      failures.push(failure);
+    },
   });
-  return { renderer, output, error, size };
+  return { renderer, output, error, size, failures };
 }
 
 /** Tracks display cells and the final cursor, including wide graphemes and redraw controls. */
@@ -511,8 +519,12 @@ describe("production renderer modes", () => {
       for (const selected of [0, 14, 29]) {
         await renderer.view({
           ...idle,
-          activity: "CATALOG_ACTIVITY",
-          notification: "LOCAL_NOTICE",
+          input: {
+            purpose: "selector",
+            status: "CATALOG_ACTIVITY",
+            hint: "↑↓ 选择 · Enter 确认 · Escape 返回",
+          },
+          feedback: { kind: "notice", message: "LOCAL_NOTICE" },
           context: { ...idle.context!, modelStatus: "MODEL_STATE" },
           selector: {
             title: "MODEL_PICKER",
@@ -567,12 +579,12 @@ describe("production renderer modes", () => {
         composer: { ...idle.composer, draft: { text: "answer", cursor: 6 } },
       });
       const screen = terminalState(output);
-      expect(screen.lines.join("\n")).toContain("TARGET_MODEL");
-      expect(screen.lines.join("\n")).toContain("TYPE_CONFIRMATION_TOKEN");
+      const active = screen.lines.slice(-rows + 1).join("\n");
+      expect(active).toContain("TARGET_MODEL");
+      expect(active).toContain("TYPE_CONFIRMATION_TOKEN");
       expect(screen.lines[screen.row]).toContain("answer");
       expect(screen.column).toBe(8);
       expect(screen.cursorVisible).toBe(true);
-      expect(screen.lines.length).toBeLessThan(rows);
       expect(screen.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
       await renderer.close();
     });
@@ -628,7 +640,7 @@ describe("grouped model selector viewport", () => {
         const { renderer, output } = capture("tui", columns, rows, color);
         const view: TerminalView = {
           ...idle,
-          notification: "模型选择不会发送草稿",
+          feedback: { kind: "notice", message: "模型选择不会发送草稿" },
           selector: {
             title: "Models · 仅检查本地配置",
             query: "模型",
@@ -708,33 +720,6 @@ describe("grouped model selector viewport", () => {
 });
 
 describe("terminal Unicode and content safety", () => {
-  it("keeps model identity, local activity and model state separate from phase and focused actions", () => {
-    const view: TerminalView = {
-      ...idle,
-      activity: "LOCAL_ACTIVITY",
-      context: { ...idle.context!, model: "MODEL_ID", modelStatus: "MODEL_STATE" },
-    };
-    const variants: TerminalView[] = [
-      view,
-      { ...view, phase: "running" },
-      { ...view, phase: "waiting" },
-      { ...view, prompt: { text: "INPUT_PROMPT", secret: false } },
-      {
-        ...view,
-        selector: { title: "PICKER", query: "", items: [], selectedId: null },
-      },
-    ];
-    const statuses = variants.map((variant) => statusLines(variant, 40));
-    for (const lines of statuses) {
-      expect(lines[0]).toContain("MODEL_ID");
-      expect(lines.slice(1).join("\n")).toContain("LOCAL_ACTIVITY");
-      expect(lines.slice(1).join("\n")).toContain("MODEL_STATE");
-      expect(lines.every((line) => visibleWidth(line) <= 40)).toBe(true);
-    }
-    expect(new Set(statuses.map((lines) => lines.at(-1))).size).toBe(variants.length);
-    expect(new Set(statuses.slice(0, 3).map((lines) => lines[0])).size).toBe(3);
-  });
-
   it("wraps visible columns without splitting graphemes", () => {
     const text = "中👩‍💻é".repeat(30);
     for (const columns of [40, 80, 120]) {
@@ -752,5 +737,400 @@ describe("terminal Unicode and content safety", () => {
     const code = `  const 文 = '👩‍💻';\t// ${"a".repeat(100)}`;
     const markdown = `# Heading\n\n- list with \`inline\`\n\`\`\`ts\n${code}\n\`\`\``;
     expect(markdownLines(markdown, 40)).toContain(code);
+  });
+});
+
+describe("stable mutable terminal viewport", () => {
+  it("writes nothing for identical frames and moves only the caret when text is unchanged", async () => {
+    const { renderer, output } = capture("tui");
+    await renderer.view(idle);
+    const initial = terminalState(output);
+    const count = output.length;
+    await renderer.view({ ...idle });
+    expect(output).toHaveLength(count);
+    expect(terminalState(output)).toEqual(initial);
+    await renderer.view({
+      ...idle,
+      composer: { ...idle.composer, draft: { ...idle.composer.draft, cursor: 1 } },
+    });
+    const moved = terminalState(output);
+    expect(moved.lines).toEqual(initial.lines);
+    expect(moved.row).toBe(initial.row);
+    expect(moved.column).toBe(4);
+    expect(moved.cursorVisible).toBe(true);
+    expect(output.slice(count).join("")).not.toContain("\x1b[2K");
+    await renderer.close();
+  });
+
+  it("takes one dimensions snapshot per frame", async () => {
+    let columnReads = 0;
+    let rowReads = 0;
+    const writes: string[] = [];
+    const renderer = createTerminalRenderer({
+      mode: "tui",
+      color: false,
+      columns: () => {
+        columnReads += 1;
+        return 80;
+      },
+      rows: () => {
+        rowReads += 1;
+        return 24;
+      },
+      writeOutput: async (text) => {
+        writes.push(text);
+      },
+      writeError: async () => {},
+      onOutputError: () => {},
+    });
+    await renderer.view(idle);
+    expect(columnReads).toBe(1);
+    expect(rowReads).toBe(1);
+    expect(terminalState(writes).cursorVisible).toBe(true);
+    await renderer.close();
+  });
+
+  it("keeps completion above the editable draft, including a wrapped tab caret", async () => {
+    const { renderer, output } = capture("tui", 43, 12);
+    const draft = { text: `${"a".repeat(37)}\tZ`, cursor: 38 };
+    const view: TerminalView = {
+      ...idle,
+      input: {
+        purpose: "completion",
+        status: "选择命令",
+        hint: "Enter 接受补全 · Escape 返回草稿",
+      },
+      composer: { ...idle.composer, draft },
+      completion: {
+        title: "COMMAND_CHOICES",
+        query: "/m",
+        items: [{ id: "/model", label: "/model" }],
+        selectedId: "/model",
+      },
+    };
+    await renderer.view(view);
+    const screen = terminalState(output);
+    const text = screen.lines.join("\n");
+    expect(text).toContain("COMMAND_CHOICES");
+    expect(text).toContain("/model");
+    expect(text).toContain("a".repeat(37));
+    expect(screen.lines[screen.row]).toContain("│     Z");
+    expect(screen.column).toBe(6);
+    expect(screen.cursorVisible).toBe(true);
+    expect(text.indexOf("COMMAND_CHOICES")).toBeLessThan(text.indexOf("a".repeat(37)));
+    expect(screen.lines.every((line) => visibleWidth(line) < 43)).toBe(true);
+    await renderer.view({
+      ...view,
+      feedback: { kind: "input", message: "INPUT_NOTICE" },
+      context: { ...idle.context!, modelStatus: "MODEL_STATE" },
+    });
+    const crowded = terminalState(output);
+    expect(crowded.lines.join("\n")).toContain("› /model");
+    expect(crowded.lines[crowded.row]).toContain("│     Z");
+    expect(crowded.column).toBe(6);
+    expect(crowded.cursorVisible).toBe(true);
+    await renderer.close();
+  });
+
+  it("preserves safe approval context and the selected response at narrow height", async () => {
+    const { renderer, output } = capture("tui", 40, 12);
+    const interaction: NonNullable<TerminalView["interaction"]> = {
+      reference: {
+        interactionId: "approval-full-id-0123456789",
+        owner: "files",
+        payloadType: "write",
+        payloadVersion: 1,
+      },
+      display: {
+        support: "supported",
+        summary: `SAFE_SUMMARY ${"摘要正文".repeat(80)} SUMMARY_END`,
+        confirmation: "interaction-id",
+        choices: [
+          { id: "yes", label: "ALLOW_WRITE", responseType: "answer" },
+          { id: "no", label: "DENY_WRITE", responseType: "reject" },
+        ],
+      },
+    };
+    await renderer.view({
+      ...idle,
+      phase: "waiting",
+      input: {
+        purpose: "interaction",
+        status: "尚未批准",
+        hint: "↑↓ 选择 · Enter 确认 · Escape 返回",
+      },
+      interaction,
+      selector: {
+        title: "APPROVAL",
+        query: "",
+        items: interaction.display.support === "supported" ? interaction.display.choices : [],
+        selectedId: "no",
+      },
+    });
+    const screen = terminalState(output);
+    const active = screen.lines.slice(-11).join("\n");
+    expect(active).toContain("SAFE_SUMMARY");
+    expect(active).toContain("DENY_WRITE");
+    expect(active).toContain("完整交互 ID");
+    expect(active).toContain("历史");
+    expect(screen.lines.join("\n")).toContain("SUMMARY_END");
+    expect(screen.lines.join("\n")).toContain(interaction.reference.interactionId);
+    expect(screen.cursorVisible).toBe(false);
+    const before = output.length;
+    await renderer.view({
+      ...idle,
+      phase: "waiting",
+      interaction: Object.assign({}, interaction, {
+        display: {
+          support: "unsupported" as const,
+          summary: "PRIVATE_SUMMARY",
+          data: "PRIVATE_DATA",
+        },
+      }),
+    });
+    expect(output.slice(before).join("")).not.toMatch(/PRIVATE_SUMMARY|PRIVATE_DATA/);
+    expect(terminalScreen(output)).toContain("files/write@1");
+    await renderer.close();
+  });
+
+  it("clears removed tail rows and resized activity without rewriting native history", async () => {
+    const { renderer, output, size } = capture("tui", 80, 24);
+    await renderer.view(idle);
+    await renderer.user("IMMUTABLE_HISTORY");
+    const history = terminalState(output).lines.slice(0, 1);
+    const expanded: TerminalView = {
+      ...idle,
+      composer: {
+        ...idle.composer,
+        draft: { text: "DRAFT_TOP\nDRAFT_MIDDLE\nDRAFT_TAIL", cursor: 32 },
+      },
+    };
+    await renderer.view(expanded);
+    expect(terminalScreen(output)).toContain("DRAFT_TAIL");
+    const boundary = output.length;
+    await renderer.view({
+      ...idle,
+      composer: { ...idle.composer, draft: { text: "short", cursor: 5 } },
+    });
+    let screen = terminalState(output);
+    expect(screen.lines.slice(0, 1)).toEqual(history);
+    expect(screen.lines.join("\n")).not.toMatch(/DRAFT_TOP|DRAFT_MIDDLE|DRAFT_TAIL/);
+    expect(output.slice(boundary).join("")).not.toContain("IMMUTABLE_HISTORY");
+    size.columns = 40;
+    size.rows = 12;
+    await renderer.view(idle);
+    screen = terminalState(output);
+    expect(screen.lines.slice(0, 1)).toEqual(history);
+    expect(screen.lines.join("\n")).not.toContain("short");
+    expect(screen.lines.every((line) => visibleWidth(line) < 40)).toBe(true);
+    expect(screen.cursorVisible).toBe(true);
+    await renderer.close();
+    expect(terminalScreen(output).trim()).toBe("You: IMMUTABLE_HISTORY");
+  });
+
+  it("coalesces previews and never resurrects provisional text after final output or close", async () => {
+    vi.useFakeTimers();
+    try {
+      const { renderer, output } = capture("tui");
+      await renderer.view(idle);
+      const start = output.length;
+      for (let index = 0; index < 30; index += 1)
+        await renderer.preview([
+          {
+            identity,
+            step: 1,
+            requestId: "request",
+            contentIndex: 0,
+            text: `TEMP_${index}`,
+            truncated: false,
+          },
+        ]);
+      expect(output).toHaveLength(start);
+      await vi.advanceTimersByTimeAsync(16);
+      expect(output).toHaveLength(start + 1);
+      expect(terminalScreen(output)).toContain("TEMP_29");
+      const finalBoundary = output.length;
+      await renderer.preview([
+        {
+          identity,
+          step: 1,
+          requestId: "request",
+          contentIndex: 0,
+          text: "LATE_TEMP",
+          truncated: false,
+        },
+      ]);
+      for (const record of projectTerminalResult(
+        {
+          status: "completed",
+          identity,
+          output: [{ role: "assistant", content: [{ type: "text", text: "FINAL_RESPONSE" }] }],
+        },
+        unsupported,
+      ))
+        await renderer.record(record);
+      await renderer.preview([
+        {
+          identity,
+          step: 1,
+          requestId: "request",
+          contentIndex: 0,
+          text: "STALE_TEMP",
+          truncated: false,
+        },
+      ]);
+      await vi.advanceTimersByTimeAsync(32);
+      expect(output.slice(finalBoundary).join("")).not.toMatch(/LATE_TEMP|STALE_TEMP|TEMP_29/);
+      expect(output.join("").match(/FINAL_RESPONSE/g)).toHaveLength(1);
+      expect(terminalScreen(output)).not.toContain("TEMP_");
+      await renderer.preview([
+        {
+          identity: { ...identity, runId: "next" },
+          step: 1,
+          requestId: "next",
+          contentIndex: 0,
+          text: "AFTER_CLOSE",
+          truncated: false,
+        },
+      ]);
+      await renderer.close();
+      const closedCount = output.length;
+      await vi.advanceTimersByTimeAsync(32);
+      expect(output).toHaveLength(closedCount);
+      expect(terminalScreen(output)).toContain("FINAL_RESPONSE");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retains only the latest preview while an output write is blocked", async () => {
+    vi.useFakeTimers();
+    try {
+      const gate = Promise.withResolvers<void>();
+      let blocked = false;
+      const output: string[] = [];
+      const failures: unknown[] = [];
+      const renderer = createTerminalRenderer({
+        mode: "tui",
+        color: false,
+        columns: () => 80,
+        rows: () => 24,
+        writeOutput: async (text) => {
+          output.push(text);
+          if (blocked) await gate.promise;
+        },
+        writeError: async () => {},
+        onOutputError: (error) => {
+          failures.push(error);
+        },
+      });
+      await renderer.view(idle);
+      blocked = true;
+      const preview = (index: number) => [
+        {
+          identity,
+          step: 1,
+          requestId: "request",
+          contentIndex: 0,
+          text: `PENDING_${index}`,
+          truncated: false,
+        },
+      ];
+      await renderer.preview(preview(0));
+      await vi.advanceTimersByTimeAsync(16);
+      const count = output.length;
+      for (let index = 1; index <= 20; index += 1) {
+        await renderer.preview(preview(index));
+        await vi.advanceTimersByTimeAsync(16);
+      }
+      expect(output).toHaveLength(count);
+      blocked = false;
+      gate.resolve();
+      await vi.advanceTimersByTimeAsync(32);
+      expect(output.join("").match(/PENDING_\d+/g)).toEqual(["PENDING_0", "PENDING_20"]);
+      expect(terminalScreen(output)).toContain("PENDING_20");
+      expect(failures).toEqual([]);
+      await renderer.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports timed preview write failures through the output failure boundary", async () => {
+    vi.useFakeTimers();
+    try {
+      const failure = new Error("write failed");
+      const failures: unknown[] = [];
+      let failWrites = false;
+      const renderer = createTerminalRenderer({
+        mode: "tui",
+        color: false,
+        columns: () => 80,
+        rows: () => 24,
+        writeOutput: async () => {
+          if (failWrites) throw failure;
+        },
+        writeError: async () => {},
+        onOutputError: (error) => {
+          failures.push(error);
+        },
+      });
+      await renderer.view(idle);
+      failWrites = true;
+      await renderer.preview([
+        {
+          identity,
+          step: 1,
+          requestId: "request",
+          contentIndex: 0,
+          text: "preview",
+          truncated: false,
+        },
+      ]);
+      await vi.advanceTimersByTimeAsync(16);
+      expect(failures).toEqual([failure]);
+      failWrites = false;
+      await renderer.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("dismisses tool details one layer at a time and keeps authoritative results in history", async () => {
+    const { renderer, output } = capture("tui");
+    await renderer.view(idle);
+    expect(await renderer.dismissTool()).toBe(false);
+    await renderer.record(failedTool);
+    await renderer.toggleTool();
+    expect(terminalScreen(output)).toContain("Escape");
+    expect(await renderer.dismissTool()).toBe(true);
+    expect(await renderer.dismissTool()).toBe(false);
+    for (const status of ["completed", "cancelled", "interrupted"] as const)
+      await renderer.record({ version: 1, type: "query.result", identity, status });
+    await renderer.record({
+      version: 1,
+      type: "query.result",
+      identity,
+      status: "failed",
+      error: { code: "QUERY_FAILURE", message: "authoritative failure" },
+    });
+    await renderer.record({
+      version: 1,
+      type: "query.result",
+      identity,
+      status: "waiting",
+      interaction: {
+        interactionId: "WAITING_ID",
+        owner: "owner",
+        payloadType: "approval",
+        payloadVersion: 1,
+      },
+      display: { support: "unsupported" },
+    });
+    await renderer.view(idle);
+    await renderer.close();
+    const history = terminalScreen(output);
+    for (const result of ["completed", "cancelled", "interrupted", "QUERY_FAILURE", "WAITING_ID"])
+      expect(history).toContain(result);
   });
 });

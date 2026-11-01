@@ -2,7 +2,7 @@
 
 [返回计划目录](README.md) · [M3 总计划](m3-reliability.md) · [前一步 M3-C](m3-c-persistence.md#12-c1c3-增量实施与验收记录) · [后一步 M3-E](m3-e-observation.md)
 
-状态：**D0/D1/D2/D3 已实施并完成本地验收。** release 双失败已先失败后修复；同进程 B/R、39 个新增真实强杀场景、第三进程权威核验、实际 Node CLI、包消费和全仓门禁通过，证据见第 12 节。后续 [M3-E 已完成独立验收](m3-e-observation.md#8-本轮实施与验收记录)，M3 本轮计划范围完成；原有调查与 A/B/C 历史结果不计为 D 新增证据。
+状态：**D0/D1/D2/D3 及独立审核后的 P2 验收补强均已实施并通过本地验收，M3 本轮计划范围完成最终收口。** 既有 release/B/R/强杀证据保留在第 12 节；本次补齐第三 PID 完整历史、committed 与独立 receipt 预期，反例及集中门禁结果见 [第 13.7 节](#137-修复实施与最终验收记录)。E 的独立通过保持；不把本地进程证据泛化为掉电、网络数据库或全部厂商验收。
 
 ## 1. 目标与明确不做
 
@@ -225,4 +225,113 @@ npm.cmd test
 - `node scripts/verify-harness-package.mjs`、`node scripts/verify-tools-package.mjs`：最终构建产物的仓库外 tarball 安装、声明与原生消费者通过；包脚本的内存存储不冒充持久性证据，真实 SQLite/强杀由上节承担。
 - `npx.cmd biome check`：本次修改的 7 个受支持代码文件全部通过，无警告。`npm.cmd run agent -- --help` 实际 Node 启动通过，行为烟测由 CLI integration 承担，不以 help 代替恢复。
 - 最终原生 Node v24.20.0 烟测再次覆盖持久首存失败叠加 release B/R：两份错误均保留，公开 `asProtocolError` 不含原生诊断，模型零调用；重开连接后 B 为 busy、R 可 acquired，维护后 generation 均为 2。一次性脚本与隔离库均已删除。
-- 不增加远程厂商调用，不更改 HostSessionBinding v2、checkpoint v1、表结构或公开端口，不新增自动接管、工具重试、补偿或管理员 CLI；生产 UI/PPT/旧 Agent 不迁移。D 自身通过不代表 M3 整体通过；随后 E 已完成独立验收，最终结论及新增门禁见 [E 第 8 节](m3-e-observation.md#8-本轮实施与验收记录)，本节保留 D 实施时的历史数字。
+- 不增加远程厂商调用，不更改 HostSessionBinding v2、checkpoint v1、表结构或公开端口，不新增自动接管、工具重试、补偿或管理员 CLI；生产 UI/PPT/旧 Agent 不迁移。本节及 [E 第 8 节](m3-e-observation.md#8-本轮实施与验收记录)保留各阶段的历史证据与数字；独立审核后的当前收口状态以第 13 节为准。
+
+## 13. 独立审核后的 P2 修复与 M3 最终收口计划
+
+### 13.1 审核结论与任务边界
+
+状态：**修复已实施并完成最终验收，实际结果见第 13.7 节。** 以下第 13.1～13.6 节保留审核结论与修复设计：独立审核未发现本次范围内可定位的 Core/SQLite 生产阻断，E 的公开观察、实际 CLI 与结算分层通过；本次修复的是强杀矩阵的内容核验不足，不是已经观察到的生产恢复数据错误。
+
+修复前 `tests/general-agent-reliability.integration.test.ts` 存在三处缺口：
+
+- `expectHistoryPairs()` 只检查 revision、角色和 callId，不能发现 input、工具参数、工具结果或 final 内容错误。
+- 第三 PID 只核对最终 checkpoint 的 queryId/status，未将 `committed.messages/historyRevision/step` 与独立场景预期核对。
+- receipt 重放从实际历史切片构造 payload，只证明收据与当前内容一致，不能独立证明当前内容正确。
+
+前轮审核实际执行：定向 12 文件 297 项通过，integration 3 文件 62 项通过，全量 205 文件 1945 项通过、3 项既有跳过，类型/边界、15 文件静态检查及 Core/tools tarball 消费通过；另以原生 Node v24.20.0、公开 Application 和磁盘 SQLite 完成 release B/R 与观察烟测。以上是修复前的审核基线，不是本节新断言已经通过的证据，也不覆盖第 12 节或 E 第 8 节的历史数字。本次方案编写不重复运行这些检查。
+
+只在现有 reliability integration 内补强断言；已有 worker 提供 history、checkpoint、saves、receipt 与 ledger，原则上无需修改 worker。保持原 39 个强杀场景及 15 个竞争/准入场景，不另建通用测试框架、不复制同一路径用例、不扩展私有导入。不修改 Core、CLI、模型、授权或 SQLite 生产行为，不改变持久格式，不启动 M4/PPT、第二后端或容量治理。
+
+### 13.2 R1：建立独立的场景预期
+
+在现有测试文件内以具名局部类型/函数表达场景预期，不从最终 `final.history`、最终 checkpoint 或其切片反推应有内容，也不调用 Core 私有实现计算预期。
+
+先分类再构造预期，不能把所有恢复都判为 unknown：
+
+| 场景 | 最终规范历史 | 最终 committed 进度 | 必须保留的语义 |
+| --- | --- | --- | --- |
+| acquire 空占位 K0/K1 | 空历史，revision=0 | checkpoint=null，不虚构 step | 只精确维护释放，无可恢复输入；ledger 为空 |
+| dispatched、已消费回答、effect-before-save | 完整 input→工具调用→unknown 工具结果→final，revision=3 | historyRevision=3、step=2 | 不重做业务体；原 applied 在历史前的权威 completion 中保留 |
+| completion K0/K1 | 完整 input→工具调用→原成功工具结果→final，revision=3 | historyRevision=3、step=2 | 原 succeeded/applied 不降为 unknown；ledger 不增加 |
+| append/确认、已有 waiting/running acquire、completed 终态 | 按受控模型得到完整成功历史，revision=3 | historyRevision=3、step=2 | 原批次对账一次；waiting 只消费匹配回答；已终态不续跑 |
+| failed/cancelled 终态 K0/K1 | 仅原始用户消息，revision=1 | historyRevision=1、step=0 | 保留原终态与已有 inflight，不伪造工具结果或 final |
+
+当前受控协议的独立已知值：用户文本为本场景 queryId；工具调用为 `ledger-1` / `ledger.write`，参数为 `{ value: queryId }`；成功工具投影为受控插件定义的 `succeeded` 文本且 `isError=false`；最终回答为受控模型定义的 `ledger settled`。这些是夹具的输入输出约定，不是要锁定生产模型的措辞。
+
+unknown 分支先验证恢复后、组装历史前的权威 completion：`status=unknown`、错误码 `TOOL_OUTCOME_UNKNOWN`，effects 按原 none/applied 区分；再以该已验证 completion 的 `modelContent` 校验最终工具结果内容，并独立断言 `isError=true`。不从最终工具结果反取预期，也不把 Core 内部英文提示词复制成永久措辞测试。成功 completion 的 status/effects 仍从恢复 acquire 的权威快照核验，不能仅凭 modelContent 推断 effects。
+
+### 13.3 R2：第三 PID 验证最终持久内容
+
+用完整内容核验替代 `expectHistoryPairs()` 的弱断言，保留必要的身份、revision、ledger 与围栏检查：
+
+1. 比较实际 `SessionHistory` 的 threadId、revision 和完整消息序列，包括用户内容、工具名/参数/callId、工具结果 content/isError 和 final；结构配对不能代替内容比较。
+2. 比较最终 checkpoint 的完整执行身份、预期状态及 `committed.messages/historyRevision/step`；committed 同时对照独立预期与实际历史，防止两者同错而通过。区分已终态拒绝恢复与实际续跑，不一律要求 lastRunId 改为恢复 Run。
+3. completed 不留下待决交互或未完成阶段；failed/cancelled 可保留原有 inflight，不能用统一“inflight 必须为空”抹去故障事实。空占位继续只验证 null checkpoint、revision=0、空历史/ledger，不制造输入或调用 resume。
+4. 沿用 execute/resume 的独立 fsync ledger、随机 nonce、完整身份、interaction 及次数检查；保持强杀→等待 close→精确接管和旧代 save/release/replace 围栏顺序，不让加强断言改变故障窗口。
+
+不要求恢复重发已提交 completion 的事件；未知分支仍同时验证公开事件与历史前的权威状态。
+
+### 13.4 R3：使用独立预期批次验证收据
+
+- completed 场景从 R1 的预期消息构造 `${queryId}:input`、`${queryId}:step:1`、`${queryId}:step:2` 三批次，而不是从实际 history 切片生成预期。
+- failed/cancelled 场景只重放已提交的 input 批次；空占位没有 receipt，不通过 append 制造一份。
+- 以原 expectedRevision 和原 batchId 重放，核对返回原 revision；再次从独立进程存储端口读取，完整 history/checkpoint/ledger 不变，不能只断言“长度没有增加”。
+- 不重复扩展已有异内容 receipt 拒绝矩阵，不把收据幂等泛化为工具 exactly-once。
+
+### 13.5 R4：证明断言有效并顺序验收
+
+先用一次性反例探针验证加强后的核验逻辑能拒绝：成功工具结果被替换为 unknown/错误标识、input 或 final 改变、committed 内容/修订/step 改变。只改变已读取结果的隔离副本，不改原数据库或 Core，不保留源码字符串断言、变异框架或重复永久用例。
+
+随后按以下顺序运行，构建产物不并行清理：
+
+```text
+npm.cmd run build:cli
+npx.cmd vitest run tests/general-agent-reliability.integration.test.ts
+npm.cmd run test:integration:harness
+npm.cmd run typecheck
+npx.cmd biome check tests/general-agent-reliability.integration.test.ts
+npm.cmd test
+node scripts/verify-harness-package.mjs
+node scripts/verify-tools-package.mjs
+```
+
+reliability integration 必须实际启动原生 Node worker、强杀、重开并取得第三 PID 内容证据，作为本次测试路径的行为烟测；CLI 集成继续只访问本地 HTTP/SSE。不以普通单测或 help 输出代替进程路径。本次不修改生产入口或导出，既有独立入口烟测保留为历史证据，不冒称重新运行。若实现中确需修改 worker，则将其纳入静态检查并说明必要性；若新增断言暴露生产错误，先报告实际状态与最小修复设计，不放宽预期以消除失败。
+
+### 13.6 R5：完成条件与文档切换
+
+仅当 R1～R4 实施并取得证据后，才将 D 与 M3 最终状态切回完成：
+
+- 第三 PID 验证内容正确，而不仅是成功退出、角色配对或 ledger 次数正确；已提交成功与未提交 unknown 均有对应断言。
+- receipt 使用独立预期 payload，最终 committed 与规范历史、模型步数相符；终态和空占位按各自语义核验。
+- 记录反例被拒绝、实际进程/CLI、集中门禁和清理结果；永久测试仍只验证消费者行为，不留下探针、隔离数据库或本次进程。
+- 在本节追加实际实施/验收记录，区分本次运行与既有历史数字；同步 D/E 当前状态、`m3-reliability.md`、`README.md` 和 `../project-plan.md`，不重写历史成绩。
+- E 的独立通过不撤回；M3 的恢复完成声明必须等此 P2 补强通过。M4 继续按具体宿主需求另行设计，不自动接 PPT 或删除旧链路。
+
+上述方案的实际执行与最终完成证据见下节；计划本身不代替运行结果。
+
+### 13.7 修复实施与最终验收记录
+
+**R1～R3 已完成。** 永久代码只修改 `tests/general-agent-reliability.integration.test.ts`，未改 worker、生产实现、公开导出或持久格式，未增加场景数量或私有导入：
+
+- `recoveryExpectation()` 按场景建立独立历史与批次预期；用户文本、工具名/参数、成功投影和最终回答来自受控夹具契约，不从最终持久结果反推。
+- unknown 分支先从恢复 Run 的历史前权威 completion 验证 status、effects 和 `TOOL_OUTCOME_UNKNOWN`，再核对其 modelContent 被完整保留在规范历史；独立验证 isError，不锁定 Core 内部英文提示。
+- `expectRecoveryContents()` 替换弱配对断言；第三 PID 比较完整历史、完整执行身份、终态及 committed messages/historyRevision/step。completed 不保留 pending/inflight；已终态场景还比较完整原始 checkpoint，保留 failed/cancelled 的既有 inflight。空占位明确核对空历史，不制造恢复输入。
+- receipt 重放从独立预期批次构造；成功路径验证 input/tool/final，failed/cancelled 也验证已有 input receipt。重放后再次完整核对历史、checkpoint 和 ledger 不变，原代际与旧 writer 围栏继续验证。
+
+**R4：反例与实际路径。** 一次性探针通过 TypeScript AST 执行当前文件的实际断言，对隔离结果副本逐项改变：成功工具内容、isError、输入、工具参数、final、committed messages/revision/step、历史与 checkpoint 同时改错，以及 completed 残留 inflight。修复前旧断言接受全部 10 类错误，修复后新断言拒绝全部 10 类，原始正确结果仍通过；不改原数据库、不加载或模拟强杀矩阵，也不作为永久生产行为测试保留。探针首次修复后运行因只提取函数声明、漏掉 `textMessage` 箭头函数而报 ReferenceError；补齐 AST 提取后探针通过，未改动 worker/Core 或放宽预期。
+
+| 本次实际检查 | 结果与边界 |
+| --- | --- |
+| `npm.cmd run build:cli` | 通过；完整 integration 又顺序构建一次 |
+| reliability 定点运行 | 54 项通过，包括既有 39 个真实强杀与 15 个竞争/准入场景；实际启动原生 Node、SIGKILL、等待 close、重开接管并读取第三 PID 完整内容 |
+| `npm.cmd run test:integration:harness` | 3 文件、62 项通过，无跳过；包含上述 reliability 与 8 项实际 CLI 本地 HTTP/SSE 验证 |
+| `npm.cmd run typecheck` | 通过，包括五类包/CLI 边界及 node/web/CLI 编译 |
+| `npx.cmd biome check tests/general-agent-reliability.integration.test.ts` | 最终通过，无警告；首轮 optional-chain 提示已修正 |
+| `npm.cmd test` | 205 文件、1977 项通过，3 项既有平台条件跳过；总数含同期工作区变化，本次未新增永久测试场景 |
+| Core/tools tarball 消费脚本 | 两者均通过；独立安装、声明与原生消费成功，Core postCompletionDrain/fullEventIdentity 为 true；包内存端口不冒充磁盘持久性证据 |
+
+一次性 `tests/m3-closeout-audit-probe.test.ts` 已删除并确认无匹配残留；进程矩阵通过各自 finally 清理本次隔离目录与进程，两个包脚本均报告 temporaryArtifactsRemoved=true。未新增远程调用，未重跑生产/开发入口一次性对话或 ConPTY，不把其历史证据写成这次新增结果。
+
+**R5 完成结论：** 审核提出的唯一 P2 验收缺口已补齐，D 与 E 的既有边界保持，M3 本轮计划范围完成最终收口。D/E 当前状态、M3 总计划、计划目录和整体路线同步；第 12 节、E 第 8 节及修复前审核数字仍各归历史记录。M4/PPT、第二后端、容量治理、HA、自动接管及外部副作用 exactly-once 不在本次完成声明内。
+

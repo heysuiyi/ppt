@@ -2,7 +2,7 @@ import { fork } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { ModelMessage } from "@agent-harness/core/model/model-contract";
+import type { ModelMessage, ModelToolContent } from "@agent-harness/core/model/model-contract";
 import type {
   CheckpointAcquireResult,
   CheckpointKey,
@@ -15,6 +15,7 @@ import type {
   SessionHistoryAppendResult,
 } from "@agent-harness/core/session/session-contract";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
+import type { ToolCompletion } from "@agent-harness/core/tools/tool-contract";
 import { describe, expect, it } from "vitest";
 import type { HostSessionBinding } from "../cli/host/host-session-binding.js";
 
@@ -832,29 +833,96 @@ function completionOf(state: AgentCheckpoint) {
         ?.completion
     : undefined;
 }
-function expectHistoryPairs(history: SessionHistory, terminal: string) {
-  if (terminal !== "completed") {
-    expect(history.revision).toBe(1);
-    expect(history.messages.map((message) => message.role)).toEqual(["user"]);
-    return;
+interface RecoveryBatch {
+  readonly batchId: string;
+  readonly messages: readonly ModelMessage[];
+}
+interface RecoveryExpectation {
+  readonly history: SessionHistory;
+  readonly checkpoint: Pick<
+    AgentCheckpoint,
+    "agentId" | "threadId" | "queryId" | "lastRunId" | "status" | "committed"
+  >;
+  readonly batches: readonly RecoveryBatch[];
+}
+function recoveryExpectation(
+  scenario: CrashCase,
+  key: CheckpointKey,
+  unknown?: ToolCompletion,
+): RecoveryExpectation {
+  const status = scenario.terminal ?? "completed";
+  const input = textMessage(key.queryId);
+  const batches: RecoveryBatch[] = [{ batchId: `${key.queryId}:input`, messages: [input] }];
+  const messages: ModelMessage[] = [input];
+  if (status === "completed") {
+    const isUnknown =
+      scenario.target === "dispatch" ||
+      scenario.target === "consume" ||
+      scenario.target === "effect";
+    let content: readonly ModelToolContent[] = [{ type: "text", text: "succeeded" }];
+    if (isUnknown) {
+      if (unknown?.status !== "unknown")
+        throw new Error("Expected the durable unknown completion before history assembly");
+      // 使用历史前已验证的权威投影，不复制 Core 内部提示文案或反读最终历史。
+      content = unknown.modelContent;
+    }
+    const pair: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            callId: "ledger-1",
+            name: "ledger.write",
+            input: { value: key.queryId },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [{ type: "tool-result", callId: "ledger-1", content, isError: isUnknown }],
+      },
+    ];
+    const final: ModelMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "ledger settled" }],
+    };
+    messages.push(...pair, final);
+    batches.push(
+      { batchId: `${key.queryId}:step:1`, messages: pair },
+      { batchId: `${key.queryId}:step:2`, messages: [final] },
+    );
   }
-  expect(history.revision).toBe(3);
-  expect(history.messages.map((message) => message.role)).toEqual([
-    "user",
-    "assistant",
-    "tool",
-    "assistant",
-  ]);
-  const calls = history.messages.flatMap((message) =>
-    message.content.filter((part) => part.type === "tool-call"),
-  );
-  const results = history.messages.flatMap((message) =>
-    message.content.filter((part) => part.type === "tool-result"),
-  );
-  expect(calls).toHaveLength(1);
-  expect(results).toHaveLength(1);
-  expect(calls[0]).toMatchObject({ callId: "ledger-1" });
-  expect(results[0]).toMatchObject({ callId: "ledger-1" });
+  const alreadyTerminal =
+    scenario.target === "terminal" || (scenario.target === "ack" && scenario.batch === "step:2");
+  return {
+    history: { threadId: key.threadId, revision: batches.length, messages },
+    checkpoint: {
+      ...key,
+      lastRunId: alreadyTerminal ? "doomed-run" : "recovered-run",
+      status,
+      committed: {
+        historyRevision: batches.length,
+        messages,
+        step: status === "completed" ? 2 : 0,
+      },
+    },
+    batches,
+  };
+}
+function expectRecoveryContents(
+  history: unknown,
+  checkpoint: AgentCheckpoint | null,
+  expected: RecoveryExpectation,
+): void {
+  expect(history).toEqual(expected.history);
+  const { committed, ...identity } = expected.checkpoint;
+  expect(checkpoint).toMatchObject(identity);
+  expect(checkpoint?.committed).toEqual(committed);
+  if (expected.checkpoint.status === "completed") {
+    expect(checkpoint).not.toHaveProperty("inflight");
+    expect(checkpoint).not.toHaveProperty("pending");
+  }
 }
 
 describe("real-process recovery after forced writer death", () => {
@@ -1010,7 +1078,7 @@ describe("real-process recovery after forced writer death", () => {
             checkpoint: null,
             lease: { generation: old.generation + 2 },
           });
-          expect(final.history).toEqual(busy.history);
+          expect(final.history).toEqual({ threadId: key.threadId, revision: 0, messages: [] });
           expect(final.ledger).toEqual([]);
           return;
         }
@@ -1093,6 +1161,7 @@ describe("real-process recovery after forced writer death", () => {
           runId: "recovered-run",
           response: saved.status === "waiting" ? recoveryAnswer : undefined,
         });
+        let unknown: ToolCompletion | undefined;
         if (terminal) expect(recovered).toMatchObject({ error: "QUERY_TERMINAL", modelCalls: 0 });
         else {
           expect(recovered).toMatchObject({ status: "completed" });
@@ -1113,13 +1182,14 @@ describe("real-process recovery after forced writer death", () => {
                 }),
               ]),
             );
-            expect(
-              recovered.saves?.some(
-                (state) =>
-                  completionOf(state)?.status === "unknown" &&
-                  completionOf(state)?.effects === effects,
-              ),
-            ).toBe(true);
+            unknown = recovered.saves
+              ?.map(completionOf)
+              .find((completion) => completion?.status === "unknown");
+            expect(unknown).toMatchObject({
+              status: "unknown",
+              effects,
+              error: { code: "TOOL_OUTCOME_UNKNOWN" },
+            });
           }
         }
         if (!terminal) {
@@ -1147,13 +1217,11 @@ describe("real-process recovery after forced writer death", () => {
           ledgerPath,
         });
         const authoritative = acquired(final);
-        expect(authoritative.checkpoint).toMatchObject({
-          queryId,
-          status: terminal ? saved.status : "completed",
-        });
+        const expected = recoveryExpectation(scenario, key, unknown);
+        expectRecoveryContents(final.history, authoritative.checkpoint, expected);
+        if (terminal) expect(authoritative.checkpoint).toEqual(saved);
         expect(authoritative.lease.generation).toBe(old.generation + 5 + (consumed ? 1 : 0));
         expect(final.unfinished).toBeNull();
-        expectHistoryPairs(final.history as SessionHistory, terminal ? saved.status : "completed");
         const entries = final.ledger ?? [];
         const executeCount =
           scenario.target === "dispatch" ||
@@ -1184,31 +1252,24 @@ describe("real-process recovery after forced writer death", () => {
           if (entry.phase === "resume")
             expect(entry.interactionId).toBe(recoveryAnswer.interactionId);
         }
-        // Third-PID receipt replay proves exact stable batch/payload and no revision growth.
-        const history = final.history as SessionHistory;
-        if (history.revision === 3) {
-          const batches = [
-            { batchId: `${queryId}:input`, messages: history.messages.slice(0, 1) },
-            { batchId: `${queryId}:step:1`, messages: history.messages.slice(1, 3) },
-            { batchId: `${queryId}:step:2`, messages: history.messages.slice(3) },
-          ];
-          for (const [index, batch] of batches.entries())
-            expect(
-              await store(inspector, "append-history", {
-                threadId: key.threadId,
-                expectedRevision: index,
-                ...batch,
-              }),
-            ).toMatchObject({ appended: { status: "appended", revision: index + 1 } });
-          const again = await store(inspector, "inspect-store", {
-            key,
-            ownerId: "receipt-inspection",
-            ledgerPath,
-          });
-          expect(again.history).toEqual(history);
-          expect(again.ledger).toEqual(entries);
-          expect(acquired(again).checkpoint).toEqual(authoritative.checkpoint);
-        }
+        // 预期批次来自受控输入/模型/插件；重放不能从实际历史反推待验 payload。
+        for (const [index, batch] of expected.batches.entries())
+          expect(
+            await store(inspector, "append-history", {
+              threadId: key.threadId,
+              expectedRevision: index,
+              ...batch,
+            }),
+          ).toMatchObject({ appended: { status: "appended", revision: index + 1 } });
+        const again = await store(inspector, "inspect-store", {
+          key,
+          ownerId: "receipt-inspection",
+          ledgerPath,
+        });
+        expectRecoveryContents(again.history, acquired(again).checkpoint, expected);
+        expect(again.history).toEqual(final.history);
+        expect(again.ledger).toEqual(entries);
+        expect(acquired(again).checkpoint).toEqual(authoritative.checkpoint);
       } finally {
         await Promise.allSettled(
           processes.map((instance) =>

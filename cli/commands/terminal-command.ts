@@ -31,9 +31,12 @@ Interactive commands:
   Saving a connection/default does not switch the current session without confirmation.
 
 Keys:
-  Enter send (idle only); Alt+Enter newline; arrows edit/select; Tab accept
-  Ctrl+O tool detail; Alt+M model; Esc close local UI or cancel active run
-  Ctrl+C clear draft or cancel query; empty Ctrl+D exit
+  Enter send (idle only); Alt+Enter newline; arrows move through displayed input lines
+  At input boundaries Up/Down browse history; returning past the newest restores the draft.
+  Completion: Tab/Enter accepts text only; press Enter again to execute.
+  Ctrl+O tool detail; Alt+M model; Esc closes local UI before cancelling an active run
+  Ctrl+C clear draft or request cancellation; empty Ctrl+D exit
+  Approval: explicitly select then Enter; Tab never approves; Esc keeps waiting.
   Models: Left/Right or Tab switch panes; Up/Down move; Enter chooses; Esc returns.
   Type to search; All searches every connection. Plain: number/id + Enter,
   /groups returns to groups, /connect configures, /back or /cancel leaves safely.
