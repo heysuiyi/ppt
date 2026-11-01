@@ -15,6 +15,7 @@ import type { ToolsMode } from "@agent-harness/tools/tools-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { prepareConfiguredModel } from "../cli/host/configured-model-factory";
 import { type AgentHost, createAgentHost } from "../cli/host/create-agent-host";
+import type { TerminalSetupIO } from "../cli/host/host-contract";
 import { configuredModels } from "../cli/host/model-catalog";
 import { createNodeHost } from "../cli/host/node-host";
 import { createSqliteAgentStores } from "../cli/host/sqlite-agent-stores";
@@ -944,6 +945,8 @@ describe("independent configured Agent host", () => {
       expect.objectContaining({
         id: "configured-model",
         label: "Native consumer fixture / MiMo Flash",
+        vendor: { id: "loopback", label: "Native consumer fixture" },
+        modelName: "MiMo Flash",
         availability: { state: "ready", reason: expect.any(String) },
       }),
     ]);
@@ -966,6 +969,218 @@ describe("independent configured Agent host", () => {
     expect(host.context.threadId).not.toBe(first.identity.threadId);
     await host.selectSession(first.identity.threadId);
     expect(host.context.toolsMode).toBe("none");
+  });
+
+  it("reopens configuration for a ready default, preserves cancellation, and excludes concurrent input owners", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("Original host survives cancelled setup")]),
+    );
+    const configuration = await f.configure();
+    await configuration.management.saveCliPreferences({ defaultModelId: "configured-model" });
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+      credentialProtection: fakeProtection,
+    });
+    cleanup.push(() => host.close());
+    await host.open({ toolsMode: "none" });
+    const original = host.context;
+    const before = await configuration.management.getSnapshot();
+    const selection = Promise.withResolvers<string | undefined>();
+    const entered = Promise.withResolvers<void>();
+    const setup: TerminalSetupIO = {
+      select: vi.fn(async () => {
+        entered.resolve();
+        return selection.promise;
+      }),
+      secret: vi.fn(async () => undefined),
+      text: vi.fn(async () => undefined),
+      notify: vi.fn(async () => {}),
+    };
+    const configuring = host.configureModel(setup);
+    await entered.promise;
+    expect(setup.select).toHaveBeenCalledWith(
+      "选择厂商/已有连接：",
+      expect.arrayContaining([expect.objectContaining({ label: "Native consumer fixture" })]),
+    );
+    await expect(host.configureModel(setup)).rejects.toMatchObject({ code: "HOST_BUSY" });
+    await expect(host.newSession()).rejects.toMatchObject({ code: "HOST_BUSY" });
+    await expect(host.run("Cannot borrow setup input")).rejects.toMatchObject({
+      code: "HOST_BUSY",
+    });
+    selection.resolve(undefined);
+    await expect(configuring).resolves.toBeUndefined();
+    expect(setup.secret).not.toHaveBeenCalled();
+    expect(host.context).toBe(original);
+    expect(await configuration.management.getSnapshot()).toEqual(before);
+    expect(f.requests).toEqual([]);
+    expect((await (await host.run("Still using original model")).completed).status).toBe(
+      "completed",
+    );
+  });
+
+  it("adds a second vendor through local discovery without rebinding the ready session or exposing credentials", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("Original model is still bound")]),
+    );
+    const configuration = await f.configure();
+    await configuration.management.saveCliPreferences({ defaultModelId: "configured-model" });
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+      credentialProtection: fakeProtection,
+    });
+    cleanup.push(() => host.close());
+    await host.open({ toolsMode: "none" });
+    const original = host.context;
+    expect(original.model).toMatchObject({
+      vendor: { id: "loopback", label: "Native consumer fixture" },
+      modelName: "MiMo Flash",
+    });
+    const discoveryRequests: Array<{ url: string | undefined; authorization: string | undefined }> =
+      [];
+    const discovery = createServer((request, response) => {
+      discoveryRequests.push({ url: request.url, authorization: request.headers.authorization });
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ object: "list", data: [{ id: "second-conversation" }] }));
+    });
+    const listening = once(discovery, "listening");
+    discovery.listen(0, "127.0.0.1");
+    await listening;
+    cleanup.push(async () => {
+      const closed = once(discovery, "close");
+      discovery.close();
+      discovery.closeAllConnections();
+      await closed;
+    });
+    const address = discovery.address();
+    if (!address || typeof address === "string") throw new Error("Expected discovery endpoint");
+    const baseURL = `http://127.0.0.1:${address.port}/v1`;
+    const controlledFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      return url.href === `${baseURL}/models`
+        ? nativeFetch(input, init)
+        : controlledFetch(input, init);
+    });
+    const key = "second-vendor-private-key";
+    const notices: string[] = [];
+    const select = vi.fn<TerminalSetupIO["select"]>(
+      async (_title, items) =>
+        items.find((item) => item.label === "新建 OpenAI Responses 连接")?.id ?? items[0]?.id,
+    );
+    const modelId = await host.configureModel({
+      select,
+      text: async () => baseURL,
+      secret: async () => key,
+      notify: async (message) => {
+        notices.push(message);
+      },
+    });
+    expect(modelId).toEqual(expect.any(String));
+    expect(discoveryRequests).toEqual([{ url: "/v1/models", authorization: `Bearer ${key}` }]);
+    expect(host.context).toBe(original);
+    const snapshot = (await configuration.management.getSnapshot())!;
+    expect(snapshot.settings.cli?.defaultModelId).toBe(modelId);
+    expect(snapshot.settings.vendors).toHaveLength(2);
+    const added = snapshot.settings.vendors.find((vendor) => vendor.id !== "loopback")!;
+    const models = await host.models();
+    expect(models).toEqual([
+      expect.objectContaining({
+        id: "configured-model",
+        label: "Native consumer fixture / MiMo Flash",
+        vendor: { id: "loopback", label: "Native consumer fixture" },
+        modelName: "MiMo Flash",
+      }),
+      expect.objectContaining({
+        id: modelId,
+        vendor: { id: added.id, label: "OpenAI Responses" },
+        modelName: "second-conversation",
+        availability: { state: "ready", reason: expect.any(String) },
+      }),
+    ]);
+    const plan = await configuration.runtime.loadExecutionPlan(modelId!);
+    expect((await configuration.runtime.resolveRuntime(plan)).primary.apiKey).toBe(key);
+    expect(JSON.stringify({ models, context: host.context, notices })).not.toContain(key);
+    expect(models.some((model) => "connectionFingerprint" in model)).toBe(false);
+    expect(f.requests).toEqual([]);
+    expect((await (await host.run("Do not switch implicitly")).completed).status).toBe("completed");
+    expect(f.authorizations).toEqual(["Bearer first-stored-key"]);
+    expect(host.context).toBe(original);
+  });
+
+  it("keeps the active host after setup preparation or input failures and redacts their details", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("Original host survives configuration failure")]),
+    );
+    const configuration = await f.configure();
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+      credentialProtection: fakeProtection,
+    });
+    cleanup.push(() => host.close());
+    await host.open({ modelId: "configured-model", toolsMode: "none" });
+    const original = host.context;
+    const privateError = "untrusted-error-containing-private-key";
+    const setup: TerminalSetupIO = {
+      select: async () => {
+        throw new Error(privateError);
+      },
+      secret: vi.fn(async () => undefined),
+      text: vi.fn(async () => undefined),
+      notify: vi.fn(async () => {}),
+    };
+    for (const preparationFailure of [false, true]) {
+      const snapshot = preparationFailure
+        ? vi
+            .spyOn(configuration.management, "getSnapshot")
+            .mockRejectedValueOnce(new Error(privateError))
+        : undefined;
+      const failure = await host.configureModel(setup).catch((error: unknown) => error);
+      expect(failure).toMatchObject({ code: "HOST_CONFIGURATION_REJECTED" });
+      expect(String(failure)).not.toContain(privateError);
+      expect(host.context).toBe(original);
+      snapshot?.mockRestore();
+    }
+    expect(setup.secret).not.toHaveBeenCalled();
+    expect((await (await host.run("Keep original model")).completed).status).toBe("completed");
+  });
+
+  it("interrupts a borrowed setup prompt on close and rejects later configuration", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("unexpected")]),
+    );
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration: await f.configure(),
+      credentialProtection: fakeProtection,
+    });
+    cleanup.push(() => host.close());
+    await host.open({ modelId: "configured-model" });
+    const entered = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<string | undefined>();
+    const setup: TerminalSetupIO = {
+      select: async () => {
+        entered.resolve();
+        return pending.promise;
+      },
+      secret: async () => undefined,
+      text: async () => undefined,
+      notify: async () => {},
+    };
+    const configuring = host.configureModel(setup);
+    const rejected = expect(configuring).rejects.toMatchObject({ code: "HOST_CLOSED" });
+    await entered.promise;
+    await host.close();
+    await rejected;
+    pending.resolve(undefined);
+    await expect(host.configureModel(setup)).rejects.toMatchObject({ code: "HOST_CLOSED" });
+    expect(f.requests).toEqual([]);
   });
 
   it("retains unavailable catalog entries, rejects their activation, and binds a new model to a fresh session", async () => {

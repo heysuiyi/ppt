@@ -5,11 +5,11 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  cliChild,
   cliAuthority,
-  expectCliAuthority,
+  cliChild,
   cliSdkServer,
   cliToolOutput,
+  expectCliAuthority,
   jsonlRecords,
   queryRecord,
   runCliChild,
@@ -141,7 +141,12 @@ describe.skipIf(process.platform !== "win32")(
         expect(await readFile(join(root, "workspace", "notes.txt"), "utf8")).toBe(notes);
         const { identity } = queryRecord(result);
         const authority = cliAuthority(root, identity);
-        expectCliAuthority(authority, identity, "completed", ["user", "assistant", "tool", "assistant"]);
+        expectCliAuthority(authority, identity, "completed", [
+          "user",
+          "assistant",
+          "tool",
+          "assistant",
+        ]);
         expect(JSON.stringify(authority.messages.at(-1))).toContain(`read:${notes}`);
         for (const record of records) {
           if (record.identity) expect(record.identity).toEqual(identity);
@@ -223,13 +228,19 @@ describe.skipIf(process.platform !== "win32")(
         expect(["completed", "interrupted"]).toContain(inspection.status);
         const authority = cliAuthority(root, started.identity);
         expectCliAuthority(
-          authority, started.identity, inspection.status,
+          authority,
+          started.identity,
+          inspection.status,
           inspection.status === "completed" ? ["user", "assistant"] : ["user"],
         );
         if (inspection.status === "completed") {
-          expect(JSON.stringify(authority.messages.at(-1))).toContain("authoritative result after downstream closure");
+          expect(JSON.stringify(authority.messages.at(-1))).toContain(
+            "authoritative result after downstream closure",
+          );
         } else {
-          expect(JSON.stringify(authority.messages)).not.toContain("authoritative result after downstream closure");
+          expect(JSON.stringify(authority.messages)).not.toContain(
+            "authoritative result after downstream closure",
+          );
         }
         expect(server.requests).toHaveLength(1);
         expect(server.errors).toEqual([]);

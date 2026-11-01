@@ -8,8 +8,13 @@ import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { RunIdentity } from "@agent-harness/core/protocol-values";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseTerminalArguments } from "../cli/commands/terminal-command.js";
-import type { TerminalHost } from "../cli/host/host-contract.js";
+import {
+  LOCAL_COMMANDS,
+  parseSubmittedText,
+  parseTerminalArguments,
+  TERMINAL_HELP,
+} from "../cli/commands/terminal-command.js";
+import type { TerminalHost, TerminalSetupIO } from "../cli/host/host-contract.js";
 import { runCli } from "../cli/main.js";
 import * as rendererModule from "../cli/terminal/interactive-renderer.js";
 import type { TerminalView } from "../cli/terminal/renderer-contract.js";
@@ -493,10 +498,17 @@ describe("terminal controller result and lifecycle", () => {
       io.input.write("retained-draft\x1bm");
       const picker = await observed.until((view) => !!view.selector);
       expect(picker.selector?.selectedId).toBe("model");
-      expect(picker.selector?.items.find((item) => item.id === "disabled")?.description).toBe(
+      expect(picker.composer.submission.enabled).toBe(false);
+      expect(picker.selector?.navigation?.groups.map((group) => group.id)).toEqual([
+        "all",
+        "legacy",
+      ]);
+      expect(picker.selector?.items.find((item) => item.id === "disabled")?.label).toContain(
+        "不可用",
+      );
+      expect(picker.selector?.items.find((item) => item.id === "disabled")?.description).toContain(
         "MISSING_LOCAL_CREDENTIAL",
       );
-      expect(picker.composer.submission.enabled).toBe(false);
       if (choice === "same") io.input.write("\r");
       else if (choice === "cancel-picker") io.input.write("\x03");
       else {
@@ -552,8 +564,14 @@ describe("terminal controller result and lifecycle", () => {
       io.input.write("retained-draft\x1bm");
       const loading = await observed.until((view) => !!view.activity);
       expect(loading.composer.submission.enabled).toBe(false);
-      if (outcome === "catalog-failure") catalog.reject(new Error("PRIVATE_CATALOG_ERROR"));
-      else {
+      if (outcome === "catalog-failure") {
+        catalog.reject(new Error("PRIVATE_CATALOG_ERROR"));
+        const recovery = await observed.until((view) => !!view.selector);
+        expect(recovery.activity).toBeUndefined();
+        expect(recovery.composer.draft.text).toBe("retained-draft");
+        // 目录失败仍保留配置入口；退出选择再核对原绑定和草稿，而非等待自动关闭。
+        io.input.write("\x03");
+      } else {
         catalog.resolve([
           {
             id: "other",
@@ -593,84 +611,364 @@ describe("terminal controller result and lifecycle", () => {
       expect(await running).toBe(0);
     },
   );
+
+  it("exposes /connect as a real parsed command and documented completion", () => {
+    expect(parseSubmittedText("/connect")).toEqual({ type: "command", name: "connect" });
+    expect(LOCAL_COMMANDS).toContain("connect");
+    expect(TERMINAL_HELP).toContain("/connect");
+    expect(parseSubmittedText("//connect")).toEqual({ type: "message", text: "/connect" });
+  });
+
+  it.each([
+    { columns: 40, rows: 12 },
+    { columns: 80, rows: 24 },
+  ])(
+    "navigates real vendor identities, panes and All search at $columns x $rows",
+    async ({ columns, rows }) => {
+      const io = surface(true);
+      vi.stubEnv("TERM", "xterm-256color");
+      Object.assign(io.output, { isTTY: true, columns, rows });
+      const observed = observeViews();
+      const newSession = vi.fn(async () => {});
+      const currentHost = host({
+        models: async () => [
+          {
+            id: "model",
+            label: "Alias A",
+            modelName: "alpha",
+            vendor: { id: "a", label: "Connection A" },
+          },
+          {
+            id: "other",
+            label: "Alias B",
+            modelName: "beta",
+            vendor: { id: "b", label: "Connection B" },
+          },
+          {
+            id: "locked",
+            label: "Alias locked",
+            modelName: "locked",
+            vendor: { id: "b", label: "Connection B" },
+            availability: { state: "unavailable", reason: "NO_KEY" },
+          },
+        ],
+        newSession,
+      });
+      const running = runTerminalController({
+        ...io,
+        command: parseTerminalArguments(["--no-color"]),
+        host: currentHost,
+      });
+      await observed.until((view) => view.composer.submission.enabled);
+      io.input.write("retained-draft\x1bm");
+      const picker = await observed.until((view) => !!view.selector?.navigation);
+      expect(picker.selector?.navigation?.groups.map((group) => group.id)).toEqual([
+        "all",
+        "vendor:a",
+        "vendor:b",
+      ]);
+      expect(picker.selector?.items.find((item) => item.id === "model")?.label).toBe(
+        "alpha · 当前",
+      );
+      expect(picker.selector?.items.find((item) => item.id === "locked")?.label).toContain(
+        "不可用",
+      );
+      io.input.write("\x1b[D");
+      await observed.until((view) => view.selector?.navigation?.pane === "groups");
+      io.input.write("\x1b[B\x1b[B");
+      const groupB = await observed.until(
+        (view) => view.selector?.navigation?.selectedGroupId === "vendor:b",
+      );
+      expect(groupB.selector?.items.map((item) => item.id)).toEqual([
+        "other",
+        "locked",
+        groupB.selector?.navigation?.action.id,
+      ]);
+      io.input.write("\r");
+      await observed.until((view) => view.selector?.navigation?.pane === "models");
+      expect(newSession).not.toHaveBeenCalled();
+      io.input.write("\x1b[B");
+      await observed.until((view) => view.selector?.selectedId === "other");
+      io.input.write("\t");
+      await observed.until((view) => view.selector?.navigation?.pane === "groups");
+      expect(newSession).not.toHaveBeenCalled();
+      io.input.write("\x1b[C");
+      await observed.until((view) => view.selector?.navigation?.pane === "models");
+      io.input.write("alpha");
+      const scoped = await observed.until((view) => view.selector?.query === "alpha");
+      expect(scoped.selector?.items.map((item) => item.id)).toEqual([
+        scoped.selector?.navigation?.action.id,
+      ]);
+      io.input.write("\x1b[D\x1b[A\x1b[A");
+      await observed.until((view) => view.selector?.navigation?.selectedGroupId === "all");
+      io.input.write("\x1b[C");
+      await observed.until((view) => view.selector?.navigation?.pane === "models");
+      io.input.write("alpha");
+      const all = await observed.until((view) => view.selector?.query === "alpha");
+      expect(all.selector?.items.map((item) => item.id)).toEqual([
+        "model",
+        all.selector?.navigation?.action.id,
+      ]);
+      io.input.write("\x1b[B\r");
+      const idle = await observed.until((view) => view.composer.submission.enabled);
+      expect(idle.notification).toContain("当前模型已选中");
+      expect(idle.composer.draft.text).toBe("retained-draft");
+      expect(newSession).not.toHaveBeenCalled();
+      io.input.write("\x1bm");
+      await observed.until((view) => !!view.selector);
+      io.input.write("\x1b");
+      await observed.until((view) => view.selector?.navigation?.pane === "groups");
+      expect(newSession).not.toHaveBeenCalled();
+      io.input.write("\x1b");
+      const cancelled = await observed.until((view) => view.composer.submission.enabled);
+      expect(cancelled.composer.draft.text).toBe("retained-draft");
+      io.input.end();
+      expect(await running).toBe(0);
+    },
+  );
+
+  it.each(["confirm", "cancel-switch", "cancel-setup"] as const)(
+    "configures from an empty picker and preserves saved connections on %s",
+    async (outcome) => {
+      const io = surface(true);
+      const observed = observeViews();
+      let saved = false;
+      const configured: TerminalModelItem = {
+        id: "added",
+        label: "New connection / actual-model",
+        modelName: "actual-model",
+        vendor: { id: "new-vendor", label: "New connection" },
+        availability: { state: "ready", reason: "LOCAL_READY" },
+      };
+      const configureModel = vi.fn(async (setup: TerminalSetupIO) => {
+        const name = await setup.text("Connection name");
+        if (name === undefined) return undefined;
+        const provider = await setup.select("Select protocol", [
+          { id: "openai", label: "OpenAI compatible" },
+        ]);
+        if (!provider) return undefined;
+        const key = await setup.secret("API key");
+        if (!key) return undefined;
+        saved = true;
+        return configured.id;
+      });
+      const newSession = vi.fn(async () => {
+        Object.defineProperty(currentHost, "context", {
+          value: { ...currentHost.context, threadId: "new-binding", model: configured },
+        });
+      });
+      const currentHost = host({
+        models: vi.fn(async () => (saved ? [configured] : [])),
+        configureModel,
+        newSession,
+      });
+      const initialContext = currentHost.context;
+      const running = runTerminalController({
+        ...io,
+        command: parseTerminalArguments([]),
+        host: currentHost,
+      });
+      await observed.until((view) => view.composer.submission.enabled);
+      io.input.write("retained-draft\x1bm");
+      const picker = await observed.until((view) => !!view.selector?.navigation);
+      expect(picker.selector?.items).toEqual([picker.selector?.navigation?.action]);
+      io.input.write("1\r");
+      await observed.until((view) => view.prompt?.text === "Connection name");
+      expect(currentHost.context).toBe(initialContext);
+      expect(newSession).not.toHaveBeenCalled();
+      if (outcome === "cancel-setup") io.input.write("\x03");
+      else {
+        io.input.write("New connection\r");
+        const protocol = await observed.until((view) => view.selector?.title === "Select protocol");
+        expect(protocol.selector?.navigation).toBeUndefined();
+        io.input.write("1\r");
+        await observed.until((view) => view.prompt?.secret === true);
+        io.input.write("PRIVATE_API_KEY\r");
+        const confirmation = await observed.until(
+          (view) => view.prompt?.text.includes("actual-model") === true,
+        );
+        expect(confirmation.prompt?.text).toContain("yes");
+        expect(io.stdout + io.stderr).toContain("CLI 默认模型已保存");
+        expect(io.stdout + io.stderr).not.toContain("PRIVATE_API_KEY");
+        expect(saved).toBe(true);
+        expect(currentHost.context).toBe(initialContext);
+        expect(newSession).not.toHaveBeenCalled();
+        io.input.write(outcome === "confirm" ? "yes\r" : "\x03");
+      }
+      const idle = await observed.until((view) => view.composer.submission.enabled);
+      expect(idle.composer.draft.text).toBe("retained-draft");
+      expect(configureModel).toHaveBeenCalledTimes(1);
+      if (outcome === "confirm") {
+        expect(newSession).toHaveBeenCalledWith({ modelId: "added" });
+        expect(currentHost.context.threadId).toBe("new-binding");
+      } else {
+        expect(newSession).not.toHaveBeenCalled();
+        expect(currentHost.context).toBe(initialContext);
+      }
+      expect(saved).toBe(outcome !== "cancel-setup");
+      io.input.end();
+      expect(await running).toBe(0);
+    },
+  );
+
+  it.each(["safe", "unknown", "close"] as const)(
+    "runs /connect directly and preserves the existing failure policy for %s errors",
+    async (failure) => {
+      const io = surface(true);
+      const observed = observeViews();
+      const configureModel = vi.fn(async () => {
+        if (failure === "safe")
+          throw new AgentError("HOST_CONFIGURATION_REJECTED", "Original binding retained");
+        if (failure === "close") throw new AgentError("HOST_CLOSE_FAILED", "Close failed");
+        throw new Error("PRIVATE_CONFIGURATION_ERROR");
+      });
+      const currentHost = host({ models: async () => [], configureModel });
+      const initialContext = currentHost.context;
+      const running = runTerminalController({
+        ...io,
+        command: parseTerminalArguments([]),
+        host: currentHost,
+      });
+      await observed.until((view) => view.composer.submission.enabled);
+      io.input.write("/connect\r\r");
+      if (failure === "safe") {
+        const idle = await observed.until(
+          (view) =>
+            view.notification?.includes("连接配置未完成") === true &&
+            view.composer.submission.enabled,
+        );
+        expect(idle.activity).toBeUndefined();
+        expect(currentHost.context).toBe(initialContext);
+        io.input.end();
+      }
+      expect(await running).toBe(failure === "safe" ? 0 : 1);
+      expect(configureModel).toHaveBeenCalledTimes(1);
+      expect(io.stdout + io.stderr).not.toContain("PRIVATE_CONFIGURATION_ERROR");
+    },
+  );
+
+  it("offers actionable plain group selection and cancellation without activating a model", async () => {
+    const io = surface(true);
+    const observed = observeViews();
+    const newSession = vi.fn(async () => {});
+    const configureModel = vi.fn(async () => undefined);
+    const running = runTerminalController({
+      ...io,
+      command: parseTerminalArguments([]),
+      host: host({
+        models: async () => [
+          { id: "model", label: "Alpha", vendor: { id: "a", label: "Vendor A" } },
+          { id: "other", label: "Beta", vendor: { id: "b", label: "Vendor B" } },
+        ],
+        configureModel,
+        newSession,
+      }),
+    });
+    await observed.until((view) => view.composer.submission.enabled);
+    io.input.write("draft\x1bm");
+    await observed.until((view) => !!view.selector);
+    io.input.write("/groups\r");
+    await observed.until(
+      (view) => view.selector?.navigation?.pane === "groups" && view.selector.query === "",
+    );
+    await io.until("3. Vendor B");
+    io.input.write("3\r");
+    const models = await observed.until(
+      (view) =>
+        view.selector?.navigation?.selectedGroupId === "vendor:b" &&
+        view.selector.navigation.pane === "models",
+    );
+    expect(models.selector?.items[0]?.label).toContain("Beta");
+    expect(newSession).not.toHaveBeenCalled();
+    io.input.write("/connect\r");
+    const idle = await observed.until((view) => view.composer.submission.enabled);
+    expect(idle.composer.draft.text).toBe("draft");
+    expect(configureModel).toHaveBeenCalledTimes(1);
+    expect(newSession).not.toHaveBeenCalled();
+    io.input.end();
+    expect(await running).toBe(0);
+  });
 });
 
-describe.skipIf(process.platform !== "win32")("real Node CLI asynchronous output observation", () => {
-  it("completes and releases SQLite while a run.started Writable callback remains paused", async () => {
-    const root = await mkdtemp(join(tmpdir(), "node-cli-slow-output-"));
-    const answer = `authoritative-slow-output-${crypto.randomUUID()}`;
-    const server = await cliSdkServer(() => answer);
-    let execution: CliChild | undefined;
-    try {
-      await mkdir(join(root, "workspace"));
-      expect((await runCliChild(root, server.endpoint, [], "", "seed")).code).toBe(0);
-      execution = cliChild(
-        root,
-        server.endpoint,
-        ["--prompt", "finite slow output", "--tools", "none", "--output", "jsonl"],
-        "slow-output",
-      );
-      const [line] = await execution.waitFor(
-        "stderr",
-        /^\{"type":"slow-output.observation".*\}\r?$/m,
-      );
-      const observation = JSON.parse(line);
-      expect(observation).toMatchObject({
-        type: "slow-output.observation",
-        identity: {
-          agentId: expect.any(String),
-          threadId: expect.any(String),
-          queryId: expect.any(String),
-          runId: expect.any(String),
-        },
-        completedStatus: "completed",
-        checkpointStatus: "completed",
-        checkpointRunId: observation.identity.runId,
-        leaseReleased: true,
-        cliSettled: false,
-        callbackPending: true,
-      });
-      expect(execution.child.exitCode).toBeNull();
-      execution.child.stdin.end("flush\n");
-      const result = await execution.finished;
-      expect(result.code).toBe(0);
-      const records = jsonlRecords(result);
-      const query = queryRecord(result);
-      expect(query).toMatchObject({ identity: observation.identity, status: "completed" });
-      for (const record of records.filter((record) => record.identity))
-        expect(record.identity).toEqual(observation.identity);
-      expect(
-        records.filter((record) => record.type === "progress").map((record) => record.phase),
-      ).toEqual([
-        "step.committed",
-        "run.started",
-        "step.started",
-        "step.committed",
-        "run.completed",
-      ]);
-      expect(records.filter((record) => record.type === "assistant.message")).toEqual([
-        expect.objectContaining({
-          identity: observation.identity,
-          content: [{ contentIndex: 0, text: answer }],
-        }),
-      ]);
-      expect(records.filter((record) => record.type === "query.result")).toHaveLength(1);
-      expect(records.at(-1)).toMatchObject({
-        type: "process.finished",
-        exitCode: 0,
-        reason: "completed",
-        lastRun: { identity: observation.identity, status: "completed" },
-      });
-      expect(records.filter((record) => record.type === "process.finished")).toHaveLength(1);
-      expect(server.requests).toHaveLength(1);
-      expect(server.errors).toEqual([]);
-    } finally {
-      if (execution?.child.exitCode === null) {
-        execution.child.kill();
-        await execution.finished;
+describe.skipIf(process.platform !== "win32")(
+  "real Node CLI asynchronous output observation",
+  () => {
+    it("completes and releases SQLite while a run.started Writable callback remains paused", async () => {
+      const root = await mkdtemp(join(tmpdir(), "node-cli-slow-output-"));
+      const answer = `authoritative-slow-output-${crypto.randomUUID()}`;
+      const server = await cliSdkServer(() => answer);
+      let execution: CliChild | undefined;
+      try {
+        await mkdir(join(root, "workspace"));
+        expect((await runCliChild(root, server.endpoint, [], "", "seed")).code).toBe(0);
+        execution = cliChild(
+          root,
+          server.endpoint,
+          ["--prompt", "finite slow output", "--tools", "none", "--output", "jsonl"],
+          "slow-output",
+        );
+        const [line] = await execution.waitFor(
+          "stderr",
+          /^\{"type":"slow-output.observation".*\}\r?$/m,
+        );
+        const observation = JSON.parse(line);
+        expect(observation).toMatchObject({
+          type: "slow-output.observation",
+          identity: {
+            agentId: expect.any(String),
+            threadId: expect.any(String),
+            queryId: expect.any(String),
+            runId: expect.any(String),
+          },
+          completedStatus: "completed",
+          checkpointStatus: "completed",
+          checkpointRunId: observation.identity.runId,
+          leaseReleased: true,
+          cliSettled: false,
+          callbackPending: true,
+        });
+        expect(execution.child.exitCode).toBeNull();
+        execution.child.stdin.end("flush\n");
+        const result = await execution.finished;
+        expect(result.code).toBe(0);
+        const records = jsonlRecords(result);
+        const query = queryRecord(result);
+        expect(query).toMatchObject({ identity: observation.identity, status: "completed" });
+        for (const record of records.filter((record) => record.identity))
+          expect(record.identity).toEqual(observation.identity);
+        expect(
+          records.filter((record) => record.type === "progress").map((record) => record.phase),
+        ).toEqual([
+          "run.started",
+          "step.committed",
+          "step.started",
+          "step.committed",
+          "run.completed",
+        ]);
+        expect(records.filter((record) => record.type === "assistant.message")).toEqual([
+          expect.objectContaining({
+            identity: observation.identity,
+            content: [{ contentIndex: 0, text: answer }],
+          }),
+        ]);
+        expect(records.filter((record) => record.type === "query.result")).toHaveLength(1);
+        expect(records.at(-1)).toMatchObject({
+          type: "process.finished",
+          exitCode: 0,
+          reason: "completed",
+          lastRun: { identity: observation.identity, status: "completed" },
+        });
+        expect(records.filter((record) => record.type === "process.finished")).toHaveLength(1);
+        expect(server.requests).toHaveLength(1);
+        expect(server.errors).toEqual([]);
+      } finally {
+        if (execution?.child.exitCode === null) {
+          execution.child.kill();
+          await execution.finished;
+        }
+        await server.close();
+        await rm(root, { recursive: true, force: true });
       }
-      await server.close();
-      await rm(root, { recursive: true, force: true });
-    }
-  }, 40000);
-});
+    }, 40000);
+  },
+);

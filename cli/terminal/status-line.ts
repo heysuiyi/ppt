@@ -39,7 +39,9 @@ export function statusLines(view: TerminalView, columns: number): string[] {
   }
   const hint = view.selector
     ? view.selector.navigation
-      ? "←→/Tab 切栏 · ↑↓ 移动 · Enter 选择 · Esc 返回"
+      ? columns < 60
+        ? "Tab 切栏 · ↑↓ · Enter 选 · Esc 返回"
+        : "←→/Tab 切栏 · ↑↓ 移动 · Enter 选择 · Esc 返回"
       : "↑↓ 选择 · Enter 确认 · Esc 返回"
     : view.prompt
       ? "Enter 确认输入 · Esc 返回"

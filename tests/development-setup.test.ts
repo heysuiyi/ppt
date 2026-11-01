@@ -194,6 +194,33 @@ describe("Node CLI secure model setup", () => {
     );
   });
 
+  it("reopens vendor selection for a ready default and selects an existing model without discovery", async () => {
+    const { config, port } = await configuration();
+    await config.management.initialize();
+    await config.management.saveVendor({
+      vendor: vendor(),
+      credential: { type: "replace", apiKey: "saved-key" },
+    });
+    await config.management.saveCliPreferences({ defaultModelId: "saved-model" });
+    const discover = vi.spyOn(config.management, "listRemoteModels");
+    const io = input(["0", "0"]);
+    const select = vi.spyOn(io, "select");
+    await expect(
+      ensureConfiguredModel(
+        config.management,
+        { ...io, protection: port, signal: new AbortController().signal },
+        true,
+      ),
+    ).resolves.toBe("saved-model");
+    expect(select.mock.calls[0]).toEqual([
+      "选择厂商/已有连接：",
+      expect.arrayContaining([expect.objectContaining({ label: "Configured MiMo" })]),
+    ]);
+    expect(select).toHaveBeenCalledTimes(2);
+    expect(io.secret).not.toHaveBeenCalled();
+    expect(discover).not.toHaveBeenCalled();
+  });
+
   it("rejects a copied execution plan rather than resolving its credential", async () => {
     const { config } = await configuration();
     await config.management.initialize();

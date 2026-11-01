@@ -129,18 +129,28 @@ export function waitingQuery(result: CliProcessResult) {
     .parse(jsonlRecords(result).find((record) => record.type === "query.result"));
 }
 
-const storedMessage = z.object({
-  role: z.string(),
-  content: z.array(z.object({
-    type: z.string(),
-    callId: z.string().optional(),
-  }).passthrough()),
-}).passthrough();
+const storedMessage = z
+  .object({
+    role: z.string(),
+    content: z.array(
+      z
+        .object({
+          type: z.string(),
+          callId: z.string().optional(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
 
 export interface CliAuthority {
   row: { agent_id: string; owner_id: string | null; revision: number; payload: string };
   checkpoint: {
-    agentId: string; threadId: string; queryId: string; lastRunId: string; status: string;
+    agentId: string;
+    threadId: string;
+    queryId: string;
+    lastRunId: string;
+    status: string;
     committed: { historyRevision: number; messages: z.infer<typeof storedMessage>[] };
     pending?: { interaction: { id: string } };
   };
@@ -151,33 +161,67 @@ export interface CliAuthority {
 }
 
 /** Parent-only authority inspection; never serialized into CLI output. */
-export function cliAuthority(root: string, identity: { threadId: string; queryId: string }): CliAuthority {
+export function cliAuthority(
+  root: string,
+  identity: { threadId: string; queryId: string },
+): CliAuthority {
   const database = new DatabaseSync(join(root, "data", "sessions.sqlite"), { readOnly: true });
   try {
-    const row = z.object({
-      agent_id: z.string(), owner_id: z.string().nullable(), revision: z.number(),
-      payload: z.string(),
-    }).passthrough().parse(database.prepare(
-      "SELECT * FROM general_agent_checkpoints WHERE thread_id = ? AND query_id = ?",
-    ).get(identity.threadId, identity.queryId));
-    const checkpoint = z.object({
-      agentId: z.string(), threadId: z.string(), queryId: z.string(), lastRunId: z.string(),
-      status: z.string(),
-      committed: z.object({ historyRevision: z.number(), messages: z.array(storedMessage) }),
-      pending: z.object({ interaction: z.object({ id: z.string() }) }).passthrough().optional(),
-    }).passthrough().parse(JSON.parse(row.payload));
-    const history = z.object({ revision: z.number() }).parse(database.prepare(
-      "SELECT revision FROM general_agent_history WHERE thread_id = ?",
-    ).get(identity.threadId));
-    const batches = database.prepare(
-      "SELECT batch_id, revision, payload FROM general_agent_history_batches WHERE thread_id = ? ORDER BY revision",
-    ).all(identity.threadId).map((value) => z.object({
-      batch_id: z.string(), revision: z.number(), payload: z.string(),
-    }).parse(value));
-    const messages = batches.flatMap((batch) => z.array(storedMessage).parse(JSON.parse(batch.payload)));
-    const binding = database.prepare(
-      "SELECT payload FROM general_agent_host_bindings WHERE thread_id = ?",
-    ).get(identity.threadId);
+    const row = z
+      .object({
+        agent_id: z.string(),
+        owner_id: z.string().nullable(),
+        revision: z.number(),
+        payload: z.string(),
+      })
+      .passthrough()
+      .parse(
+        database
+          .prepare("SELECT * FROM general_agent_checkpoints WHERE thread_id = ? AND query_id = ?")
+          .get(identity.threadId, identity.queryId),
+      );
+    const checkpoint = z
+      .object({
+        agentId: z.string(),
+        threadId: z.string(),
+        queryId: z.string(),
+        lastRunId: z.string(),
+        status: z.string(),
+        committed: z.object({ historyRevision: z.number(), messages: z.array(storedMessage) }),
+        pending: z
+          .object({ interaction: z.object({ id: z.string() }) })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .parse(JSON.parse(row.payload));
+    const history = z
+      .object({ revision: z.number() })
+      .parse(
+        database
+          .prepare("SELECT revision FROM general_agent_history WHERE thread_id = ?")
+          .get(identity.threadId),
+      );
+    const batches = database
+      .prepare(
+        "SELECT batch_id, revision, payload FROM general_agent_history_batches WHERE thread_id = ? ORDER BY revision",
+      )
+      .all(identity.threadId)
+      .map((value) =>
+        z
+          .object({
+            batch_id: z.string(),
+            revision: z.number(),
+            payload: z.string(),
+          })
+          .parse(value),
+      );
+    const messages = batches.flatMap((batch) =>
+      z.array(storedMessage).parse(JSON.parse(batch.payload)),
+    );
+    const binding = database
+      .prepare("SELECT payload FROM general_agent_host_bindings WHERE thread_id = ?")
+      .get(identity.threadId);
     return { row, checkpoint, history, batches, messages, binding };
   } finally {
     database.close();
@@ -193,8 +237,11 @@ export function expectCliAuthority(
   expect(state.row.owner_id).toBeNull();
   expect(state.row.revision).toBeGreaterThan(0);
   expect(state.checkpoint).toMatchObject({
-    agentId: identity.agentId, threadId: identity.threadId, queryId: identity.queryId,
-    lastRunId: identity.runId, status,
+    agentId: identity.agentId,
+    threadId: identity.threadId,
+    queryId: identity.queryId,
+    lastRunId: identity.runId,
+    status,
   });
   expect(state.row.agent_id).toBe(identity.agentId);
   expect(state.history.revision).toBe(state.checkpoint.committed.historyRevision);
@@ -205,8 +252,12 @@ export function expectCliAuthority(
   );
   expect(new Set(state.batches.map((batch) => batch.batch_id)).size).toBe(state.batches.length);
   const contents = state.messages.flatMap((message) => message.content);
-  const calls = contents.filter((content) => content.type === "tool-call").map((call) => call.callId);
-  const results = contents.filter((content) => content.type === "tool-result").map((result) => result.callId);
+  const calls = contents
+    .filter((content) => content.type === "tool-call")
+    .map((call) => call.callId);
+  const results = contents
+    .filter((content) => content.type === "tool-result")
+    .map((result) => result.callId);
   expect(results).toEqual(calls);
   expect(new Set(calls).size).toBe(calls.length);
   if (status !== "waiting") expect(state.checkpoint.pending).toBeUndefined();

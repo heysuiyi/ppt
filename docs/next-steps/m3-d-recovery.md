@@ -2,7 +2,7 @@
 
 [返回计划目录](README.md) · [M3 总计划](m3-reliability.md) · [前一步 M3-C](m3-c-persistence.md#12-c1c3-增量实施与验收记录) · [后一步 M3-E](m3-e-observation.md)
 
-状态：**D0/D1/D2/D3 已实施并完成本地验收。** release 双失败已先失败后修复；同进程 B/R、39 个新增真实强杀场景、第三进程权威核验、实际 Node CLI、包消费和全仓门禁通过，证据见第 12 节。M3-E 仍待独立执行，M3 尚未整体完成；原有调查与 A/B/C 历史结果不计为本轮新增证据。
+状态：**D0/D1/D2/D3 已实施并完成本地验收。** release 双失败已先失败后修复；同进程 B/R、39 个新增真实强杀场景、第三进程权威核验、实际 Node CLI、包消费和全仓门禁通过，证据见第 12 节。后续 [M3-E 已完成独立验收](m3-e-observation.md#8-本轮实施与验收记录)，M3 本轮计划范围完成；原有调查与 A/B/C 历史结果不计为 D 新增证据。
 
 ## 1. 目标与明确不做
 
@@ -225,4 +225,4 @@ npm.cmd test
 - `node scripts/verify-harness-package.mjs`、`node scripts/verify-tools-package.mjs`：最终构建产物的仓库外 tarball 安装、声明与原生消费者通过；包脚本的内存存储不冒充持久性证据，真实 SQLite/强杀由上节承担。
 - `npx.cmd biome check`：本次修改的 7 个受支持代码文件全部通过，无警告。`npm.cmd run agent -- --help` 实际 Node 启动通过，行为烟测由 CLI integration 承担，不以 help 代替恢复。
 - 最终原生 Node v24.20.0 烟测再次覆盖持久首存失败叠加 release B/R：两份错误均保留，公开 `asProtocolError` 不含原生诊断，模型零调用；重开连接后 B 为 busy、R 可 acquired，维护后 generation 均为 2。一次性脚本与隔离库均已删除。
-- 不增加远程厂商调用，不更改 HostSessionBinding v2、checkpoint v1、表结构或公开端口，不新增自动接管、工具重试、补偿或管理员 CLI；生产 UI/PPT/旧 Agent 不迁移。M3-E 仍需独立执行，M3 不因 D 通过而整体完成。
+- 不增加远程厂商调用，不更改 HostSessionBinding v2、checkpoint v1、表结构或公开端口，不新增自动接管、工具重试、补偿或管理员 CLI；生产 UI/PPT/旧 Agent 不迁移。D 自身通过不代表 M3 整体通过；随后 E 已完成独立验收，最终结论及新增门禁见 [E 第 8 节](m3-e-observation.md#8-本轮实施与验收记录)，本节保留 D 实施时的历史数字。

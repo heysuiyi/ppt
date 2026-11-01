@@ -606,6 +606,107 @@ describe("production renderer modes", () => {
   });
 });
 
+describe("grouped model selector viewport", () => {
+  const action = { id: "configure", label: "+ 添加/配置连接" };
+  const groups = [
+    { id: "all", label: "All · 全部连接" },
+    { id: "vendor:a", label: "连接甲 👩‍💻" },
+    { id: "vendor:b", label: "连接乙" },
+  ];
+  const models = Array.from({ length: 24 }, (_, index) => ({
+    id: `model-${index}`,
+    label: `模型 ${index}${index === 23 ? " · 当前 · 不可用" : ""}`,
+    description: `连接甲 · ${"超长本地状态👩‍💻".repeat(20)}\x1b]52;c;SECRET\x07`,
+  }));
+
+  for (const [columns, rows] of [
+    [40, 12],
+    [80, 24],
+  ])
+    for (const color of [false, true])
+      it(`keeps panes, selection and pinned configure visible at ${columns}x${rows}, color=${color}`, async () => {
+        const { renderer, output } = capture("tui", columns, rows, color);
+        const view: TerminalView = {
+          ...idle,
+          notification: "模型选择不会发送草稿",
+          selector: {
+            title: "Models · 仅检查本地配置",
+            query: "模型",
+            items: [...models, action],
+            selectedId: "model-23",
+            navigation: {
+              groups,
+              selectedGroupId: "vendor:a",
+              pane: "models",
+              action,
+            },
+          },
+        };
+        await renderer.view(view);
+        let screen = terminalState(output);
+        expect(screen.lines.join("\n")).toContain("模型 23 · 当前 · 不可用");
+        expect(screen.lines.join("\n")).toContain("+ 添加/配置连接");
+        expect(screen.lines.length).toBeLessThan(rows);
+        expect(screen.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
+        expect(screen.cursorVisible).toBe(false);
+        expect(output.join("")).not.toContain("\x1b]52");
+        expect(/\x1b\[[\d;]*m/.test(output.join(""))).toBe(color);
+        if (columns >= 80) {
+          expect(screen.lines.join("\n")).toContain(`› ${groups[1]!.label}`);
+          expect(
+            screen.lines.some((line) => line.includes("厂商连接") && line.includes(" │ ")),
+          ).toBe(true);
+          expect(
+            screen.lines.some((line) => line.includes("连接甲") && line.includes("模型")),
+          ).toBe(true);
+        }
+        await renderer.view({
+          ...view,
+          selector: {
+            ...view.selector!,
+            navigation: { ...view.selector!.navigation!, pane: "groups" },
+          },
+        });
+        screen = terminalState(output);
+        expect(screen.lines.join("\n")).toContain("连接甲");
+        expect(screen.lines.join("\n")).toContain("+ 添加/配置连接");
+        expect(screen.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
+        await renderer.close();
+        expect(terminalState(output).cursorVisible).toBe(true);
+      });
+
+  it("keeps the configure action when search is empty and exposes plain numbered group commands", async () => {
+    const { renderer, output, error, size } = capture("tui", 80, 24);
+    const selector: NonNullable<TerminalView["selector"]> = {
+      title: "Models",
+      query: "missing",
+      items: [action],
+      selectedId: null,
+      navigation: { groups, selectedGroupId: "all", pane: "models", action },
+    };
+    await renderer.view({ ...idle, selector });
+    expect(terminalScreen(output)).toContain("没有匹配模型");
+    expect(terminalScreen(output)).toContain("+ 添加/配置连接");
+    size.columns = 30;
+    await renderer.view({
+      ...idle,
+      selector: {
+        ...selector,
+        navigation: { ...selector.navigation!, pane: "groups" },
+      },
+    });
+    const fallback = error.join("");
+    expect(fallback).toContain("1. All");
+    expect(fallback).toContain("2. 连接甲");
+    expect(fallback).toContain("/groups");
+    expect(fallback).toContain("/connect");
+    expect(fallback).toContain("/cancel");
+    expect(fallback).toContain("+ 添加/配置连接");
+    expect(fallback).not.toContain("\x1b");
+    await renderer.close();
+  });
+});
+
 describe("terminal Unicode and content safety", () => {
   it("keeps model identity, local activity and model state separate from phase and focused actions", () => {
     const view: TerminalView = {

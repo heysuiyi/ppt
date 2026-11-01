@@ -22,8 +22,8 @@ import { createSelector } from "./selector.js";
 import type {
   TerminalExitDecision,
   TerminalFailureStage,
-  TerminalPhase,
   TerminalModelItem,
+  TerminalPhase,
   TerminalSelectionItem,
 } from "./terminal-contract.js";
 import {
@@ -45,7 +45,7 @@ export interface TerminalControllerOptions {
 
 interface ModelNavigation {
   readonly models: readonly TerminalModelItem[];
-  readonly groups: Selector;
+  groups: Selector;
   readonly action: TerminalSelectionItem;
   pane: "groups" | "models";
 }
@@ -283,15 +283,14 @@ export async function runTerminalController(options: TerminalControllerOptions):
     return promise;
   }
 
-  function modelGroup(model: TerminalModelItem): string {
-    return model.vendor ? `vendor:${model.vendor.id}` : "legacy";
-  }
-
   function filterModels(current: Extract<Focus, { type: "selector" }>): void {
     const navigation = current.navigation!;
     const group = navigation.groups.selectedId;
     const items = navigation.models
-      .filter((model) => group === "all" || modelGroup(model) === group)
+      .filter(
+        (model) =>
+          group === "all" || (model.vendor ? `vendor:${model.vendor.id}` : "legacy") === group,
+      )
       .map((model) => ({
         id: model.id,
         label: `${model.modelName ?? model.label}${model.id === host.context.model.id ? " · 当前" : ""}${model.availability?.state === "unavailable" ? " · 不可用" : ""}`,
@@ -311,9 +310,16 @@ export async function runTerminalController(options: TerminalControllerOptions):
     if (stopping || eof) return undefined;
     const groups: TerminalSelectionItem[] = [{ id: "all", label: "All · 全部连接" }];
     for (const model of models) {
-      const id = modelGroup(model);
+      const id = model.vendor ? `vendor:${model.vendor.id}` : "legacy";
       if (!groups.some((group) => group.id === id))
-        groups.push({ id, label: model.vendor?.label ?? "已配置连接" });
+        groups.push({
+          id,
+          label: model.vendor?.label ?? "已配置连接",
+          description: `${
+            models.filter((item) => (item.vendor ? `vendor:${item.vendor.id}` : "legacy") === id)
+              .length
+          } 个模型`,
+        });
     }
     let actionId = "__configure_connection";
     while (models.some((model) => model.id === actionId)) actionId += "_";
@@ -331,12 +337,10 @@ export async function runTerminalController(options: TerminalControllerOptions):
         pane: "models",
         action,
       },
-      resolve: (value) => resolve(value === actionId ? undefined : value),
+      resolve,
     };
     filterModels(next);
     next.selector = createSelector(next.selector.items, host.context.model.id);
-    // 配置动作与退出必须区分；模型 ID 本身不承担动作协议。
-    next.resolve = resolve;
     switchFocus(next);
     await refresh();
     const selected = await promise;
@@ -769,6 +773,81 @@ export async function runTerminalController(options: TerminalControllerOptions):
       return;
     }
     if (focus.type === "selector") {
+      if (focus.navigation) {
+        const current = focus;
+        const navigation = current.navigation!;
+        if (key.action === "interrupt" || key.action === "eof") resolveFocus(undefined);
+        else if (key.action === "escape") {
+          if (navigation.pane === "models") {
+            navigation.pane = "groups";
+            current.typed = "";
+            filterModels(current);
+          } else resolveFocus(undefined);
+        } else if (key.action === "left" || key.action === "right" || key.action === "tab") {
+          navigation.pane =
+            key.action === "left"
+              ? "groups"
+              : key.action === "right"
+                ? "models"
+                : navigation.pane === "groups"
+                  ? "models"
+                  : "groups";
+          current.typed = "";
+          filterModels(current);
+        } else if (key.action === "up" || key.action === "down") {
+          const selector = navigation.pane === "groups" ? navigation.groups : current.selector;
+          selector.move(key.action === "up" ? -1 : 1);
+          if (navigation.pane === "groups") filterModels(current);
+        } else if (
+          (key.action === "insert" && !key.text.includes("\n")) ||
+          key.action === "backspace"
+        ) {
+          if (terminal.mode !== "plain" && navigation.pane === "groups") {
+            navigation.groups = createSelector(navigation.groups.items, "all");
+            navigation.pane = "models";
+          }
+          current.typed =
+            key.action === "insert"
+              ? current.typed + key.text
+              : Array.from(current.typed).slice(0, -1).join("");
+          filterModels(current);
+        } else if (key.action === "submit") {
+          const query = current.typed.trim();
+          if (terminal.mode === "plain" && query.startsWith("/")) {
+            current.typed = "";
+            if (query === "/connect") resolveFocus(navigation.action.id);
+            else if (query === "/cancel") resolveFocus(undefined);
+            else if (query === "/groups" || query === "/back") {
+              if (query === "/back" && navigation.pane === "groups") resolveFocus(undefined);
+              else navigation.pane = "groups";
+            }
+            filterModels(current);
+          } else if (navigation.pane === "groups") {
+            const index = terminal.mode === "plain" && /^\d+$/.test(query) ? Number(query) - 1 : -1;
+            const selected =
+              index >= 0
+                ? navigation.groups.items[index]?.id
+                : (navigation.groups.items.find((item) => item.id === query)?.id ??
+                  (query ? undefined : navigation.groups.accept()));
+            if (selected) {
+              navigation.groups = createSelector(navigation.groups.items, selected);
+              navigation.pane = "models";
+              current.typed = "";
+              filterModels(current);
+            }
+          } else {
+            const index = terminal.mode === "plain" && /^\d+$/.test(query) ? Number(query) - 1 : -1;
+            const selected =
+              index >= 0
+                ? current.sourceItems[index]?.id
+                : (current.sourceItems.find((item) => item.id === query)?.id ??
+                  current.selector.accept());
+            if (selected) resolveFocus(selected);
+          }
+        }
+        await refresh();
+        return;
+      }
       if (key.action === "eof" && phase === "waiting") {
         eof = true;
         requestStop();

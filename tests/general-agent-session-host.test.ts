@@ -128,9 +128,9 @@ function fixture(stream?: ModelClient["stream"]) {
         generate,
         stream:
           stream ??
-          (async function* (request, signal) {
+          async function* (request, signal) {
             yield { type: "completed", response: await generate(request, signal) };
-          }),
+          },
       };
       return { client, dispose: modelBindingDisposed };
     },
@@ -610,7 +610,10 @@ describe("M3-E public handle observation with SQLite", () => {
       model.finish.resolve();
       expect((await run.completed).status).toBe("completed");
       const history = await f.history.read("fixed-thread");
-      expect(history.messages).toEqual([...activation().input, answer("slow:authoritative").message]);
+      expect(history.messages).toEqual([
+        ...activation().input,
+        answer("slow:authoritative").message,
+      ]);
       expect(await inspectCheckpoint(f)).toMatchObject({
         status: "completed",
         committed: { messages: history.messages, historyRevision: history.revision },
@@ -644,8 +647,12 @@ describe("M3-E public handle observation with SQLite", () => {
         { agentId: "agent-a", threadId: "thread-a", queryId: "query-a", runId: "run-a" },
         { agentId: "agent-b", threadId: "thread-b", queryId: "query-b", runId: "run-b" },
       ];
-      const inputA = [{ role: "user" as const, content: [{ type: "text" as const, text: "input-A" }] }];
-      const inputB = [{ role: "user" as const, content: [{ type: "text" as const, text: "input-B" }] }];
+      const inputA = [
+        { role: "user" as const, content: [{ type: "text" as const, text: "input-A" }] },
+      ];
+      const inputB = [
+        { role: "user" as const, content: [{ type: "text" as const, text: "input-B" }] },
+      ];
       const runA = await a.run({ ...identities[0], input: inputA });
       runs.push(runA);
       const runB = await b.run({ ...identities[1], input: inputB });

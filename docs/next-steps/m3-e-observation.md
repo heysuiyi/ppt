@@ -2,7 +2,7 @@
 
 [返回计划目录](README.md) · [M3 总计划](m3-reliability.md) · [前一步 M3-D](m3-d-recovery.md) · [已完成 M3-C](m3-c-persistence.md#12-c1c3-增量实施与验收记录)
 
-状态：**实施中。** D 已完成；E 的基线、E1-6 release 观察断言与原生 Node/SQLite 退订烟测已通过，E1 其余矩阵、E2 增量闭环及集中门禁仍待本轮验收。当前证据见第 8 节，方案制定探针不计为新增验收。
+状态：**E1/E2 已实施并完成本地验收，M3-A～E 的计划门槛已满足，M3 本轮验收完成。** 有限观察、真实 CLI 持久断言、慢输出/断管/错误结算、生产与开发实际入口、包消费及全仓门禁证据见第 8 节。容量治理、HA、第二后端及 M4/PPT 迁移不随本次完成。
 
 ## 1. 目标与不可扩张的声明
 
@@ -150,4 +150,50 @@ npm.cmd run agent -- --help
 - `verify-harness-package.mjs` 的仓库外原生消费者改为先等待 completed，再读取有限事件队列，核对完整四段 identity 与唯一终态 fact；Core/tools 两个包消费脚本通过。此处存储仍为内存端口，不冒充 SQLite 持久恢复。
 - 本轮一次性原生 Node v24.20.0、公开 Application/真实 SQLite：读到 run.started 与第一条 delta 后 return，signal 未取消、旧 iterator 后续 done、不能再次 claim；放行模型后 Query completed。第二个 Query 无观察也 completed，旧 handle.cancel 不影响新 signal；事后 drain 保留两条临时 delta 和终态事实。历史 revision=4，只保存两个权威 assistant（与 delta 拼接刻意不同），checkpoint 与历史一致且租约可正常取得/释放。脚本与隔离目录已删除。
 
-其余 E1/E2 矩阵与集中门禁将在实际运行后登记；不以此阶段性记录宣布 M3 完成。
+### E1：公开观察矩阵
+
+| 编号 | 本轮落点 | 已观察结果 |
+| --- | --- | --- |
+| E1-1 | `general-agent-session-host.test.ts` | 不 claim events 也能完成/释放；事后完整 drain 保留三条具名 delta、有序模型事实与唯一终态，最终 done；SQLite 仅含权威完成响应 |
+| E1-2 | 同上 | 消费者读第一条 delta 后停在自己的 gate；放行模型后，消费者仍暂停但 completed、历史/checkpoint 与 lease 已完成，恢复消费后顺序完整 |
+| E1-3 | `general-agent-lifecycle.test.ts` | 部分读取后 return 不 abort，规范提交正常；iterator 不可再次 claim，旧 handle.cancel 不干扰下一 gated Run |
+| E1-4 | `general-agent-session-host.test.ts` | 两个独立四段 identity 共享同一组端口，实际 A.next→B.next→B.next→A.next；B 先完成时 A 仍 busy，随后历史/租约各自正确 |
+| E1-5 | `general-agent-lifecycle.test.ts` | 已排队的两个 next 均可读取；队列排空且一个 next pending 后，第二个明确 busy，不抢首个事件；return/close 后仍 consumed |
+| E1-6 | runtime 的既有 D 矩阵 | 复用上节六分支及真实 SQLite owner/state，不以终态 fact 覆盖 completed 拒绝 |
+
+上述两个公开测试文件及 runtime 集中运行 3 文件、107 项通过。原私有 RuntimeEventStream 测试已替换为公开句柄/SQLite 验证，并删除对应精确白盒豁免，没有扩大私有导入。已有恢复用例同时核对当前 event.identity 与原 tool invocation.identity，避免把恢复 Run 覆盖为原派发 Run 或反之。
+
+### E2：实际 CLI、慢输出与错误结算
+
+- 两个既有 CLI integration 文件原位增强，8 项通过：父进程以独立只读 SQLite 连接核对完整 identity、history/checkpoint/revision、稳定 batch、调用结果有序配对、pending 和 owner；原生 SDK 只访问本地 HTTP/SSE。
+- EOF 等待与写审批：批准前目标文件不存在；重启后保留 agent/thread/query，使用新 Run 消费原 interaction，真实 create 写入内容与规范历史一致。终态再次恢复拒绝，不增加模型调用/历史。
+- 错误 interaction 保持原 waiting/pending 且不调用模型；匹配拒绝/取消仅消费一次，分别核对 completed/cancelled 与 owner 释放、无写影响。原 applied 的影响保留继续复用 D 的独立 sync ledger 矩阵。
+- 改变的是 `gateway.maxOutputTokens`：拒绝前后 binding/checkpoint/history 完全不变；还原 1024 后仍可批准原 interaction 并完成真实写入，不误称修改 maxSteps。
+- E2-5 在现有 node-cli-entry 增加 slow-output 模式：包装真实 createNodeHost.run，只观察原 handle.completed；受控 Writable 在 run.started 的 callback 暂停。子进程确认真实 Query/checkpoint completed、lease 释放，但 CLI 未落定且 callback 仍 pending；显式 flush 后输出完整、identity 正确并退出 0。
+- E2-6 三层分开：既有真实子进程断管退出 141，父进程核对 SQLite 为 completed 或 interrupted 且 owner 空；D/E1-6 承担真实 release/双失败；runCli/createHost 注入承担 completed 拒绝、后续 Host.close 拒绝及 EPIPE 优先级。前者不输出 assistant/query 成功，后者可输出真实 Query 成功但 process.finished 为 failure/1；纯 EPIPE=141，叠加执行/关闭失败=1。坏管道无法交付结束记录时不强求补写。
+- `cli-terminal-controller.test.ts` 定点 18 项通过，包括真实慢 Writable 子进程场景。首轮修正慢输出夹具的错误顺序预期（实际 run.started→输入 step.committed→模型 step.started），未改变 Core。
+- 仓库期间已有模型选择 UI 变化：移除旧 description 文案锁定；目录失败仍保留配置选择时，测试显式退出后再核对草稿/绑定。没有改动该生产 UI 逻辑，不把原有受控 isTTY 场景冒称本轮 ConPTY 验收。
+
+### 集中门禁、真实入口与完成边界
+
+| 命令/场景 | 本轮结果 |
+| --- | --- |
+| `npm.cmd run build:cli` | 通过；构建与后续消费顺序执行 |
+| `npm.cmd run typecheck` | Harness/logs/models/tools/CLI+configuration 边界及 node/web/CLI 编译通过 |
+| `npm.cmd test` | 205 文件、1930 项通过，3 项既有平台条件跳过；全仓总数包含同期工作区内容，不全算作 E 新增 |
+| `npm.cmd run test:integration:harness` | 3 文件、62 项通过，无跳过；包含 D 的 54 个 reliability 场景与增强后的 8 个 CLI 场景 |
+| Core/tools 包消费脚本 | 仓库外 tarball、声明与原生运行通过；Core 新增 postCompletionDrain/fullEventIdentity 结果为 true |
+| `npx.cmd biome check` | 本次修改的 10 个受支持代码/脚本文件最终通过，无警告；保留共享文件的并发修改 |
+| 合并后 controller 定点回归 | 1 文件、28 项通过，包含真实慢输出子进程与同期已有 UI 场景；不将全部项数归为 E 新增 |
+| `agent -- --help` / `agent:dev -- --help` | 两个实际启动路径通过；不以 help 代替行为验收 |
+| 生产 `cli/dist/main.js` 与开发 `scripts/run-agent.mjs` | 一次性原生探针各执行一次无插件真实 SDK→本地 SSE 对话；Query completed，history revision=2、user→assistant、checkpoint 与历史一致、owner 空，精确校验随机回答 |
+
+实际入口探针复用现有 seed/DPAPI 配置，运行于自建临时工作区和隔离数据目录，只把模型固定 endpoint 的 transport 重定向至本地服务，共两次本地模型请求、零远程调用；未新增配置副本或替代执行器。探针初始 Windows preload 使用普通路径导致启动失败，改为 file URL 后两入口通过；本地 SSE 采用已有夹具的完整事件帧。一次性脚本、preload 与隔离目录均已删除，开发入口自行清理本次临时 emit。
+
+3 项跳过为 Windows 下的两个 symlink 场景与非 Windows 凭据不支持场景，不新增跳过。E2-5 的真实慢 Writable 位于 controller 测试文件并已由全量单测实际执行；不把 3 文件 integration 命令误称包含该文件。
+
+本轮只扩展验收、包消费与精确边界门禁，不更改生产 Core/CLI 的执行协议、持久格式、审批策略、终端输入或渲染实现。未运行新的 ConPTY/真实键盘/resize/shell 恢复验收，也不引用历史 TTY 成功作为新增证据；并发工作区已有 UI 修改保持原样。
+
+不承诺事件容量有界、任意 Windows 同步管道阻塞下仍能推进、沙箱、HA、第二后端、自动接管或外部副作用 exactly-once。D 的真实存储故障、CLI 的拒绝/关闭优先级与实际 EPIPE 分层报告，不冒称无法注入的完整宿主 release 故障已经运行。
+
+完成结论：E1 六组与 E2 六组均有上述实际行为证据，D 的失败语义未被观察或 CLI 结算覆盖；本轮集中门禁通过，临时资源已清理。结合 A/B/C/D 的各自验收记录，M3 计划范围完成；下一阶段按具体宿主需求单列 M4，不能把 PPT 或旧生产入口自动视为已经迁移。

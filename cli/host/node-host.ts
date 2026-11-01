@@ -4,8 +4,8 @@ import {
   type AgentConfiguration,
   createAgentConfiguration,
 } from "@agent-harness/configuration/configuration";
-import { createNodeCredentialProtection } from "@agent-harness/configuration/node-credentials";
 import type { CredentialProtection } from "@agent-harness/configuration/credential-contract";
+import { createNodeCredentialProtection } from "@agent-harness/configuration/node-credentials";
 import type { AgentRunHandle } from "@agent-harness/core/agent-contract";
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { InteractionRequest } from "@agent-harness/core/protocol-values";

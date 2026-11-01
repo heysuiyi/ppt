@@ -18,7 +18,6 @@ const infrastructureTargets = [
 ];
 const whiteBoxEntries = new Map([
   ["tests/general-agent-infrastructure.test.ts", infrastructureTargets],
-  ["tests/general-agent-lifecycle.test.ts", ["runtime/event-stream.ts"]],
   ["tests/base-tools.test.ts", infrastructureTargets],
 ]);
 

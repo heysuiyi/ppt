@@ -153,30 +153,126 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     const content: string[] = [];
     if (view?.selector) {
       const selector = view.selector;
-      const selected = selector.items.findIndex((item) => item.id === selector.selectedId);
-      const capacity = Math.max(1, available - 3);
-      const start = Math.max(
-        0,
-        Math.min(selected - Math.floor(capacity / 2), selector.items.length - capacity),
-      );
-      content.push(rule(selector.title));
-      content.push(truncateTerminalText(`搜索: ${selector.query || "输入以筛选"}`, columns));
-      for (const item of selector.items.slice(start, start + capacity)) {
-        const text = truncateTerminalText(
-          `${item.id === selector.selectedId ? "›" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`,
-          columns,
+      const navigation = selector.navigation;
+      if (navigation) {
+        const items = selector.items.filter((item) => item.id !== navigation.action.id);
+        const selectedModel = items.findIndex((item) => item.id === selector.selectedId);
+        const selectedGroup = navigation.groups.findIndex(
+          (item) => item.id === navigation.selectedGroupId,
         );
+        const capacity = Math.max(1, available - 5);
+        const offset = (selected: number, length: number): number =>
+          Math.max(0, Math.min(selected - Math.floor(capacity / 2), length - capacity));
+        const modelStart = offset(selectedModel, items.length);
+        const groupStart = offset(selectedGroup, navigation.groups.length);
+        const rowText = (item: TerminalSelectionItem | undefined, selected: boolean): string =>
+          item
+            ? `${selected ? "›" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`
+            : "";
+        const highlight = (text: string, selected: boolean): string =>
+          options.color && selected ? `\x1b[36m${text}\x1b[0m` : text;
+        content.push(rule(selector.title));
         content.push(
-          options.color && item.id === selector.selectedId ? `\x1b[36m${text}\x1b[0m` : text,
+          truncateTerminalText(
+            `搜索模型: ${selector.query || "输入以筛选 · All 搜索全部"}`,
+            columns,
+          ),
+        );
+        if (options.columns() >= 80) {
+          const leftWidth = Math.min(26, Math.floor(columns / 3));
+          const rightWidth = Math.max(1, columns - leftWidth - 3);
+          const pair = (left: string, right: string): string => {
+            const cell = truncateTerminalText(left, leftWidth);
+            return `${cell}${" ".repeat(Math.max(0, leftWidth - visibleWidth(cell)))} │ ${truncateTerminalText(right, rightWidth)}`;
+          };
+          content.push(
+            pair(
+              `${navigation.pane === "groups" ? "›" : " "} 厂商连接`,
+              `${navigation.pane === "models" ? "›" : " "} 模型`,
+            ),
+          );
+          for (let index = 0; index < capacity; index++) {
+            const group = navigation.groups[groupStart + index];
+            const model = items[modelStart + index];
+            if (!group && !model && index > 0) break;
+            const groupActive = group?.id === navigation.selectedGroupId;
+            const modelActive = model?.id === selector.selectedId;
+            content.push(
+              highlight(
+                pair(
+                  rowText(group, groupActive),
+                  model
+                    ? rowText(model, modelActive && navigation.pane === "models")
+                    : index === 0
+                      ? "没有匹配模型"
+                      : "",
+                ),
+                (groupActive && navigation.pane === "groups") ||
+                  (modelActive && navigation.pane === "models"),
+              ),
+            );
+          }
+        } else {
+          const group = navigation.groups[selectedGroup];
+          content.push(
+            truncateTerminalText(
+              navigation.pane === "groups"
+                ? "› 厂商连接 · Enter 返回模型"
+                : `› 模型 · ${group?.label ?? "All"}`,
+              columns,
+            ),
+          );
+          const list = navigation.pane === "groups" ? navigation.groups : items;
+          const start = navigation.pane === "groups" ? groupStart : modelStart;
+          const selected =
+            navigation.pane === "groups" ? navigation.selectedGroupId : selector.selectedId;
+          for (const item of list.slice(start, start + capacity))
+            content.push(
+              highlight(
+                truncateTerminalText(rowText(item, item.id === selected), columns),
+                item.id === selected,
+              ),
+            );
+          if (!list.length) content.push("没有匹配模型");
+        }
+        const actionSelected =
+          selector.selectedId === navigation.action.id && navigation.pane === "models";
+        content.push(
+          highlight(
+            truncateTerminalText(rowText(navigation.action, actionSelected), columns),
+            actionSelected,
+          ),
+          truncateTerminalText(
+            `连接 ${selectedGroup + 1}/${navigation.groups.length} · 模型 ${selectedModel + 1}/${items.length}${modelStart > 0 || modelStart + capacity < items.length ? " · ↑↓ 更多" : ""}`,
+            columns,
+          ),
+        );
+      } else {
+        const selected = selector.items.findIndex((item) => item.id === selector.selectedId);
+        const capacity = Math.max(1, available - 3);
+        const start = Math.max(
+          0,
+          Math.min(selected - Math.floor(capacity / 2), selector.items.length - capacity),
+        );
+        content.push(rule(selector.title));
+        content.push(truncateTerminalText(`搜索: ${selector.query || "输入以筛选"}`, columns));
+        for (const item of selector.items.slice(start, start + capacity)) {
+          const text = truncateTerminalText(
+            `${item.id === selector.selectedId ? "›" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`,
+            columns,
+          );
+          content.push(
+            options.color && item.id === selector.selectedId ? `\x1b[36m${text}\x1b[0m` : text,
+          );
+        }
+        if (selector.items.length === 0) content.push("没有匹配项");
+        content.push(
+          truncateTerminalText(
+            `${selected >= 0 ? selected + 1 : 0}/${selector.items.length} 项${start > 0 ? " · ↑ 上方更多" : ""}${start + capacity < selector.items.length ? " · ↓ 下方更多" : ""}`,
+            columns,
+          ),
         );
       }
-      if (selector.items.length === 0) content.push("没有匹配项");
-      content.push(
-        truncateTerminalText(
-          `${selected >= 0 ? selected + 1 : 0}/${selector.items.length} 项${start > 0 ? " · ↑ 上方更多" : ""}${start + capacity < selector.items.length ? " · ↓ 下方更多" : ""}`,
-          columns,
-        ),
-      );
     } else if (view?.interaction) {
       const { reference, display } = view.interaction;
       content.push(truncateTerminalText(`待确认 · ${reference.interactionId}`, columns));
@@ -278,16 +374,35 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
             : []),
           ...(view.prompt?.secret || view.selector ? [] : [`> ${safe(view.composer.draft.text)}`]),
           ...(view.selector
-            ? [
-                safe(view.selector.title),
-                safe(`搜索: ${view.selector.query}`),
-                ...view.selector.items.map((item) =>
-                  safe(
-                    `${item.id === view.selector?.selectedId ? ">" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`,
+            ? (() => {
+                const selector = view.selector!;
+                const navigation = selector.navigation;
+                const groups = navigation?.pane === "groups";
+                const items = groups && navigation ? navigation.groups : selector.items;
+                const selected =
+                  groups && navigation ? navigation.selectedGroupId : selector.selectedId;
+                return [
+                  safe(selector.title),
+                  ...(navigation
+                    ? [
+                        safe(
+                          `当前连接组: ${navigation.groups.find((item) => item.id === navigation.selectedGroupId)?.label ?? "All"} · 焦点: ${groups ? "连接组" : "模型"}`,
+                        ),
+                        "输入序号或 ID + Enter；/groups 选组，/connect 添加/配置，/back 返回，/cancel 退出。",
+                      ]
+                    : []),
+                  ...(groups && navigation
+                    ? [`${safe(navigation.action.label)} · 输入 /connect`]
+                    : []),
+                  safe(`搜索: ${selector.query}`),
+                  ...items.map((item, index) =>
+                    safe(
+                      `${item.id === selected ? ">" : " "} ${index + 1}. ${item.label}${item.description ? ` — ${item.description}` : ""}`,
+                    ),
                   ),
-                ),
-                `${view.selector.items.findIndex((item) => item.id === view.selector?.selectedId) + 1}/${view.selector.items.length} 项`,
-              ]
+                  `${items.findIndex((item) => item.id === selected) + 1}/${items.length} 项`,
+                ];
+              })()
             : []),
           ...(view.interaction
             ? [

@@ -1581,7 +1581,12 @@ describe("public runtime observation channel with SQLite", () => {
       // 已有队列时，两个未 await 的 next 各自立即取走一个事件，不是 busy。
       const started = iterator.next();
       const inputCommitted = iterator.next();
-      const prefix = [await started, await inputCommitted, await iterator.next(), await iterator.next()];
+      const prefix = [
+        await started,
+        await inputCommitted,
+        await iterator.next(),
+        await iterator.next(),
+      ];
       const events: RuntimeEvent[] = [];
       for (const next of prefix) {
         if (next.done) throw new Error("Expected the queued prefix before the model gate.");
