@@ -51,6 +51,7 @@ export class ModelTurnRunner {
       );
       modelResult = await callModelWithRecovery({
         gateway: deps.gateway,
+        logger: deps.logger,
         systemPrompt,
         promptPayload,
         model: params.model,

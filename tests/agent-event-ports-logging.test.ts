@@ -1,34 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { withLogContext } from "../app/main/agent/logger";
 import { AgentEventPorts } from "../app/main/agent/runtime/lifecycle/agent-event-ports";
 import type { ConversationDatabase } from "../app/main/conversation-database";
-
-const originalLogLevel = process.env.AGENT_LOG_LEVEL;
-const originalLogFile = process.env.AGENT_LOG_FILE;
+import { withLogContext } from "../app/main/logging/log-context";
+import { createTestLogCollector } from "./test-log-collector";
 
 beforeEach(() => {
-  process.env.AGENT_LOG_LEVEL = "debug";
-  process.env.AGENT_LOG_FILE = "false";
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
 });
 
 afterEach(() => {
-  if (originalLogLevel === undefined) delete process.env.AGENT_LOG_LEVEL;
-  else process.env.AGENT_LOG_LEVEL = originalLogLevel;
-  if (originalLogFile === undefined) delete process.env.AGENT_LOG_FILE;
-  else process.env.AGENT_LOG_FILE = originalLogFile;
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("AgentEventPorts logging", () => {
   it("projects tool requests, execution state, and bounded results into correlated logs", () => {
-    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    const { logger, records } = createTestLogCollector("agent-runtime-events");
     const ports = new AgentEventPorts({
       threadId: "thread-1",
       runId: "run-1",
+      logger,
       appendTranscript: vi.fn(),
     });
 
@@ -75,7 +67,9 @@ describe("AgentEventPorts logging", () => {
       );
     });
 
-    const infoEntries = entriesFrom(info.mock.calls);
+    const infoEntries = records
+      .filter((record) => record.level === "info")
+      .map((record) => ({ ...record.data, ...record.context, event: record.event }));
     expect(infoEntries.find((entry) => entry.event === "tool.call.requested")).toMatchObject({
       runId: "run-1",
       threadId: "thread-1",
@@ -95,16 +89,18 @@ describe("AgentEventPorts logging", () => {
       imageCount: 1,
     });
 
-    const debugText = debug.mock.calls.map(([line]) => String(line)).join("\n");
+    const debugText = JSON.stringify(records.filter((record) => record.level === "debug"));
     expect(debugText).not.toContain("sk-1234567890abcdefghij");
-    expect(debugText).toContain("Binary data omitted");
+    expect(debugText).not.toContain("a".repeat(2_000));
+    expect(debugText).not.toContain("b".repeat(2_000));
   });
 
   it("logs failed tool states as warnings", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { logger, records } = createTestLogCollector("agent-runtime-events");
     const ports = new AgentEventPorts({
       threadId: "thread-1",
       runId: "run-1",
+      logger,
       appendTranscript: vi.fn(),
     });
 
@@ -117,7 +113,11 @@ describe("AgentEventPorts logging", () => {
       error: "network unavailable",
     });
 
-    expect(entriesFrom(warn.mock.calls)).toContainEqual(
+    expect(
+      records
+        .filter((record) => record.level === "warn")
+        .map((record) => ({ ...record.data, event: record.event })),
+    ).toContainEqual(
       expect.objectContaining({
         event: "tool.execution.finished",
         status: "failed",
@@ -127,7 +127,7 @@ describe("AgentEventPorts logging", () => {
   });
 
   it("does not let audit persistence or transcript failures affect runtime control flow", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { logger, records } = createTestLogCollector("agent-runtime-events");
     const conversationDatabase = {
       appendRuntimeEvent: vi.fn(() => {
         throw new Error("database unavailable");
@@ -137,6 +137,7 @@ describe("AgentEventPorts logging", () => {
       threadId: "thread-1",
       runId: "run-1",
       conversationDatabase,
+      logger,
       appendTranscript: () => {
         throw new Error("transcript unavailable");
       },
@@ -144,7 +145,9 @@ describe("AgentEventPorts logging", () => {
 
     expect(() => ports.audit("workflow_progress", { message: "test" }, "internal")).not.toThrow();
 
-    const warnings = entriesFrom(warn.mock.calls);
+    const warnings = records
+      .filter((record) => record.level === "warn")
+      .map((record) => ({ ...record.data, event: record.event }));
     expect(warnings).toContainEqual(
       expect.objectContaining({
         event: "runtime.audit.persist-failed",
@@ -159,10 +162,3 @@ describe("AgentEventPorts logging", () => {
     );
   });
 });
-
-function entriesFrom(calls: unknown[][]): Array<Record<string, unknown>> {
-  return calls.map(([line]) => {
-    const text = String(line);
-    return JSON.parse(text.slice(text.indexOf("{"))) as Record<string, unknown>;
-  });
-}

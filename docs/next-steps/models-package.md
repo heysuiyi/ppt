@@ -2,7 +2,7 @@
 
 [返回计划目录](README.md) · [项目整体规划](../project-plan.md)
 
-状态：P1–P6 已实施并完成本地验收。第 1–11 节保留统一方案；当前实现、实际检查结果与限制见第 12 节。本轮只实现 MiMo，未调用远程厂商，不将并行 M3-A 工作计入模型包交付。
+状态：P1–P6 的原 MiMo 包抽取已实施并完成本地验收，证据见第 12 节；后续已补齐旧 Gateway 三种协议，当前支持与分层证据见第 13 节。第 1–11 节保留首轮方案，不将并行 M3-A 工作计入模型包交付。
 
 ## 1. 目标与决策
 
@@ -317,7 +317,46 @@ SDK 异常到安全错误的分类留在具体适配器；不保存 SDK error、
 
 ### 12.3 明确限制
 
-- 这是单包多厂商的已落地扩展边界，当前真实适配器仍只有 MiMo；未来第二厂商的 SDK、认证、错误和重放尚未验收。
+- 原包抽取轮次只验收 MiMo；后续三协议实现与本地验证见第 13 节，不将原有 Electron/ASAR 或远程证据泛化到新增适配器。
 - 本轮模型流量全部为真实 SDK 到本地 HTTP/SSE，不新增远程厂商用量。前序 Flash/high 的远程证据及 SDK 421 内部重传限制仍见 [MiMo 实施记录](../mimo-token-plan-cn.md)，不因搬包扩大型号或档位结论。
 - 旧 waiting 基线来自迁移前封存源码，不等同完整旧发行二进制。实际 UI 证据来自生产构建产物；ASAR 证据为真实解包可执行文件的 Node 模式模型执行，不是安装后全套 UI 验收。未验证签名、安装器或其他操作系统。
 - 生产聊天/PPT 仍使用旧链；配置和凭据源继续归宿主，模型注册与执行协议继续归 Core，借用 Logger 不转移所有权。模型包没有推进 M3-B–E，亦不替代并行 M3-A 的独立记录。
+
+## 13. 旧 Gateway 协议接入新模型端口
+
+### 13.1 当前实现与路由
+
+| adapterId / Core providerId | 传输端点 | 私有重放与能力边界 |
+| --- | --- | --- |
+| `mimo-token-plan-cn` | 固定 CN Token Plan `/responses` | 既有型号白名单、八档 effort、重放格式和连接指纹保持不变 |
+| `openai-chat-completions` | 可配置 baseURL + `/chat/completions` | 保存 assistant wire message 与 `reasoning_content`；图像工具结果在完成全部 tool 消息后投影为 user 图像输入；已识别推理族支持保守的 low/medium/high |
+| `openai-responses` | 可配置 baseURL + `/responses` | `store:false`、包含 `reasoning.encrypted_content`，按原顺序重放 output；effort 支持协议词汇至 max，具体型号是否接受由远端决定 |
+| `anthropic-messages` | 可配置 baseURL + SDK `/v1/messages` | 保留 thinking 签名、redacted thinking 和工具块；支持返回推理的展示与重放，不发送统一 thinking 配置，任何 effort 覆盖明确拒绝 |
+
+新增适配器接受语法有效的自定义模型 ID；能力资料不保证远端模型存在、支持图像/工具或账号有额度。OpenAI 默认 baseURL 为 `https://api.openai.com/v1`，Anthropic 为 `https://api.anthropic.com`。四个适配器均提供 discovery，配置模块已有的兼容发现路径继续保留，不在本次变更中迁移其分页/规范化语义。
+
+`prepareConfiguredModel()` 对普通已签发计划，从解析后的 provider/openaiApiMode 选择新适配器；CLI 列表和向导使用相同路由。MiMo 仍只能由专用配置身份选中，自定义 URL 相同也不升级。连接指纹纳入适配器和实际地址；轮换密钥不改变身份，协议/地址变化拒绝复用旧会话。生产桌面 UI、旧 Agent/Gateway 和持久数据未切换或删除。
+
+共同不变量：SDK 无自动重试；全操作超时与取消；provider/binding 关闭排空暂停消费者的网络泵；权威完成响应而非临时增量进入历史；缺失终止、无效 JSON 和截断工具不能被提交为成功。重放验证提供方、模型、连接、effort 和可见内容，禁止跨连接或编辑后伪造私有历史。
+
+Anthropic SDK 的默认 SSE JSON 错误分支会直接写全局 console，绕过 logLevel/logger。适配器保留真实 SDK HTTP 与公开 rawEvents 分帧，仅在本地安全解码 JSON 并分类 SSE error；畸形正文不进入诊断，不全局改写 console。
+
+### 13.2 官方依据
+
+- [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)：消息、图像、工具、finish_reason 与 token 参数。
+- [OpenAI Responses](https://developers.openai.com/api/reference/resources/responses/methods/create) 与[流式事件](https://developers.openai.com/api/reference/resources/responses/streaming-events)：output 项、函数结果、权威终态和有序增量。
+- [OpenAI reasoning](https://developers.openai.com/api/docs/guides/reasoning)：加密推理重放、型号相关 effort 和 max_output_tokens 截断。
+- [DeepSeek thinking mode](https://api-docs.deepseek.com/guides/thinking_mode)：工具续传保留 `reasoning_content`。
+- [Anthropic Messages](https://platform.claude.com/docs/en/api/messages/create)、[流式事件](https://platform.claude.com/docs/en/build-with-claude/streaming)与[thinking 重放](https://platform.claude.com/docs/en/build-with-claude/thinking#preserving-thinking-blocks)：system、图像、tool_result、签名增量及 `message_stop`。
+
+### 13.3 实际验证与限制
+
+- 八个定向文件、173 项回归通过：新增三协议、真实配置/凭据绑定与连接变更、向导保存，以及既有 MiMo/宿主。传输使用实际 SDK 到本地 HTTP/SSE；覆盖工具续传、序列化重放、图像、有序流、畸形终态、错误隐私、超时、取消和关闭排空。
+- 实际 `node cli/dist/main.js` 三个独立进程，使用 Windows CurrentUser DPAPI 保存/解密合成凭据；分别经 `/v1/responses`、`/v1/chat/completions`、`/v1/messages` 返回对应答案，JSONL 和进程退出均为 completed/0，共三次本地请求、零远程请求。
+- `npm run build:cli`、`npm run typecheck` 通过，包含所有模块/CLI 边界和 node/web/CLI 类型检查。资料及公开声明不携带 SDK 或 Node 类型。
+- `node scripts/verify-models-package.mjs` 通过：仓库外离线安装完整真实 tarball 闭包，包含 Anthropic 0.104.1/OpenAI 6.42.0；四种选项的 NodeNext/Bundler DOM 声明消费通过，无 Node/SDK 类型泄漏。其运行用例仍是 MiMo 的 20 次本地 HTTP/SSE，不冒充新增三协议的独立安装远程验收。
+- 实际 PTY 中观察到四种新建连接菜单，进入普通 OpenAI 连接的默认 baseURL 输入及 `[hidden]` API Key 输入；未输入凭据，取消后退出码 0。完整保存/解密/执行由上面的回归与独立 CLI 进程验证。
+- 全量 `npm test`：201 个文件通过、1 个文件失败；1822 项通过、3 项跳过、2 项失败。失败均在本次未修改的 `tests/gateway-io-log.test.ts`：旧文件锁清理的 removedFiles 为 2 而预期 1，以及旧 root lock 下新请求写入返回 undefined。未通过放宽断言或修改并行旧日志工作来掩盖失败。
+- 首次并行校验中，构建清理 dist 与测试/CLI/边界扫描发生冲突；随后顺序构建和消费通过。Anthropic 畸形 JSON 用例捕获到 SDK 原始 console 泄漏后修复，未降低隐私断言。
+- 本次没有远程 OpenAI/Anthropic/DeepSeek 验收，没有新增适配器的 Electron/ASAR 或其他操作系统验收；不能借用前序 MiMo 的远程证据。
+

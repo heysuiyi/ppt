@@ -1,4 +1,5 @@
-import { createModuleLogger, withLogContext } from "../logger";
+import type { Logger } from "@agent-harness/logs/logs";
+import { withLogContext } from "../../logging/log-context";
 import type { AgentRunFactory } from "./agent-run-factory";
 import { AgentRunFinalizer } from "./agent-run-finalizer";
 import { isRuntimeCancellation } from "./lifecycle/runtime-cancellation";
@@ -11,14 +12,13 @@ import {
 } from "./runtime-types";
 import type { AgentLoopTerminalOutcome, PreparedAgentRun } from "./turns/prepared-agent-run";
 
-const logger = createModuleLogger("agent-runtime");
-
 /** Owns one run lifecycle and consumes the independent query state machine. */
 export class AgentRuntime {
   private readonly finalizer = new AgentRunFinalizer();
 
   constructor(
     private readonly runFactory: Pick<AgentRunFactory, "open" | "prepare" | "clearSession">,
+    private readonly logger?: Logger,
   ) {}
 
   async run(input: AgentRuntimeInput): Promise<AgentRuntimeResult> {
@@ -32,7 +32,7 @@ export class AgentRuntime {
       },
       async () => {
         const startedAt = Date.now();
-        logger.info("agent.query.started", {
+        this.logger?.info("agent.query.started", {
           startMode: options.startMode.type,
           executionStrategy: options.executionStrategy,
           provider: options.model?.provider,
@@ -45,7 +45,7 @@ export class AgentRuntime {
               ? { type: "terminal" as const, result: prepared.result }
               : await this.runQuery(prepared.run);
           const result = await this.finalizer.complete(scope, outcome.result, outcome.reason);
-          logger.info("agent.query.completed", {
+          this.logger?.info("agent.query.completed", {
             resultType: result.type,
             reason: outcome.reason,
             durationMs: Date.now() - startedAt,
@@ -53,7 +53,7 @@ export class AgentRuntime {
           return result;
         } catch (error) {
           const interrupted = isRuntimeCancellation(error, scope.signal, options.signal);
-          logger[interrupted ? "info" : "error"](
+          this.logger?.[interrupted ? "info" : "error"](
             interrupted ? "agent.query.interrupted" : "agent.query.failed",
             { durationMs: Date.now() - startedAt, error },
           );

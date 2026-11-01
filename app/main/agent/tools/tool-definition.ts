@@ -1,6 +1,6 @@
-import type { Logger } from "@agent-harness/logs/logs";
 import type { AgentModelSelection } from "@agent-harness/configuration/model-contract";
 import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
+import type { Logger } from "@agent-harness/logs/logs";
 import type { WorkspaceFileService } from "@agent-harness/tools/workspace-files";
 import type { AgentTaskNode } from "@shared/agent-task-list";
 import type { Presentation } from "@shared/presentation";

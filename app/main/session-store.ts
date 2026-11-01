@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { Logger } from "@agent-harness/logs/logs";
 import { writeTextFileAtomic } from "@agent-harness/tools/atomic-files";
 import { formatTerminalAgentRunContent } from "@app/shared/agent-result-copy";
 import type {
@@ -69,7 +70,6 @@ import {
 } from "@shared/workspace";
 import { getSessionSandboxPath, isLegacyProjectSandboxPath } from "@shared/workspace-meta";
 import { z } from "zod";
-import { createModuleLogger } from "./agent/logger";
 import { ConversationDatabase } from "./conversation-database";
 import { ExportHistoryService, GenerationJobsService } from "./deck/deck-persistence-services";
 import type { ArtifactChangeObserverPort } from "./presentation-lifecycle/artifact-change-observer-types";
@@ -90,7 +90,6 @@ import { materializeCustomTemplate } from "./project/template-materialize-servic
 import type { BeginRunInput } from "./storage/run/run.dto.ts";
 
 const storedSessionSchema = sessionSnapshotSchema;
-const logger = createModuleLogger("session-store");
 const sessionFileSchema = z.object({
   version: z.literal(1),
   activeSessionId: z.string(),
@@ -237,6 +236,7 @@ export class FileSessionStore {
   constructor(
     private readonly filePath: string,
     projectRootPath?: string,
+    private readonly logger?: Logger,
   ) {
     this.projectsRootPath = projectRootPath ?? join(dirname(filePath), "projects");
     this.conversationDatabase = new ConversationDatabase(filePath);
@@ -503,7 +503,7 @@ export class FileSessionStore {
           await this.projectFileService.writeDeckSnapshot(snapshot);
           await this.syncWorkspacePersistence(snapshot);
         } catch (error) {
-          logger.error("presentation.workspace-mirror.sync-failed", {
+          this.logger?.error("presentation.workspace-mirror.sync-failed", {
             sessionId: input.sessionId,
             revision: validatedPresentation.revision,
             error,
@@ -670,7 +670,7 @@ export class FileSessionStore {
         await this.syncWorkspacePersistence(this.findSession(sessionId), { active: true });
       } catch (error) {
         // Admission is already durable. A workspace mirror failure cannot turn it into a rejection.
-        logger.warn("session.workspace-mirror-failed", { sessionId, error });
+        this.logger?.warn("session.workspace-mirror-failed", { sessionId, error });
       }
     }
   }

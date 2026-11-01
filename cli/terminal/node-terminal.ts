@@ -12,6 +12,7 @@ type OutputStream = Writable & {
   readonly isTTY?: boolean;
   readonly columns?: number;
   readonly rows?: number;
+  _refreshSize?: () => void;
 };
 
 const pasteStart = "\x1b[200~";
@@ -87,6 +88,7 @@ export function createNodeTerminal(options: NodeTerminalOptions): NodeTerminal {
   let staleEscape = false;
   let paste: { generation: number; text: string; discard: boolean } | undefined;
   let escapeTimer: NodeJS.Timeout | undefined;
+  let resizeTimer: NodeJS.Timeout | undefined;
   let afterCR = false;
   let startupWrite: Promise<void> | undefined;
   let cleanupResult: Promise<unknown[]> | undefined;
@@ -169,6 +171,8 @@ export function createNodeTerminal(options: NodeTerminalOptions): NodeTerminal {
     input.off("close", onEnd);
     input.off("error", onError);
     sizeStream.off("resize", onResize);
+    clearInterval(resizeTimer);
+    resizeTimer = undefined;
     pending = "";
     paste = undefined;
     const failures: unknown[] = [];
@@ -399,6 +403,18 @@ export function createNodeTerminal(options: NodeTerminalOptions): NodeTerminal {
         input.once("close", onEnd);
         input.once("error", onError);
         sizeStream.on("resize", onResize);
+        // Windows ConPTY 不一定派发 resize；Node 24 的 TTY 尺寸缓存需主动刷新。
+        // 计时器由当前输入 owner 持有，结束时撤销，不延长进程生命周期。
+        if (mode === "tui" && process.platform === "win32" && sizeStream._refreshSize) {
+          resizeTimer = setInterval(() => {
+            try {
+              sizeStream._refreshSize?.();
+            } catch (cause) {
+              onError(cause);
+            }
+          }, 250);
+          resizeTimer.unref();
+        }
         input.resume();
       } catch (cause) {
         onError(cause);

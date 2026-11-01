@@ -1,8 +1,8 @@
-import type { Logger } from "@agent-harness/logs/logs";
 import {
   getEffectiveMainMaxSteps,
   resolveAgentStepLimits,
 } from "@agent-harness/configuration/step-limits";
+import type { Logger } from "@agent-harness/logs/logs";
 import {
   canonicalizeWorkspaceRoot,
   WorkspaceFileService,

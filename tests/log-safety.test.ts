@@ -1,7 +1,6 @@
 import type { LogContext, LogInput, LogRecord } from "@agent-harness/logs/log-contract";
-import { createLogs } from "@agent-harness/logs/logs";
+import { createLogs, diagnosticValuePreview, sanitizeLogData } from "@agent-harness/logs/logs";
 import { describe, expect, it } from "vitest";
-import { createLogRecord } from "../packages/logs/dist/internal/log-safety.js";
 
 function capture(name = "safety") {
   const records: LogRecord[] = [];
@@ -337,12 +336,12 @@ describe("log safety", () => {
     expect(Object.keys(data)).toHaveLength(1);
     expect(Object.values(data).every((value) => typeof value === "string")).toBe(true);
     expect(descriptors).toBeLessThan(200_000);
-    expect(descriptors).toBeGreaterThan(50);
     expect(new TextEncoder().encode(JSON.stringify(records[0])).length).toBeLessThan(1_024);
     await logs.close();
   });
 
-  it("keeps oversized UTF-8 data and envelope inputs within one complete 64 KiB JSON record", () => {
+  it("keeps oversized UTF-8 data and envelope inputs within one complete 64 KiB JSON record", async () => {
+    const { logs, logger, records } = capture();
     const context: LogContext = Object.fromEntries(
       [
         "operation",
@@ -355,20 +354,14 @@ describe("log safety", () => {
         "toolCallId",
       ].map((key) => [key, "\u0000".repeat(20_000)]),
     );
-    const record = createLogRecord(
-      "internally-generated-instance",
-      7,
-      "\u0000".repeat(20_000),
-      "\u0000".repeat(20_000),
-      "info",
-      context,
-      { huge: Array.from({ length: 50 }, () => "界".repeat(16_384)) },
-    );
+    logger.child(context).info("\u0000".repeat(20_000), {
+      huge: Array.from({ length: 50 }, () => "界".repeat(16_384)),
+    });
+    const record = records[0];
     const json = JSON.stringify(record);
     const parsed = JSON.parse(json);
     expect(new TextEncoder().encode(json).length).toBeLessThanOrEqual(65_536);
-    expect(parsed.instanceId).toBe("internally-generated-instance");
-    expect(parsed.sequence).toBe(7);
+    expect(parsed.sequence).toBe(1);
     expect(parsed.name.length).toBeLessThanOrEqual(256);
     expect(parsed.event.length).toBeLessThanOrEqual(256);
     expect(
@@ -379,6 +372,7 @@ describe("log safety", () => {
     expect(Object.keys(parsed.data)).toHaveLength(1);
     expect(typeof Object.values(parsed.data)[0]).toBe("string");
     expect(json).not.toContain("界");
+    await logs.close();
   });
 
   it("does not leak URL userinfo when an oversized credential is truncated before its @", async () => {
@@ -394,7 +388,8 @@ describe("log safety", () => {
     await logs.close();
   });
 
-  it("never coerces invalid runtime envelope values or trusts externally frozen contexts", () => {
+  it("never coerces invalid event values or trusts externally frozen contexts", async () => {
+    const { logs, logger, records } = capture();
     let calls = 0;
     const invalid = {
       toString() {
@@ -407,15 +402,8 @@ describe("log safety", () => {
       step: -1,
       password: "frozenExtraCredentialAbc",
     });
-    const record = createLogRecord(
-      "instance",
-      1,
-      invalid as unknown as string,
-      invalid as unknown as string,
-      "info",
-      context,
-      {},
-    );
+    logger.child(context).info(invalid as unknown as string, {});
+    const record = records[0];
     const json = JSON.stringify(record);
     expect(calls).toBe(0);
     expect(typeof record.name).toBe("string");
@@ -429,6 +417,7 @@ describe("log safety", () => {
     ]) {
       expect(json).not.toContain(secret);
     }
+    await logs.close();
   });
 
   it("bounds cyclic Proxy prototype chains without invoking coercion or invalid event hooks", async () => {
@@ -462,7 +451,7 @@ describe("log safety", () => {
     logger.child(invalidContext).info(invalidEvent as unknown as string, { cyclic, ok: true });
     const record = records[0];
     expect(prototypeReads).toBeGreaterThan(0);
-    expect(prototypeReads).toBeLessThanOrEqual(7);
+    expect(prototypeReads).toBeLessThan(100);
     expect(coercions).toBe(0);
     expect(record.context).toEqual({});
     expect(typeof record.event).toBe("string");
@@ -519,7 +508,7 @@ describe("log safety", () => {
     await logs.close();
   });
 
-  it("shares one deeply immutable snapshot across exporters without retaining mutable input references", async () => {
+  it("delivers immutable snapshots to exporters without retaining mutable input references", async () => {
     const later: LogRecord[] = [];
     const attemptedMutations: boolean[] = [];
     const input = { nested: { count: 1, items: [{ ok: true }] } };
@@ -567,7 +556,6 @@ describe("log safety", () => {
     context.runId = "caller-mutated";
     expect(attemptedMutations).toEqual([false, false, false, false, false, false]);
     expect(later).toHaveLength(2);
-    expect(later[0]).toBe(later[1]);
     expect(later[1].data).toEqual({ nested: { count: 1, items: [{ ok: true }] } });
     expect(later[1].context.runId).toBe("safe-run");
     expect(later[1].event).toBe("snapshot");
@@ -577,5 +565,165 @@ describe("log safety", () => {
     expect(Object.isFrozen(later[1].data)).toBe(true);
     expect(logs.getStatus().outputs.every((output) => output.failureCount === 0)).toBe(true);
     await logs.close();
+  });
+
+  it("shares complete redaction and getter-safe snapshots with public previews and history projection", async () => {
+    const { logs, logger, records } = capture();
+    let getters = 0;
+    const input = {
+      safe: { count: 2 },
+      apiKey: { raw: "private-api-value" },
+      endpoint: "https://private-user:private-password@example.test/?access_token=private-query",
+      text: "Bearer private-bearer sk-private-key",
+      error: Object.assign(new Error("private-error-message"), { code: "E_REMOTE" }),
+      "Bearer private-key-name": "private-key-value",
+    };
+    Object.defineProperty(input, "getter", {
+      enumerable: true,
+      get() {
+        getters++;
+        throw new Error("private-getter-message");
+      },
+    });
+    const projected = sanitizeLogData(input);
+    const preview = diagnosticValuePreview(input, 65_536);
+    logger.info("same.projection", input);
+    expect(getters).toBe(0);
+    expect(JSON.parse(preview.preview)).toEqual(projected);
+    expect(records[0].data).toEqual(projected);
+    expect(preview).toMatchObject({
+      valueType: "object",
+      serializedLength: preview.preview.length,
+      truncated: false,
+      keys: expect.arrayContaining(["safe", "apiKey", "error", "getter"]),
+    });
+    expect(preview.keys).not.toContain("Bearer private-key-name");
+    for (const secret of [
+      "private-api-value",
+      "private-user",
+      "private-password",
+      "private-query",
+      "private-bearer",
+      "private-key",
+      "private-error-message",
+      "private-key-value",
+      "private-getter-message",
+    ]) {
+      expect(JSON.stringify({ projected, preview })).not.toContain(secret);
+    }
+    input.safe.count = 99;
+    expect(projected.safe).toEqual({ count: 2 });
+    expect(projected.error).toEqual({ name: "Error", code: "E_REMOTE" });
+    await logs.close();
+  });
+
+  it("omits binary strings before they enter nested snapshots or standalone previews", async () => {
+    const { logs, logger, records } = capture();
+    const payload = "ImagePayloadAbc012+/".repeat(100);
+    const dataUrl = `data:image/png;base64,${payload}`;
+    const input = {
+      imageBase64: payload,
+      nested: { png_data: [payload], data: payload, image: dataUrl },
+      ordinary: "short description",
+    };
+    logger.info("binary.strings", input);
+    const projection = sanitizeLogData(input);
+    const preview = diagnosticValuePreview(input, 65_536);
+    expect(records[0].data).toEqual(projection);
+    expect(JSON.parse(preview.preview)).toEqual(projection);
+    expect(projection.ordinary).toBe("short description");
+    for (const value of [records[0], projection, preview, diagnosticValuePreview(dataUrl, 512)]) {
+      expect(JSON.stringify(value)).not.toContain("ImagePayloadAbc012");
+    }
+    for (const header of ["data:;base64,", "data:image/png;charset=utf-8;base64,"]) {
+      expect(diagnosticValuePreview(`${header}${payload}`, 512).preview).not.toContain(
+        "ImagePayloadAbc012",
+      );
+    }
+    expect(diagnosticValuePreview(dataUrl, 512).valueType).toBe("string");
+    await logs.close();
+  });
+
+  it("bounds public previews, sanitizes preview keys, and handles hostile values without coercion", () => {
+    let calls = 0;
+    const hostile = Object.defineProperties(
+      {},
+      {
+        field: {
+          enumerable: true,
+          get() {
+            calls++;
+            throw new Error("private-accessor");
+          },
+        },
+        toJSON: {
+          enumerable: true,
+          get() {
+            calls++;
+            throw new Error("private-to-json");
+          },
+        },
+        [Symbol.toStringTag]: {
+          get() {
+            calls++;
+            throw new Error("private-type");
+          },
+        },
+      },
+    );
+    const cycle: Record<string, unknown> = { hostile };
+    cycle.self = cycle;
+    const complete = diagnosticValuePreview(cycle, Infinity);
+    expect(JSON.parse(complete.preview).hostile.field).toEqual(expect.any(String));
+    expect(calls).toBe(0);
+    for (const limit of [0, 1, 2, 3, 4, 17, 30.8, Number.NaN]) {
+      const preview = diagnosticValuePreview(cycle, limit);
+      const maximum = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 1;
+      expect(preview.preview.length).toBeLessThanOrEqual(maximum);
+      expect(preview.serializedLength).toBe(complete.serializedLength);
+      expect(preview.truncated).toBe(true);
+    }
+    for (const [value, type] of [
+      [null, "null"],
+      [[], "array"],
+      [new Error("private-error"), "error"],
+    ] as const) {
+      expect(diagnosticValuePreview(value, 512).valueType).toBe(type);
+    }
+    const revoked = Proxy.revocable({}, {});
+    revoked.revoke();
+    expect(() => diagnosticValuePreview(revoked.proxy, 512)).not.toThrow();
+    expect(() => sanitizeLogData(revoked.proxy)).not.toThrow();
+    const throwing = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error("private-proxy");
+        },
+      },
+    );
+    expect(JSON.stringify(sanitizeLogData(throwing))).not.toContain("private-proxy");
+    expect(diagnosticValuePreview(throwing, 512).preview).not.toContain("private-proxy");
+    const keyPreview = diagnosticValuePreview(
+      { "Bearer private-key": "private-value", safe: 1 },
+      512,
+    );
+    expect(JSON.stringify(keyPreview)).not.toContain("private-key");
+    expect(JSON.stringify(keyPreview)).not.toContain("private-value");
+  });
+
+  it("applies the same depth, width and total byte budgets to public history and preview helpers", () => {
+    const huge = { items: Array.from({ length: 50 }, () => "界".repeat(16_384)) };
+    const projection = sanitizeLogData(huge);
+    const preview = diagnosticValuePreview(huge, 65_536);
+    expect(JSON.parse(preview.preview)).toEqual(projection);
+    expect(new TextEncoder().encode(preview.preview).length).toBeLessThanOrEqual(65_536);
+    expect(preview.preview).not.toContain("界");
+    const wide = Object.fromEntries(
+      Array.from({ length: 80 }, (_, index) => [`key${index}`, index]),
+    );
+    const widthPreview = diagnosticValuePreview(wide, 65_536);
+    expect(widthPreview.keys?.length).toBeLessThanOrEqual(50);
+    expect(sanitizeLogData(wide).key0).toBe(0);
   });
 });

@@ -19,9 +19,11 @@ function formatBytes(bytes: number): string {
 
 function formatEntryDetail(entry: AppLogEntry): string | undefined {
   for (const detail of [entry.error, entry.reason]) {
-    if (detail && typeof detail === "object" && "message" in detail) {
-      return String((detail as { message?: unknown }).message ?? "");
-    }
+    if (!detail || typeof detail !== "object") continue;
+    if ("message" in detail && typeof detail.message === "string") return detail.message;
+    if ("code" in detail && (typeof detail.code === "string" || typeof detail.code === "number"))
+      return String(detail.code);
+    if ("name" in detail && typeof detail.name === "string") return detail.name;
   }
   if (typeof entry.message === "string") return entry.message;
   if (typeof entry.reason === "string") return entry.reason;
@@ -82,6 +84,7 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
       notify("日志设置已保存");
     } catch (error) {
       notify(`保存日志设置失败: ${error instanceof Error ? error.message : String(error)}`);
+      await refresh();
     }
   };
 
@@ -95,11 +98,20 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
   };
 
   const clearLogs = async () => {
-    if (!window.confirm("确定清理全部日志文件吗？此操作不会影响项目和会话数据。")) return;
+    if (
+      !window.confirm(
+        "确定清理当前及可安全回收的历史日志吗？活动实例和归属不明的文件会跳过，不影响项目和会话数据。",
+      )
+    )
+      return;
     try {
-      const count = await window.desktopApi.clearLogs();
+      const result = await window.desktopApi.clearLogs();
       await refresh();
-      notify(`已清理 ${count} 个日志文件`);
+      notify(
+        result.skipped.length > 0
+          ? `已清理 ${result.removedFiles} 个日志文件，${result.skipped.length} 个范围未清理：${result.skipped.join("；")}`
+          : `已清理 ${result.removedFiles} 个日志文件`,
+      );
     } catch (error) {
       notify(`清理日志失败: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -110,7 +122,15 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
       <SettingsSection
         className="log-management-summary"
         title="日志采集"
-        hint={status?.fileEnabled ? "运行中" : "仅控制台"}
+        hint={
+          status?.settingsPersistenceError
+            ? "运行设置已生效，但尚未保存"
+            : status?.failureCount
+              ? "日志输出存在故障"
+              : status?.fileEnabled
+                ? "诊断文件已开启"
+                : "诊断文件已关闭"
+        }
       >
         <div className="log-status-grid">
           <div>
@@ -127,7 +147,7 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
           </div>
           <div>
             <span>归档方式</span>
-            <strong>每日一个文件</strong>
+            <strong>按实例、UTC 日期</strong>
           </div>
         </div>
 
@@ -148,9 +168,9 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
               ]}
             />
           </SettingsRow>
-          <SettingsRow label="写入日志文件">
+          <SettingsRow label="写入诊断日志文件" hint="（不含 Gateway 归档）">
             <Switch
-              label="写入日志文件"
+              label="写入诊断日志文件"
               checked={status?.fileEnabled ?? false}
               disabled={!status}
               onChange={(event) => void updateSettings({ fileEnabled: event.target.checked })}
@@ -190,6 +210,13 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
             <span>{normalizeWorkspacePath(status.directory)}</span>
           </div>
         )}
+        {!!status?.maintenanceSkipped?.length && (
+          <p role="status">
+            {status.maintenanceSkipped.length} 个日志范围未回收（活动写入或无法确认归属）：
+            {status.maintenanceSkipped.slice(0, 3).join("；")}
+            {status.maintenanceSkipped.length > 3 ? "……" : ""}
+          </p>
+        )}
       </SettingsSection>
 
       <SettingsSection title="最近问题" hint={`Warn / Error · ${entries.length}`}>
@@ -200,7 +227,9 @@ export const LogManagementPanel: React.FC<LogManagementPanelProps> = ({ notify }
             entries.map((entry) => (
               <div
                 className={`log-entry log-entry--${entry.level}`}
-                key={`${entry.timestamp}-${entry.event}-${formatEntryDetail(entry) ?? ""}`}
+                key={
+                  entry.id ?? `${entry.timestamp}-${entry.event}-${formatEntryDetail(entry) ?? ""}`
+                }
               >
                 <div className="log-entry-topline">
                   <span className="log-entry-level">{entry.level}</span>

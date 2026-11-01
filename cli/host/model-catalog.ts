@@ -1,7 +1,7 @@
 import type { AgentConfigurationSnapshot } from "@agent-harness/configuration/configuration-contract";
 import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import type { TerminalModelItem } from "../terminal/terminal-contract.js";
-import { configuredModelFingerprint } from "./configured-model-factory.js";
+import { configuredModelAdapter, configuredModelFingerprint } from "./configured-model-factory.js";
 
 export type ConfiguredModelStatus =
   | "ready"
@@ -26,8 +26,21 @@ export function configuredModels(
   );
   return snapshot.settings.vendors.flatMap((vendor) =>
     vendor.models.map((model): ConfiguredModelItem => {
-      const profile = getModelProfile(vendor.kind);
-      const support = getModelSupport(vendor.kind, model.model);
+      const selection = {
+        provider: vendor.protocol,
+        model: model.model,
+        baseURL: vendor.baseURL,
+        openaiApiMode: model.openaiApiMode,
+        configurationId: model.id,
+        vendorId: vendor.id,
+        ...(model.reasoningEffort === undefined ? {} : { reasoningEffort: model.reasoningEffort }),
+      };
+      const adapterId = configuredModelAdapter(
+        selection,
+        vendor.kind === "mimo-token-plan-cn" ? vendor.kind : undefined,
+      );
+      const profile = getModelProfile(adapterId);
+      const support = getModelSupport(adapterId, model.model);
       const limit = support?.supported
         ? (support.maxOutputTokens ?? profile?.maxOutputTokens)
         : undefined;
@@ -36,7 +49,9 @@ export function configuredModels(
           ? "disabled"
           : !profile
             ? "unsupported-adapter"
-            : !support?.supported
+            : !support?.supported ||
+                (model.reasoningEffort !== undefined &&
+                  !support.reasoningEfforts.includes(model.reasoningEffort))
               ? "unsupported-model"
               : limit !== undefined && snapshot.settings.gateway.maxOutputTokens > limit
                 ? "invalid-budget"
@@ -53,16 +68,9 @@ export function configuredModels(
           ? {
               connectionFingerprint: configuredModelFingerprint(
                 model.id,
-                {
-                  provider: vendor.protocol,
-                  model: model.model,
-                  configurationId: model.id,
-                  vendorId: vendor.id,
-                  ...(model.reasoningEffort === undefined
-                    ? {}
-                    : { reasoningEffort: model.reasoningEffort }),
-                },
+                selection,
                 snapshot.settings.gateway.maxOutputTokens,
+                adapterId,
               ),
             }
           : {}),

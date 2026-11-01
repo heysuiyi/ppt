@@ -27,6 +27,7 @@ import {
   resolveAnthropicBaseURL,
   resolveOpenAiBaseURL,
 } from "./integration-env";
+import { createTestGatewayOptions } from "./test-log-collector";
 
 const OPENAI_AVAILABLE = hasEnvironment("OPENAI_API_KEY", "OPENAI_MODEL");
 const ANTHROPIC_AVAILABLE = hasEnvironment("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL");
@@ -139,7 +140,7 @@ describe("Layer 1 real-gateway agent loop", () => {
         lifecycle,
         blobStore,
       );
-      const gateway = new AgentGateway();
+      const gateway = new AgentGateway(createTestGatewayOptions());
       const modelSelection = gateway.configure({
         provider: selection.provider,
         model: selection.model,

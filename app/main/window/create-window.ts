@@ -1,11 +1,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import type { Logger } from "@agent-harness/logs/logs";
 import { app, BrowserWindow, shell } from "electron";
-import { createModuleLogger } from "../agent/logger";
 import { resolveExternalHttpUrl } from "../external-navigation";
 import { getWindowBackgroundColor, getWindowTitleBarOverlay } from "./theme";
-
-const logger = createModuleLogger("main.window");
 
 function resolveAppIconPath(): string | undefined {
   const candidates = [
@@ -20,7 +18,10 @@ function resolveAppIconPath(): string | undefined {
   return candidates.find((candidate) => existsSync(candidate));
 }
 
-export function createWindow(onWindowCreated?: (window: BrowserWindow) => void): BrowserWindow {
+export function createWindow(
+  logger: Logger,
+  onWindowCreated?: (window: BrowserWindow) => void,
+): BrowserWindow {
   const icon = resolveAppIconPath();
   const window = new BrowserWindow({
     width: 1440,

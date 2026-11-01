@@ -347,7 +347,9 @@ describe("durable general agent stores", () => {
     const writer = new DatabaseSync(path);
     cleanup.push(() => writer.close());
     writer.exec("BEGIN IMMEDIATE");
-    writer.prepare("UPDATE general_agent_history SET revision = 2 WHERE thread_id = ?").run("thread");
+    writer
+      .prepare("UPDATE general_agent_history SET revision = 2 WHERE thread_id = ?")
+      .run("thread");
     writer
       .prepare(
         "INSERT INTO general_agent_history_batches(thread_id, batch_id, revision, payload) VALUES (?, ?, ?, ?)",
@@ -371,7 +373,9 @@ describe("durable general agent stores", () => {
       messages: [],
     });
     expect(
-      writer.prepare("SELECT thread_id FROM general_agent_history WHERE thread_id = ?").get("absent"),
+      writer
+        .prepare("SELECT thread_id FROM general_agent_history WHERE thread_id = ?")
+        .get("absent"),
     ).toBeUndefined();
   });
 

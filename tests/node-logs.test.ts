@@ -288,8 +288,120 @@ describe("Node logs", () => {
     await rename(own, moved);
     await symlink(target, own, process.platform === "win32" ? "junction" : "dir");
     await expect(logs.clearFiles()).rejects.toThrow();
+    await expect(logs.reset()).rejects.toThrow();
     await expect(logs.getFileStatus()).rejects.toThrow();
     expect(await readdir(target)).toEqual(["sentinel"]);
+  });
+
+  it("resets every own managed day and recent entries while preserving unknown files, links and children", async () => {
+    date("2026-05-01T12:00:00.000Z");
+    const root = await temporary();
+    const logs = await service({ directory: root, file: { enabled: true } });
+    const child = logs.getLogger("reset").child({ runId: "persistent-child" });
+    child.info("before.reset");
+    const original = logs.getRecentEntries()[0];
+    const own = (await logs.getFileStatus()).directory;
+    expect(await logs.clearFiles()).toBe(0);
+    expect(logs.getRecentEntries()).toHaveLength(1);
+    await writeFile(join(own, "diagnostic-2026-04-30.jsonl"), "past");
+    await writeFile(join(own, "diagnostic-2026-05-02.jsonl"), "future");
+    await writeFile(join(own, "diagnostic-2026-02-30.jsonl"), "invalid day");
+    await writeFile(join(own, "notes.txt"), "unknown");
+    const foreign = join(root, "foreign-instance");
+    await mkdir(foreign);
+    await writeFile(join(foreign, "diagnostic-2026-05-01.jsonl"), "foreign");
+    const target = await temporary();
+    await writeFile(join(target, "sentinel"), "protected");
+    await symlink(
+      target,
+      join(own, "diagnostic-2000-01-01.jsonl"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    expect(await logs.reset()).toBe(3);
+    expect(logs.getRecentEntries()).toEqual([]);
+    expect(logs.getStatus().state).toBe("open");
+    expect(await logs.getFileStatus()).toMatchObject({
+      enabled: true,
+      fileCount: 0,
+      totalBytes: 0,
+      failureCount: 0,
+    });
+    expect((await logs.getFileStatus()).lastWrittenAt).toBeUndefined();
+    expect(await readFile(join(own, "notes.txt"), "utf8")).toBe("unknown");
+    expect(await readFile(join(own, "diagnostic-2026-02-30.jsonl"), "utf8")).toBe("invalid day");
+    expect(await readFile(join(foreign, "diagnostic-2026-05-01.jsonl"), "utf8")).toBe("foreign");
+    expect(await readFile(join(target, "sentinel"), "utf8")).toBe("protected");
+    expect(await readdir(own)).toContain("diagnostic-2000-01-01.jsonl");
+    child.warn("after.reset");
+    const after = logs.getRecentEntries()[0];
+    expect(after).toMatchObject({
+      instanceId: original.instanceId,
+      sequence: original.sequence + 1,
+      context: { runId: "persistent-child" },
+      event: "after.reset",
+    });
+    expect(await records(join(own, "diagnostic-2026-05-01.jsonl"))).toEqual([after]);
+    expect(await logs.reset()).toBe(1);
+    expect(await logs.reset()).toBe(0);
+  });
+
+  it("resets recent-only instances without creating a logging directory", async () => {
+    const root = join(await temporary(), "not-created");
+    const logs = await service({ directory: root });
+    const child = logs.getLogger("memory").child({ operation: "reset" });
+    child.info("before");
+    expect(await logs.reset()).toBe(0);
+    expect(logs.getRecentEntries()).toHaveLength(0);
+    await expect(readdir(root)).rejects.toMatchObject({ code: "ENOENT" });
+    child.info("after");
+    expect(logs.getRecentEntries()).toEqual([
+      expect.objectContaining({ event: "after", context: { operation: "reset" }, sequence: 2 }),
+    ]);
+  });
+
+  it("rejects failed reset without reporting success or dropping recent entries and permits recovery", async () => {
+    date("2026-05-01T12:00:00.000Z");
+    const logs = await service({ file: { enabled: true } });
+    const logger = logs.getLogger("reset.failure");
+    logger.info("retained.on.failure");
+    const own = (await logs.getFileStatus()).directory;
+    const path = join(own, "diagnostic-2026-05-01.jsonl");
+    const before = await readFile(path, "utf8");
+    const originalUnlink = fs.unlinkSync;
+    const unlink = vi.spyOn(fs, "unlinkSync").mockImplementation((file) => {
+      if (file === path) throw Object.assign(new Error("reset denied"), { code: "EACCES" });
+      originalUnlink(file);
+    });
+    syncBuiltinESMExports();
+    try {
+      await expect(logs.reset()).rejects.toMatchObject({ code: "EACCES" });
+      expect(await readFile(path, "utf8")).toBe(before);
+      expect(logs.getRecentEntries().map((record) => record.event)).toEqual([
+        "retained.on.failure",
+      ]);
+      expect((await logs.getFileStatus()).failureCount).toBe(1);
+      expect(logs.getStatus().state).toBe("open");
+    } finally {
+      unlink.mockRestore();
+      syncBuiltinESMExports();
+    }
+    expect(await logs.reset()).toBe(1);
+    logger.info("recovered");
+    expect((await records(path)).map((record) => record.event)).toEqual(["recovered"]);
+    expect(logs.getRecentEntries().map((record) => record.event)).toEqual(["recovered"]);
+  });
+
+  it("does not adopt externally created files for an instance that never enabled file output", async () => {
+    date("2026-05-01T12:00:00.000Z");
+    const logs = await service();
+    const own = (await logs.getFileStatus()).directory;
+    await mkdir(own);
+    const external = join(own, "diagnostic-2026-05-01.jsonl");
+    await writeFile(external, "not created by logs");
+    logs.getLogger("memory").info("recent");
+    expect(await logs.reset()).toBe(0);
+    expect(logs.getRecentEntries()).toHaveLength(0);
+    expect(await readFile(external, "utf8")).toBe("not created by logs");
   });
 
   it("keeps settings unchanged when file preparation or retention fails", async () => {
@@ -343,6 +455,7 @@ describe("Node logs", () => {
     patch.file.enabled = false;
     const second = logs.updateSettings({ recent: { enabled: false }, file: { retentionDays: 1 } });
     const clearing = logs.clearFiles();
+    const resetting = logs.reset();
     const closing = logs.close();
     expect(logs.close()).toBe(closing);
     expect(logs.getStatus().state).toBe("closing");
@@ -350,6 +463,7 @@ describe("Node logs", () => {
     expect(logs.getRecentEntries()).toHaveLength(0);
     await expect(logs.updateSettings({ terminal: { enabled: true } })).rejects.toThrow();
     await expect(logs.clearFiles()).rejects.toThrow();
+    await expect(logs.reset()).rejects.toThrow();
     expect((await first).file.enabled).toBe(true);
     expect((await second).file).toMatchObject({
       enabled: true,
@@ -357,6 +471,7 @@ describe("Node logs", () => {
       retentionDays: 1,
     });
     expect(await clearing).toBe(0);
+    expect(await resetting).toBe(1);
     await closing;
     expect(logs.close()).toBe(closing);
     expect(logs.getStatus()).toMatchObject({ state: "closed", lateWriteCount: 1 });

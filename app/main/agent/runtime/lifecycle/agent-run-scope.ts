@@ -1,3 +1,4 @@
+import type { Logger } from "@agent-harness/logs/logs";
 import type { ConversationDatabase } from "../../../conversation-database";
 import type { AgentModelMessage } from "../../gateway";
 import { DurableConversationHistoryStore } from "../../persistence/conversation-history-store";
@@ -35,6 +36,7 @@ import { CheckpointPolicy } from "./checkpoint-policy";
 export interface AgentRunScopeOpenInput {
   options: AgentRuntimeOptions;
   conversationDatabase?: ConversationDatabase;
+  logger?: Logger;
   resolveDiscoverySession(recovered?: DurableRunCheckpoint): ToolDiscoverySession;
   resolveSkillSession(recovered?: DurableRunCheckpoint): SkillSession;
   resolveDomainState?(recovered?: DurableRunCheckpoint): RuntimeDomainState;
@@ -138,6 +140,7 @@ export class AgentRunScope {
       const eventPorts = new AgentEventPorts({
         threadId: options.threadId,
         runId,
+        logger: input.logger,
         onProgress: options.onProgress,
         conversationDatabase: input.conversationDatabase,
         appendTranscript: (entry) => session.appendTranscript(entry),

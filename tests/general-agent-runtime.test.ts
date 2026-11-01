@@ -3,8 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentCreationOptions } from "@agent-harness/core/agent-factory";
-import type { AgentServices } from "@agent-harness/core/agent-factory";
+import type { AgentCreationOptions, AgentServices } from "@agent-harness/core/agent-factory";
 import { createAgentApplication } from "@agent-harness/core/application/agent-application";
 import type { AgentPlugin } from "@agent-harness/core/extensions/plugin-contract";
 import type {
@@ -251,6 +250,7 @@ function compatibilityCapabilities(directory: string) {
   const nonce = randomUUID();
   const ledger = join(directory, "effects.txt");
   const file = join(directory, "approved.txt");
+  const completedRequests: ModelRequest[] = [];
   const audit: AgentPlugin = {
     id: "audit",
     version: "1",
@@ -263,7 +263,12 @@ function compatibilityCapabilities(directory: string) {
         mode: "immediate",
         inputSchema: z.object({}),
         outputSchema: z.object({ nonce: z.string() }),
-        toModelContent: (output) => [{ type: "text", text: output.nonce }],
+        toModelContent: (result) => [
+          {
+            type: "text",
+            text: result.status === "succeeded" ? result.output.nonce : result.error.message,
+          },
+        ],
         async execute() {
           counters.audit += 1;
           await writeFile(ledger, nonce, { encoding: "utf8", flag: "wx" });
@@ -295,20 +300,29 @@ function compatibilityCapabilities(directory: string) {
       expect(await readFile(ledger, "utf8")).toBe(nonce);
       expect(counters).toEqual({ execute: 1, resume: resumed ? 1 : 0, audit: 1 });
       if (resumed) expect(await readFile(file, "utf8")).toBe("persistent document");
-      else await expect(readFile(file)).rejects.toMatchObject({ code: "ENOENT" });
+      if (resumed) {
+        expect(completedRequests).toHaveLength(1);
+        expect(completedRequests[0].messages).toContainEqual({
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              callId: "audit-1",
+              content: [{ type: "text", text: nonce }],
+              isError: false,
+            },
+            {
+              type: "tool-result",
+              callId: "write-1",
+              content: [{ type: "text", text: "Document written" }],
+              isError: false,
+            },
+          ],
+        });
+      } else await expect(readFile(file)).rejects.toMatchObject({ code: "ENOENT" });
     },
     complete(request: ModelRequest) {
-      expect(request.messages).toContainEqual({
-        role: "tool",
-        content: [
-          { type: "tool-result", callId: "audit-1", content: [{ type: "text", text: nonce }] },
-          {
-            type: "tool-result",
-            callId: "write-1",
-            content: [{ type: "text", text: "Document written" }],
-          },
-        ],
-      });
+      completedRequests.push(request);
       return answer("Approved durable effects complete");
     },
   };
@@ -322,13 +336,28 @@ interface CompatibilityChange {
 }
 
 const compatibilityChanges: readonly CompatibilityChange[] = [
-  { name: "definition id", change: (o) => ({ ...o, definition: { ...o.definition, id: "other" } }) },
-  { name: "definition version", change: (o) => ({ ...o, definition: { ...o.definition, version: "2" } }) },
+  {
+    name: "definition id",
+    change: (o) => ({ ...o, definition: { ...o.definition, id: "other" } }),
+  },
+  {
+    name: "definition version",
+    change: (o) => ({ ...o, definition: { ...o.definition, version: "2" } }),
+  },
   { name: "plugin order", change: (o) => ({ ...o, plugins: [...o.plugins].reverse() }) },
-  { name: "plugin addition", change: (o) => ({ ...o, plugins: [...o.plugins, { id: "extra", version: "1", setup() {} }] }) },
+  {
+    name: "plugin addition",
+    change: (o) => ({ ...o, plugins: [...o.plugins, { id: "extra", version: "1", setup() {} }] }),
+  },
   { name: "plugin removal", change: (o) => ({ ...o, plugins: o.plugins.slice(1) }) },
-  { name: "plugin id", change: (o) => ({ ...o, plugins: [{ ...o.plugins[0], id: "other-audit" }, o.plugins[1]] }) },
-  { name: "plugin version", change: (o) => ({ ...o, plugins: [{ ...o.plugins[0], version: "2" }, o.plugins[1]] }) },
+  {
+    name: "plugin id",
+    change: (o) => ({ ...o, plugins: [{ ...o.plugins[0], id: "other-audit" }, o.plugins[1]] }),
+  },
+  {
+    name: "plugin version",
+    change: (o) => ({ ...o, plugins: [{ ...o.plugins[0], version: "2" }, o.plugins[1]] }),
+  },
   { name: "actual provider binding", boundModel: { ...selection, providerId: "other" } },
   { name: "actual model binding", boundModel: { ...selection, modelId: "other" } },
   { name: "actual effort addition", boundModel: { ...selection, reasoningEffort: "high" } },
@@ -343,6 +372,417 @@ const compatibilityChanges: readonly CompatibilityChange[] = [
     boundModel: { ...selection, reasoningEffort: "low" },
   },
 ];
+
+describe("SQLite waiting compatibility through public Application", () => {
+  it.each(compatibilityChanges)(
+    "rejects changed $name before saving or consuming the stored answer",
+    async ({ originalModel, change, boundModel }) =>
+      fixture(async (directory, own) => {
+        const db = join(directory, "state.sqlite");
+        const capability = compatibilityCapabilities(directory);
+        const original: AgentCreationOptions = {
+          ...options(capability.plugins),
+          model: originalModel ?? selection,
+        };
+        let stores = own(createSqliteAgentStores(db));
+        const first = own(
+          createAgentApplication(
+            services(
+              stores,
+              models(() => capability.request),
+            ),
+          ),
+        );
+        const agent = await first.agents.create(original);
+        const waiting = await (await agent.run(input("query", "initial"))).completed;
+        if (waiting.status !== "waiting") throw new Error("Expected durable approval");
+        await first.close();
+        await stores.dispose();
+        stores = own(createSqliteAgentStores(db));
+        const before = checkpointRow(db);
+        const history = await stores.history.read("thread");
+        expect(before.owner_id).toBeNull();
+        expect(before.checkpoint).toMatchObject({
+          status: "waiting",
+          inflight: { completed: [{ completion: { effects: "applied" } }] },
+          pending: { interaction: waiting.interaction, effects: "none" },
+        });
+        let bindings = 0;
+        let modelCalls = 0;
+        let saves = 0;
+        const baseModels = models(() => {
+          modelCalls += 1;
+          throw new Error("An incompatible activation must not generate or stream");
+        });
+        const changed = own(
+          createAgentApplication(
+            services(
+              stores,
+              {
+                async create(requested, signal) {
+                  bindings += 1;
+                  const binding = await baseModels.create(requested, signal);
+                  return {
+                    ...binding,
+                    client: { ...binding.client, selection: boundModel ?? requested },
+                  };
+                },
+              },
+              {
+                ...stores.checkpoints,
+                async save(...args) {
+                  saves += 1;
+                  return stores.checkpoints.save(...args);
+                },
+              },
+            ),
+          ),
+        );
+        const changedAgent = await changed.agents.create(change?.(original) ?? original);
+        await expect(
+          (
+            await changedAgent.resume({
+              threadId: "thread",
+              queryId: "query",
+              runId: "incompatible",
+              response: { interactionId: waiting.interaction.id, type: "answer", value: true },
+            })
+          ).completed,
+        ).rejects.toMatchObject({ code: "DEFINITION_CHANGED" });
+        expect(bindings).toBe(1);
+        expect(modelCalls).toBe(0);
+        expect(saves).toBe(0);
+        expect(checkpointRow(db)).toEqual({ ...before, generation: before.generation + 1 });
+        expect(await stores.history.read("thread")).toEqual(history);
+        await capability.assertEffects(false);
+        await changed.close();
+        await stores.dispose();
+
+        stores = own(createSqliteAgentStores(db));
+        const restored = own(
+          createAgentApplication(
+            services(
+              stores,
+              models((request) => capability.complete(request)),
+            ),
+          ),
+        );
+        const restoredAgent = await restored.agents.create(original);
+        const completed = await (
+          await restoredAgent.resume({
+            threadId: "thread",
+            queryId: "query",
+            runId: "original-restored",
+            response: { interactionId: waiting.interaction.id, type: "answer", value: true },
+          })
+        ).completed;
+        expect(completed).toMatchObject({
+          status: "completed",
+          identity: { queryId: "query", runId: "original-restored" },
+        });
+        await capability.assertEffects(true);
+        expect(checkpointRow(db)).toMatchObject({
+          owner_id: null,
+          generation: before.generation + 2,
+          checkpoint: {
+            status: "completed",
+            lastRunId: "original-restored",
+            committed: { step: 2 },
+          },
+        });
+        expect((await stores.history.read("thread")).messages).toEqual([
+          ...history.messages,
+          capability.request.message,
+          expect.objectContaining({ role: "tool" }),
+          answer("Approved durable effects complete").message,
+        ]);
+      }),
+  );
+
+  it.each([
+    { change: "removed", response: "answer" },
+    { change: "removed", response: "cancel" },
+    { change: "version", response: "answer" },
+    { change: "version", response: "cancel" },
+    { change: "version", response: "none" },
+    { change: "same-version", response: "answer" },
+  ] as const)(
+    "preserves the waiting tool for $change with $response until a compatible answer",
+    async ({ change, response }) =>
+      fixture(async (directory, own) => {
+        const db = join(directory, "state.sqlite");
+        const capability = compatibilityCapabilities(directory);
+        const original = options(capability.plugins);
+        let stores = own(createSqliteAgentStores(db));
+        const first = own(
+          createAgentApplication(
+            services(
+              stores,
+              models(() => capability.request),
+            ),
+          ),
+        );
+        const waiting = await (
+          await (await first.agents.create(original)).run(input("query", "initial"))
+        ).completed;
+        if (waiting.status !== "waiting") throw new Error("Expected durable approval");
+        await first.close();
+        await stores.dispose();
+        stores = own(createSqliteAgentStores(db));
+        const before = checkpointRow(db);
+        const history = await stores.history.read("thread");
+        let modelCalls = 0;
+        const changed = own(
+          createAgentApplication(
+            services(
+              stores,
+              models((request) => {
+                modelCalls += 1;
+                return capability.complete(request);
+              }),
+            ),
+          ),
+        );
+        const changedWriter =
+          change === "removed"
+            ? { ...capability.plugins[1], setup() {} }
+            : writer(capability.file, capability.counters, true, change === "version" ? "2" : "1");
+        const agent = await changed.agents.create({
+          ...original,
+          plugins: [capability.plugins[0], changedWriter],
+        });
+        const resumed = await agent.resume({
+          threadId: "thread",
+          queryId: "query",
+          runId: "changed-tool",
+          ...(response === "none"
+            ? {}
+            : {
+                response:
+                  response === "answer"
+                    ? {
+                        type: "answer" as const,
+                        interactionId: waiting.interaction.id,
+                        value: true,
+                      }
+                    : { type: "cancel" as const, interactionId: waiting.interaction.id },
+              }),
+        });
+        if (change === "same-version") {
+          expect((await resumed.completed).status).toBe("completed");
+          expect(modelCalls).toBe(1);
+          await capability.assertEffects(true);
+          expect(checkpointRow(db)).toMatchObject({
+            owner_id: null,
+            checkpoint: { status: "completed" },
+          });
+          return;
+        }
+        if (response === "none") {
+          expect(await resumed.completed).toMatchObject({
+            status: "waiting",
+            interaction: waiting.interaction,
+          });
+        } else {
+          await expect(resumed.completed).rejects.toMatchObject({ code: "TOOL_VERSION_CHANGED" });
+        }
+        const after = checkpointRow(db);
+        expect(after).toMatchObject({
+          owner_id: null,
+          generation: before.generation + 1,
+          checkpoint: {
+            status: "waiting",
+            lastRunId: "changed-tool",
+            pending: before.checkpoint.status === "waiting" ? before.checkpoint.pending : undefined,
+            inflight:
+              before.checkpoint.status === "waiting" ? before.checkpoint.inflight : undefined,
+          },
+        });
+        expect(after.revision).toBeGreaterThan(before.revision);
+        expect(await stores.history.read("thread")).toEqual(history);
+        expect(modelCalls).toBe(0);
+        await capability.assertEffects(false);
+        await changed.close();
+        await stores.dispose();
+
+        stores = own(createSqliteAgentStores(db));
+        const restored = own(
+          createAgentApplication(
+            services(
+              stores,
+              models((request) => capability.complete(request)),
+            ),
+          ),
+        );
+        const restoredAgent = await restored.agents.create(original);
+        expect(
+          (
+            await (
+              await restoredAgent.resume({
+                threadId: "thread",
+                queryId: "query",
+                runId: "compatible-answer",
+                response: { type: "answer", interactionId: waiting.interaction.id, value: true },
+              })
+            ).completed
+          ).status,
+        ).toBe("completed");
+        await capability.assertEffects(true);
+        expect(checkpointRow(db)).toMatchObject({
+          owner_id: null,
+          generation: before.generation + 2,
+          checkpoint: { status: "completed", lastRunId: "compatible-answer" },
+        });
+      }),
+  );
+});
+
+describe("SQLite SessionHost binding compatibility before Agent installation", () => {
+  const changes: ReadonlyArray<{
+    name: string;
+    change: (original: HostSessionBinding) => HostSessionBinding;
+  }> = [
+    { name: "workspace", change: (b) => ({ ...b, workspaceRoot: join(b.workspaceRoot, "other") }) },
+    { name: "tool mode", change: (b) => ({ ...b, toolMode: "read-only" }) },
+    {
+      name: "connection fingerprint",
+      change: (b) => ({ ...b, connectionFingerprint: "b".repeat(64) }),
+    },
+    {
+      name: "definition id",
+      change: (b) => ({ ...b, definition: { ...b.definition, id: "other" } }),
+    },
+    {
+      name: "definition version",
+      change: (b) => ({ ...b, definition: { ...b.definition, version: "2" } }),
+    },
+    { name: "plugin order", change: (b) => ({ ...b, plugins: [...b.plugins].reverse() }) },
+    {
+      name: "plugin addition",
+      change: (b) => ({ ...b, plugins: [...b.plugins, { id: "extra", version: "1" }] }),
+    },
+    { name: "plugin removal", change: (b) => ({ ...b, plugins: b.plugins.slice(1) }) },
+    {
+      name: "plugin id",
+      change: (b) => ({ ...b, plugins: [{ ...b.plugins[0], id: "other" }, b.plugins[1]] }),
+    },
+    {
+      name: "plugin version",
+      change: (b) => ({ ...b, plugins: [{ ...b.plugins[0], version: "2" }, b.plugins[1]] }),
+    },
+    { name: "increased maxSteps", change: (b) => ({ ...b, maxSteps: b.maxSteps + 1 }) },
+    { name: "decreased maxSteps", change: (b) => ({ ...b, maxSteps: b.maxSteps - 1 }) },
+  ];
+  it.each(changes)(
+    "rejects $name without installing an Agent or replacing any durable state",
+    async ({ change }) =>
+      fixture(async (directory, own) => {
+        const db = join(directory, "state.sqlite");
+        const capability = compatibilityCapabilities(directory);
+        const original = options(capability.plugins);
+        const binding: HostSessionBinding = {
+          schemaVersion: 2,
+          agentId: original.agentId,
+          threadId: "thread",
+          workspaceRoot: directory,
+          toolMode: "read-write",
+          model: original.model,
+          connectionFingerprint: "a".repeat(64),
+          definition: { id: original.definition.id, version: original.definition.version },
+          plugins: original.plugins.map(({ id, version }) => ({ id, version })),
+          maxSteps: original.maxSteps,
+        };
+        let stores = own(createSqliteAgentStores(db));
+        const first = own(
+          await createSessionHost({
+            services: services(
+              stores,
+              models(() => capability.request),
+            ),
+            agent: original,
+            threadId: "thread",
+            binding: { ensure: () => stores.bindings.ensure(binding) },
+          }),
+        );
+        const waiting = await (await first.run(input("query", "initial"))).completed;
+        if (waiting.status !== "waiting") throw new Error("Expected durable approval");
+        await first.close();
+        await stores.dispose();
+        stores = own(createSqliteAgentStores(db));
+        const before = checkpointRow(db);
+        const history = await stores.history.read("thread");
+        const candidate = change(binding);
+        let setups = 0;
+        let bindings = 0;
+        const model = models(() => {
+          throw new Error("Binding rejection must not generate");
+        });
+        await expect(
+          createSessionHost({
+            services: services(stores, {
+              async create(...args) {
+                bindings += 1;
+                return model.create(...args);
+              },
+            }),
+            agent: {
+              ...original,
+              definition: { ...original.definition, ...candidate.definition },
+              model: candidate.model,
+              maxSteps: candidate.maxSteps,
+              plugins: candidate.plugins.map((spec) => ({
+                ...spec,
+                setup(context) {
+                  setups += 1;
+                  return original.plugins.find((plugin) => plugin.id === spec.id)?.setup(context);
+                },
+              })),
+            },
+            threadId: "thread",
+            binding: { ensure: () => stores.bindings.ensure(candidate) },
+          }),
+        ).rejects.toMatchObject({ code: "HOST_BINDING_CHANGED" });
+        expect(setups).toBe(0);
+        expect(bindings).toBe(0);
+        expect(await stores.bindings.read("thread")).toEqual(binding);
+        expect(checkpointRow(db)).toEqual(before);
+        expect(await stores.history.read("thread")).toEqual(history);
+        await capability.assertEffects(false);
+        await stores.dispose();
+
+        stores = own(createSqliteAgentStores(db));
+        const restored = own(
+          await createSessionHost({
+            services: services(
+              stores,
+              models((request) => capability.complete(request)),
+            ),
+            agent: original,
+            threadId: "thread",
+            binding: { ensure: () => stores.bindings.ensure(binding) },
+          }),
+        );
+        expect(
+          (
+            await (
+              await restored.resume({
+                queryId: "query",
+                runId: "original-binding",
+                response: { type: "answer", interactionId: waiting.interaction.id, value: true },
+              })
+            ).completed
+          ).status,
+        ).toBe("completed");
+        await capability.assertEffects(true);
+        expect(await stores.bindings.read("thread")).toEqual(binding);
+        expect(checkpointRow(db)).toMatchObject({
+          owner_id: null,
+          generation: before.generation + 1,
+          checkpoint: { status: "completed", lastRunId: "original-binding" },
+        });
+      }),
+  );
+});
 
 describe("general Agent execution and recovery", () => {
   it("runs a real file capability and preserves ordered tool pairs and reasoning replay", async () =>

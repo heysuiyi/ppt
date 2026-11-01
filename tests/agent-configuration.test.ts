@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createTestGatewayOptions } from "./test-log-collector";
 
 const openAIMock = vi.hoisted(() => ({ responsesCreate: vi.fn() }));
 vi.mock("openai", () => ({
@@ -16,11 +17,11 @@ import { createDesktopAgentConfiguration } from "../app/main/agent-configuration
 import { registerAgentConfigurationIpc } from "../app/main/agent-configuration/ipc";
 import type { SafeStorageAdapter } from "../app/main/agent-configuration/safe-storage-protection";
 
-const mimoProfile = getModelProfile("mimo-token-plan-cn");
+const mimoAdapterId = "mimo-token-plan-cn";
+const mimoProfile = getModelProfile(mimoAdapterId);
 if (mimoProfile?.endpoint?.kind !== "fixed")
   throw new Error("The MiMo fixed endpoint profile is required.");
 const mimoBaseURL = mimoProfile.endpoint.url;
-const mimoAdapterId = mimoProfile.adapterId;
 const mimoSupport = getModelSupport(mimoAdapterId, "mimo-v2.6-pro");
 if (!mimoSupport?.supported) throw new Error("The MiMo Pro support profile is required.");
 const mimoReasoningEfforts = mimoSupport.reasoningEfforts;
@@ -558,7 +559,7 @@ describe("agent execution configuration", () => {
     });
     const resolved = await config.runtime.resolveRuntime(plan);
     expect(resolved.primary).toMatchObject({ model: "gpt-5.5", reasoningEffort: "xhigh" });
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const selection = gateway.configure(resolved.primary, resolved.gateway, resolved.search);
     expect(selection.reasoningEffort).toBe("xhigh");
     openAIMock.responsesCreate.mockResolvedValue({

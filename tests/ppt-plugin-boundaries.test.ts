@@ -20,7 +20,9 @@ import { createPptToolRegistry } from "@main/plugins/ppt/tools";
 import { DeckExportService, DeckValidationService, inspectPptxExport } from "@ppt/core";
 import { createStarterPresentation } from "@shared/presentation-fixtures";
 import { afterEach, describe, expect, it } from "vitest";
+import { withLogContext } from "../app/main/logging/log-context";
 import { createExportGoldenPresentation } from "./fixtures/export-golden-deck";
+import { createTestLogCollector } from "./test-log-collector";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -89,13 +91,43 @@ describe("PPT plugin boundaries", () => {
       ],
       [{ type: "text", text: "Done" }],
     ]);
-    const runtime = new AgentRuntime(new AgentRunFactory(createHostToolRegistry(), gateway));
-    await runtime.run({
-      threadId: "plain-files",
-      request: "Update files",
-      workspaceRoot: root,
-      requestToolApproval: async () => true,
-    });
+    const { logger, records } = createTestLogCollector("runtime");
+    const runtime = new AgentRuntime(
+      new AgentRunFactory(
+        createHostToolRegistry(),
+        gateway,
+        undefined,
+        undefined,
+        undefined,
+        logger,
+      ),
+      logger,
+    );
+    await withLogContext({ sessionId: "diagnostic-session" }, () =>
+      runtime.run({
+        threadId: "plain-files",
+        request: "Update files",
+        workspaceRoot: root,
+        requestToolApproval: async () => true,
+      }),
+    );
+    const requested = records.filter((record) => record.event === "tool.call.requested");
+    expect(requested.map((record) => record.data?.toolName)).toEqual([
+      "ReadFile",
+      "EditFile",
+      "WriteFile",
+    ]);
+    for (const record of requested) {
+      expect(record.context).toMatchObject({
+        sessionId: "diagnostic-session",
+        threadId: "plain-files",
+        runId: expect.any(String),
+        queryId: expect.any(String),
+      });
+    }
+    expect(records.find((record) => record.event === "agent.query.completed")?.context).toEqual(
+      requested[0].context,
+    );
     expect(await readFile(join(root, "notes.txt"), "utf8")).toBe("after");
     expect(await readFile(join(root, "design/design-spec.json"), "utf8")).toBe("ordinary file");
   });

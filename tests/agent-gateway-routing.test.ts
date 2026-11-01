@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestGatewayOptions } from "./test-log-collector";
 
 const providerMocks = vi.hoisted(() => ({
   openai: vi.fn(),
@@ -39,7 +40,7 @@ describe("AgentGateway", () => {
   });
 
   it("preserves a declared 1M context capability in the model selection", () => {
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
 
     const selection = gateway.configure({
       configurationId: "configured-model",
@@ -64,7 +65,7 @@ describe("AgentGateway", () => {
       model: "gpt-5-mini",
       content: [{ type: "text", text: "hello" }],
     });
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const selection = gateway.configure({
       configurationId: "reasoning-model",
       provider: "openai",
@@ -104,7 +105,7 @@ describe("AgentGateway", () => {
     };
     providerMocks.openai.mockResolvedValue(response);
     providerMocks.anthropic.mockResolvedValue(response);
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const selection = gateway.configure({ ...model, apiKey: "secret", reasoningEffort: "high" });
     await gateway.queryModel({ prompt: "test" }, selection);
     const driver = model.provider === "openai" ? providerMocks.openai : providerMocks.anthropic;
@@ -117,7 +118,7 @@ describe("AgentGateway", () => {
       model: "openai-test",
       content: [{ type: "text", text: "hello" }],
     });
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     gateway.configure({ provider: "openai", model: "openai-test", apiKey: "secret" });
 
     const response = await gateway.queryModel(
@@ -147,7 +148,7 @@ describe("AgentGateway", () => {
     providerMocks.openaiStream.mockImplementation(async function* (config: { model: string }) {
       yield { type: "complete", content: [{ type: "text", text: config.model }] };
     });
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const primary = gateway.configure(
       {
         configurationId: "primary-openai",
@@ -221,7 +222,7 @@ describe("AgentGateway", () => {
       model: config.model,
       content: [{ type: "text", text: config.model }],
     }));
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const primary = gateway.configure(
       {
         provider: "openai",
@@ -269,7 +270,7 @@ describe("AgentGateway", () => {
       { configurationId: "primary-openai", provider: "anthropic" as const, model: "primary-model" },
     ],
   ])("fails closed for an explicit %s", async (_label, selection) => {
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     gateway.configure({
       configurationId: "primary-openai",
       provider: "openai",
@@ -291,7 +292,7 @@ describe("AgentGateway", () => {
       model: config.model,
       content: [{ type: "text", text: config.model }],
     }));
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     gateway.configure(
       {
         configurationId: "primary-openai",
@@ -380,7 +381,7 @@ describe("AgentGateway", () => {
       model: "anthropic-test",
       content: [{ type: "text", text: "hello" }],
     });
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const selection = gateway.configure({
       provider: "anthropic",
       model: "anthropic-test",
@@ -400,7 +401,7 @@ describe("AgentGateway", () => {
       yield { type: "text_delta", text: "hello" };
       yield { type: "complete", content: [{ type: "text", text: "hello" }] };
     });
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const selection = gateway.configure({
       provider: "anthropic",
       model: "anthropic-test",
@@ -426,7 +427,7 @@ describe("AgentGateway", () => {
       model: "openai-test",
       content: [{ type: "text", text: "hello" }],
     });
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     gateway.configure({
       provider: "openai",
       model: "openai-test",
@@ -455,7 +456,7 @@ describe("AgentGateway", () => {
         usage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
       };
     });
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const recorder = vi.fn().mockResolvedValue(undefined);
     gateway.setUsageRecorder(recorder);
     const selection = gateway.configure({
@@ -492,7 +493,7 @@ describe("AgentGateway", () => {
       model: "anthropic-test",
       content: [{ type: "text", text: "ok" }],
     });
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const selection = gateway.configure({
       provider: "anthropic",
       model: "anthropic-test",
@@ -530,7 +531,7 @@ describe("AgentGateway", () => {
   });
 
   it("rejects empty and malformed driver responses at the Gateway boundary", async () => {
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const selection = gateway.configure({
       provider: "openai",
       model: "openai-test",
@@ -590,7 +591,7 @@ describe("AgentGateway", () => {
   });
 
   it("normalizes driver errors and enforces one terminal stream event", async () => {
-    const gateway = new AgentGateway();
+    const gateway = new AgentGateway(createTestGatewayOptions());
     const selection = gateway.configure({
       provider: "openai",
       model: "openai-test",

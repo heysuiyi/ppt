@@ -1,7 +1,5 @@
+import { diagnosticValuePreview, type Logger } from "@agent-harness/logs/logs";
 import type { ConversationDatabase } from "../../../conversation-database";
-import { createModuleLogger, diagnosticValuePreview } from "../../logger";
-
-const logger = createModuleLogger("agent-runtime-events");
 
 export interface AgentRendererEvent {
   type: string;
@@ -37,6 +35,7 @@ export class AgentEventPorts {
     private readonly input: {
       threadId: string;
       runId?: string;
+      logger?: Logger;
       onProgress?: (event: AgentRendererEvent) => void;
       conversationDatabase?: ConversationDatabase;
       appendTranscript(entry: Record<string, unknown>): void;
@@ -54,7 +53,7 @@ export class AgentEventPorts {
           this.requestedToolCallAt.get(event.toolCallId);
         const level =
           event.status === "failed" || event.status === "invalid-input" ? "warn" : "info";
-        logger[level]("tool.execution.finished", {
+        this.input.logger?.[level]("tool.execution.finished", {
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           status: event.status,
@@ -68,7 +67,7 @@ export class AgentEventPorts {
         if (this.startedToolCalls.has(event.toolCallId)) return;
         this.startedToolCalls.add(event.toolCallId);
         this.startedToolCallAt.set(event.toolCallId, Date.now());
-        logger.info("tool.execution.started", {
+        this.input.logger?.info("tool.execution.started", {
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           ...(typeof event.message === "string" ? { message: event.message } : {}),
@@ -79,7 +78,7 @@ export class AgentEventPorts {
       this.input.onProgress?.(event);
     } catch (error) {
       // Renderer delivery is observational and cannot alter Runtime facts.
-      logger.warn("runtime.progress.listener-failed", { eventType: event.type, error });
+      this.input.logger?.warn("runtime.progress.listener-failed", { eventType: event.type, error });
     }
   }
 
@@ -98,7 +97,11 @@ export class AgentEventPorts {
         visibility,
       );
     } catch (error) {
-      logger.warn("runtime.audit.persist-failed", { eventKind: kind, visibility, error });
+      this.input.logger?.warn("runtime.audit.persist-failed", {
+        eventKind: kind,
+        visibility,
+        error,
+      });
       try {
         this.input.appendTranscript({
           role: "system",
@@ -107,7 +110,7 @@ export class AgentEventPorts {
           content: error instanceof Error ? error.message : String(error),
         });
       } catch (transcriptError) {
-        logger.warn("runtime.audit.transcript-failed", {
+        this.input.logger?.warn("runtime.audit.transcript-failed", {
           eventKind: kind,
           error: transcriptError,
         });
@@ -124,7 +127,7 @@ export class AgentEventPorts {
       const toolCallId = typeof payload.toolUseId === "string" ? payload.toolUseId : undefined;
       if (toolCallId) this.requestedToolCallAt.set(toolCallId, Date.now());
       const input = diagnosticValuePreview(payload.input, 512);
-      logger.info("tool.call.requested", {
+      this.input.logger?.info("tool.call.requested", {
         toolCallId,
         toolName: payload.toolName,
         parseError: payload.parseError,
@@ -135,7 +138,7 @@ export class AgentEventPorts {
         inputTruncated: input.truncated,
         visibility,
       });
-      logger.debug("tool.call.input", {
+      this.input.logger?.debug("tool.call.input", {
         toolCallId,
         toolName: payload.toolName,
         input: diagnosticValuePreview(payload.input, 8 * 1024),
@@ -153,7 +156,7 @@ export class AgentEventPorts {
         Boolean(block) && typeof block === "object" && "type" in block && block.type === "image",
     ).length;
     const result = diagnosticValuePreview(content, 512);
-    logger.info("tool.result.delivered", {
+    this.input.logger?.info("tool.result.delivered", {
       toolCallId: payload.toolUseId,
       toolName: payload.toolName,
       isError: payload.isError === true,
@@ -165,7 +168,7 @@ export class AgentEventPorts {
       resultTruncated: result.truncated,
       visibility,
     });
-    logger.debug("tool.call.output", {
+    this.input.logger?.debug("tool.call.output", {
       toolCallId: payload.toolUseId,
       toolName: payload.toolName,
       isError: payload.isError === true,

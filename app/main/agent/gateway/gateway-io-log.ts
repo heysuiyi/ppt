@@ -1,6 +1,7 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { getLogContext, getLogDirectory } from "../logger";
+import { getLogContext } from "../../logging/log-context";
 import type {
   AgentModelContentBlock,
   AgentModelImageBlock,
@@ -73,16 +74,8 @@ export function isGatewayIoLogEnabled(environment: NodeJS.ProcessEnv = process.e
   return true;
 }
 
-export function getGatewayIoLogDirectory(): string {
-  return path.join(getLogDirectory(), GATEWAY_IO_LOG_DIRECTORY_NAME);
-}
-
-function localDateKey(date: Date): string {
-  return [
-    date.getFullYear().toString().padStart(4, "0"),
-    (date.getMonth() + 1).toString().padStart(2, "0"),
-    date.getDate().toString().padStart(2, "0"),
-  ].join("-");
+export function getGatewayIoLogDirectory(root: string): string {
+  return path.join(root, GATEWAY_IO_LOG_DIRECTORY_NAME);
 }
 
 function sanitizeImageData<TMedia extends AgentModelImageBlock["mediaType"]>(
@@ -225,17 +218,98 @@ export function gatewayIoLogRelativePath(entry: GatewayIoLogEntry): string {
   return path.join(GATEWAY_IO_LOG_DIRECTORY_NAME, day, `${entry.gatewayRequestId}.json`);
 }
 
-export async function writeGatewayIoLog(entry: GatewayIoLogEntry): Promise<string | undefined> {
-  if (!isGatewayIoLogEnabled()) return undefined;
-  const relative = gatewayIoLogRelativePath(entry);
-  const absolute = path.join(getLogDirectory(), relative);
+const require = createRequire(import.meta.url);
+const lockfile = require("proper-lockfile") as {
+  lock(
+    file: string,
+    options: {
+      realpath: boolean;
+      stale: number;
+      update: number;
+      retries: number;
+      onCompromised(error: Error): void;
+    },
+  ): Promise<() => Promise<void>>;
+};
+const operations = new Map<string, Promise<unknown>>();
+const DAY_DIRECTORY = /^\d{4}-\d{2}-\d{2}$/;
+const ARCHIVE_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$/i;
+
+function enqueueGatewayIoOperation<T>(
+  root: string,
+  task: (directory: string) => Promise<T>,
+): Promise<T> {
+  const directory = path.resolve(getGatewayIoLogDirectory(root));
+  const previous = operations.get(directory) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      await fs.promises.mkdir(directory, { recursive: true });
+      const stat = await fs.promises.lstat(directory);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) {
+        throw new Error("Gateway archive directory is not an owned directory.");
+      }
+      return await task(directory);
+    });
+  operations.set(directory, next);
+  void next
+    .finally(() => {
+      if (operations.get(directory) === next) operations.delete(directory);
+    })
+    .catch(() => undefined);
+  return next;
+}
+
+async function withGatewayFileLock<T>(file: string, task: () => Promise<T>): Promise<T> {
+  // A crashed writer protects only its own artifact, never future random request IDs.
+  const release = await lockfile.lock(file, {
+    realpath: false,
+    stale: Number.MAX_SAFE_INTEGER,
+    update: 10_000,
+    retries: 0,
+    onCompromised() {
+      try {
+        process.stderr.write("Gateway I/O archive lock compromised.\n");
+      } catch {
+        // Diagnostics cannot interrupt model execution.
+      }
+    },
+  });
   try {
-    await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
-    await fs.promises.writeFile(absolute, `${JSON.stringify(entry, null, 2)}\n`, "utf8");
-    return absolute;
-  } catch (error) {
+    return await task();
+  } finally {
+    await release();
+  }
+}
+
+export async function writeGatewayIoLog(
+  entry: GatewayIoLogEntry,
+  root: string,
+): Promise<string | undefined> {
+  if (!isGatewayIoLogEnabled()) return undefined;
+  try {
+    if (
+      !DAY_DIRECTORY.test(entry.startedAt.slice(0, 10)) ||
+      !ARCHIVE_FILE.test(`${entry.gatewayRequestId}.json`)
+    )
+      return undefined;
+    return await enqueueGatewayIoOperation(root, async (directory) => {
+      const dayDirectory = path.join(directory, entry.startedAt.slice(0, 10));
+      await fs.promises.mkdir(dayDirectory, { recursive: true });
+      const stat = await fs.promises.lstat(dayDirectory);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) return undefined;
+      const absolute = path.join(dayDirectory, `${entry.gatewayRequestId}.json`);
+      return await withGatewayFileLock(absolute, async () => {
+        await fs.promises.writeFile(absolute, `${JSON.stringify(entry, null, 2)}\n`, {
+          encoding: "utf8",
+          flag: "wx",
+        });
+        return absolute;
+      });
+    });
+  } catch {
     try {
-      console.error("[gateway] Failed to write gateway I/O log:", error);
+      process.stderr.write("Gateway I/O archive write failed.\n");
     } catch {
       // Observational path; never throw.
     }
@@ -243,78 +317,140 @@ export async function writeGatewayIoLog(entry: GatewayIoLogEntry): Promise<strin
   }
 }
 
-export async function clearGatewayIoLogFiles(): Promise<number> {
-  const directory = getGatewayIoLogDirectory();
-  const entries = await fs.promises.readdir(directory, { withFileTypes: true }).catch(() => []);
-  let removed = 0;
-  for (const entry of entries) {
-    const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      const nested = await fs.promises.readdir(target, { withFileTypes: true }).catch(() => []);
-      for (const file of nested) {
-        if (!file.isFile()) continue;
-        await fs.promises.unlink(path.join(target, file.name)).catch(() => undefined);
-        removed += 1;
-      }
-      await fs.promises.rmdir(target).catch(() => undefined);
+export class GatewayIoLogManagementError extends Error {
+  constructor(
+    readonly removedFiles: number,
+    readonly skipped: string[],
+  ) {
+    super("Gateway I/O archive management skipped unsafe or unavailable files.");
+    this.name = "GatewayIoLogManagementError";
+  }
+}
+
+async function visitGatewayIoFiles(
+  directory: string,
+  visit: (file: string, stat: fs.Stats) => Promise<void>,
+  acceptDay: (day: string) => boolean = () => true,
+  skipped?: string[],
+): Promise<void> {
+  const days = await fs.promises.readdir(directory, { withFileTypes: true });
+  for (const day of days) {
+    const dayDirectory = path.join(directory, day.name);
+    if (!day.isDirectory() || !DAY_DIRECTORY.test(day.name)) {
+      skipped?.push(`${dayDirectory}: unknown archive entry or symbolic link`);
       continue;
     }
-    if (!entry.isFile()) continue;
-    await fs.promises.unlink(target).catch(() => undefined);
-    removed += 1;
+    if (!acceptDay(day.name)) continue;
+    try {
+      const dayStat = await fs.promises.lstat(dayDirectory);
+      if (!dayStat.isDirectory() || dayStat.isSymbolicLink()) {
+        skipped?.push(`${dayDirectory}: not an owned archive directory`);
+        continue;
+      }
+      const files = await fs.promises.readdir(dayDirectory, { withFileTypes: true });
+      for (const file of files) {
+        const absolute = path.join(dayDirectory, file.name);
+        if (!file.isFile() || !ARCHIVE_FILE.test(file.name)) {
+          skipped?.push(`${absolute}: unknown archive file or symbolic link`);
+          continue;
+        }
+        try {
+          const stat = await fs.promises.lstat(absolute);
+          if (!stat.isFile() || stat.isSymbolicLink()) {
+            skipped?.push(`${absolute}: not an owned archive file`);
+            continue;
+          }
+          await visit(absolute, stat);
+        } catch (error) {
+          if (!skipped && (error as NodeJS.ErrnoException).code === "ENOENT") continue;
+          if (!skipped) throw error;
+          skipped.push(`${absolute}: archive operation failed`);
+        }
+      }
+    } catch (error) {
+      if (!skipped && (error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      if (!skipped) throw error;
+      skipped.push(`${dayDirectory}: archive directory operation failed`);
+    }
   }
-  return removed;
+}
+
+async function removeGatewayIoFiles(
+  root: string,
+  acceptDay?: (day: string) => boolean,
+): Promise<number> {
+  return await enqueueGatewayIoOperation(root, async (directory) => {
+    let removed = 0;
+    const skipped: string[] = [];
+    try {
+      await visitGatewayIoFiles(
+        directory,
+        async (file) => {
+          await withGatewayFileLock(file, async () => {
+            const stat = await fs.promises.lstat(file);
+            if (!stat.isFile() || stat.isSymbolicLink()) {
+              throw new Error("Gateway archive file is no longer an owned file.");
+            }
+            await fs.promises.unlink(file);
+            removed += 1;
+          });
+        },
+        acceptDay,
+        skipped,
+      );
+    } catch {
+      skipped.push(`${directory}: archive enumeration failed`);
+    }
+    if (skipped.length > 0) throw new GatewayIoLogManagementError(removed, skipped);
+    return removed;
+  });
+}
+
+export async function clearGatewayIoLogFiles(root: string): Promise<number> {
+  return await removeGatewayIoFiles(root);
 }
 
 export async function pruneGatewayIoLogFiles(
   retentionDays: number,
-  now = new Date(),
+  now: Date,
+  root: string,
 ): Promise<number> {
-  const directory = getGatewayIoLogDirectory();
-  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  cutoff.setDate(cutoff.getDate() - Math.max(1, Math.trunc(retentionDays)) + 1);
-  const cutoffKey = localDateKey(cutoff);
-  const days = await fs.promises.readdir(directory, { withFileTypes: true }).catch(() => []);
-  let removed = 0;
-  for (const dayEntry of days) {
-    if (!dayEntry.isDirectory()) continue;
-    if (dayEntry.name >= cutoffKey) continue;
-    const dayDirectory = path.join(directory, dayEntry.name);
-    const files = await fs.promises.readdir(dayDirectory, { withFileTypes: true }).catch(() => []);
-    for (const file of files) {
-      if (!file.isFile()) continue;
-      await fs.promises.unlink(path.join(dayDirectory, file.name)).catch(() => undefined);
-      removed += 1;
-    }
-    await fs.promises.rmdir(dayDirectory).catch(() => undefined);
-  }
-  return removed;
+  // Archive dates derive from startedAt.toISOString(), so retention uses UTC too.
+  const cutoff = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  cutoff.setUTCDate(cutoff.getUTCDate() - Math.max(1, Math.trunc(retentionDays)) + 1);
+  const cutoffKey = cutoff.toISOString().slice(0, 10);
+  return await removeGatewayIoFiles(root, (day) => day < cutoffKey);
 }
 
-export async function measureGatewayIoLogUsage(): Promise<{
+export async function measureGatewayIoLogUsage(root: string): Promise<{
   fileCount: number;
   totalBytes: number;
   lastWrittenAt?: string;
 }> {
-  const directory = getGatewayIoLogDirectory();
-  const days = await fs.promises.readdir(directory, { withFileTypes: true }).catch(() => []);
+  const directory = path.resolve(getGatewayIoLogDirectory(root));
+  // Await this process's already-enqueued mutations, but never acquire or steal a writer lock.
+  await operations.get(directory)?.catch(() => undefined);
+  let stat: fs.Stats;
+  try {
+    stat = await fs.promises.lstat(directory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { fileCount: 0, totalBytes: 0 };
+    throw error;
+  }
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error("Gateway archive directory is not an owned directory.");
+  }
   let fileCount = 0;
   let totalBytes = 0;
   let lastWrittenMs = 0;
-  for (const dayEntry of days) {
-    if (!dayEntry.isDirectory()) continue;
-    const dayDirectory = path.join(directory, dayEntry.name);
-    const files = await fs.promises.readdir(dayDirectory, { withFileTypes: true }).catch(() => []);
-    for (const file of files) {
-      if (!file.isFile()) continue;
-      const stat = await fs.promises
-        .stat(path.join(dayDirectory, file.name))
-        .catch(() => undefined);
-      if (!stat) continue;
+  try {
+    await visitGatewayIoFiles(directory, async (_file, fileStat) => {
       fileCount += 1;
-      totalBytes += stat.size;
-      lastWrittenMs = Math.max(lastWrittenMs, stat.mtimeMs);
-    }
+      totalBytes += fileStat.size;
+      lastWrittenMs = Math.max(lastWrittenMs, fileStat.mtimeMs);
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   return {
     fileCount,

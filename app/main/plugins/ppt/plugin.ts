@@ -1,3 +1,4 @@
+import type { Logger } from "@agent-harness/logs/logs";
 import type { AgentModelGateway } from "../../agent/gateway";
 import { AgentRunFactory } from "../../agent/runtime/agent-run-factory";
 import { AgentRuntime } from "../../agent/runtime/agent-runtime";
@@ -98,6 +99,7 @@ export function createPptRuntime(
   skills: SkillRegistry = createEmptySkillRegistry(),
   database?: ConversationDatabase,
   resolveLifecycle?: ResolvePptLifecycle,
+  logger?: Logger,
 ): AgentRuntime {
   return new AgentRuntime(
     new AgentRunFactory(
@@ -106,6 +108,8 @@ export function createPptRuntime(
       skills,
       database,
       createPptPlugin(skills, resolveLifecycle),
+      logger,
     ),
+    logger,
   );
 }

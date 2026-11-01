@@ -9,6 +9,7 @@ import { credentialApiKeySchema } from "@agent-harness/configuration/credential-
 import type { RemoteModelInfo } from "@agent-harness/configuration/remote-models";
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
+import { configuredModelAdapter } from "./configured-model-factory.js";
 import type { TerminalSetupIO } from "./host-contract.js";
 import { configuredModels } from "./model-catalog.js";
 
@@ -47,7 +48,7 @@ async function readKey(io: SetupIO): Promise<string | undefined> {
   if ((await io.protection.inspect()).state !== "secure")
     throw setupError("系统凭据保护不可用；不会读取或保存 API Key。");
   for (;;) {
-    const input = await io.secret("MiMo API Key：");
+    const input = await io.secret("API Key：");
     if (input === undefined) return undefined;
     const parsed = credentialApiKeySchema.safeParse(input);
     if (parsed.success) return parsed.data;
@@ -75,16 +76,24 @@ async function discoverModel(
           ? { type: "saved-vendor", vendorId: vendor.id }
           : {
               type: "draft",
-              provider: "openai",
-              baseURL: mimoBaseURL,
-              modelAdapter: "mimo-token-plan-cn",
+              provider: vendor.protocol,
+              baseURL: vendor.baseURL,
+              ...(vendor.kind === "mimo-token-plan-cn" ? { modelAdapter: vendor.kind } : {}),
               apiKey,
             },
         io.signal,
       );
       io.signal.throwIfAborted();
+      const adapterId = configuredModelAdapter(
+        {
+          provider: vendor.protocol,
+          baseURL: vendor.baseURL,
+          openaiApiMode: vendor.models[0]?.openaiApiMode,
+        },
+        vendor.kind === "mimo-token-plan-cn" ? vendor.kind : undefined,
+      );
       models = result.models.filter(
-        (model) => model.supported !== false && getModelSupport(vendor.kind, model.id)?.supported,
+        (model) => model.supported !== false && getModelSupport(adapterId, model.id)?.supported,
       );
     } catch {
       io.signal.throwIfAborted();
@@ -115,6 +124,10 @@ async function chooseVendorModel(
   snapshot: AgentConfigurationSnapshot,
   vendor: VendorConfiguration,
   isNew: boolean,
+  apiMode: "responses" | "chat-completions" = vendor.models[0]?.openaiApiMode ??
+    (vendor.kind === "openai" || vendor.kind === "mimo-token-plan-cn"
+      ? "responses"
+      : "chat-completions"),
 ): Promise<string | undefined> {
   let apiKey: string | undefined;
   const configured = snapshot.credentials.models.some(
@@ -125,7 +138,18 @@ async function chooseVendorModel(
     if (apiKey === undefined) return undefined;
   }
   const localModels = vendor.models.filter(
-    (model) => getModelSupport(vendor.kind, model.model)?.supported,
+    (model) =>
+      getModelSupport(
+        configuredModelAdapter(
+          {
+            provider: vendor.protocol,
+            baseURL: vendor.baseURL,
+            openaiApiMode: model.openaiApiMode,
+          },
+          vendor.kind === "mimo-token-plan-cn" ? vendor.kind : undefined,
+        ),
+        model.model,
+      )?.supported,
   );
   let selected: RemoteModelInfo;
   let selectedLocalId: string | undefined;
@@ -160,7 +184,7 @@ async function chooseVendorModel(
         id: randomUUID(),
         name: selected.displayName ?? selected.id,
         model: selected.id,
-        openaiApiMode: "responses" as const,
+        openaiApiMode: apiMode,
         enabled: true,
       };
   let saved: AgentConfigurationSnapshot;
@@ -223,31 +247,71 @@ export async function ensureConfiguredModel(
   if (snapshot.credentials.storage.state === "unavailable") {
     throw setupError("凭据存储不可用，无法设置 CLI 模型。请先恢复系统凭据存储。");
   }
-  if (
-    mimoMaxOutputTokens !== undefined &&
-    snapshot.settings.gateway.maxOutputTokens > mimoMaxOutputTokens
-  ) {
-    throw setupError("当前输出预算超过 MiMo 上限，请先在配置中调整输出预算。");
-  }
-  const vendors = snapshot.settings.vendors.filter(
-    (vendor) => vendor.kind === "mimo-token-plan-cn",
-  );
+  const vendors = snapshot.settings.vendors;
   const index = await choose(io, "选择厂商/已有连接：", [
-    ...vendors.map((vendor) => `${vendor.label}（MiMo 中国）`),
+    ...vendors.map((vendor) => vendor.label),
     "新建 MiMo Token Plan 中国连接",
+    "新建 OpenAI Responses 连接",
+    "新建 OpenAI Chat Completions 兼容连接",
+    "新建 Anthropic Messages 连接",
   ]);
   if (index === undefined) return undefined;
-  const isNew = index === vendors.length;
-  const vendor: VendorConfiguration = isNew
-    ? {
-        id: randomUUID(),
-        kind: "mimo-token-plan-cn",
-        label: "MiMo Token Plan 中国",
-        protocol: "openai",
-        baseURL: mimoBaseURL,
-        enabled: true,
-        models: [],
+  const isNew = index >= vendors.length;
+  let vendor: VendorConfiguration;
+  let apiMode: "responses" | "chat-completions" | undefined;
+  if (isNew) {
+    const type = index - vendors.length;
+    const anthropic = type === 3;
+    apiMode = type === 2 ? "chat-completions" : "responses";
+    const defaultURL =
+      type === 0
+        ? mimoBaseURL
+        : anthropic
+          ? "https://api.anthropic.com"
+          : "https://api.openai.com/v1";
+    let baseURL = defaultURL;
+    if (type !== 0) {
+      const input = await io.text(`API Base URL（留空使用 ${defaultURL}）：`);
+      if (input === undefined) return undefined;
+      try {
+        const url = new URL(input.trim() || defaultURL);
+        if (
+          !["https:", "http:"].includes(url.protocol) ||
+          url.username ||
+          url.password ||
+          url.search ||
+          url.hash
+        )
+          throw new Error();
+        baseURL = url.href.replace(/\/+$/u, "");
+      } catch {
+        throw setupError("连接地址无效；请使用不含凭据、查询参数或片段的 HTTP(S) 地址。");
       }
-    : vendors[index]!;
-  return chooseVendorModel(management, io, snapshot, vendor, isNew);
+    }
+    vendor = {
+      id: randomUUID(),
+      kind: type === 0 ? "mimo-token-plan-cn" : anthropic ? "anthropic" : "openai",
+      label:
+        type === 0
+          ? "MiMo Token Plan 中国"
+          : anthropic
+            ? "Anthropic Messages"
+            : apiMode === "responses"
+              ? "OpenAI Responses"
+              : "OpenAI Chat Completions",
+      protocol: anthropic ? "anthropic" : "openai",
+      baseURL,
+      enabled: true,
+      models: [],
+    };
+  } else {
+    vendor = vendors[index]!;
+  }
+  if (
+    vendor.kind === "mimo-token-plan-cn" &&
+    mimoMaxOutputTokens !== undefined &&
+    snapshot.settings.gateway.maxOutputTokens > mimoMaxOutputTokens
+  )
+    throw setupError("当前输出预算超过 MiMo 上限，请先在配置中调整输出预算。");
+  return chooseVendorModel(management, io, snapshot, vendor, isNew, apiMode);
 }

@@ -108,7 +108,7 @@ async function rejectLinks(directory) {
   }
 }
 const genericConsumer = `
-import { createLogs } from '@agent-harness/logs/logs';
+import { createLogs, diagnosticValuePreview, sanitizeLogData, type DiagnosticValuePreview } from '@agent-harness/logs/logs';
 import type { Logger, LogRecord, Logs, NodeLogsOptions, NodeLogsSettings } from '@agent-harness/logs/log-contract';
 const records: LogRecord[] = [];
 const logs: Logs = createLogs({ outputs: [{ id: 'capture', minimumLevel: 'debug', exporter: { export(record) { records.push(record); }, async close() {} } }] });
@@ -116,6 +116,9 @@ const logger: Logger = logs.getLogger('consumer').child({ operation: 'compile' }
 logger.info('consumer.ready', { value: document.title });
 const structural: NodeLogsOptions = { directory: 'unused', terminal: { enabled: false }, file: { enabled: true } };
 const settings = (value: NodeLogsSettings): number => value.recent.capacity;
+const preview: DiagnosticValuePreview = diagnosticValuePreview({ title: document.title }, 100);
+const safe = sanitizeLogData({ title: document.title });
+void preview; void safe;
 void structural; void settings; void logs.close();
 `;
 const nodeConsumer = `
@@ -126,14 +129,15 @@ const records: LogRecord[] = [];
 const logs = createLogs({ outputs: [{ id: 'capture', minimumLevel: 'info', exporter: { export(record) { records.push(record); }, async close() {} } }] });
 const logger: Logger = logs.getLogger('consumer');
 const node: NodeLogs = await createNodeLogs({ directory: 'unused', terminal: { enabled: false }, file: { enabled: true } });
-void logger; void node; void logs;
+const resetting: Promise<number> = node.reset();
+void logger; void resetting; void logs;
 `;
 const runtimeSource = `
 import assert from 'node:assert/strict';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createLogs } from '@agent-harness/logs/logs';
+import { createLogs, diagnosticValuePreview, sanitizeLogData } from '@agent-harness/logs/logs';
 import { createNodeLogs } from '@agent-harness/logs/node-logs';
 for (const entry of ${JSON.stringify(entries)}) {
   const specifier = '@agent-harness/logs/' + entry;
@@ -151,7 +155,7 @@ const logs = createLogs({ outputs: [
 const context = { operation: 'before', sessionId: 'session', step: 1 };
 const borrowed = logs.getLogger('acceptance').child(context);
 context.operation = 'after';
-for (const key of ['close', 'getStatus', 'updateSettings', 'clearFiles', 'getLogger']) assert.equal(key in borrowed, false);
+for (const key of ['close', 'getStatus', 'updateSettings', 'clearFiles', 'reset', 'getLogger']) assert.equal(key in borrowed, false);
 const nested = { value: 'before' };
 const data = { nested, password: 'private-password-value', url: 'https://user:private-userinfo@example.test/?token=private-query-value', text: 'Bearer private-bearer-value' };
 let getterCalls = 0;
@@ -173,6 +177,14 @@ assert.equal(typeof record.instanceId, 'string');
 assert(Object.isFrozen(record) && Object.isFrozen(record.context) && Object.isFrozen(record.data));
 const serialized = JSON.stringify(record);
 for (const secret of ['private-password-value', 'private-userinfo', 'private-query-value', 'private-bearer-value']) assert(!serialized.includes(secret), 'Secret survived logging transform');
+const safe = sanitizeLogData(data);
+const preview = diagnosticValuePreview(data, 65536);
+assert.deepEqual(JSON.parse(preview.preview), JSON.parse(JSON.stringify(safe)));
+assert.equal(getterCalls, 0);
+assert(!JSON.stringify(preview).includes('private-password-value'));
+assert(!JSON.stringify(preview).includes('private-userinfo'));
+const binary = 'ImagePayloadAbc012+/'.repeat(100);
+assert(!diagnosticValuePreview({ imageBase64: binary, image: 'data:image/png;base64,' + binary }, 65536).preview.includes('ImagePayloadAbc012'));
 const failure = logs.getStatus().outputs.find((output) => output.id === 'failure');
 assert.equal(failure.failureCount, 1);
 assert.equal(failure.lastFailure.operation, 'export');
@@ -220,11 +232,24 @@ try {
   assert.equal(await readFile(currentPath, 'utf8'), currentBeforeClear);
   logger.error('node.after_clear');
   assert((await node.getFileStatus()).totalBytes > 0);
+  assert.equal(await node.reset(), 1);
+  assert.equal(node.getRecentEntries().length, 0);
+  assert.equal((await node.getFileStatus()).fileCount, 0);
+  logger.error('node.after_reset');
+  assert.equal(node.getRecentEntries()[0].event, 'node.after_reset');
+  assert.equal(node.getRecentEntries()[0].context.operation, 'file');
+  assert.equal((await node.getFileStatus()).fileCount, 1);
+  const afterReset = (await readFile(currentPath, 'utf8')).trim().split('\\n').map((line) => JSON.parse(line));
+  assert.deepEqual(afterReset, JSON.parse(JSON.stringify(node.getRecentEntries())));
+  assert.equal(afterReset.length, 1);
+  assert.equal(afterReset[0].event, 'node.after_reset');
+  assert.equal(afterReset[0].context.operation, 'file');
 } finally { await node.close(); }
 await node.close();
 assert.equal(node.getStatus().state, 'closed');
 await assert.rejects(node.updateSettings({ recent: { capacity: 3 } }));
 await assert.rejects(node.clearFiles());
+await assert.rejects(node.reset());
 console.log(JSON.stringify({ publicEntries: 'resolved', privateImports: 'rejected', oldAliases: 'absent', snapshotsAndSecurity: true, exporterFailureContained: true, borrowedLoggerHasNoManagement: true, ownedExportersClosedOnce: true, nodeFileRecentSettingsClear: true }));
 `;
 

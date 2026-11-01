@@ -171,7 +171,7 @@ npm.cmd run dev
 
 启动后，在桌面应用里打开 **Settings -> 模型**，配置模型供应商、API Key、端点、超时、输出上限和 fallback 模型。
 
-模型与搜索 API Key 由 Main 的 `agent-configuration` 模块托管，并由 Electron `safeStorage` 的正常后端加密后保存在应用数据目录。Renderer 的持久化设置、`localStorage` 和 Agent run IPC 不含 Secret；Renderer 只在录入时短暂持有 Key，通过配置管理命令明确执行保留、替换或清除操作，不能读取已保存的明文。Linux 的 `basic_text` 后端仍可使用，但会明确标记为 `degraded`。旧版 v1 `localStorage` 中的明文 Key 不会自动导入；升级后需要重新录入，并建议轮换旧 Key。开发环境仍支持 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 和 `TAVILY_API_KEY` fallback；环境 Key 只会发送到官方端点，或与对应 `OPENAI_BASE_URL`、`ANTHROPIC_BASE_URL`、`TAVILY_SEARCH_ENDPOINT` 明确绑定的端点。携带凭据的远程端点必须使用 HTTPS，只有 loopback 开发服务可使用 HTTP。开发诊断和 CI 覆盖项可以参考 [.env.example](./.env.example)。
+模型与搜索 API Key 由 `@agent-harness/configuration` 托管，Main 的桌面适配由 Electron `safeStorage` 的正常后端提供保护，仍保存在原应用数据目录。Renderer 的持久化设置、`localStorage` 和 Agent run IPC 不含 Secret；Renderer 只在录入时短暂持有 Key，通过配置管理命令明确执行保留、替换或清除，不能读取已保存明文。Linux 的 `basic_text` 后端保持 `degraded` 标记。旧版 v1 `localStorage` 明文 Key 不自动导入，升级后需重新录入并建议轮换。桌面开发环境继续支持 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`TAVILY_API_KEY` fallback，只发往官方或显式绑定的端点；携带凭据的远程端点必须使用 HTTPS，仅 loopback 开发服务可用 HTTP，见 [.env.example](./.env.example)。CLI 则使用独立数据根和 Windows DPAPI，不自动导入桌面凭据。
 
 如需让 Agent 联网调研，请在 **Settings -> 搜索与联网** 填写 Tavily API Key。开发环境也可设置 `TAVILY_API_KEY`；搜索结果会以标题、URL 和摘要返回给主 Agent 及任务图 teammate。
 
@@ -237,12 +237,12 @@ PPTX exporter (hybrid: SVG background + editable text)
   - `model/`：模型中立消息、能力声明、私有重放状态、按 provider ID 注册的模型工厂；增加厂商不在循环中新增分支。
   - `tools/`：注册、输入/输出校验、宿主强制授权、审批与续传；业务依赖由插件闭包捕获，业务结果、模型内容、展示投影分别持久化。
   - `session/`：历史条件追加与幂等批次收据、版本化检查点、写租约、世代围栏和显式接管；`extensions/`：插件安装、模型/工具/提示词贡献及作用域清理。
-- `app/main/agent-host/`：新内核的桌面平台与宿主适配，不从内核反向导入业务；开发入口仍借用 Electron 的生命周期和加密凭据存储。
-  - `createSqliteAgentStores(filePath)` 使用独立 SQLite 表持久保存历史、批次收据和检查点，不迁移或替换旧生产数据库。独立 Node 运行需要支持 `node:sqlite` 的版本（Node 22.13+；项目开发使用 Node 24）。
-  - `createAgentHost()` 在独立数据库中绑定会话、规范工作目录、工具模式、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 只接受已签发且已接入的原生适配器，当前为 `mimo-token-plan-cn`。其他配置在凭据解析前以 `MODEL_ADAPTER_UNSUPPORTED` 拒绝，不再提供 Gateway 桥接或备用模型回退。
-- `cli/`：终端命令、模型配置向导与交互执行流程；桌面侧通过窄端口提供平台能力。根命令 `npm run agent:dev` 不变，当前仍由 Node 启动 Electron 桥接进程，不代表纯 Node CLI 已独立。
+- `cli/host/`：真实 Node 宿主，拥有配置选择、模型准备、SQLite、能力装配、会话目录与关闭；不依赖 Electron、app 或根 src。
+  - `createSqliteAgentStores(filePath)` 持久保存规范历史、稳定批次收据、检查点和租约；CLI 使用自己的 `sessions.sqlite`，不迁移桌面库。Node 运行要求 >=24。
+  - `createAgentHost()` 绑定规范工作目录、工具模式、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 只接受配置模块签发且已接入的原生适配器，不回退旧 Gateway。无插件、只读和读写均为真实运行配置。
+- `cli/terminal/`：单输入 owner、Composer/选择器、流式临时 viewport、安全工具摘要、TUI/print/JSONL；终端展示记录不是规范历史。`cli/main.ts` 是生产与开发共同的 Node 入口。
 - `app/preload/`、`app/shared/ipc.ts`：桌面 IPC 桥接与协议；文件能力通过 tools 包消费，其余共享/领域代码按职责归属，不将整个原 `src/` 视为 Electron 应用。
-- `packages/models/`：私有单包 `@agent-harness/models@0.1.0`，厂商是包内模块，不一厂商一包。`models` 子路径的 `createModelProvider(options, signal)` 按 adapterId 懒加载实现；`model-profiles` 提供浏览器安全资料，`model-contract` 提供公共类型，`model-errors` 提供统一安全错误。当前真实适配器为 MiMo Token Plan CN，保留固定地址、Responses、发现、流式、工具和私有重放；已知型号为 Flash、Pro、Pro Ultraspeed，未知项明确不支持。模型执行协议与注册仍由 Core 拥有，凭据来源/配置/连接指纹仍由宿主拥有。
+- `packages/models/`：私有单包 `@agent-harness/models@0.1.0`，厂商是包内模块，不一厂商一包。`models` 子路径的 `createModelProvider(options, signal)` 按 adapterId 懒加载实现；`model-profiles` 提供浏览器安全资料，`model-contract` 提供公共类型，`model-errors` 提供统一安全错误。已实现 `mimo-token-plan-cn`、`openai-chat-completions`、`openai-responses`、`anthropic-messages`，统一支持生成、流式、工具、发现与私有重放；后三者可配置 baseURL，MiMo 保留固定 CN 地址及已知型号白名单。能力资料表示协议支持，不保证远端任意型号可用。模型执行协议与注册仍由 Core 拥有，凭据来源/配置/连接指纹仍由宿主拥有。
   - `npm run build:models` 构建模型包及其 workspace 前置，`npm run verify:models-package` 在仓库外离线安装真实 tarball，执行真实 SDK 到本地 HTTP/SSE、声明与错误边界验收。资料入口不加载 SDK 或 Node 工厂；提供方关闭不关闭借用 Logger。旧 `src/models` 工厂与错误类已删除，无兼容路径，生产旧 Gateway 与其 SDK 依赖仍保留。
 - `packages/tools/`：私有 `@agent-harness/tools@0.1.0`，Node >=24、ESM-only。`tools` 入口提供 `createTools({ workspaceRoot, mode }, logger?)` 与严格的 `prepareWorkspaceRoot()`；`tools-contract`、`tools-errors` 是浏览器安全的类型/错误入口。默认只读，读写模式再安装 write/edit，插件不自行授权；schema、单工具工厂、Workspace、路径与提交机制保持私有。
   - `read` 按 UTF-16 单元分页（默认最多 4000 单元），后续窗口必须携带 `expectedVersion`；完整观察同一文件版本后才能替换或编辑。`write` 显式区分 `create` 与带版本的 `replace`，`edit` 使用精确文本匹配。读取记录按安装隔离，重启丢失记录后要求重新读取。
@@ -253,13 +253,13 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `packages/logs/`：私有 workspace 包 `@agent-harness/logs@0.1.0`，Node >=24、ESM-only、无运行依赖，与 Harness 并列且互不依赖。通过 `@agent-harness/logs/logs` 的 `createLogs()` 创建通用实例，通过 `@agent-harness/logs/node-logs` 的 `createNodeLogs()` 使用 stderr、按日 JSONL、近期环形缓冲与管理；窄协议由 `@agent-harness/logs/log-contract` 提供，不导出内部路径。尚未替换旧 logger、Harness 埋点或现有日志面板。
   - Logger 只负责记录与绑定上下文；输出配置、清理与关闭归宿主。记录先做有界快照和凭据遮蔽再分发，单个输出失败不阻止其他输出，日志不能替代规范历史或检查点。
   - 文件写入显式根下的 `<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，日期使用 UTC；保留与清理仅处理当前实例的托管旧日文件，不读写旧日志、应用设置或 Gateway 归档。
-  - `npm run build:packages` 按顺序构建 Core、logs、models 与 tools；应用/测试/开发入口在消费前构建，dev 等待四包首次 emit 并持续监听。`npm run verify:logs-package` 验证真实 tarball 的仓库外独立安装、原生 Node 行为及通用声明闭包；日志包不管理应用配置持久化，不提供全局单例或自动服务发现。
+  - `npm run build:packages` 顺序构建 Core、logs、models、tools 与 configuration；桌面 dev 等待五包首次 emit 并持续监听。`npm run verify:logs-package` 验证日志 tarball 的独立消费；日志包不拥有配置持久化或全局实例。
 - `app/main/agent/`：Agent runtime、工具注册、模型网关、审批门禁、子任务
-- `app/main/agent-configuration/`：通过 `createAgentConfiguration()` 提供 `management` 和 `runtime` 两套操作，不公开 Store、凭据绑定或解密接口。
-  - Renderer 只使用管理 IPC：读取无密钥快照、初始化、保存/删除厂商、保存执行偏好、修改搜索凭据、发现远程模型。厂商保存完成后才发布已提交状态；历史浏览器配置只读迁移，Main 初始化成功后清理。
-  - 运行请求只按 `modelId` 选模：`loadExecutionPlan(modelId)` 固化本次模型和执行偏好，受理后 `resolveRuntime(plan)` 读取匹配凭据并应用环境回退；网关和搜索服务不再自行读取环境配置。缺失的可选搜索/备用密钥不提前阻塞主模型。
-  - 已保存连接的模型发现仅接收 `vendorId`，地址与密钥由 Main 决定；连接草稿必须提供临时 Key。修改协议或地址不会将旧 Key 重新绑定到新连接。
-  - 保留 `agent-settings.json`、`credentials.v2.json` 及原有迁移和凭据锁；整项管理操作串行协调，但不承诺两个文件之间的原子事务。模块外只能导入公共入口。
+- `packages/configuration/`：私有 `@agent-harness/configuration`，内聚配置协议、管理、计划签发、默认存储和窄凭据保护端口；以精确子路径消费，不公开 Store 或解密接口。
+  - Renderer 只消费纯协议及管理 IPC；`app/main/agent-configuration/` 只保留桌面组合、safeStorage 保护适配与 IPC。厂商保存完成后才发布已提交状态；原桌面浏览器迁移行为保持。
+  - 运行请求按 `modelId` 选模，`resolveRuntime(plan)` 只能接收同一运行时签发的原对象；凭据和原生 SDK 不进入 Core 或 renderer。已保存连接的发现只接收 vendorId，草稿发现需要临时 Key。
+  - Windows Node 保护使用 CurrentUser DPAPI，固定脚本与私有管道，不将秘密放入 argv、环境或明文临时文件。Node 密文使用显式方案/版本，拒绝跨后端解释；桌面原 v2 存储与迁移行为保持。
+  - 完整配置变更跨进程串行，避免两个 CLI 的 read-modify-write 丢失连接；不承诺设置与凭据两个文件具备原子事务。缺失配置的纯读取不创建目录或锁。
 - `src/design-system/`：DesignSystemV2 schema、预设与解析
 - `src/shared/`：尚未进一步归属的演示文稿、命令、配置与会话契约；桌面 IPC 协议已归 `app/shared/ipc.ts`，不将该目录视为可任意复用的公共包。
 - `app/main/project/`：本地项目沙箱、产物读写、diff 和依赖状态
@@ -276,13 +276,13 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 宿主显式装配 `AgentServices`（模型工厂、授权策略、历史和检查点），调用 `createAgentApplication(services)`，通过 `application.agents.create()` 提供定义、模型选择、步数预算和插件。业务工具在插件 `setup()` 中注册；内核只调用协议，不读取 Presentation、workspace 服务或厂商配置。关闭顺序为先 `application.close()`，再关闭宿主拥有的存储和连接。
 
-需要固定 Thread 并校验宿主恢复边界时，从 `@agent-harness/core/session-host` 导入 `createSessionHost({ services, agent, threadId, binding })`：先等待必需的 `binding.ensure()`，再从公开 Application 创建 Agent。定义、模型、插件和授权均显式提供；`plugins: []` 不依赖工作区或 Electron。SessionHost 只拥有自己的 Application，关闭后不释放借用端口，`resume()` 不接受接管租约。当前 Electron 组合根通过 `workspace-configuration.ts` 选择文件能力、指令和审批策略，继续保存原 v2 绑定；CLI 使用方式与生产 PPT 链路不变。
+需要固定 Thread 并校验宿主恢复边界时，从 `@agent-harness/core/session-host` 导入 `createSessionHost({ services, agent, threadId, binding })`：先等待 `binding.ensure()`，再从公开 Application 创建 Agent。定义、模型、插件和授权均显式提供；`plugins: []` 不依赖工作区或 Electron。SessionHost 只拥有自己的 Application，不关闭借用端口，`resume()` 不接受接管租约。当前 Node CLI 宿主负责普通对话/文件配置与固定权限环境，生产 PPT 链路仍保留旧执行链。
 
 完整包子路径见 [M2-B 清单](docs/next-steps/m2-b-package-boundary.md#m2-b-独立包边界与实际消费)，当前名称与切换证据见[通用包身份修正](docs/next-steps/package-identities.md#通用包身份修正)。`PluginContext.scope` 只提供 `PluginScope.signal/own()`，不暴露内部资源树的创建与关闭；错误使用 `@agent-harness/core/protocol-errors` 的同一 `AgentError`，无损 JSON 快照与值比较由 `@agent-harness/core/protocol-values` 提供。`ToolCompletion` 是事件/存储公共数据，`ToolExecutor` 与执行管线仍为内部协议。没有根导出、通配导出、源码别名或旧包名兼容层。
 
 `npm run check:agent-boundaries` 在包自身、node/web 三个 TypeScript 项目中校验源码与声明闭包、反向依赖、精确子路径及实际解析目标；只有指定行为测试可白盒导入同一 dist 实体。三斜线引用、继承和泛型条件类型的来源也参与检查。`typecheck` 和 `build` 自动包含该检查；它不是恶意插件沙箱。
 
-安装依赖会建立 workspace 链接；`npm run build:harness` 独立构建包。应用构建、测试、开发 CLI 和 preview 在消费前构建包，`npm run dev` 等待首次成功 emit 后持续监听包源码及 Main 使用的 JS 产物。`npm run verify:harness-package` 打包 tarball，在仓库外离线安装并验证原生 Node 行为及 NodeNext/Bundler 声明消费；`npm run test:integration:harness` 运行现有两个真实 Electron CLI 集成文件。本轮未发布 npm registry，也未切换生产 UI/PPT。
+安装依赖会建立 workspace 链接；`npm run build:harness` 可独立构建 Core。应用构建、测试及开发入口消费构建产物；`npm run dev` 等待首次成功 emit 并监听包源码与 Main 使用的 JS。`npm run verify:harness-package` 验证真实 tarball 的独立消费；`npm run test:integration:harness` 包含真实 Node CLI 的本地 HTTP/SSE 与 Windows DPAPI 场景，不代表远程厂商或生产 UI/PPT 验收。
 
 - 同一 Agent 同时只接受一次 `run()` 或 `resume()`，不隐式排队。`handle.events` 仅供单消费者观察；不消费或退出事件流都不会取消执行。
 - `waiting` 会保存交互和续传数据，结束本次 Run 并释放租约。回答只能匹配持久化交互，恢复必须提供新的 `runId`；不接收前端重建的执行快照。线程有未完成 Query 时，新请求不能越过它。
@@ -292,50 +292,51 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 新链路的回归入口为 `tests/base-tools.test.ts`、`tests/mimo-token-plan-cn.test.ts` 与 `tests/general-agent-*.test.ts`，覆盖真实文件、SQLite、原生 SDK 到本地 HTTP/SSE 的传输、生命周期、工具授权与恢复边界。远程厂商推理需要另外配置凭据；这些本地验证不代表已经完成远程 LLM 或生产 UI 的切换验证。
 
-### 独立通用 Agent 开发入口
+### 生产 Node CLI
 
-启动循环对话，或使用 `--prompt` 执行一次任务：
+需要 Node >=24。先构建一次，再直接运行生产入口；交互初始化需 Windows 安全终端与 CurrentUser DPAPI：
 
 ```powershell
-npm.cmd run agent:dev
-npm.cmd run agent:dev -- --prompt "读取 notes.txt 并概括内容"
+npm.cmd run build:cli
+npm.cmd run agent
+npm.cmd --silent run agent -- --prompt "概括这个工作区" --output jsonl
+npm.cmd run agent -- --prompt "普通对话" --tools none --print
+npm.cmd run agent -- --thread "<threadId>" --resume "<queryId>"
 ```
 
-只保留 `--prompt`、`--help`（`-h`）启动参数。工作区为启动命令所在目录，不需要手填模型或会话 ID。没有可用的 CLI 默认模型时自动进入逐行向导：选择厂商/已有连接 → 输入 API Key → 选择该厂商的模型 → 保存连接与 CLI 默认模型。已有连接可直接选择已保存模型或发现远程模型，新增连接先发现、选定后保存。配置完成后继续原 `--prompt`，或进入循环；非交互输入缺少默认模型时明确退出，不把管道内容当作凭据。
+`npm run agent:dev` 编译并运行同一套入口，使用独立开发数据根和临时 emit，不启动 Electron、不占用第二个 stdin owner，也不替换生产 `cli/dist`。`npm run build` 同时生成 CLI 与桌面产物。机器消费可直接调用 `node cli/dist/main.js`，或使用 `npm --silent run agent -- ...`，避免 npm 自身的命令 banner 混入 stdout。
 
-API Key 按当前交互约定明文回显，会留在终端滚动记录中；不另写明文配置，不记录到执行历史或诊断，保存仍经过现有配置模块与加密凭据存储。“本地配置就绪”不表示远程鉴权、额度或生成已验证。向导仅显示已接入的厂商，当前为“MiMo Token Plan 中国”，固定使用 `https://token-plan-cn.xiaomimimo.com/v1`；其他连接（包括同 URL 的 custom）不会自动升级，也不回退旧 Gateway。新入口不创建窗口、不启动 Renderer 或 PPT 服务。
-
-循环内的操作：
+没有默认模型时，交互入口选择连接 → 隐藏输入 Key → 发现并选择受支持模型 → 保存连接和 CLI 默认模型；安全输入/保护不可用则在收集秘密前失败。print、JSONL、一次性 prompt 不弹出配置或审批菜单，缺配置明确报错。向导可新建 MiMo、OpenAI Responses、OpenAI Chat Completions 兼容和 Anthropic Messages 连接，也可复用已保存连接；普通连接按 provider/openaiApiMode 选择新适配器，不回退旧 Gateway。OpenAI 默认地址带 `/v1`，Anthropic 默认地址为 `https://api.anthropic.com`，由 SDK 添加 `/v1/messages`。MiMo 仍固定 CN 地址，自定义连接不自动升级为 MiMo。“配置就绪”不是远程鉴权或额度成功证明。协议映射、官方来源与本地验收见[协议补齐记录](docs/next-steps/models-package.md#13-旧-gateway-协议接入新模型端口)。
 
 | 命令 | 行为 |
 | --- | --- |
-| `/model` | 按厂商选择/配置模型，保存 CLI 默认选择；确认后新建会话，旧历史保留 |
-| `/new` | 按当前模型和工具模式新建会话 |
-| `/resume` | 选择当前工作区的历史会话，加载公开文本和原绑定；有未完成 Query 时恢复它 |
-| `/tools` | 选择只读或读写；实际变更需确认并新建会话，不改写旧绑定 |
-| `/help`、`/exit` | 显示帮助、退出 |
+| `/model`、`/new` | 选择真实已配置模型或创建会话；明确确认，新建绑定而非迁移旧 Query |
+| `/resume` | 查询当前工作区的权威会话目录并恢复；原连接/定义/权限/预算不匹配则拒绝 |
+| `/tools` | 选择无插件、只读或读写；确认后新建会话，不改变旧绑定 |
+| `/tools-output`、Ctrl+O | 选择/展开安全工具元数据，status/effects 分列；不 dump 输入、结果或私有展示载荷 |
+| `/help`、`/hotkeys`、`/status` | 查看帮助、按键及实际模型/能力/数据目录 |
+| `/paste`、`/exit` | 显式多行后备；独立行 `/end` 提交，`//end` 为正文；退出保留 waiting |
 
-默认只读，安装 `read/glob/grep`；循环中使用 `/tools` 选择读写后增加 `write/edit`。两种模式下，工作区内 `read/glob/grep` 均自动允许；`write/edit` 仍逐次要求 `yes` / `no` / `cancel`，未启用读写模式时不可调用。自动允许不绕过路径、UTF-8、大小或版本校验：只允许工作目录内的常规 UTF-8 文本文件，默认单文件最多 64 KiB，超限不截断；分页读取、发现和搜索不创建目录、锁或恢复旧写入事务，也不初始化 PPT 项目产物。
+交互是 inline TUI，不使用备用屏幕，不清空滚动历史；模型文本增量只进入临时 viewport，权威完成结果结算一次。Composer 支持多行、中文/emoji 字素编辑、Alt+Enter、整块 bracketed paste；运行中可以编辑但不能提交或排队。命令补全只接受候选，不顺便发送；Esc 先关闭局部 UI，Ctrl+C 清草稿或取消当前 Query，空草稿 Ctrl+D 正常退出。`NO_COLOR`/`--no-color` 只关颜色；无必要 TTY、TERM=dumb 或尺寸不足降级 plain。
 
-既有真实厂商证据仍限于实际 CN `mimo-v2.6-flash` 的 `high` 问答、流式取消、文件审批与新进程恢复；本次向导和命令切换的验证使用真实 Electron/safeStorage 与本地 HTTP/SSE，不代表增加了 Pro、其他档位或生产聊天的远程验收。具体既有证据见 [MiMo 实施记录](docs/mimo-token-plan-cn.md#11-实施与验收记录2026-10-31)。
+默认只读安装 read/glob/grep，并由宿主允许读取；读写再安装 write/edit，写入逐次要求明确选择与完整 interactionId。plain 回答格式为 `allow <interactionId>`、`reject <interactionId>`、`cancel <interactionId>`，`exit` 保留等待；未知载荷不能猜回答。工具继续校验工作区、路径、UTF-8、大小、完整读取与版本，审批不替代这些边界。
 
-执行事实与结果保留逐行 JSON，包含 thread/query/run ID、公开事实和最终文本；向导、菜单、输入提示和终端回显为可读文本。不打印原始 SDK 异常、完整工具结果、reasoning 或私有重放状态。新链路不加载旧 Gateway、旧 logger 或 Gateway IO 归档。Node 启动器拥有输入，通过父子 IPC 传入 Electron，并传递启动目录和终端信息，避免 Windows Main 丢失标准输入。
+输出显式分离：交互 TUI；人类 print/plain（stdout 仅权威正文、stderr 进度/错误）；`--output jsonl`（stdout 只有 TerminalRecord v1，不含 delta、回显、菜单或 ANSI）。非 TTY 且无 prompt/resume 时，整段 stdin 到 EOF 是一份正文，斜杠不作命令；`--prompt` 不消费管道作为审批。
 
-宿主拥有 `NodeLogs`，模型与 tools 仅借用 Logger；按 Agent 排空 → provider → stores → Logs 顺序关闭。新诊断写入配置根下 `agent-development-logs/<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，不记录模型正文、工具载荷或凭据，且遮蔽 `tp-` / `ttp-` 形态。模型日志通过 `ModelCallContext` 关联 Run/request/step，不将诊断上下文写进请求体或检查点。
+等待 EOF/保留退出为 **3**，恢复使用同一 Query、新 Run 和原权限环境；交互取消后留在会话。退出码：0 完成/正常退出，1 执行/持久化/输出/关闭失败，2 参数错误，130 确认的用户取消或显式中止，143 宿主终止，141 下游 EPIPE（没有更高错误时）。观察到 run.completed 不等于已清理成功；完成拒绝与关闭失败仍非 0，不能自动重试副作用。
 
-MiMo 不做应用层或 SDK 重试（`maxRetries=0`），不换域名或降级；Node Fetch 仍可能按 HTTP 规范内部重传 421，不能承诺底层绝无重传。
+生产数据默认 `~/.agent-harness/cli`，开发默认 `~/.agent-harness/cli-development`，显式 `AGENT_HARNESS_CLI_DATA_DIR` 可覆盖。配置、受保护凭据、`sessions.sqlite` 和 `logs/` 不与桌面共用；不会自动迁移或删除 `.agent-ppt` 的旧 CLI/桌面数据，也不提供旧入口兼容层。相同连接的密钥轮换可恢复，连接/权限环境变化必须新建会话；异常活跃租约不自动接管。
 
-写入等待审批时关闭输入（EOF）会保留 `waiting`。重启进入循环后输入 `/resume`，按编号选择原会话；无需手工携带 Thread 或 Query ID。权限调整前已经持久化的只读审批仍需回答一次，不会被新策略自动批准；后续只读调用不再询问。
+宿主按停止受理 → SessionHost 排空 → 模型 → 存储 → 日志关闭；模型和 tools 借用 Logger。诊断不记录模型正文、工具载荷或凭据。MiMo 不做应用层/SDK 重试；Node Fetch 仍可能按 HTTP 规范内部重传 421，不能承诺底层绝无重传。
 
-恢复会重新展示已存储的交互，再接收回答；每次激活生成新 `runId`。Ctrl+C 取消当前请求（退出码 130）；正常关闭中断执行，已保存等待不丢失。完成/等待退出码为 0，执行失败为 1，参数错误为 2，中断为 143；退出码 0 不代表 `waiting` 已完成，应检查结果的 `status`。
-
-配置根沿用 `getApplicationDataRoot()`：默认 `~/.agent-ppt`，可通过 `AGENT_PPT_DATA_DIR` 指向独立开发配置。CLI 首次设置会初始化配置，默认模型保存在 `agent-settings.json` 的 `cli.defaultModelId`，不改变生产 UI 当前选择。历史、检查点与宿主绑定保存在该根目录的 `agent-development.sqlite`，不写生产会话库。恢复加载原模型和工具模式，精确匹配连接指纹，保持原 Agent、工作目录、定义/插件版本和预算；不会用当前默认值覆盖原绑定。现有 v2 绑定继续支持，不靠原生模型名称猜配置 ID。同连接密钥轮换允许，连接或目录变化需新建会话。旧版 `ReadFile` 绑定仍明确拒绝。异常强杀留下的活跃租约不自动接管。
-
-除 `npm run typecheck`、`npm test` 外，可单独运行真实 Electron/加密凭据/本地 HTTP 回归（不需要远程厂商 Key；Linux 需要图形环境）：
+定向验证：
 
 ```powershell
-npx.cmd vitest run tests/general-agent-development-cli.integration.test.ts tests/mimo-development-cli.integration.test.ts
+npm.cmd run test:integration:harness
+npx.cmd vitest run tests/cli-terminal-controller.test.ts tests/cli-terminal-input.test.ts tests/cli-terminal-rendering.test.ts
 ```
+
+Windows DPAPI、本地 SDK/HTTP、真实 ConPTY 与本轮 4 次 MiMo 远程请求的分层证据见 [CLI 实施记录](docs/next-steps/cli-terminal.md#84-生产直切实施与验收记录)。远程仅验收 `mimo-v2.6-flash` 的小范围普通对话与文件审批恢复，不泛化到全部型号/档位；生产聊天/PPT 未切换。
 
 ## 本地文件与隐私
 

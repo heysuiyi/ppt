@@ -21,6 +21,12 @@
       "packages/tools/build.mjs",
       "scripts/check-tools-boundaries.mjs",
       "scripts/verify-tools-package.mjs",
+      "tests/fixtures/general-agent-reliability-entry.mjs",
+      "scripts/check-cli-boundaries.mjs",
+      "scripts/run-agent.mjs",
+      "packages/configuration/build.mjs",
+      "cli/build.mjs",
+      "tests/fixtures/node-cli-entry.mjs",
       "!**/node_modules",
       "!**/dist",
       "!**/out",
@@ -99,8 +105,13 @@
               "options": {
                 "patterns": [
                   {
-                    "group": ["**/agent-configuration/**", "@main/agent-configuration/**"],
-                    "message": "Import the public agent-configuration entry point, not its implementation."
+                    "group": [
+                      "**/agent-configuration/**",
+                      "@main/agent-configuration/**",
+                      "!**/agent-configuration/desktop-configuration",
+                      "!**/agent-configuration/ipc"
+                    ],
+                    "message": "Use the configuration package; only the named desktop composition and IPC adapters are application entry points."
                   }
                 ]
               }

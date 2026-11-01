@@ -25,21 +25,41 @@ export interface PreparedConfiguredModel extends Disposable {
   readonly maxSteps: number;
 }
 
+/** 普通连接按已保存协议路由；MiMo 的专用身份由配置计划或厂商类型明示。 */
+export function configuredModelAdapter(
+  model: Pick<AgentModelSelection, "provider" | "openaiApiMode" | "baseURL">,
+  nativeAdapter?: ModelAdapterId,
+): ModelAdapterId {
+  if (nativeAdapter !== undefined) return nativeAdapter;
+  if (model.provider === "anthropic") return "anthropic-messages";
+  return model.openaiApiMode === "responses" ||
+    (model.openaiApiMode === undefined && !model.baseURL)
+    ? "openai-responses"
+    : "openai-chat-completions";
+}
+
 /** 宿主用同一连接身份关联已存会话；不解析凭据，也不创建模型客户端。 */
 export function configuredModelFingerprint(
   configuredModelId: string,
   model: AgentModelSelection,
   maxOutputTokens: number,
+  adapterId: ModelAdapterId = configuredModelAdapter(model),
 ): string {
-  const profile = getModelProfile("mimo-token-plan-cn");
-  if (profile?.endpoint?.kind !== "fixed")
-    throw new AgentError("MODEL_CONFIGURATION_FAILED", "MiMo 必须使用固定 CN Responses 连接。");
+  const profile = getModelProfile(adapterId);
+  if (!profile) throw new AgentError("MODEL_ADAPTER_UNSUPPORTED", "不支持该模型适配器。");
+  const baseURL =
+    profile.endpoint?.kind === "fixed"
+      ? profile.endpoint.url
+      : (
+          model.baseURL ||
+          (profile.endpoint?.kind === "configurable" ? profile.endpoint.defaultURL : undefined)
+        )?.replace(/\/+$/u, "");
   return createHash("sha256")
     .update(
       JSON.stringify({
         adapter: profile.adapterId,
         replayVersion: 1,
-        baseURL: profile.endpoint.url,
+        baseURL,
         configuredModelId,
         configurationId: model.configurationId ?? null,
         vendorId: model.vendorId ?? null,
@@ -75,7 +95,7 @@ export async function prepareConfiguredModel(
     const plan = await runtime.loadExecutionPlan(configuredModelId);
     signal.throwIfAborted();
     // 先检查签发的适配器身份，不为不支持的配置解析凭据或创建旧执行路径。
-    if (!plan.modelAdapter || !getModelProfile(plan.modelAdapter)) {
+    if (plan.modelAdapter !== undefined && !getModelProfile(plan.modelAdapter)) {
       throw new AgentError(
         "MODEL_ADAPTER_UNSUPPORTED",
         "所选模型尚无可用的原生适配器，请选择已接入的原生模型配置。",
@@ -84,7 +104,7 @@ export async function prepareConfiguredModel(
     const resolved = await runtime.resolveRuntime(plan);
     signal.throwIfAborted();
     settings = { ...resolved.primary };
-    modelAdapter = resolved.modelAdapter;
+    modelAdapter = configuredModelAdapter(resolved.primary, resolved.modelAdapter);
     timeoutMs = resolved.gateway.timeoutMs;
     maxOutputTokens = resolved.gateway.maxOutputTokens;
     maxSteps = getEffectiveMainMaxSteps(plan.stepLimits);
@@ -105,11 +125,17 @@ export async function prepareConfiguredModel(
   const profile = modelAdapter ? getModelProfile(modelAdapter) : undefined;
   if (profile) {
     if (
-      profile.protocol !== "openai-responses" ||
-      profile.endpoint?.kind !== "fixed" ||
-      settings.provider !== "openai" ||
-      settings.openaiApiMode !== "responses" ||
-      settings.baseURL !== profile.endpoint.url
+      profile.adapterId !== "mimo-token-plan-cn" &&
+      profile.adapterId !== configuredModelAdapter(settings)
+    ) {
+      throw new AgentError("MODEL_CONFIGURATION_FAILED", "适配器与已配置的传输协议不一致。");
+    }
+    if (
+      profile.adapterId === "mimo-token-plan-cn" &&
+      (settings.provider !== "openai" ||
+        settings.openaiApiMode !== "responses" ||
+        profile.endpoint?.kind !== "fixed" ||
+        settings.baseURL !== profile.endpoint.url)
     ) {
       throw new AgentError("MODEL_CONFIGURATION_FAILED", "MiMo 必须使用固定 CN Responses 连接。");
     }
@@ -124,6 +150,7 @@ export async function prepareConfiguredModel(
       configuredModelId,
       settings,
       maxOutputTokens,
+      profile.adapterId,
     );
     let provider: ModelProvider | undefined;
     try {
@@ -131,6 +158,9 @@ export async function prepareConfiguredModel(
         {
           adapterId: profile.adapterId,
           apiKey: settings.apiKey,
+          ...(profile.adapterId === "mimo-token-plan-cn" || !settings.baseURL
+            ? {}
+            : { baseURL: settings.baseURL }),
           connectionFingerprint,
           timeoutMs,
           maxOutputTokens,

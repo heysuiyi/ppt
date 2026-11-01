@@ -182,7 +182,12 @@ export function checkModelsBoundaries(rootDir = repositoryRoot) {
           js: identity(path.join(directory, conditions.import)),
         });
   }
-  const requiredDependencies = ["@agent-harness/core", "@agent-harness/logs", "openai"];
+  const requiredDependencies = [
+    "@agent-harness/core",
+    "@agent-harness/logs",
+    "@anthropic-ai/sdk",
+    "openai",
+  ];
   if (
     JSON.stringify(Object.keys(manifest.dependencies ?? {}).sort()) !==
       JSON.stringify(requiredDependencies.sort()) ||
@@ -196,7 +201,7 @@ export function checkModelsBoundaries(rootDir = repositoryRoot) {
       undefined,
       undefined,
       "dependencies",
-      "Models requires exactly same-version Core/logs and the real OpenAI SDK.",
+      "Models requires same-version Core/logs and the real OpenAI/Anthropic SDKs.",
     );
 
   function resolve(dependency, source, options, javascript = false) {
@@ -227,7 +232,11 @@ export function checkModelsBoundaries(rootDir = repositoryRoot) {
         : undefined,
     ).resolvedModule?.resolvedFileName;
   }
-  const isSDK = (specifier) => specifier === "openai" || specifier.startsWith("openai/");
+  const isSDK = (specifier) =>
+    specifier === "openai" ||
+    specifier.startsWith("openai/") ||
+    specifier === "@anthropic-ai/sdk" ||
+    specifier.startsWith("@anthropic-ai/sdk/");
   const isStandardLibrary = (file) => {
     const relative = path.relative(path.dirname(ts.getDefaultLibFilePath({})), file);
     return !relative.includes(path.sep) && /^lib\..*\.d\.ts$/i.test(relative);
@@ -294,7 +303,7 @@ export function checkModelsBoundaries(rootDir = repositoryRoot) {
               isStandardLibrary(identity(declaration.getSourceFile().fileName)),
             ) &&
             declarations.some((declaration) =>
-              /[/\\]node_modules[/\\](?:@types[/\\]node|openai)[/\\]/i.test(
+              /[/\\]node_modules[/\\](?:@types[/\\]node|openai|@anthropic-ai[/\\]sdk)[/\\]/i.test(
                 identity(declaration.getSourceFile().fileName),
               ),
             )
@@ -470,7 +479,7 @@ export function checkModelsBoundaries(rootDir = repositoryRoot) {
               source,
               dependency,
               "package-escape",
-              "Models imports are limited to owned modules, exact Core/logs public paths, OpenAI and Node.",
+              "Models imports are limited to owned modules, exact Core/logs public paths, OpenAI/Anthropic and Node.",
             );
           continue;
         }

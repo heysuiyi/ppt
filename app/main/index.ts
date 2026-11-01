@@ -2,6 +2,8 @@ import { mkdirSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Logger } from "@agent-harness/logs/log-contract";
+import { diagnosticValuePreview } from "@agent-harness/logs/logs";
 import {
   type AgentRunResult,
   type AgentStreamEvent,
@@ -46,18 +48,6 @@ import {
 import { DeckExportService } from "../../src/ppt/core/deck-export-service";
 import { toResultDisplayEvents, toStreamDisplayEvent } from "./agent/display/display-event-adapter";
 import { AgentGateway } from "./agent/gateway";
-import {
-  clearLogFiles,
-  createModuleLogger,
-  diagnosticValuePreview,
-  getLogDirectory,
-  getLogManagerStatus,
-  getRecentLogEntries,
-  initializeLogManager,
-  requestSummary,
-  updateLogManagerSettings,
-  withLogContext,
-} from "./agent/logger";
 import { isRuntimeCancellation } from "./agent/runtime/lifecycle/runtime-cancellation";
 import { ToolApprovalBroker } from "./agent/runtime/tools/tool-approval-broker";
 import {
@@ -72,6 +62,9 @@ import { createDesktopAgentConfiguration } from "./agent-configuration/desktop-c
 import { registerAgentConfigurationIpc } from "./agent-configuration/ipc";
 import { configureApplicationDataRoot, getApplicationDataRoot } from "./application-data";
 import { recoverInterruptedExport } from "./deck/export-recovery";
+import { createDesktopLogs, type DesktopLogs } from "./logging/desktop-logs";
+import { withLogContext } from "./logging/log-context";
+import { requestSummary } from "./logging/request-summary";
 import { createPptRuntime, createPptToolRegistry } from "./plugins/ppt";
 import { slideThumbnailService } from "./plugins/ppt/adapters/electron-thumbnail-service";
 import { CommitGate } from "./plugins/ppt/gate/commit-gate";
@@ -95,9 +88,36 @@ if (!app.isPackaged && !process.env.AGENT_LOG_DIR?.trim()) {
 }
 ensureUiThemesDirectory(applicationDataRoot);
 
-const deckExportService = new DeckExportService(createModuleLogger("ppt-exporter"));
-const logger = createModuleLogger("main");
-const agentGateway = new AgentGateway();
+let desktopLogs: DesktopLogs | undefined;
+let logger: Logger;
+let deckExportService: DeckExportService;
+let agentGateway: AgentGateway;
+let stopping = false;
+let stopped = false;
+let clearingLogs = false;
+let activeAgentRequests = 0;
+const activeRuns = new Map<string, AbortController>();
+const inFlightRequests = new Set<Promise<unknown>>();
+const runtimes = new Map<string, SessionRuntime>();
+
+/** 所有 Main 请求都在资源关闭前排空，不以窗口销毁代替执行完成。 */
+function handleDesktopIpc(channel: string, listener: Parameters<typeof ipcMain.handle>[1]): void {
+  ipcMain.handle(channel, (...args) => {
+    if (stopping) throw new Error("Application is shutting down.");
+    const executesAgent = channel === "agent:submit" || channel === "agent:resume";
+    if (executesAgent && clearingLogs) throw new Error("日志正在清理，请稍后提交。");
+    if (executesAgent) activeAgentRequests++;
+    const operation = Promise.resolve().then(() => {
+      if (stopping) throw new Error("Application is shutting down.");
+      return listener(...args);
+    });
+    inFlightRequests.add(operation);
+    return operation.finally(() => {
+      inFlightRequests.delete(operation);
+      if (executesAgent) activeAgentRequests--;
+    });
+  });
+}
 const toolApprovalBroker = new ToolApprovalBroker();
 
 function isTrustedRendererUrl(rawUrl: string): boolean {
@@ -165,6 +185,7 @@ function createSessionRuntime(
   snapshot: SessionSnapshot,
   skillRegistry: SkillRegistry,
   applicationDataRoot: string,
+  logs: DesktopLogs,
 ): SessionRuntime {
   const commandBus = new CommandBus(snapshot.presentation);
   const registry = createPptToolRegistry();
@@ -210,6 +231,7 @@ function createSessionRuntime(
           options.startMode.type === "resume_query",
         );
       },
+      logs.getLogger("agent-runtime"),
     ),
     new CommitGate(new RiskPolicy()),
     snapshot.project?.rootPath,
@@ -358,19 +380,35 @@ let presentationLifecycleOrchestrator: PresentationLifecycleOrchestrator;
 let lifecycleBlobStore: ContentAddressedBlobStore;
 let lifecycleArtifactChangeObserver: PresentationArtifactChangeObserver;
 
-app.whenReady().then(async () => {
+async function startApplication(): Promise<void> {
+  await app.whenReady();
   if (process.platform === "win32") {
     app.setAppUserModelId("com.agent-ppt.app");
   }
 
   Menu.setApplicationMenu(null);
-  await initializeLogManager();
+  const logs = await createDesktopLogs({
+    directory: process.env.AGENT_LOG_DIR?.trim()
+      ? resolve(process.env.AGENT_LOG_DIR.trim())
+      : join(applicationDataRoot, "logs"),
+  });
+  desktopLogs = logs;
+  logger = logs.getLogger("main");
+  deckExportService = new DeckExportService(logs.getLogger("ppt-exporter"));
+  agentGateway = new AgentGateway({
+    logger: logs.getLogger("gateway"),
+    logDirectory: logs.directory,
+  });
   logger.info("application.started", {
     version: app.getVersion(),
     platform: process.platform,
     arch: process.arch,
   });
-  sessionStore = new FileSessionStore(join(applicationDataRoot, "conversations.sqlite"));
+  sessionStore = new FileSessionStore(
+    join(applicationDataRoot, "conversations.sqlite"),
+    undefined,
+    logs.getLogger("session-store"),
+  );
   await sessionStore.initialize();
   presentationLifecycleRepository = new PresentationLifecycleRepository({
     filePath: join(applicationDataRoot, "conversations.sqlite"),
@@ -397,9 +435,7 @@ app.whenReady().then(async () => {
 
   const skillRegistry = await resolveSkillRegistry();
 
-  const runtimes = new Map<string, SessionRuntime>();
   const sessionActiveRuns = new Map<string, string>(); // sessionId -> runId
-  const activeRuns = new Map<string, AbortController>(); // runId -> AbortController
   const trustedRendererWebContentsIds = new Set<number>();
   const agentConfiguration = createDesktopAgentConfiguration({ applicationDataRoot, safeStorage });
   let activeSessionId = sessionStore.getBootstrap().activeSession?.session.id ?? "";
@@ -408,7 +444,7 @@ app.whenReady().then(async () => {
     const existing = runtimes.get(snapshot.session.id);
     if (existing && existing.workspaceRoot === snapshot.project?.rootPath) return existing;
     const _runtimeRoot = join(applicationDataRoot, "runtime", snapshot.session.id);
-    const runtime = createSessionRuntime(snapshot, skillRegistry, applicationDataRoot);
+    const runtime = createSessionRuntime(snapshot, skillRegistry, applicationDataRoot, logs);
     await runtime.teammateManager?.reconcileInterrupted();
     runtimes.set(snapshot.session.id, runtime);
     return runtime;
@@ -598,20 +634,38 @@ app.whenReady().then(async () => {
     assertTrustedCredentialIpc(event, trustedRendererWebContentsIds),
   );
 
-  ipcMain.handle("session:get-state", () => sessionStore.getBootstrap());
-  ipcMain.handle("token-usage:get-stats", () => tokenUsageStore.getStats());
-  ipcMain.handle("logs:get-status", () => getLogManagerStatus());
-  ipcMain.handle("logs:get-recent", (_event, limit?: number, minimumLevel?: AppLogLevel) =>
-    getRecentLogEntries(limit, minimumLevel),
+  handleDesktopIpc("session:get-state", () => sessionStore.getBootstrap());
+  handleDesktopIpc("token-usage:get-stats", () => tokenUsageStore.getStats());
+  handleDesktopIpc("logs:get-status", () => logs.getStatus());
+  handleDesktopIpc("logs:get-recent", (_event, limit?: number, minimumLevel?: AppLogLevel) =>
+    logs.getRecentEntries(limit, minimumLevel),
   );
-  ipcMain.handle("logs:update-settings", async (_event, patch: Partial<LogManagerSettings>) => {
-    const settings = await updateLogManagerSettings(patch ?? {});
+  handleDesktopIpc("logs:update-settings", async (_event, patch: Partial<LogManagerSettings>) => {
+    const settings = await logs.updateSettings(patch ?? {});
     logger.info("logs.settings.updated", { ...settings });
     return settings;
   });
-  ipcMain.handle("logs:clear", async () => clearLogFiles());
-  ipcMain.handle("logs:open-directory", async () => {
-    const directory = getLogDirectory();
+  handleDesktopIpc("logs:clear", async () => {
+    if (
+      activeRuns.size > 0 ||
+      activeAgentRequests > 0 ||
+      clearingLogs ||
+      [...runtimes.values()].some((runtime) =>
+        runtime.teammateManager
+          ?.list()
+          .some(({ status }) => status === "running" || status === "idle"),
+      )
+    )
+      throw new Error("请等待活动执行结束后再清理日志。");
+    clearingLogs = true;
+    try {
+      return await logs.clear();
+    } finally {
+      clearingLogs = false;
+    }
+  });
+  handleDesktopIpc("logs:open-directory", async () => {
+    const directory = logs.directory;
     mkdirSync(directory, { recursive: true });
     const errorMessage = await shell.openPath(directory);
     if (errorMessage) {
@@ -620,8 +674,8 @@ app.whenReady().then(async () => {
     }
     return true;
   });
-  ipcMain.handle("app:get-data-path", () => getApplicationDataRoot());
-  ipcMain.handle("app:open-data-directory", async () => {
+  handleDesktopIpc("app:get-data-path", () => getApplicationDataRoot());
+  handleDesktopIpc("app:open-data-directory", async () => {
     const directory = getApplicationDataRoot();
     mkdirSync(directory, { recursive: true });
     const errorMessage = await shell.openPath(directory);
@@ -631,12 +685,12 @@ app.whenReady().then(async () => {
     }
     return true;
   });
-  ipcMain.handle("ui-themes:list", () => listUiThemes());
-  ipcMain.handle("ui-themes:read", (_event, themeId: unknown) => {
+  handleDesktopIpc("ui-themes:list", () => listUiThemes());
+  handleDesktopIpc("ui-themes:read", (_event, themeId: unknown) => {
     if (typeof themeId !== "string") return null;
     return readUiThemeCss(themeId);
   });
-  ipcMain.handle("ui-themes:open-directory", async () => {
+  handleDesktopIpc("ui-themes:open-directory", async () => {
     const directory = ensureUiThemesDirectory();
     const errorMessage = await shell.openPath(directory);
     if (errorMessage) {
@@ -646,14 +700,15 @@ app.whenReady().then(async () => {
     return true;
   });
   ipcMain.on("logs:renderer-report", (_event, report: RendererLogReport) => {
+    if (stopping) return;
     if (!report || !["debug", "info", "warn", "error"].includes(report.level)) return;
     if (typeof report.event !== "string" || !report.event.trim()) return;
     logger[report.level](`renderer.${report.event}`, report.data);
   });
-  ipcMain.handle("window:set-theme-mode", (_event, themeMode: unknown) =>
+  handleDesktopIpc("window:set-theme-mode", (_event, themeMode: unknown) =>
     applyWindowThemeMode(normalizeWindowThemeMode(themeMode)),
   );
-  ipcMain.handle("session:create", async (_, options?: CreateSessionOptions) => {
+  handleDesktopIpc("session:create", async (_, options?: CreateSessionOptions) => {
     const startedAt = Date.now();
     const state = await sessionStore.createSession(options);
     activeSessionId = state.activeSession?.session.id ?? "";
@@ -667,7 +722,7 @@ app.whenReady().then(async () => {
     });
     return state;
   });
-  ipcMain.handle("workspace:open", async (_, rootPath: string) => {
+  handleDesktopIpc("workspace:open", async (_, rootPath: string) => {
     const startedAt = Date.now();
     const state = await sessionStore.openWorkspace(rootPath);
     activeSessionId = state.activeSession?.session.id ?? "";
@@ -681,7 +736,7 @@ app.whenReady().then(async () => {
     });
     return state;
   });
-  ipcMain.handle("session:select", async (_, sessionId: string) => {
+  handleDesktopIpc("session:select", async (_, sessionId: string) => {
     const startedAt = Date.now();
     const state = await sessionStore.selectSession(sessionId);
     activeSessionId = state.activeSession?.session.id ?? "";
@@ -691,7 +746,7 @@ app.whenReady().then(async () => {
     logger.info("session.selected", { sessionId, durationMs: Date.now() - startedAt });
     return state;
   });
-  ipcMain.handle("session:delete", async (event, sessionId: string) => {
+  handleDesktopIpc("session:delete", async (event, sessionId: string) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     const messageBoxOptions: MessageBoxOptions = {
       type: "question",
@@ -716,7 +771,7 @@ app.whenReady().then(async () => {
     logger.info("session.deleted", { sessionId, nextSessionId: activeSessionId || undefined });
     return state;
   });
-  ipcMain.handle(
+  handleDesktopIpc(
     "session:save-messages",
     (_, sessionId: string, messages: SessionChatMessage[]) => {
       // An old debounced Renderer snapshot must not overwrite a newly accepted input/run.
@@ -724,22 +779,22 @@ app.whenReady().then(async () => {
       return sessionStore.saveMessages(sessionId, messages);
     },
   );
-  ipcMain.handle(
+  handleDesktopIpc(
     "session:save-display-cards",
     (_, sessionId: string, cards: PersistedDisplayCard[]) =>
       sessionStore.saveDisplayCards(sessionId, cards),
   );
-  ipcMain.handle("ppt-job:get", (_, sessionId: string) => {
+  handleDesktopIpc("ppt-job:get", (_, sessionId: string) => {
     const snapshot = sessionStore.getSession(sessionId);
     return presentationLifecycleRepository.getProjectionByPresentationId(
       asPresentationId(snapshot.presentation.id),
     );
   });
 
-  ipcMain.handle("project:list-artifacts", (_, sessionId: string) =>
+  handleDesktopIpc("project:list-artifacts", (_, sessionId: string) =>
     sessionStore.listProjectArtifacts(sessionId),
   );
-  ipcMain.handle(
+  handleDesktopIpc(
     "project:read-artifact",
     (_, rawSessionId: unknown, rawArtifactIdOrPath: unknown) => {
       const request = projectFileOpenRequestSchema.parse({
@@ -749,7 +804,7 @@ app.whenReady().then(async () => {
       return sessionStore.readProjectArtifact(request.sessionId, request.relativePath);
     },
   );
-  ipcMain.handle(
+  handleDesktopIpc(
     "project:get-artifact-diff",
     (_, rawSessionId: unknown, rawRelativePath: unknown, rawNextContent: unknown) => {
       const request = projectArtifactDiffRequestSchema.parse({
@@ -764,17 +819,17 @@ app.whenReady().then(async () => {
       );
     },
   );
-  ipcMain.handle("project:list-files", (_, rawSessionId: unknown) =>
+  handleDesktopIpc("project:list-files", (_, rawSessionId: unknown) =>
     sessionStore.listProjectFiles(projectFileSessionIdSchema.parse(rawSessionId)),
   );
-  ipcMain.handle("project:open-file", (_, rawSessionId: unknown, rawRelativePath: unknown) => {
+  handleDesktopIpc("project:open-file", (_, rawSessionId: unknown, rawRelativePath: unknown) => {
     const request = projectFileOpenRequestSchema.parse({
       sessionId: rawSessionId,
       relativePath: rawRelativePath,
     });
     return sessionStore.openProjectFile(request.sessionId, request.relativePath);
   });
-  ipcMain.handle(
+  handleDesktopIpc(
     "project:save-file",
     (
       _,
@@ -800,10 +855,10 @@ app.whenReady().then(async () => {
       );
     },
   );
-  ipcMain.handle("presentation:get", async () =>
+  handleDesktopIpc("presentation:get", async () =>
     (await getActiveRuntime()).commandBus.getSnapshot(),
   );
-  ipcMain.handle(
+  handleDesktopIpc(
     "presentation:export",
     async (_, sessionId: string, options: ExportPresentationOptions) => {
       const startedAt = Date.now();
@@ -1007,7 +1062,7 @@ app.whenReady().then(async () => {
       }
     },
   );
-  ipcMain.handle("dialog:select-directory", async (event, defaultPath?: string) => {
+  handleDesktopIpc("dialog:select-directory", async (event, defaultPath?: string) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     const { filePaths, canceled } = window
       ? await dialog.showOpenDialog(window, {
@@ -1021,7 +1076,7 @@ app.whenReady().then(async () => {
     if (canceled || !filePaths || filePaths.length === 0) return null;
     return filePaths[0];
   });
-  ipcMain.handle("dialog:select-template-package", async (event, defaultPath?: string) => {
+  handleDesktopIpc("dialog:select-template-package", async (event, defaultPath?: string) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     const options = {
       properties: ["openFile"] as Array<"openFile">,
@@ -1034,7 +1089,7 @@ app.whenReady().then(async () => {
     if (canceled || !filePaths || filePaths.length === 0) return null;
     return filePaths[0];
   });
-  ipcMain.handle(
+  handleDesktopIpc(
     "template:import",
     async (_event, sessionId: unknown, sourceFilePath: unknown, displayName?: unknown) => {
       if (typeof sourceFilePath !== "string" || !sourceFilePath.trim()) {
@@ -1047,16 +1102,16 @@ app.whenReady().then(async () => {
       );
     },
   );
-  ipcMain.handle("template:list", async (_event, sessionId: unknown) => {
+  handleDesktopIpc("template:list", async (_event, sessionId: unknown) => {
     if (typeof sessionId !== "string" || !sessionId.trim()) {
       throw new Error("sessionId is required");
     }
     return sessionStore.listProjectTemplates(sessionId);
   });
-  ipcMain.handle("template:list-application", async () => {
+  handleDesktopIpc("template:list-application", async () => {
     return sessionStore.listApplicationTemplates();
   });
-  ipcMain.handle(
+  handleDesktopIpc(
     "template:apply",
     async (_event, sessionId: unknown, templateId: unknown, revisionId: unknown) => {
       if (typeof sessionId !== "string" || !sessionId.trim()) {
@@ -1071,19 +1126,19 @@ app.whenReady().then(async () => {
       await sessionStore.applyTemplateToProject(sessionId, templateId, revisionId);
     },
   );
-  ipcMain.handle("template:get-policy", async (_event, sessionId: unknown) => {
+  handleDesktopIpc("template:get-policy", async (_event, sessionId: unknown) => {
     if (typeof sessionId !== "string" || !sessionId.trim()) {
       throw new Error("sessionId is required");
     }
     return sessionStore.getProjectTemplatePolicy(sessionId);
   });
-  ipcMain.handle("template:get-pack", async (_event, sessionId: unknown) => {
+  handleDesktopIpc("template:get-pack", async (_event, sessionId: unknown) => {
     if (typeof sessionId !== "string" || !sessionId.trim()) {
       throw new Error("sessionId is required");
     }
     return sessionStore.getProjectTemplatePack(sessionId);
   });
-  ipcMain.handle("template:set-policy", async (_event, sessionId: unknown, policy: unknown) => {
+  handleDesktopIpc("template:set-policy", async (_event, sessionId: unknown, policy: unknown) => {
     if (typeof sessionId !== "string" || !sessionId.trim()) {
       throw new Error("sessionId is required");
     }
@@ -1097,7 +1152,7 @@ app.whenReady().then(async () => {
       },
     );
   });
-  ipcMain.handle("shell:open-export-folder", async (_, filePath: string) => {
+  handleDesktopIpc("shell:open-export-folder", async (_, filePath: string) => {
     if (typeof filePath !== "string" || !filePath.trim()) {
       return false;
     }
@@ -1106,7 +1161,7 @@ app.whenReady().then(async () => {
     return true;
   });
 
-  ipcMain.handle("agent:cancel", async (_, runId: string) => {
+  handleDesktopIpc("agent:cancel", async (_, runId: string) => {
     toolApprovalBroker.cancelForRun(runId);
     const controller = activeRuns.get(runId);
     if (controller) {
@@ -1117,7 +1172,7 @@ app.whenReady().then(async () => {
     return false;
   });
 
-  ipcMain.handle("agent:cancel-session", async (_, sessionId: string) => {
+  handleDesktopIpc("agent:cancel-session", async (_, sessionId: string) => {
     const runId = sessionActiveRuns.get(sessionId);
     if (!runId) return false;
     toolApprovalBroker.cancelForRun(runId);
@@ -1130,7 +1185,7 @@ app.whenReady().then(async () => {
     return false;
   });
 
-  ipcMain.handle(
+  handleDesktopIpc(
     "agent:resolve-tool-approval",
     async (_, runId: string, approvalId: string, approved: boolean) => {
       const resolved = toolApprovalBroker.resolve(approvalId, approved);
@@ -1145,7 +1200,7 @@ app.whenReady().then(async () => {
     },
   );
 
-  ipcMain.handle("agent:poll-lead-inbox", async (_, sessionId: string) => {
+  handleDesktopIpc("agent:poll-lead-inbox", async (_, sessionId: string) => {
     const runtime = await getRuntimeForSession(sessionId);
     const messages = runtime.messageBus ? await runtime.messageBus.peekInbox("lead") : [];
     return {
@@ -1159,7 +1214,8 @@ app.whenReady().then(async () => {
   /**
    * 接收用户意图；Main 持有配置和会话状态，在单次提交内完成受理、准备和运行。
    */
-  ipcMain.handle("agent:submit", async (event, rawRequest: unknown) => {
+  handleDesktopIpc("agent:submit", async (event, rawRequest: unknown) => {
+    if (clearingLogs) throw new Error("日志正在清理，请稍后提交。");
     assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
     const request = submitAgentRequestSchema.parse(rawRequest);
     if (activeRuns.size > 0)
@@ -1264,9 +1320,10 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle(
+  handleDesktopIpc(
     "agent:resume",
     async (_event, sessionId: string, rawProposalId: string, approved: boolean) => {
+      if (clearingLogs) throw new Error("日志正在清理，请稍后提交。");
       const proposalId = asProposalId(rawProposalId);
       const runtime = await getRuntimeForSession(sessionId);
       const chat = sessionStore.findProposalChatContext(sessionId, proposalId);
@@ -1302,33 +1359,100 @@ app.whenReady().then(async () => {
     },
   );
 
-  createWindow(attachWindowLifecycle);
+  createWindow(logs.getLogger("main.window"), attachWindowLifecycle);
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow(attachWindowLifecycle);
+    if (!stopping && BrowserWindow.getAllWindows().length === 0) {
+      createWindow(logs.getLogger("main.window"), attachWindowLifecycle);
     }
   });
-});
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("will-quit", () => {
-  logger.info("application.stopping");
-  slideThumbnailService.dispose();
-  presentationLifecycleRepository?.close();
-  sessionStore?.conversationDatabase.close();
+let shutdownPromise: Promise<void> | undefined;
+function shutdown(): Promise<void> {
+  if (shutdownPromise) return shutdownPromise;
+  stopping = true;
+  shutdownPromise = (async () => {
+    await startup.catch(() => undefined);
+    for (const [runId, controller] of activeRuns) {
+      toolApprovalBroker.cancelForRun(runId);
+      controller.abort();
+    }
+    const drainTeammates = async () => {
+      const drains: Promise<void>[] = [];
+      for (const runtime of runtimes.values()) {
+        const manager = runtime.teammateManager;
+        if (!manager) continue;
+        for (const teammate of manager.list()) {
+          manager.abortTeammate(teammate.name, "Application is shutting down.");
+          drains.push(manager.waitFor(teammate.name));
+        }
+      }
+      await Promise.allSettled(drains);
+    };
+    await drainTeammates();
+    await Promise.allSettled([...inFlightRequests]);
+    // 排空请求期间已经派发的工具可能刚发布协作任务，关闭依赖前再统一排空。
+    await drainTeammates();
+    const failures: unknown[] = [];
+    for (const close of [
+      () => slideThumbnailService.dispose(),
+      () => presentationLifecycleRepository?.close(),
+      () => sessionStore?.conversationDatabase.close(),
+    ]) {
+      try {
+        close();
+      } catch (error) {
+        failures.push(error);
+        logger?.error("application.resource.close-failed", { error });
+      }
+    }
+    logger?.info("application.stopping", { failedResources: failures.length });
+    try {
+      await desktopLogs?.close();
+    } catch (error) {
+      failures.push(error);
+    }
+    if (failures.length > 0) throw new Error("Application resources could not all be closed.");
+  })();
+  return shutdownPromise;
+}
+
+app.on("before-quit", (event) => {
+  if (stopped) return;
+  event.preventDefault();
+  void shutdown()
+    .catch(() => process.stderr.write("Application shutdown failed.\n"))
+    .finally(() => {
+      stopped = true;
+      app.quit();
+    });
 });
 
 process.on("uncaughtExceptionMonitor", (error) => {
-  logger.error("process.uncaught-exception", { error });
+  if (logger && !stopped) logger.error("process.uncaught-exception", { error });
+  else process.stderr.write("Uncaught application exception.\n");
 });
 
 process.on("unhandledRejection", (reason) => {
-  logger.error("process.unhandled-rejection", { reason });
+  if (logger && !stopped) logger.error("process.unhandled-rejection", { reason });
+  else process.stderr.write("Unhandled application rejection.\n");
 });
 
 app.on("child-process-gone", (_event, details) => {
-  logger.error("application.child-process-gone", { ...details });
+  if (logger && !stopped) logger.error("application.child-process-gone", { ...details });
+});
+
+const startup = startApplication();
+void startup.catch(async () => {
+  process.stderr.write("Application initialization failed.\n");
+  try {
+    await shutdown();
+  } catch {
+    process.stderr.write("Application initialization cleanup failed.\n");
+  }
+  app.exit(1);
 });

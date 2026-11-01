@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestGatewayOptions } from "./test-log-collector";
 
 const generate = vi.fn();
 const generateStream = vi.fn();
@@ -28,15 +29,12 @@ import { AgentGateway } from "../app/main/agent/gateway";
 import { getGatewayIoLogDirectory } from "../app/main/agent/gateway/gateway-io-log";
 import type { AgentModelResponse } from "../app/main/agent/gateway/types";
 
-const originalDataDir = process.env.AGENT_PPT_DATA_DIR;
 const originalIoLog = process.env.AGENT_GATEWAY_IO_LOG;
-const originalLogFile = process.env.AGENT_LOG_FILE;
-const originalLogLevel = process.env.AGENT_LOG_LEVEL;
 
 let dataDir: string;
 
 function listGatewayIoFiles(): string[] {
-  const root = getGatewayIoLogDirectory();
+  const root = getGatewayIoLogDirectory(path.join(dataDir, "logs"));
   if (!fs.existsSync(root)) return [];
   return fs
     .readdirSync(root, { withFileTypes: true })
@@ -57,28 +55,19 @@ function readSingleGatewayIoLog(): Record<string, unknown> {
 
 beforeEach(() => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-ppt-gateway-agent-"));
-  process.env.AGENT_PPT_DATA_DIR = dataDir;
   process.env.AGENT_GATEWAY_IO_LOG = "true";
-  process.env.AGENT_LOG_FILE = "false";
-  process.env.AGENT_LOG_LEVEL = "error";
   generate.mockReset();
   generateStream.mockReset();
 });
 
 afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
-  if (originalDataDir === undefined) delete process.env.AGENT_PPT_DATA_DIR;
-  else process.env.AGENT_PPT_DATA_DIR = originalDataDir;
   if (originalIoLog === undefined) delete process.env.AGENT_GATEWAY_IO_LOG;
   else process.env.AGENT_GATEWAY_IO_LOG = originalIoLog;
-  if (originalLogFile === undefined) delete process.env.AGENT_LOG_FILE;
-  else process.env.AGENT_LOG_FILE = originalLogFile;
-  if (originalLogLevel === undefined) delete process.env.AGENT_LOG_LEVEL;
-  else process.env.AGENT_LOG_LEVEL = originalLogLevel;
 });
 
 function configureGateway(): AgentGateway {
-  const gateway = new AgentGateway();
+  const gateway = new AgentGateway(createTestGatewayOptions(path.join(dataDir, "logs")));
   gateway.configure({
     provider: "openai",
     model: "gpt-test",

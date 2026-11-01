@@ -198,11 +198,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
             : {
                 enabled: false,
                 reason:
-                  phase === "starting"
-                    ? "not-ready"
-                    : phase === "waiting"
-                      ? "interaction"
-                      : "busy",
+                  phase === "starting" ? "not-ready" : phase === "waiting" ? "interaction" : "busy",
               },
       },
       ...(ready

@@ -102,6 +102,36 @@ describe("Node CLI secure model setup", () => {
     expect((await config.runtime.resolveRuntime(plan)).primary.apiKey).toBe("controlled-key");
   });
 
+  it.each([
+    ["1", "openai", "responses", "https://api.openai.com/v1"],
+    ["2", "openai", "chat-completions", "https://compatible.example.test/v1"],
+    ["3", "anthropic", "responses", "https://api.anthropic.com"],
+  ] as const)(
+    "saves protocol choice %s as a reusable native default",
+    async (choice, protocol, mode, baseURL) => {
+      const { config, port } = await configuration();
+      vi.spyOn(config.management, "listRemoteModels").mockResolvedValue({
+        models: [{ id: "compatible-conversation", supported: true }],
+      });
+      const modelId = await ensureConfiguredModel(config.management, {
+        ...input([choice, "0"]),
+        text: async () => baseURL,
+        protection: port,
+        signal: new AbortController().signal,
+      });
+      const snapshot = (await config.management.getSnapshot())!;
+      expect(snapshot.settings.cli?.defaultModelId).toBe(modelId);
+      const plan = await config.runtime.loadExecutionPlan(modelId!);
+      expect((await config.runtime.resolveRuntime(plan)).primary).toMatchObject({
+        provider: protocol,
+        model: "compatible-conversation",
+        ...(protocol === "openai" ? { openaiApiMode: mode } : {}),
+        baseURL,
+        apiKey: "controlled-key",
+      });
+    },
+  );
+
   it("does not collect a key or save a vendor if OS protection is unavailable", async () => {
     const { config, port } = await configuration(false);
     const io = input(["0"]);

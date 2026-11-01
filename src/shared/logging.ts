@@ -6,6 +6,8 @@ export interface AppLogEntry {
   scope: string;
   event: string;
   module?: string;
+  /** 展示列表身份，不以事件文本去重。 */
+  id?: string;
   [key: string]: unknown;
 }
 
@@ -20,6 +22,15 @@ export interface LogManagerStatus extends LogManagerSettings {
   fileCount: number;
   totalBytes: number;
   lastWrittenAt?: string;
+  failureCount?: number;
+  settingsPersistenceError?: boolean;
+  maintenanceSkipped?: string[];
+}
+
+export interface LogClearResult {
+  removedFiles: number;
+  /** 活动实例或无法确认归属的范围，不得报告为已清理。 */
+  skipped: string[];
 }
 
 export interface RendererLogReport {

@@ -122,7 +122,7 @@ async function rejectLinks(directory) {
 const genericConsumer = `
 import { getModelProfile, getModelSupport } from '@agent-harness/models/model-profiles';
 import type { ModelAdapterProfile, ModelEndpointPolicy, ModelSupport } from '@agent-harness/models/model-profiles';
-import type { ModelAdapterId, ModelProviderConnectionOptions, MimoTokenPlanCNOptions, ModelProviderOptions, ModelProvider, ModelDiscovery, DiscoveredModel } from '@agent-harness/models/model-contract';
+import type { ModelAdapterId, ModelProviderConnectionOptions, MimoTokenPlanCNOptions, OpenAIChatOptions, OpenAIResponsesOptions, AnthropicMessagesOptions, ModelProviderOptions, ModelProvider, ModelDiscovery, DiscoveredModel } from '@agent-harness/models/model-contract';
 import { ModelProviderError } from '@agent-harness/models/model-errors';
 import type { ModelProviderErrorCode } from '@agent-harness/models/model-errors';
 import type { ModelClientFactory } from '@agent-harness/core/model/model-contract';
@@ -136,11 +136,15 @@ const title: string = support?.supported ? support.reasoningEfforts.join(',') : 
 const connection: ModelProviderConnectionOptions = { connectionFingerprint: title, timeoutMs: 2000, maxOutputTokens: 321 };
 const mimo: MimoTokenPlanCNOptions = { ...connection, adapterId: id, apiKey: 'type-only' };
 const options: ModelProviderOptions = mimo;
+const chat: OpenAIChatOptions = { ...connection, adapterId: 'openai-chat-completions', apiKey: 'type-only', baseURL: 'https://compatible.example/v1' };
+const responses: OpenAIResponsesOptions = { ...connection, adapterId: 'openai-responses', apiKey: 'type-only' };
+const anthropic: AnthropicMessagesOptions = { ...connection, adapterId: 'anthropic-messages', apiKey: 'type-only' };
+const protocols: readonly ModelProviderOptions[] = [options, chat, responses, anthropic];
 const code: ModelProviderErrorCode = 'ADAPTER_UNSUPPORTED';
 const error: Error = new ModelProviderError(code, 'safe message', id);
 const ports = (provider: ModelProvider, logger: Logger): readonly [ModelClientFactory, Disposable, ModelDiscovery | undefined, Logger] => [provider, provider, provider.discovery, logger];
 const discovered = (model: DiscoveredModel): boolean => model.supported;
-void endpoint; void options; void error; void ports; void discovered;
+void endpoint; void options; void protocols; void error; void ports; void discovered;
 `;
 const nodeConsumer = `
 import { createModelProvider } from '@agent-harness/models/models';
@@ -831,6 +835,7 @@ async function main() {
     }
     for (const workspace of workspaces.values()) await visit(workspace);
     assert(closure.has("openai"), "Real SDK missing from runtime closure");
+    assert(closure.has("@anthropic-ai/sdk"), "Real Anthropic SDK missing from runtime closure");
     const tarballs = [];
     for (const item of closure.values()) {
       const packed = JSON.parse(

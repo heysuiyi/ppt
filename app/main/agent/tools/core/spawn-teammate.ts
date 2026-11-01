@@ -55,6 +55,7 @@ export const spawnTeammateTool: ToolDefinition<
       prompt: args.prompt,
       workspaceRoot: context.workspaceRoot,
       gateway: context.gateway,
+      logger: context.logger,
       model: context.model,
       agentStepLimits: context.agentStepLimits,
       onTaskListUpdated: context.notifyTaskListUpdated,

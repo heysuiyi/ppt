@@ -2,11 +2,11 @@
 
 [返回计划目录](README.md) · [M3 总计划](m3-reliability.md) · [前一步 M3-B](m3-b-lifecycle.md#10-后续独立审核与完成结论)
 
-状态：**C2 原子 Thread 准入已在持久化 P1/P2 切片中实施，永久回归、三类真实进程窗口和第三进程重开通过；完整 C1 竞争矩阵与 C3 恢复兼容验收仍待执行，M3-C 尚未整体完成。** 实现及命令证据见[持久化实施记录](persistence-backends.md#13-p1p2-实施与验收记录)，不增加并发调度能力。
+状态：**M3-C 已完成本轮验收。** C2 原子准入由持久化 P1/P2 交付，本轮补齐 C1 真实进程竞争、C3 分层恢复兼容与只读行为回归，集中类型/边界、全量回归、真实 CLI 集成和包消费通过。新增实现、失败定位、命令结果及限制见第 12 节；P1/P2 历史记录见[持久化实施记录](persistence-backends.md#13-p1p2-实施与验收记录)。D/E 与第二后端仍未完成，不增加并发调度能力。
 
 ## 1. 目标、顺序与边界
 
-当前执行顺序调整为 **复用 P1/P2 基线 → 补齐 C1 剩余真实进程竞争 → 补齐 C3 分层恢复兼容 → 集中验收**。C2 契约与实现已落地，不重新排准入改造或重复拆分 SQLite；C1/C3 可基于现有契约独立实现。下一轮具体任务及完成判据见第 11 节。
+本轮已按 **复用 P1/P2 基线 → 补齐 C1 剩余真实进程竞争 → 补齐 C3 分层恢复兼容 → 集中验收** 执行。没有重新实施 C2 或再次拆分 SQLite；第 11 节保留当时的增量方案，第 12 节记录实际交付。后续进入 D/E，不能将 C 的正常竞争与兼容证据当作故障恢复或容量证明。
 
 - Agent 实例活动槽、Thread 准入、Query 写租约、checkpoint CAS、history batch receipt 是不同层次，不互相代替。
 - Thread 准入在当前 checkpoint 协议的 `(agentId, threadId)` 范围内强制；同一 Query 仍使用独立 Run 与单调 generation。具体 Host 的 binding 按 threadId 固定 Agent，history 也按 threadId 保存；不宣称不同 Agent 可安全复用同一个历史 threadId。
@@ -180,6 +180,8 @@ npm.cmd test
 
 ## 11. P1/P2 完成后的下一轮执行安排
 
+以下保留 P1/P2 完成后的执行安排；其中 C1/C3 已按第 12 节实施验收，11.3 的 D 与后端专项仍独立待执行。
+
 ### 11.1 只补尚缺的竞争证明
 
 1. **存储独占与提交竞争**：C1-1/C1-2/C1-4。两 PID ready 后同一 go 阶段争租约、checkpoint CAS、history CAS/receipt；不预定赢家。CAS 夹具使用同一合法 lease，不将 fencing 失败冒充 revision conflict。
@@ -206,3 +208,59 @@ npm.cmd test
 本次依据用户报告及持久化第 13 节的实施记录，核对了当前装配、私有事务/准入实现、只读 history、原生 worker、三类进程用例和根集成命令，调整剩余任务。没有修改运行时、永久测试或重新执行 P1/P2 验收；该阶段历史数字不计作本次独立审核。完整 C1/C3、D/E 与第二后端仍未完成。
 
 本次已校验所修改 5 份文档的 82 个本地链接与标题锚点，全部通过；未重跑 build/typecheck/回归或真实模型调用。文档检查只证明导航有效，不代替下一轮 C1/C3 的行为验收。
+
+## 12. C1/C3 增量实施与验收记录
+
+本轮按第 11 节实施剩余 C1/C3，复用 P1/P2 的持久结构与准入协议；没有重新拆 SQLite、修改 Core 执行协议、接入第二后端或实施 D/E。以下是本轮新增证据，不与第 10 节历史数字混算。
+
+### 12.1 永久行为覆盖
+
+| 范围 | 文件与实际断言 |
+| --- | --- |
+| C1-1/C1-2 | 现有 reliability worker 增加具体存储命令与 prepare/go；两个 PID 争同 Query（不同/相同 owner），只一方 acquired；共享合法 lease/revision 保存不同 payload，只一 saved、一 conflict |
+| C1-3/C1-4 | 异值 binding 首写只有一赢家，赢家同值并发重放不替换；history 不同 batch 的 CAS、同 receipt 同内容/异内容竞争，推进 head 后旧 receipt 仍返回原 revision |
+| C1-5 | 旧 writer 已关闭后才精确接管；另一 PID 使用旧 lease 的 save/replace 均 stale，旧 release 不影响新 owner；重开核对新 payload、revision、generation |
+| C1-7 | binding 与空 history head/无 payload checkpoint 两种提交顺序；执行状态先提交不得收养，binding 先提交保持绑定且不新增 Core 必须预先绑定的限制 |
+| C1 持久性 | 每个新增组在 A/B 关闭后打开新 PID，核对本组完整 history/binding/checkpoint 及 revision/generation；保留原 C1-6 三窗口，不重复复制 |
+| Core C3 | definition id/version、双插件有序列表的顺序/增删/id/version、实际 client.selection 的 provider/model/effort 增删改；不兼容拒绝不保存失败快照、不消费回答，waiting/pending/applied 与历史保留，租约释放且代际增长 |
+| Pending tool C3 | 删除/version 改变分别 answer/cancel，另有无 response 与同版本成功对照；允许激活元数据更新，不丢待决续传；原配置、新 Run、原 interaction 仍能批准完成 |
+| Host C3 | 真实 SessionHost binding 逐项变化及 configured-host 的工作区、工具模式、读取审批版本、连接指纹、预算增减；拒绝不覆盖权威状态，原配置仍可恢复；保留同连接密钥轮换成功证据 |
+| 真实副作用 | C3 在等待前以 wx 创建随机 nonce 账本；恢复后模型实际收到有序工具结果中的同一 nonce，既有 applied 不被重做；核对实际文件内容与最终 checkpoint/租约 |
+| 只读回归 | 另一连接持有未提交写事务时 history.read 仍读到已提交 revision 与匹配消息；提交后读取新匹配视图，读取不存在 Thread 不创建 head；复用已有目录缺库不创建行为 |
+
+C1 新增 12 项、保留原 3 项，整文件 15 项通过；C3 相关 runtime/development-host/host-binding 三文件 83 项通过。主线程另跑 host/目录/终端三文件 18 项通过。上述有重叠文件，不能相加作为不重复总数。
+
+### 12.2 失败定位与实际入口
+
+- 开工 build:cli 先遇到 `terminal-controller.ts` 两处 TS2367：refresh 入口已经排除 closing，后面的 closing 分支不可达。本轮最小删除重复判断，保持现有控制流；终端回归及实际 CLI 路径通过，不重设计终端状态机。
+- 随后一次构建在日志导出并行变动期间失败，读取后相应源码已具备导出；未修改日志/模型实现或放宽门禁，后续 build:cli 通过。旧产物缺失曾导致原 3 个进程基线失败，不能计为存储准入失败。
+- C3 初跑新增 30 组成功对照 failed，原因是验收插件把 toModelContent 的 ToolResult 当作 output，投影出 undefined；修正夹具读取成功结果的 output，并把模型实际输入断言移到执行完成后，避免断言异常被运行时投影成 failed。未为通过测试修改生产错误处理。
+- 两项既有 configured-host 断言在模型源码/构建产物不一致时失败；保留新源码对应的契约预期，产物收敛后相关三文件 83 项通过，不增加不支持适配器的静默回退。
+- C1 首轮整组超时；有界 IPC 诊断确认 CAS 已完成且子进程 exit(0)，但父端与 worker 同时 disconnect 导致 Windows close 事件未收齐。正常断开改由 worker 唯一拥有，父端等待 close，失败路径仍终止并排空。没有延长 deadline、减少矩阵或改生产 SQLite；修正后 15 项通过。
+- 一次性原生 Node 程序使用真实 CLI 构建产物、Windows DPAPI 与本地 SDK HTTP：无插件对话 completed；批准前文件不存在；EOF 退出码 3、checkpoint waiting、lease 释放；同连接密钥轮换后，新进程批准同 Query/新 Run，写入真实随机码，最终 completed 且 lease 再次释放。共 3 次本地模型请求，零远程厂商调用；受控输入不作为真实 PTY/键盘验收。
+- 临时烟测脚本 `.vite/m3-c-execution-4d21/` 已移除，隔离数据库与工作区由 finally 清理。C1/C3 两路只读代码复核未发现阻塞性缺陷；静态复核与实际运行证据分别记录，不互相替代。
+- 一次集中 typecheck 在全部边界检查通过后报告 Core 子路径声明缺失；随后核对相应产物存在，单独 Node/Web/CLI 三项目类型编译通过。未改 exports、模块解析规则或跳过失败文件，最终完整门禁另行记录。
+- C1 首轮超时的 6 份遗留隔离目录，经创建窗口和新夹具 Agent/Thread/批次身份核对后逐路径清理；清理前查询未发现存活 reliability worker。诊断线程另外清理其本次产生的 6 份目录，未按共享前缀批量删除。
+
+### 12.3 集中门禁与完成结论
+
+| 命令/场景 | 本轮实际结果 |
+| --- | --- |
+| `npm.cmd run build:cli` | 五包及实际 Node CLI 构建通过 |
+| `npm.cmd run typecheck` | 最终完整命令通过，包含五类边界及 Node/Web/CLI 类型编译 |
+| `npm.cmd test` | 202 文件通过，1827 项通过、3 项条件跳过；包含同期工作区其它切片，不把总数差额全部归于 M3-C |
+| C1 定向进程矩阵 | 现有 reliability 文件 15 项通过；12 项新增，3 项原场景保留 |
+| C3 定向矩阵 | runtime/development-host/host-binding 三文件 83 项通过，无跳过 |
+| `test:integration:harness` 注册的三个文件直接 Vitest 运行 | 最终 3 文件、23 项通过，无跳过；实际 Node CLI、本地 HTTP/DPAPI 与独立 PID SQLite |
+| `node scripts/verify-harness-package.mjs` | Core 真实 tarball 隔离安装、NodeNext/Bundler 声明及原生公开消费通过 |
+| `node scripts/verify-tools-package.mjs` | Core/logs/tools 离线 tarball 闭包、声明与工具实际消费通过 |
+| 六个本轮修改代码文件 Biome | 通过，无待应用修正 |
+| 一次性实际 CLI 烟测 | 无插件对话、EOF waiting、同连接密钥轮换、原 Query/新 Run 批准真实写入、终态与租约释放通过 |
+
+一次 `npm.cmd run test:integration:harness` 完成构建后，CLI 的 seed/inspect 出现 6 项失败，C1 同批通过；其后观察到包与 CLI 产物被再次生成，独立 seed 成功，再直接执行注册的同一组三文件得到 23 项通过。没有缩小集成范围、修改成功预期或把失败命令写成通过；该轮产物变化与失败的因果未由故障注入证明。
+
+全量 3 项条件跳过仍是 Windows 环境下两类 symlink 场景和非 Windows 凭据失败场景，不计验收。包脚本的内存端口不是跨进程持久证据；C1 的原生 PID/SQLite 与实际 CLI 路径分别提供相应证据。没有远程厂商、断电、提交确认丢失、HA、生产 UI/PPT、ASAR 或安装器新增验收，不承诺外部副作用恰好一次。
+
+**完成结论：C1/C2/C3 满足本步门槛，M3-C 可以标记完成。** 下一步按总计划 D1/D2/D3 推进，其中 acquire 已提交但丢确认及首存前空行的恢复必须明确验证；E 与 P3/P4 不随 C 完成而自动通过。
+
+交付前已验证本轮 5 份文档的 82 个本地链接及标题锚点，全部有效；本轮临时烟测与超时隔离库已清理，未删除共享数据库或其它切片目录。

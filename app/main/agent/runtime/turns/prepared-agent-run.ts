@@ -1,6 +1,6 @@
-import type { Logger } from "@agent-harness/logs/logs";
 import type { AgentStepLimits } from "@agent-harness/configuration/step-limits";
 import { buildMainStepLimitMessage } from "@agent-harness/configuration/step-limits";
+import type { Logger } from "@agent-harness/logs/logs";
 import type { ConversationDatabase } from "../../../conversation-database";
 import type { AgentModelGateway, AgentToolSchema } from "../../gateway";
 import type { DurableQueryInflightSnapshot } from "../../persistence/durable-run-store";

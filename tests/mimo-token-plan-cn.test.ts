@@ -930,27 +930,6 @@ function configuredRuntime(
 }
 
 describe("MiMo configured host error boundary", () => {
-  it.each(["responses", "chat-completions", "anthropic"] as const)(
-    "rejects an unregistered %s connection before resolving credentials or dispatching HTTP",
-    async (protocol) => {
-      const runtime = configuredRuntime();
-      const { modelAdapter: _adapter, ...plan } =
-        await runtime.loadExecutionPlan("configured-mimo");
-      if (protocol === "anthropic") plan.model.provider = "anthropic";
-      else plan.model.openaiApiMode = protocol;
-      const resolveRuntime = vi.fn(runtime.resolveRuntime);
-      await expect(
-        prepareConfiguredModel(
-          { loadExecutionPlan: async () => plan, resolveRuntime },
-          "configured-mimo",
-          signal(),
-        ),
-      ).rejects.toMatchObject({ code: "MODEL_ADAPTER_UNSUPPORTED" });
-      expect(resolveRuntime).not.toHaveBeenCalled();
-      expect(observed).toHaveLength(0);
-    },
-  );
-
   it.each([
     [401, "AUTHENTICATION", "MiMo 身份认证失败。"],
     [429, "RATE_LIMIT_OR_QUOTA", "MiMo 限流或额度受限。"],

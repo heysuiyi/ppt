@@ -27,15 +27,16 @@
 | 位置 | 当前职责 |
 | --- | --- |
 | `packages/harness/src/agent/`、`packages/harness/src/agent-host/` | 私有 workspace 包 `@agent-harness/core`：通用执行协议、默认实现与 SessionHost；调用方只消费受控子路径的构建产物，不直接导入源码 |
-| `app/main/agent-host/` | 当前 Electron 宿主的配置与模型端口适配、持久化适配、装配和终端开发入口的平台桥接；不是 Harness 的全部实现 |
+| `packages/configuration/src/` | 私有 `@agent-harness/configuration`：配置管理、已签发计划、模型发现、凭据绑定与默认存储；Node Windows DPAPI 与桌面 safeStorage 使用明确独立保护方案 |
+| `app/main/agent-configuration/` | 桌面 application-data、safeStorage 与 IPC 适配；通用配置实现已归 configuration 包 |
 | `packages/tools/src/` | 私有 `@agent-harness/tools`：文件插件、纯契约/错误及受控 Node 原子 I/O、WorkspaceFileService；五个精确入口，共享安全实现但保持新旧观察/恢复语义，不提供额外全局文件功能开关 |
 | `packages/logs/src/` | 私有 workspace 包 `@agent-harness/logs`：通用诊断日志协议、默认运行时与 Node 输出/管理；与 Harness 互不依赖，消费者借用 Logger，宿主拥有实例和关闭责任 |
-| `packages/models/src/` | 私有单包 `@agent-harness/models`：统一模型创建、纯能力资料与安全错误，厂商仅为内部模块；当前真实适配器为 MiMo Token Plan CN，不将 SDK/凭据来源带入 Core 或 renderer |
+| `packages/models/src/` | 私有单包 `@agent-harness/models`：统一模型创建、纯能力资料与安全错误；已实现 MiMo Token Plan CN、OpenAI Chat Completions、OpenAI Responses、Anthropic Messages，不将 SDK/凭据来源带入 Core 或 renderer |
 | `app/main/agent/` | 仍在生产链路中使用的旧 Agent 与 Gateway；旧文件工具、领域服务和持久化已通过 tools 包的 `workspace-files`、`atomic-files` 公开入口复用共享原语 |
 | `app/main/plugins/ppt/`、`src/ppt/`、`app/main/presentation-lifecycle/` | 现有 PPT 能力、领域模型及旧链路适配；尚未完成通用 Harness 插件接入，其迁移不构成 Harness 演进的前置要求 |
 | `app/renderer/`、`app/preload/`、`app/shared/` | 桌面界面及 IPC 边界；不是通用内核的依赖来源 |
-| `cli/` | 终端命令、模型配置向导与交互执行流程；平台能力由窄端口注入，当前 `agent:dev` 仍启动 Electron 桥接，不代表纯 Node CLI 已独立 |
-| `src/shared/` | 尚未进一步归属的配置、会话及领域契约；不是可任意复用的公共包，桌面 IPC 已归 `app/shared/ipc.ts` |
+| `cli/` | 生产 Node CLI：`main.ts` 入口、终端输入/呈现，以及 `host/` 的配置、模型、SQLite、日志与能力装配；`agent` / `agent:dev` 使用同一执行入口，不再经过 Electron 桥接 |
+| `src/shared/` | 尚未进一步归属的会话及领域契约；配置纯契约已归 configuration 包，桌面 IPC 已归 `app/shared/ipc.ts`；不是可任意复用的公共包 |
 
 新执行链已完成真实模型、文件工具、审批与跨进程恢复验证；这不代表通用 Harness 的全部目标已完成，也不代表生产 UI 已切换。PPT 等业务能力的接入、Skill、子 Agent、上下文压缩分别按实际需求规划，不能以迁完旧 PPT 能力作为通用性标准。
 
@@ -102,12 +103,12 @@
 ## 7. 宿主、文件与凭据安全
 
 - 具体助手指令、插件清单和读取审批策略是宿主选择的运行配置，不是 Harness 默认业务。当前文件助手只是一个配置实例；后续应分离配置与宿主机制，不以工具名称分支定义通用能力，也不默认依赖 PPT 或文件插件才能启动。
-- 复用 `agent-configuration` 的公开接口取得已签发计划和运行配置，不导入其内部存储或自行解密。`resolveRuntime()` 必须接收同一运行时签发的原计划对象，不能序列化后重建。
+- 复用 `@agent-harness/configuration/configuration` 的公开接口取得已签发计划和运行配置，不导入其内部存储或自行解密。`resolveRuntime()` 必须接收同一运行时签发的原计划对象，不能序列化后重建。
 - 凭据只留在宿主与适配边界；不得写进内核状态、插件载荷、前端持久化、执行请求或公开诊断。终端不直接序列化完整运行对象、SDK 异常、工具结果和私有重放状态。
 - 文件能力必须限定在明确工作区内，复用已有路径守卫、稳定快照、UTF-8 与大小限制；不能直接用任意路径读写绕过安全边界。
 - 不凭方法名判断只读性。现有部分文件读取入口会进入事务并恢复旧写入；声明 `effects: none` 的只读能力不能触发锁创建、目录创建或写入恢复。
 - Electron ESM 入口不得在模块顶层等待 `app.whenReady()`；先完成模块加载，再由异步启动函数等待就绪。
-- Windows Electron Main 的标准输入不能按普通 Node CLI 假设处理。开发入口由 Node 启动器接收输入和控制信号，经父子进程 IPC 转交；不要用 Windows 的 `kill(SIGINT)` 冒充优雅取消。
+- Windows Electron Main 的标准输入不能按普通 Node CLI 假设处理。当前生产与开发 CLI 均由 Node 直接运行，`node-terminal` 独占 stdin/raw mode；不要恢复旧 Electron CLI IPC 桥接，或用 Windows 的 `kill(SIGINT)` 冒充优雅取消。
 - 开发数据库与生产会话库保持隔离。开发构建使用独立临时缓存，不将开发入口和测试夹具混进生产 `out/**` 安装产物。
 
 ## 8. 修改方式

@@ -3,6 +3,7 @@ import {
   resolveAgentGatewayConfig,
 } from "@agent-harness/configuration/gateway-settings";
 import type { AgentModelSelection } from "@agent-harness/configuration/model-contract";
+import type { Logger } from "@agent-harness/logs/logs";
 import type {
   AgentModelContentBlock,
   AgentModelGateway,
@@ -21,7 +22,6 @@ import {
   textFromContentBlocks,
   toolUseBlocksFromContent,
 } from "../../gateway";
-import type { Logger } from "@agent-harness/logs/logs";
 import {
   emergencyTrimContext,
   emergencyTrimModelMessages,

@@ -10,6 +10,7 @@ import {
   resolveAnthropicBaseURL,
   resolveOpenAiBaseURL,
 } from "./integration-env";
+import { createTestGatewayOptions } from "./test-log-collector";
 
 const OPENAI_AVAILABLE = hasEnvironment("OPENAI_API_KEY", "OPENAI_MODEL");
 const ANTHROPIC_AVAILABLE = hasEnvironment("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL");
@@ -23,7 +24,7 @@ async function expectUsefulStream(
   model: string,
   apiKey: string,
 ): Promise<void> {
-  const gateway = new AgentGateway();
+  const gateway = new AgentGateway(createTestGatewayOptions());
   const baseURL = providerBaseURL(provider);
   const selection = gateway.configure({
     provider,
@@ -63,7 +64,7 @@ describe.sequential("AgentGateway real provider integration", () => {
     "generates text through the configured OpenAI-compatible endpoint",
     async () => {
       const model = requiredEnvironment("OPENAI_MODEL");
-      const gateway = new AgentGateway();
+      const gateway = new AgentGateway(createTestGatewayOptions());
       const baseURL = resolveOpenAiBaseURL();
       const selection = gateway.configure({
         provider: "openai",
@@ -103,7 +104,7 @@ describe.sequential("AgentGateway real provider integration", () => {
     "generates text through the configured Anthropic-compatible endpoint",
     async () => {
       const model = requiredEnvironment("ANTHROPIC_MODEL");
-      const gateway = new AgentGateway();
+      const gateway = new AgentGateway(createTestGatewayOptions());
       const baseURL = resolveAnthropicBaseURL();
       const selection = gateway.configure({
         provider: "anthropic",

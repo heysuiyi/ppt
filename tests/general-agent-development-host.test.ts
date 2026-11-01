@@ -8,6 +8,7 @@ import {
   type AgentConfiguration,
   createAgentConfiguration,
 } from "@agent-harness/configuration/configuration";
+import type { SessionHistory } from "@agent-harness/core/session/session-contract";
 import type { ModelProviderOptions } from "@agent-harness/models/model-contract";
 import { getModelProfile } from "@agent-harness/models/model-profiles";
 import type { ToolsMode } from "@agent-harness/tools/tools-contract";
@@ -157,6 +158,7 @@ async function fixture(
       resume?: boolean;
       modelId?: string;
       toolMode?: ToolsMode;
+      requireReadApproval?: boolean;
     } = {},
   ): Promise<AgentHost> => {
     const host = await createAgentHost({
@@ -338,6 +340,7 @@ describe("independent configured Agent host", () => {
       }
     });
     let host = await f.open(await f.configure(), { toolMode: "read-write" });
+    const originalBinding = host.binding;
     const waiting = await (await host.run(question)).completed;
     expect(waiting.status).toBe("waiting");
     if (waiting.status !== "waiting") throw new Error("Expected approval");
@@ -394,42 +397,134 @@ describe("independent configured Agent host", () => {
     expect(publicOutput).not.toContain("opaque-private-replay");
     expect(f.requests).toHaveLength(2);
     expect(f.authorizations).toEqual(["Bearer first-stored-key", "Bearer rotated-stored-key"]);
+    expect(host.binding).toEqual(originalBinding);
+    await host.close();
+    const final = new DatabaseSync(join(f.directory, "sessions.sqlite"), { readOnly: true });
+    try {
+      const row = final
+        .prepare(
+          "SELECT owner_id, generation, payload FROM general_agent_checkpoints WHERE query_id = ?",
+        )
+        .get("query");
+      expect(row).toMatchObject({
+        owner_id: null,
+        generation: 2,
+        payload: expect.stringContaining('"status":"completed"'),
+      });
+    } finally {
+      final.close();
+    }
   });
 
-  it("rejects a different workspace before resuming a pending write", async () => {
-    const f = await fixture((_body, response) => respondNative(response, writeCall));
-    const configuration = await f.configure();
-    const host = await f.open(configuration, { toolMode: "read-write" });
-    expect((await (await host.run(question)).completed).status).toBe("waiting");
-    await host.close();
-    const other = join(f.directory, "other-workspace");
-    await mkdir(other);
-    await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-    await expect(
-      f.open(configuration, { workspaceRoot: other, toolMode: "read-write", resume: true }),
-    ).rejects.toMatchObject({ code: "HOST_BINDING_CHANGED" });
-    expect(f.requests).toHaveLength(1);
-    await expect(readFile(join(other, "created.txt"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-  });
-
-  it("rejects a tool-mode change before resuming a pending call", async () => {
-    const f = await fixture((_body, response) => respondNative(response, writeCall));
-    const configuration = await f.configure();
-    const host = await f.open(configuration, { toolMode: "read-write" });
-    expect((await (await host.run(question)).completed).status).toBe("waiting");
-    await host.close();
-    await expect(
-      f.open(configuration, { toolMode: "read-only", resume: true }),
-    ).rejects.toMatchObject({ code: "HOST_BINDING_CHANGED" });
-    expect(f.requests).toHaveLength(1);
-    await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-  });
+  it.each([
+    "workspace",
+    "tool-mode",
+    "read-approval-version",
+    "connection-fingerprint",
+    "maxSteps-increase",
+    "maxSteps-decrease",
+  ] as const)(
+    "preserves a configured waiting write across rejected %s and original-binding recovery",
+    async (dimension) => {
+      const f = await fixture((body, response) => {
+        if (lastToolResult(body))
+          respondNative(response, [textOutput("Original binding recovered.")]);
+        else respondNative(response, writeCall);
+      });
+      const configuration = await f.configure();
+      const host = await f.open(configuration, { toolMode: "read-write" });
+      const originalBinding = host.binding;
+      const waiting = await (await host.run(question)).completed;
+      if (waiting.status !== "waiting") throw new Error("Expected write approval.");
+      await host.close();
+      const inspection = new DatabaseSync(join(f.directory, "sessions.sqlite"), { readOnly: true });
+      cleanup.push(async () => inspection.close());
+      const before = inspection.prepare("SELECT * FROM general_agent_checkpoints").all();
+      const bound = inspection.prepare("SELECT * FROM general_agent_host_bindings").all();
+      const stored = createSqliteAgentStores(join(f.directory, "sessions.sqlite"));
+      let history: SessionHistory;
+      try {
+        history = await stored.history.read("thread");
+      } finally {
+        await stored.dispose();
+      }
+      const other = join(f.directory, "other-workspace");
+      await mkdir(other);
+      const snapshot = await configuration.management.getSnapshot();
+      if (!snapshot) throw new Error("Expected saved configuration.");
+      const preferences = {
+        gateway: snapshot.settings.gateway,
+        stepLimits: snapshot.settings.stepLimits,
+        executionStrategy: snapshot.settings.executionStrategy,
+        defaultTemplateId: snapshot.settings.defaultTemplateId,
+      };
+      if (dimension === "connection-fingerprint") {
+        await configuration.management.savePreferences({
+          ...preferences,
+          gateway: { ...preferences.gateway, maxOutputTokens: 512 },
+        });
+      }
+      if (dimension === "maxSteps-increase" || dimension === "maxSteps-decrease") {
+        await configuration.management.savePreferences({
+          ...preferences,
+          stepLimits: {
+            ...preferences.stepLimits,
+            mainMaxSteps: originalBinding.maxSteps + (dimension === "maxSteps-increase" ? 1 : -1),
+          },
+        });
+      }
+      await expect(
+        f.open(configuration, {
+          toolMode: dimension === "tool-mode" ? "read-only" : "read-write",
+          workspaceRoot: dimension === "workspace" ? other : f.workspace,
+          requireReadApproval: dimension === "read-approval-version",
+          resume: true,
+        }),
+      ).rejects.toMatchObject({ code: "HOST_BINDING_CHANGED" });
+      expect(inspection.prepare("SELECT * FROM general_agent_checkpoints").all()).toEqual(before);
+      expect(inspection.prepare("SELECT * FROM general_agent_host_bindings").all()).toEqual(bound);
+      expect(f.requests).toHaveLength(1);
+      await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(readFile(join(other, "created.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+      await configuration.management.savePreferences(preferences);
+      const restored = await f.open(configuration, { toolMode: "read-write", resume: true });
+      expect(restored.binding).toEqual(originalBinding);
+      const completed = await (
+        await restored.resume({
+          queryId: "query",
+          runId: "original-binding",
+          response: { type: "answer", interactionId: waiting.interaction.id, value: true },
+        })
+      ).completed;
+      expect(completed.status).toBe("completed");
+      expect(await readFile(join(f.workspace, "created.txt"), "utf8")).toBe(createdContent);
+      expect(f.requests).toHaveLength(2);
+      await restored.close();
+      const finalStores = createSqliteAgentStores(join(f.directory, "sessions.sqlite"));
+      try {
+        expect(await finalStores.bindings.read("thread")).toEqual(originalBinding);
+        expect(
+          (await finalStores.history.read("thread")).messages.slice(0, history.messages.length),
+        ).toEqual(history.messages);
+        expect(await finalStores.checkpoints.findUnfinished("cli-agent", "thread")).toBeNull();
+      } finally {
+        await finalStores.dispose();
+      }
+      expect(
+        inspection
+          .prepare(
+            "SELECT owner_id, generation, payload FROM general_agent_checkpoints WHERE query_id = ?",
+          )
+          .get("query"),
+      ).toMatchObject({
+        owner_id: null,
+        generation: 2,
+        payload: expect.stringContaining('"status":"completed"'),
+      });
+    },
+  );
 
   it.each(["write", "edit"] as const)(
     "does not install or execute %s in the default read-only mode",
@@ -754,8 +849,7 @@ describe("independent configured Agent host", () => {
     await expect(
       f.open(configuration, { resume: true, toolMode: "read-write", modelId: "other-model" }),
     ).rejects.toMatchObject({ code: "HOST_BINDING_CHANGED" });
-    // A fixed native endpoint cannot be edited. A custom profile at that same URL
-    // must not inherit native admission or fall back to the legacy Gateway.
+    // 相同 URL 的自定义 Responses 连接不继承 MiMo 身份；已有会话仍拒绝换适配器。
     await configuration.management.saveVendor({
       vendor: { ...vendor, kind: "custom" },
       credential: { type: "replace", apiKey: "custom-stored-key" },
@@ -763,7 +857,7 @@ describe("independent configured Agent host", () => {
     await expect(
       f.open(configuration, { resume: true, toolMode: "read-write" }),
     ).rejects.toMatchObject({
-      code: "MODEL_ADAPTER_UNSUPPORTED",
+      code: "HOST_BINDING_CHANGED",
     });
     expect(f.requests).toHaveLength(1);
   });
@@ -819,7 +913,7 @@ describe("independent configured Agent host", () => {
       { id: "disabled", status: "disabled" },
       { id: "audio", status: "unsupported-model" },
       { id: "missing", status: "missing-credential" },
-      { id: "legacy", status: "unsupported-adapter" },
+      { id: "legacy", status: "missing-credential" },
     ]);
     expect(configuredModels(undefined)).toEqual([]);
     if (!saved) throw new Error("Expected saved configuration");
@@ -931,7 +1025,10 @@ describe("independent configured Agent host", () => {
   });
 
   it("refuses to restore an approval-bound session under a different host read policy", async () => {
-    const f = await fixture((_body, response) => respondNative(response, readCall));
+    const f = await fixture((body, response) => {
+      if (!lastToolResult(body)) respondNative(response, readCall);
+      else respondNative(response, [textOutput("Original read policy recovered")]);
+    });
     const configuration = await f.configure();
     const protectedHost = createNodeHost({
       dataRoot: f.directory,
@@ -941,9 +1038,14 @@ describe("independent configured Agent host", () => {
     });
     cleanup.push(() => protectedHost.close());
     await protectedHost.open({ modelId: "configured-model" });
-    expect((await (await protectedHost.run("Read notes.txt")).completed).status).toBe("waiting");
+    const run = await protectedHost.run("Read notes.txt");
+    const waiting = await run.completed;
+    if (waiting.status !== "waiting") throw new Error("Expected read approval.");
     const threadId = protectedHost.context.threadId;
     await protectedHost.close();
+    const inspection = new DatabaseSync(join(f.directory, "sessions.sqlite"), { readOnly: true });
+    cleanup.push(async () => inspection.close());
+    const before = inspection.prepare("SELECT * FROM general_agent_checkpoints").all();
     const unprotectedHost = createNodeHost({
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
@@ -954,6 +1056,34 @@ describe("independent configured Agent host", () => {
       code: "HOST_BINDING_CHANGED",
     });
     expect(f.requests).toHaveLength(1);
+    expect(inspection.prepare("SELECT * FROM general_agent_checkpoints").all()).toEqual(before);
+    const restored = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+      requireReadApproval: true,
+    });
+    cleanup.push(() => restored.close());
+    await restored.open({ threadId });
+    const resumed = await restored.resume(
+      run.identity.queryId,
+      restored.answerInteraction(waiting.interaction, "allow"),
+    );
+    expect(resumed.identity.runId).not.toBe(run.identity.runId);
+    expect((await resumed.completed).status).toBe("completed");
+    expect(f.requests).toHaveLength(2);
+    await restored.close();
+    expect(
+      inspection
+        .prepare(
+          "SELECT owner_id, generation, payload FROM general_agent_checkpoints WHERE query_id = ?",
+        )
+        .get(run.identity.queryId),
+    ).toMatchObject({
+      owner_id: null,
+      generation: 2,
+      payload: expect.stringContaining('"status":"completed"'),
+    });
   });
 
   it("keeps sessions with changed model configuration visible but rejects restore before acquiring a lease", async () => {
