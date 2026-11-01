@@ -203,6 +203,16 @@ export class NodeFileOutput {
     });
   }
 
+  reset(): number {
+    return this.checked(() => {
+      if (!this.ownsDirectory) return 0;
+      const removed = this.remove(this.files());
+      this.retainedDay = undefined;
+      this.lastWrittenAt = undefined;
+      return removed;
+    });
+  }
+
   rollback(): void {
     if (!this.ownsDirectory) return;
     this.requireDirectory(false);

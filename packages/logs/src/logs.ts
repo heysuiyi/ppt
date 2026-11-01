@@ -1,7 +1,9 @@
 import { createLogRuntime } from "./internal/log-runtime.js";
 import type { Logs, LogsOptions } from "./log-contract.js";
 
+export { diagnosticValuePreview, sanitizeLogData } from "./internal/log-safety.js";
 export type {
+  DiagnosticValuePreview,
   LogContext,
   LogData,
   LogExporter,

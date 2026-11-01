@@ -1,4 +1,5 @@
 import type {
+  DiagnosticValuePreview,
   LogContext,
   LogData,
   LogInput,
@@ -18,6 +19,7 @@ const REDACTED = "[REDACTED]";
 const TRUNCATED = "[Truncated]";
 const UNREADABLE = "[Unreadable]";
 const OMITTED = "[Omitted]";
+const binaryField = /(?:base64|binary|blob|image_?data|png_?data|jpe?g_?data|bytes)$/i;
 const budgetExceeded = Symbol("log budget exceeded");
 const snapshotFailed = Symbol("log snapshot failed");
 const encoder = new TextEncoder();
@@ -134,8 +136,20 @@ function spend(budget: SnapshotBudget, bytes: number): void {
   if (budget.bytes > MAX_DATA_BYTES) throw budgetExceeded;
 }
 
-function stringValue(value: string, budget: SnapshotBudget, limit = MAX_STRING): string {
-  const safe = sanitizeString(value, limit);
+function stringValue(
+  value: string,
+  budget: SnapshotBudget,
+  limit = MAX_STRING,
+  parentKey = "",
+): string {
+  // 在原始字符串进入快照前省略二进制内容；只检查有界前缀，不扫描任意大正文。
+  const binary =
+    (value.length > 128 && binaryField.test(parentKey)) ||
+    /^data:[^,]{0,256};base64,/i.test(value) ||
+    (parentKey.toLowerCase() === "data" &&
+      value.length > 512 &&
+      /^[a-z0-9+/=_-]+$/i.test(value.slice(0, MAX_STRING)));
+  const safe = binary ? "[Binary data omitted]" : sanitizeString(value, limit);
   spend(budget, encoder.encode(JSON.stringify(safe)).length);
   return safe;
 }
@@ -176,6 +190,7 @@ function snapshotArray(
   value: unknown[],
   depth: number,
   budget: SnapshotBudget,
+  parentKey: string,
 ): readonly LogValue[] {
   const length = Object.getOwnPropertyDescriptor(value, "length");
   if (!length || !("value" in length) || typeof length.value !== "number") {
@@ -194,7 +209,7 @@ function snapshotArray(
       !descriptor
         ? snapshotValue(null, depth + 1, budget)
         : "value" in descriptor
-          ? snapshotValue(descriptor.value, depth + 1, budget)
+          ? snapshotValue(descriptor.value, depth + 1, budget, parentKey)
           : marker(UNREADABLE, budget),
     );
   }
@@ -227,7 +242,7 @@ function snapshotObject(value: object, depth: number, budget: SnapshotBudget): L
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     result[safeKey] =
       descriptor && "value" in descriptor
-        ? snapshotValue(descriptor.value, depth + 1, budget)
+        ? snapshotValue(descriptor.value, depth + 1, budget, key)
         : marker(UNREADABLE, budget);
   }
   if (truncated) {
@@ -237,14 +252,19 @@ function snapshotObject(value: object, depth: number, budget: SnapshotBudget): L
   return Object.freeze(result);
 }
 
-function snapshotValue(value: unknown, depth: number, budget: SnapshotBudget): LogValue {
+function snapshotValue(
+  value: unknown,
+  depth: number,
+  budget: SnapshotBudget,
+  parentKey = "",
+): LogValue {
   budget.nodes += 1;
   if (budget.nodes > MAX_NODES) throw budgetExceeded;
   if (value === null || typeof value === "boolean") {
     spend(budget, 5);
     return value;
   }
-  if (typeof value === "string") return stringValue(value, budget);
+  if (typeof value === "string") return stringValue(value, budget, MAX_STRING, parentKey);
   if (typeof value === "number" && Number.isFinite(value)) {
     spend(budget, 25);
     return value;
@@ -269,7 +289,7 @@ function snapshotValue(value: unknown, depth: number, budget: SnapshotBudget): L
   budget.ancestors.add(value);
   try {
     return array
-      ? snapshotArray(value as unknown[], depth, budget)
+      ? snapshotArray(value as unknown[], depth, budget, parentKey)
       : snapshotObject(value, depth, budget);
   } finally {
     budget.ancestors.delete(value);
@@ -282,15 +302,79 @@ function summary(value: string): LogData {
   return Object.freeze(result);
 }
 
-function snapshotInput(input: LogInput): LogData {
-  const value = snapshotValue(input, 0, {
+function snapshotAny(input: unknown): LogValue {
+  return snapshotValue(input, 0, {
     bytes: 0,
     nodes: 0,
     ancestors: new WeakSet(),
   });
+}
+
+function snapshotInput(input: LogInput): LogData {
+  const value = snapshotAny(input);
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as LogData)
     : summary(OMITTED);
+}
+
+/** 历史数据与实时记录复用相同的安全投影，异常仅返回无敏感信息的摘要。 */
+export function sanitizeLogData(input: LogInput): LogData {
+  try {
+    return snapshotInput(input);
+  } catch (error) {
+    return summary(error === budgetExceeded ? TRUNCATED : UNREADABLE);
+  }
+}
+
+function diagnosticValueType(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value !== "object") return typeof value;
+  try {
+    if (Array.isArray(value)) return "array";
+    let prototype = Object.getPrototypeOf(value) as object | null;
+    for (let depth = 0; prototype !== null && depth < MAX_DEPTH; depth++) {
+      if (prototype === Error.prototype) return "error";
+      if (prototype === Object.prototype) break;
+      prototype = Object.getPrototypeOf(prototype) as object | null;
+    }
+  } catch {
+    // 代理的类型探测失败也不得暴露异常。
+  }
+  return "object";
+}
+
+/** 仅序列化有界安全快照，绝不序列化或读取原始对象的访问器。 */
+export function diagnosticValuePreview(
+  value: unknown,
+  maxCharacters: number,
+): DiagnosticValuePreview {
+  const limit = Number.isFinite(maxCharacters)
+    ? Math.max(1, Math.min(MAX_RECORD_BYTES, Math.trunc(maxCharacters)))
+    : maxCharacters === Infinity
+      ? MAX_RECORD_BYTES
+      : 1;
+  let safe: LogValue;
+  try {
+    safe = snapshotAny(value);
+  } catch (error) {
+    safe = summary(error === budgetExceeded ? TRUNCATED : UNREADABLE);
+  }
+  const serialized = JSON.stringify(safe);
+  const truncated = serialized.length > limit;
+  const valueType = diagnosticValueType(value);
+  return {
+    valueType,
+    serializedLength: serialized.length,
+    preview: truncated
+      ? limit > 3
+        ? `${serialized.slice(0, limit - 3)}...`
+        : serialized.slice(0, limit)
+      : serialized,
+    truncated,
+    ...(valueType === "object" && safe !== null && typeof safe === "object" && !Array.isArray(safe)
+      ? { keys: Object.keys(safe) }
+      : {}),
+  };
 }
 
 /** 仅在运行时已决定受理后调用；任何快照异常都不能成为执行异常。 */

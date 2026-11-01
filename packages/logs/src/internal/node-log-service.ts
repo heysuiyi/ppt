@@ -101,6 +101,13 @@ export async function createNodeLogs(options: NodeLogsOptions): Promise<NodeLogs
     clearFiles() {
       return enqueue(() => file.clear());
     },
+    reset() {
+      return enqueue(() => {
+        const removed = file.reset();
+        recent.clear();
+        return removed;
+      });
+    },
     close() {
       if (!closePromise) {
         runtime.stop();

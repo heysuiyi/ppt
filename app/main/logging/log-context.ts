@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { LogContext, Logger, LogLevel, LogInput } from "@agent-harness/logs/log-contract";
+import type { LogContext, Logger, LogInput, LogLevel } from "@agent-harness/logs/log-contract";
 import { sanitizeLogData } from "@agent-harness/logs/logs";
 
 const storage = new AsyncLocalStorage<LogContext>();
@@ -23,8 +23,33 @@ export function contextualLogger(logger: Logger): Logger {
     };
     return {
       child(context) {
-        // 不捕获调用方后续可修改的对象，不执行访问器。
-        const snapshot = sanitizeLogData(context as LogInput) as unknown as LogContext;
+        // 数据投影中的 [Omitted] 不是有效身份；先按上下文协议筛选自身数据属性。
+        const values: Record<string, string | number> = {};
+        try {
+          for (const field of [
+            "operation",
+            "sessionId",
+            "agentId",
+            "threadId",
+            "queryId",
+            "runId",
+            "requestId",
+            "toolCallId",
+            "step",
+          ]) {
+            const descriptor = Object.getOwnPropertyDescriptor(context, field);
+            if (!descriptor || !("value" in descriptor)) continue;
+            if (field === "step") {
+              if (Number.isSafeInteger(descriptor.value) && descriptor.value >= 0)
+                values[field] = descriptor.value;
+            } else if (typeof descriptor.value === "string") {
+              values[field] = descriptor.value;
+            }
+          }
+        } catch {
+          // 不可检查的代理不应改变既有身份，更不能影响业务执行。
+        }
+        const snapshot = sanitizeLogData(values) as unknown as LogContext;
         return wrap({ ...fixed, ...snapshot });
       },
       isEnabled: (level) => logger.isEnabled(level),

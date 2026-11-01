@@ -131,6 +131,12 @@ export class RecentOutput {
 
   async close(): Promise<void> {}
 
+  clear(): void {
+    this.records = [];
+    this.start = 0;
+    this.size = 0;
+  }
+
   resize(capacity: number): void {
     if (capacity === this.capacity) return;
     const count = Math.min(this.size, capacity);

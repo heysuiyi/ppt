@@ -23,6 +23,15 @@ export interface LogContext {
 export type LogInput = Readonly<Record<string, unknown>>;
 export type LogData = Readonly<Record<string, LogValue>>;
 
+/** 预览长度和键均来自安全快照，不反映原始敏感数据的长度或键。 */
+export interface DiagnosticValuePreview {
+  valueType: string;
+  serializedLength: number;
+  preview: string;
+  truncated: boolean;
+  keys?: string[];
+}
+
 export interface LogRecord {
   readonly schemaVersion: 1;
   readonly timestamp: string;
@@ -149,4 +158,6 @@ export interface NodeLogs extends Logs {
   getRecentEntries(query?: RecentLogQuery): readonly LogRecord[];
   getFileStatus(): Promise<LogFileStatus>;
   clearFiles(): Promise<number>;
+  /** 删除自身全部托管日文件并清空近期记录；已有 Logger 继续可用。 */
+  reset(): Promise<number>;
 }
