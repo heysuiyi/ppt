@@ -7,28 +7,23 @@ import type {
 } from "@agent-harness/core/model/model-contract";
 import type { Logger } from "@agent-harness/logs/log-contract";
 import OpenAI from "openai";
-import { MimoModelError, modelError, object, outputBudget } from "./internal/mimo-errors";
-import { requestBody, responseProjection } from "./internal/mimo-responses";
-import { MimoStreamProjection } from "./internal/mimo-stream";
+import type {
+  DiscoveredModel,
+  MimoTokenPlanCNOptions,
+  ModelProvider,
+} from "../../model-contract.js";
+import type { ModelProviderError } from "../../model-errors.js";
+import { mimoError, modelError, object, outputBudget } from "./errors.js";
 import {
   MIMO_REASONING_EFFORTS,
   MIMO_TOKEN_PLAN_CN_BASE_URL,
   MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-  type MimoRemoteModel,
-  type MimoTokenPlanCN,
-  type MimoTokenPlanCNOptions,
-  supportsMimoTokenPlanCNModel,
-} from "./mimo-token-plan-cn-contract";
+  mimoCapabilities,
+  mimoSupport,
+} from "./profile.js";
+import { requestBody, responseProjection } from "./responses.js";
+import { MimoStreamProjection } from "./stream.js";
 
-export type { MimoModelErrorCode } from "./internal/mimo-errors";
-export { MimoModelError } from "./internal/mimo-errors";
-
-const capabilities = Object.freeze({
-  streaming: true,
-  toolCalls: true,
-  images: false,
-  reasoning: true,
-});
 interface Owner {
   readonly controller: AbortController;
   readonly pending: Set<Promise<void>>;
@@ -36,7 +31,7 @@ interface Owner {
 }
 interface Operation {
   readonly signal: AbortSignal;
-  readonly finish: (error?: MimoModelError, response?: ModelResponse) => void;
+  readonly finish: (error?: ModelProviderError, response?: ModelResponse) => void;
   readonly serverId: (value: string | null) => void;
 }
 
@@ -46,7 +41,7 @@ function owner(): Owner {
 
 async function closeOwner(value: Owner): Promise<void> {
   value.closed = true;
-  value.controller.abort(new MimoModelError("CLOSED"));
+  value.controller.abort(mimoError("CLOSED"));
   await Promise.allSettled([...value.pending]);
 }
 
@@ -61,7 +56,7 @@ function validModelId(id: unknown): id is string {
 }
 
 /** 固定中国 Token Plan 地址；凭据与 SDK 生命周期由该实例拥有。 */
-export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoTokenPlanCN {
+export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): ModelProvider {
   if (
     typeof options.apiKey !== "string" ||
     !options.apiKey.trim() ||
@@ -70,7 +65,7 @@ export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoToke
     !Number.isFinite(options.timeoutMs) ||
     options.timeoutMs <= 0
   ) {
-    throw new MimoModelError("CONFIGURATION");
+    throw mimoError("CONFIGURATION");
   }
   const budget = outputBudget(options.maxOutputTokens);
   const timeoutMs = options.timeoutMs;
@@ -95,13 +90,13 @@ export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoToke
     selection?: ModelSelection,
     context?: ModelCallContext,
   ): Operation {
-    if (provider.closed || binding?.closed || !sdk) throw new MimoModelError("CLOSED");
+    if (provider.closed || binding?.closed || !sdk) throw mimoError("CLOSED");
     const timerController = new AbortController();
     const start = performance.now();
     let timer: NodeJS.Timeout;
     const tick = (): void => {
       const remaining = timeoutMs - (performance.now() - start);
-      if (remaining <= 0) timerController.abort(new MimoModelError("TIMEOUT"));
+      if (remaining <= 0) timerController.abort(mimoError("TIMEOUT"));
       else timer = setTimeout(tick, Math.min(remaining, 2147483647));
     };
     timer = setTimeout(tick, Math.min(timeoutMs, 2147483647));
@@ -174,52 +169,54 @@ export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoToke
   }
 
   return {
-    async listModels(signal) {
-      const operation = begin(signal);
-      try {
-        operation.signal.throwIfAborted();
-        // Page 会把缺失 data 归一化为空数组；在 SDK 原始响应边界校验厂商协议。
-        const response = await sdk!.models.list({ signal: operation.signal }).asResponse();
-        operation.serverId(response.headers.get("x-request-id"));
-        const page = object(await response.json());
-        operation.signal.throwIfAborted();
-        if (!Array.isArray(page.data) || page.data.length > 2000)
-          throw new MimoModelError("INVALID_RESPONSE");
-        const ids = new Set<string>();
-        const result: MimoRemoteModel[] = [];
-        for (const value of page.data) {
-          const model = object(value);
-          if (!validModelId(model.id)) throw new MimoModelError("INVALID_RESPONSE");
-          if (ids.has(model.id)) continue;
-          ids.add(model.id);
-          const supported = supportsMimoTokenPlanCNModel(model.id);
-          result.push({
-            id: model.id,
-            supported,
-            ...(supported ? {} : { unsupportedReason: "尚无该模型的 Responses 对话能力信息。" }),
-          });
+    adapterId: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+    discovery: {
+      async listModels(signal) {
+        const operation = begin(signal);
+        try {
+          operation.signal.throwIfAborted();
+          // Page 会把缺失 data 归一化为空数组；在 SDK 原始响应边界校验厂商协议。
+          const response = await sdk!.models.list({ signal: operation.signal }).asResponse();
+          operation.serverId(response.headers.get("x-request-id"));
+          const page = object(await response.json());
+          operation.signal.throwIfAborted();
+          if (!Array.isArray(page.data) || page.data.length > 2000)
+            throw mimoError("INVALID_RESPONSE");
+          const ids = new Set<string>();
+          const result: DiscoveredModel[] = [];
+          for (const value of page.data) {
+            const model = object(value);
+            if (!validModelId(model.id)) throw mimoError("INVALID_RESPONSE");
+            if (ids.has(model.id)) continue;
+            ids.add(model.id);
+            const support = mimoSupport(model.id);
+            result.push({
+              id: model.id,
+              supported: support.supported,
+              ...(support.supported ? {} : { unsupportedReason: support.unsupportedReason }),
+            });
+          }
+          operation.finish();
+          return result;
+        } catch (error) {
+          const safe = modelError(error, operation.signal);
+          operation.finish(safe);
+          throw safe;
         }
-        operation.finish();
-        return result;
-      } catch (error) {
-        const safe = modelError(error, operation.signal);
-        operation.finish(safe);
-        throw safe;
-      }
+      },
     },
     async create(selection, signal): Promise<ModelBinding> {
-      if (provider.closed) throw new MimoModelError("CLOSED");
-      if (signal.aborted) throw new MimoModelError("CANCELLED");
+      if (provider.closed) throw mimoError("CLOSED");
+      if (signal.aborted) throw mimoError("CANCELLED");
       if (
         selection.providerId !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID ||
         !validModelId(selection.modelId) ||
         (selection.reasoningEffort !== undefined &&
           !MIMO_REASONING_EFFORTS.some((effort) => effort === selection.reasoningEffort))
       ) {
-        throw new MimoModelError("CONFIGURATION");
+        throw mimoError("CONFIGURATION");
       }
-      if (!supportsMimoTokenPlanCNModel(selection.modelId))
-        throw new MimoModelError("MODEL_CAPABILITY");
+      if (!mimoSupport(selection.modelId).supported) throw mimoError("MODEL_CAPABILITY");
       const selected = Object.freeze({
         providerId: selection.providerId,
         modelId: selection.modelId,
@@ -234,7 +231,7 @@ export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoToke
       return {
         client: {
           selection: selected,
-          capabilities,
+          capabilities: mimoCapabilities,
           async generate(request, requestSignal, context) {
             const operation = begin(
               AbortSignal.any([requestSignal, lifetime]),
@@ -270,7 +267,7 @@ export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoToke
             const queue: ModelStreamEvent[] = [];
             let offset = 0;
             let ended = false;
-            let failure: MimoModelError | undefined;
+            let failure: ModelProviderError | undefined;
             let notify: (() => void) | undefined;
             const push = (event: ModelStreamEvent): void => {
               queue.push(event);
@@ -298,7 +295,7 @@ export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoToke
               } catch (error) {
                 failure =
                   error instanceof TypeError && !operation.signal.aborted
-                    ? new MimoModelError("INCOMPLETE_STREAM")
+                    ? mimoError("INCOMPLETE_STREAM")
                     : modelError(error, operation.signal);
                 operation.finish(failure);
               } finally {
@@ -329,7 +326,7 @@ export function createMimoTokenPlanCN(options: MimoTokenPlanCNOptions): MimoToke
             } catch (error) {
               throw modelError(error, operation.signal);
             } finally {
-              consumer.abort(new MimoModelError("CANCELLED"));
+              consumer.abort(mimoError("CANCELLED"));
               await pump;
             }
           },

@@ -1,12 +1,10 @@
+import type { ModelAdapterId, ModelProvider } from "@agent-harness/models/model-contract";
+import { getModelProfile } from "@agent-harness/models/model-profiles";
+import { createModelProvider } from "@agent-harness/models/models";
 import Anthropic from "@anthropic-ai/sdk";
 import type { AgentProvider } from "@shared/agent";
 import type { ListRemoteModelsResult, RemoteModelInfo } from "@shared/remote-models";
 import OpenAI from "openai";
-import { createMimoTokenPlanCN } from "../../../models/mimo-token-plan-cn";
-import {
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-} from "../../../models/mimo-token-plan-cn-contract";
 
 const LIST_TIMEOUT_MS = 20_000;
 const MAX_MODELS = 2_000;
@@ -97,24 +95,45 @@ async function listAnthropicCompatibleModels(
   return uniqueSortedModels(models);
 }
 
+export async function listProviderModels(
+  provider: Pick<ModelProvider, "discovery">,
+  signal: AbortSignal,
+): Promise<ListRemoteModelsResult> {
+  if (!provider.discovery)
+    throw new ListRemoteModelsError("This model adapter does not support model discovery.");
+  const models = await provider.discovery.listModels(signal);
+  return { models: models.map((model) => ({ ...model })) };
+}
+
 export async function discoverModels(request: {
   provider: AgentProvider;
   baseURL: string;
   apiKey: string;
-  modelAdapter?: "mimo-token-plan-cn";
+  modelAdapter?: ModelAdapterId;
 }): Promise<ListRemoteModelsResult> {
-  if (request.modelAdapter === MIMO_TOKEN_PLAN_CN_PROVIDER_ID) {
-    if (request.provider !== "openai" || request.baseURL !== MIMO_TOKEN_PLAN_CN_BASE_URL)
+  if (request.modelAdapter !== undefined) {
+    const profile = getModelProfile(request.modelAdapter);
+    if (
+      profile?.protocol !== "openai-responses" ||
+      profile.endpoint?.kind !== "fixed" ||
+      request.provider !== "openai" ||
+      request.baseURL !== profile.endpoint.url
+    )
       throw new ListRemoteModelsError("Invalid MiMo Token Plan CN connection.");
-    const provider = createMimoTokenPlanCN({
-      apiKey: request.apiKey,
-      connectionFingerprint: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-      timeoutMs: LIST_TIMEOUT_MS,
-      maxOutputTokens: 16_384,
-    });
+    const signal = new AbortController().signal;
+    const provider = await createModelProvider(
+      {
+        adapterId: profile.adapterId,
+        apiKey: request.apiKey,
+        connectionFingerprint: profile.adapterId,
+        timeoutMs: LIST_TIMEOUT_MS,
+        maxOutputTokens: 16_384,
+      },
+      signal,
+    );
     try {
-      const models = await provider.listModels(new AbortController().signal);
-      return { models: models.map((model) => ({ ...model })) };
+      signal.throwIfAborted();
+      return await listProviderModels(provider, signal);
     } finally {
       await provider.dispose();
     }

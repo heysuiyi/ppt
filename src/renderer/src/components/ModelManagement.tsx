@@ -1,12 +1,8 @@
+import { getModelSupport } from "@agent-harness/models/model-profiles";
 import type { DiscoverAgentModelsRequest } from "@shared/agent-configuration";
 import { normalizeCredentialUrl } from "@shared/credentials";
 import type { RemoteModelInfo } from "@shared/remote-models";
 import { useMemo, useState } from "react";
-import {
-  MIMO_REASONING_EFFORTS,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-  type MimoReasoningEffort,
-} from "../../../models/mimo-token-plan-cn-contract";
 import {
   buildCustomVendorDraft,
   buildVendorDraftFromPreset,
@@ -95,6 +91,11 @@ function dedupeCatalogModels(models: readonly ModelCatalogEntry[]): ModelCatalog
     seen.set(key, model);
   }
   return [...seen.values()];
+}
+
+function getReasoningEfforts(adapterId: string, modelId: string): readonly string[] {
+  const support = getModelSupport(adapterId, modelId);
+  return support?.supported ? support.reasoningEfforts : [];
 }
 
 function protocolLabel(protocol: string): string {
@@ -253,8 +254,8 @@ export function ModelManagement({
             provider: draft.protocol,
             baseURL: draft.baseURL.trim(),
             apiKey,
-            ...(draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID
-              ? { modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID }
+            ...(draft.kind === "mimo-token-plan-cn"
+              ? { modelAdapter: "mimo-token-plan-cn" as const }
               : {}),
           }
         : { type: "saved-vendor", vendorId: draft.id };
@@ -289,9 +290,7 @@ export function ModelManagement({
       nextModels.push(
         existing ?? {
           ...createCatalogEntriesFromRemoteIds([remote], draft.protocol)[0]!,
-          ...(draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID
-            ? { openaiApiMode: "responses" as const }
-            : {}),
+          ...(draft.kind === "mimo-token-plan-cn" ? { openaiApiMode: "responses" as const } : {}),
         },
       );
     }
@@ -591,7 +590,7 @@ export function ModelManagement({
                 <span>Base URL</span>
                 <Input
                   value={draft.baseURL}
-                  readOnly={draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID}
+                  readOnly={draft.kind === "mimo-token-plan-cn"}
                   onChange={(event) => updateDraft({ baseURL: event.target.value })}
                   placeholder="https://"
                 />
@@ -707,7 +706,7 @@ export function ModelManagement({
 
               {advancedOpen ? (
                 <div className="model-vendor-advanced">
-                  {draft.kind === "custom" || draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID ? (
+                  {draft.kind === "custom" || draft.kind === "mimo-token-plan-cn" ? (
                     <Button
                       onClick={() => {
                         const entries = createCatalogEntriesFromRemoteIds(
@@ -719,7 +718,7 @@ export function ModelManagement({
                             ...draft.models,
                             {
                               ...entries[0]!,
-                              ...(draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID
+                              ...(draft.kind === "mimo-token-plan-cn"
                                 ? { openaiApiMode: "responses" as const }
                                 : {}),
                               model: "",
@@ -752,8 +751,7 @@ export function ModelManagement({
                           }
                         />
                       </label>
-                      {draft.protocol === "openai" &&
-                      draft.kind !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID ? (
+                      {draft.protocol === "openai" && draft.kind !== "mimo-token-plan-cn" ? (
                         <label>
                           <span>OpenAI API 模式</span>
                           <Select
@@ -771,7 +769,7 @@ export function ModelManagement({
                           />
                         </label>
                       ) : null}
-                      {draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID ? (
+                      {draft.kind === "mimo-token-plan-cn" ? (
                         <label>
                           <span>思考强度</span>
                           <Select
@@ -779,7 +777,7 @@ export function ModelManagement({
                             value={model.reasoningEffort ?? ""}
                             options={[
                               { value: "", label: "默认（不发送）" },
-                              ...MIMO_REASONING_EFFORTS.map((effort) => ({
+                              ...getReasoningEfforts(draft.kind, model.model).map((effort) => ({
                                 value: effort,
                                 label: effort,
                               })),
@@ -795,7 +793,7 @@ export function ModelManagement({
                                         return value
                                           ? {
                                               ...rest,
-                                              reasoningEffort: value as MimoReasoningEffort,
+                                              reasoningEffort: value,
                                             }
                                           : rest;
                                       }),

@@ -22,7 +22,6 @@
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts",
-    "src/models/mimo-token-plan-cn-contract.ts",
     "src/design-system/**/*.ts"
   ]
 }

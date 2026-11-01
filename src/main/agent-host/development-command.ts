@@ -2,11 +2,7 @@ import type { AgentRunResult } from "@agent-harness/core/agent-contract";
 import { AgentError, asProtocolError } from "@agent-harness/core/protocol-errors";
 import type { ProtocolError } from "@agent-harness/core/protocol-values";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
-import {
-  MIMO_TOKEN_PLAN_CN_MAX_OUTPUT_TOKENS,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-  supportsMimoTokenPlanCNModel,
-} from "../../models/mimo-token-plan-cn-contract";
+import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import type { AgentConfigurationSnapshot } from "../../shared/agent-configuration";
 import { ToolsError } from "../../tools/tools";
 
@@ -77,14 +73,19 @@ export function projectDevelopmentModels(
   );
   return snapshot.settings.vendors.flatMap((vendor) =>
     vendor.models.map((model): DevelopmentModelOption => {
+      const profile = getModelProfile(vendor.kind);
+      const support = getModelSupport(vendor.kind, model.model);
+      const outputLimit = support?.supported
+        ? (support.maxOutputTokens ?? profile?.maxOutputTokens)
+        : undefined;
       const status: DevelopmentModelStatus =
         !vendor.enabled || !model.enabled
           ? "disabled"
-          : vendor.kind !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID
+          : !profile
             ? "unsupported-adapter"
-            : !supportsMimoTokenPlanCNModel(model.model)
+            : !support?.supported
               ? "unsupported-model"
-              : snapshot.settings.gateway.maxOutputTokens > MIMO_TOKEN_PLAN_CN_MAX_OUTPUT_TOKENS
+              : outputLimit !== undefined && snapshot.settings.gateway.maxOutputTokens > outputLimit
                 ? "invalid-budget"
                 : snapshot.credentials.storage.state === "unavailable"
                   ? "credential-storage-unavailable"

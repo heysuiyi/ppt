@@ -1,8 +1,5 @@
+import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { z } from "zod";
-import {
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-} from "../models/mimo-token-plan-cn-contract";
 import { agentExecutionStrategySchema, agentProviderSchema } from "./agent";
 import { agentGatewayPreferencesSchema } from "./agent-gateway-config";
 import {
@@ -73,14 +70,15 @@ export const discoverAgentModelsSchema = z
       .strict(),
   ])
   .superRefine((request, context) => {
-    if (request.type !== "draft" || request.modelAdapter !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID) return;
-    if (request.provider !== "openai")
+    if (request.type !== "draft" || request.modelAdapter !== "mimo-token-plan-cn") return;
+    const profile = getModelProfile(request.modelAdapter);
+    if (profile?.protocol !== "openai-responses" || request.provider !== "openai")
       context.addIssue({
         code: "custom",
         path: ["provider"],
         message: "MiMo requires OpenAI protocol.",
       });
-    if (request.baseURL !== MIMO_TOKEN_PLAN_CN_BASE_URL)
+    if (profile?.endpoint?.kind !== "fixed" || request.baseURL !== profile.endpoint.url)
       context.addIssue({
         code: "custom",
         path: ["baseURL"],

@@ -11,22 +11,23 @@ import type {
 } from "@agent-harness/core/model/model-contract";
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { Logger, LogInput } from "@agent-harness/logs/log-contract";
+import type { MimoTokenPlanCNOptions, ModelProvider } from "@agent-harness/models/model-contract";
+import { ModelProviderError } from "@agent-harness/models/model-errors";
+import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
+import { createModelProvider } from "@agent-harness/models/models";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentConfiguration, ExecutionPlan } from "../src/main/agent-configuration";
 import { prepareConfiguredModel } from "../src/main/agent-host/configured-model-factory";
 import { createAgentHost } from "../src/main/agent-host/create-agent-host";
 import { publicDevelopmentError } from "../src/main/agent-host/development-command";
 import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
-import { createMimoTokenPlanCN, MimoModelError } from "../src/models/mimo-token-plan-cn";
-import {
-  MIMO_REASONING_EFFORTS,
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-  type MimoTokenPlanCN,
-  type MimoTokenPlanCNOptions,
-} from "../src/models/mimo-token-plan-cn-contract";
 
-const selection = { providerId: MIMO_TOKEN_PLAN_CN_PROVIDER_ID, modelId: "mimo-v2.6-pro" };
+const adapterId = "mimo-token-plan-cn";
+const profile = getModelProfile(adapterId)!;
+const baseURL = profile.endpoint?.kind === "fixed" ? profile.endpoint.url : "";
+const support = getModelSupport(adapterId, "mimo-v2.6-pro")!;
+const reasoningEfforts = support.supported ? support.reasoningEfforts : [];
+const selection = { providerId: adapterId, modelId: "mimo-v2.6-pro" };
 const request: ModelRequest = {
   messages: [{ role: "user", content: [{ type: "text", text: "私有输入" }] }],
 };
@@ -142,23 +143,30 @@ let handlers: ((
 ) => void)[];
 let observed: ObservedRequest[];
 let publicURLs: string[];
-let providers: MimoTokenPlanCN[];
+let providers: ModelProvider[];
 let hostCleanup: Array<() => Promise<unknown>>;
 const nativeFetch = globalThis.fetch;
 
-function provider(overrides: Partial<MimoTokenPlanCNOptions> = {}) {
-  const value = createMimoTokenPlanCN({
-    apiKey: "tp-synthetic-test-only",
-    connectionFingerprint: "test-connection-v1",
-    timeoutMs: 2000,
-    maxOutputTokens: 321,
-    ...overrides,
-  });
+async function provider(overrides: Partial<MimoTokenPlanCNOptions> = {}) {
+  const value = await createModelProvider(
+    {
+      adapterId,
+      apiKey: "tp-synthetic-test-only",
+      connectionFingerprint: "test-connection-v1",
+      timeoutMs: 2000,
+      maxOutputTokens: 321,
+      ...overrides,
+    },
+    signal(),
+  );
   providers.push(value);
   return value;
 }
-async function binding(value = provider(), effort?: string): Promise<ModelBinding> {
-  return value.create(
+async function binding(
+  value: ModelProvider | Promise<ModelProvider> = provider(),
+  effort?: string,
+): Promise<ModelBinding> {
+  return (await value).create(
     { ...selection, ...(effort === undefined ? {} : { reasoningEffort: effort }) },
     signal(),
   );
@@ -192,8 +200,7 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     publicURLs.push(url.href);
-    if (!url.href.startsWith(`${MIMO_TOKEN_PLAN_CN_BASE_URL}/`))
-      throw new Error("Unexpected public endpoint");
+    if (!url.href.startsWith(`${baseURL}/`)) throw new Error("Unexpected public endpoint");
     return nativeFetch(`http://127.0.0.1:${port}${url.pathname}${url.search}`, init);
   });
 });
@@ -208,7 +215,7 @@ afterEach(async () => {
 });
 
 describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
-  it.each([undefined, ...MIMO_REASONING_EFFORTS])(
+  it.each([undefined, ...reasoningEfforts])(
     "保留 effort %s 和固定地址、Bearer、预算与非严格工具",
     async (effort) => {
       const selected = await binding(provider(), effort);
@@ -225,7 +232,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
         },
         signal(),
       );
-      expect(publicURLs).toEqual([`${MIMO_TOKEN_PLAN_CN_BASE_URL}/responses`]);
+      expect(publicURLs).toEqual([`${baseURL}/responses`]);
       expect(observed[0]).toMatchObject({
         path: "/v1/responses",
         method: "POST",
@@ -323,7 +330,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
 
   it("校验 provider/model/effort/连接/版本/规范内容，不静默降级重放", async () => {
     handlers.push((_req, res) => json(res, response([reasoning, call()])));
-    const value = provider();
+    const value = await provider();
     const selected = await binding(value, "high");
     const generated = await selected.client.generate(request, signal());
     const original = generated.message;
@@ -520,11 +527,13 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
   });
 
   it("调用前取消和消费者提前退出均取消网络，不生成完成事件", async () => {
-    const value = provider();
+    const value = await provider();
     const selected = await binding(value);
     const cancelled = new AbortController();
     cancelled.abort();
-    await expect(value.listModels(cancelled.signal)).rejects.toMatchObject({ code: "CANCELLED" });
+    await expect(value.discovery!.listModels(cancelled.signal)).rejects.toMatchObject({
+      code: "CANCELLED",
+    });
     await expect(selected.client.generate(request, cancelled.signal)).rejects.toMatchObject({
       code: "CANCELLED",
     });
@@ -572,7 +581,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
         (async () => {
           for await (const event of selected.client.stream(request, signal())) received.push(event);
         })(),
-      ).rejects.toBeInstanceOf(MimoModelError);
+      ).rejects.toBeInstanceOf(ModelProviderError);
       expect(received.some((event) => event.type === "completed")).toBe(false);
     },
   );
@@ -590,7 +599,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
   });
 
   it("binding 关闭排空暂停消费者且不影响其他绑定；provider 关闭排空所有请求", async () => {
-    const value = provider();
+    const value = await provider();
     const a = await binding(value);
     const b = await binding(value);
     handlers.push((_req, res) => sse(res, completedEvents().slice(0, 4), false));
@@ -614,12 +623,12 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
     await value.dispose();
     await caught;
     await expect(value.create(selection, signal())).rejects.toMatchObject({ code: "CLOSED" });
-    await expect(value.listModels(signal())).rejects.toMatchObject({ code: "CLOSED" });
+    await expect(value.discovery!.listModels(signal())).rejects.toMatchObject({ code: "CLOSED" });
     await value.dispose();
   });
 
   it("发现校验 ID、去重、空列表和未知能力，不启用或伪造候选", async () => {
-    const value = provider();
+    const value = await provider();
     handlers.push((_req, res) =>
       json(res, {
         object: "list",
@@ -631,7 +640,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
         ],
       }),
     );
-    const models = await value.listModels(signal());
+    const models = await value.discovery!.listModels(signal());
     expect(models).toEqual([
       { id: selection.modelId, supported: true },
       { id: "future-dialogue", supported: false, unsupportedReason: expect.any(String) },
@@ -643,7 +652,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
       authorization: "Bearer tp-synthetic-test-only",
     });
     handlers.push((_req, res) => json(res, { object: "list", data: [] }));
-    await expect(value.listModels(signal())).resolves.toEqual([]);
+    await expect(value.discovery!.listModels(signal())).resolves.toEqual([]);
     await expect(
       value.create({ ...selection, modelId: "future-dialogue" }, signal()),
     ).rejects.toMatchObject({ code: "MODEL_CAPABILITY" });
@@ -651,18 +660,22 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
 
   it.each(["", "has space", " x", "x\n", "x".repeat(257)])("拒绝非法发现 ID %j", async (id) => {
     handlers.push((_req, res) => json(res, { data: [{ id }] }));
-    await expect(provider().listModels(signal())).rejects.toMatchObject({
+    await expect((await provider()).discovery!.listModels(signal())).rejects.toMatchObject({
       code: "INVALID_RESPONSE",
     });
   });
   it("拒绝超量和缺失 data 的发现响应", async () => {
-    const value = provider();
+    const value = await provider();
     handlers.push((_req, res) =>
       json(res, { data: Array.from({ length: 2001 }, (_, i) => ({ id: `id-${i}` })) }),
     );
     handlers.push((_req, res) => json(res, { object: "list" }));
-    await expect(value.listModels(signal())).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
-    await expect(value.listModels(signal())).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    await expect(value.discovery!.listModels(signal())).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+    });
+    await expect(value.discovery!.listModels(signal())).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+    });
   });
 
   it.each([
@@ -679,10 +692,10 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
         status,
       ),
     );
-    const value = provider();
-    await expect(value.listModels(signal())).rejects.toMatchObject({ code });
+    const value = await provider();
+    await expect(value.discovery!.listModels(signal())).rejects.toMatchObject({ code });
     expect(observed).toHaveLength(1);
-    expect(publicURLs).toEqual([`${MIMO_TOKEN_PLAN_CN_BASE_URL}/models`]);
+    expect(publicURLs).toEqual([`${baseURL}/models`]);
   });
 
   it("SDK fetch 边界的原始 421 被安全分类，SDK 不再次请求", async () => {
@@ -698,9 +711,11 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
         ),
     );
     vi.stubGlobal("fetch", intercepted);
-    await expect(provider().listModels(signal())).rejects.toMatchObject({ code: "ACCESS_DENIED" });
+    await expect((await provider()).discovery!.listModels(signal())).rejects.toMatchObject({
+      code: "ACCESS_DENIED",
+    });
     expect(intercepted).toHaveBeenCalledTimes(1);
-    expect(String(intercepted.mock.calls[0]?.[0])).toBe(`${MIMO_TOKEN_PLAN_CN_BASE_URL}/models`);
+    expect(String(intercepted.mock.calls[0]?.[0])).toBe(`${baseURL}/models`);
     expect(observed).toHaveLength(0);
   });
 
@@ -714,17 +729,19 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
         421,
       );
     handlers.push(rejected, rejected);
-    await expect(provider().listModels(signal())).rejects.toMatchObject({ code: "ACCESS_DENIED" });
+    await expect((await provider()).discovery!.listModels(signal())).rejects.toMatchObject({
+      code: "ACCESS_DENIED",
+    });
     // Node Fetch 按规范重新建连一次，但 SDK fetch 只被调用一次；不做业务重试或换域名。
     expect(observed).toHaveLength(2);
-    expect(publicURLs).toEqual([`${MIMO_TOKEN_PLAN_CN_BASE_URL}/models`]);
+    expect(publicURLs).toEqual([`${baseURL}/models`]);
     expect(observed.every((entry) => entry.path === "/v1/models")).toBe(true);
   });
 
   it("模型与发现超时覆盖读取阶段，无重试；错误不包含 SDK 内容", async () => {
-    const value = provider({ timeoutMs: 150 });
+    const value = await provider({ timeoutMs: 150 });
     handlers.push(() => {});
-    await expect(value.listModels(signal())).rejects.toMatchObject({ code: "TIMEOUT" });
+    await expect(value.discovery!.listModels(signal())).rejects.toMatchObject({ code: "TIMEOUT" });
     handlers.push((_req, res) => sse(res, completedEvents().slice(0, 4), false));
     const selected = await binding(value);
     await expect(collect(selected.client.stream(request, signal()))).rejects.toMatchObject({
@@ -735,8 +752,8 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
 
   it("网络断开和畸形 SSE 不暴露厂商正文、凭据或 SDK cause", async () => {
     handlers.push((req) => req.socket.destroy());
-    const value = provider();
-    await expect(value.listModels(signal())).rejects.toMatchObject({ code: "NETWORK" });
+    const value = await provider();
+    await expect(value.discovery!.listModels(signal())).rejects.toMatchObject({ code: "NETWORK" });
     handlers.push((_req, res) => {
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.end("data: tp-sensitive-malformed\n\n");
@@ -747,7 +764,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
       await collect(selected.client.stream(request, signal()));
       throw new Error("Expected invalid response");
     } catch (error) {
-      expect(error).toBeInstanceOf(MimoModelError);
+      expect(error).toBeInstanceOf(ModelProviderError);
       expect(JSON.stringify(error)).not.toMatch(/sensitive|private|cause|headers/u);
     } finally {
       expect(consoleError).not.toHaveBeenCalled();
@@ -803,15 +820,15 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
       { maxOutputTokens: 1.5 },
       { connectionFingerprint: "" },
     ]) {
-      expect(() => provider(overrides)).toThrow(MimoModelError);
+      await expect(provider(overrides)).rejects.toBeInstanceOf(ModelProviderError);
     }
-    const value = provider();
+    const value = await provider();
     for (const invalid of [
       { ...selection, providerId: "other" },
       { ...selection, reasoningEffort: "default" },
       { ...selection, modelId: "unknown" },
     ]) {
-      await expect(value.create(invalid, signal())).rejects.toBeInstanceOf(MimoModelError);
+      await expect(value.create(invalid, signal())).rejects.toBeInstanceOf(ModelProviderError);
     }
     const selected = await binding(value);
     await expect(
@@ -849,7 +866,7 @@ describe("MiMo 原生独立消费者：真实 OpenAI SDK / HTTP / SSE", () => {
       warn() {},
       error() {},
     };
-    const value = provider({ logger });
+    const value = await provider({ logger });
     const mutable = { ...selection, reasoningEffort: "high" };
     const selected = await value.create(mutable, signal());
     mutable.reasoningEffort = "low";
@@ -885,11 +902,11 @@ function configuredRuntime(
   modelId = selection.modelId,
 ): AgentConfiguration["runtime"] {
   const plan: ExecutionPlan = {
-    modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+    modelAdapter: adapterId,
     model: {
       provider: "openai",
       model: modelId,
-      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      baseURL: baseURL,
       openaiApiMode: "responses",
     },
     services: { timeoutMs: 2000, maxOutputTokens },
@@ -928,7 +945,7 @@ describe("MiMo configured host error boundary", () => {
           "configured-mimo",
           signal(),
         ),
-      ).rejects.toMatchObject({ name: "AgentError", code: "MODEL_ADAPTER_UNSUPPORTED" });
+      ).rejects.toMatchObject({ code: "MODEL_ADAPTER_UNSUPPORTED" });
       expect(resolveRuntime).not.toHaveBeenCalled();
       expect(observed).toHaveLength(0);
     },

@@ -1,10 +1,15 @@
 import type { AgentRunInput } from "@agent-harness/core/agent-contract";
 import type { AgentCreationOptions, AgentServices } from "@agent-harness/core/agent-factory";
 import { createAgentApplication } from "@agent-harness/core/application/agent-application";
-import type { AgentPlugin, PluginScope } from "@agent-harness/core/extensions/plugin-contract";
+import type {
+  AgentPlugin,
+  PluginContext,
+  PluginScope,
+} from "@agent-harness/core/extensions/plugin-contract";
 import type {
   ModelBinding,
   ModelClient,
+  ModelContent,
   ModelRequest,
   ModelResponse,
 } from "@agent-harness/core/model/model-contract";
@@ -14,7 +19,8 @@ import type {
   CheckpointLease,
 } from "@agent-harness/core/session/checkpoint-contract";
 import type { AgentCheckpoint, SessionHistory } from "@agent-harness/core/session/session-contract";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import type { ToolResult } from "@agent-harness/core/tools/tool-contract";
+import { describe, expect, it, type Mock, onTestFinished, vi } from "vitest";
 import { z } from "zod";
 import { RuntimeEventStream } from "../packages/harness/dist/agent/runtime/event-stream.js";
 
@@ -351,6 +357,514 @@ describe("general agent creation ownership", () => {
     expect(scopes[1].signal.aborted).toBe(true);
     expect(disposed).toEqual([0, 1]);
     expect(f.borrowedDisposed).not.toHaveBeenCalled();
+  });
+});
+
+describe("general agent installation atomicity", () => {
+  const model = { providerId: "rollback-model", modelId: "model" };
+  interface InstallationBinding {
+    readonly binding: ModelBinding;
+    readonly generate: Mock<ModelClient["generate"]>;
+    readonly dispose: Mock<() => Promise<void>>;
+    readonly released: boolean;
+  }
+
+  function installationFixture() {
+    const f = fixture();
+    const bindings: InstallationBinding[] = [];
+    function newBinding() {
+      let released = false;
+      const dispose = vi.fn(async () => {
+        released = true;
+      });
+      const generate = vi.fn(
+        async (request: ModelRequest, _signal: AbortSignal): Promise<ModelResponse> => {
+          const latestInput = request.messages.findLastIndex((message) => message.role === "user");
+          const result = request.messages
+            .slice(latestInput + 1)
+            .flatMap<ModelContent>((message) => message.content)
+            .findLast((content) => content.type === "tool-result");
+          if (result?.type === "tool-result") {
+            if (result.isError) throw new Error("Expected the installed tool to succeed");
+            return {
+              message: {
+                role: "assistant",
+                content: [
+                  {
+                    type: "text",
+                    text: result.content
+                      .map((content) => (content.type === "text" ? content.text : ""))
+                      .join(""),
+                  },
+                ],
+              },
+              finishReason: "stop",
+            };
+          }
+          return {
+            message: {
+              role: "assistant",
+              content: [
+                { type: "tool-call", callId: "installed-call", name: "rollback.read", input: {} },
+              ],
+            },
+            finishReason: "tool-calls",
+          };
+        },
+      );
+      const client: ModelClient = {
+        selection: model,
+        capabilities: f.binding.client.capabilities,
+        generate,
+        async *stream(request, signal) {
+          yield { type: "completed", response: await generate(request, signal) };
+        },
+      };
+      const binding: ModelBinding = { client, dispose };
+      return {
+        binding,
+        generate,
+        dispose,
+        get released() {
+          return released;
+        },
+      };
+    }
+    f.bind.mockImplementation(async () => {
+      const record = newBinding();
+      bindings.push(record);
+      return record.binding;
+    });
+    return { ...f, bindings };
+  }
+
+  function capability(owner: string, services: AgentServices) {
+    const execute = vi.fn(async () => ({
+      status: "succeeded" as const,
+      output: { owner },
+      effects: "none" as const,
+    }));
+    const tool = {
+      name: "rollback.read",
+      version: "1",
+      owner,
+      description: "Read this installation's value",
+      mode: "immediate" as const,
+      inputSchema: z.object({}).strict(),
+      outputSchema: z.object({ owner: z.string() }).strict(),
+      execute,
+      toModelContent: (result: ToolResult<{ owner: string }>) => [
+        {
+          type: "text" as const,
+          text:
+            result.status === "succeeded" ? `installed:${result.output.owner}` : result.error.code,
+        },
+      ],
+    };
+    const plugin: AgentPlugin = {
+      id: owner,
+      version: "1",
+      setup({ models, tools, prompts }) {
+        models.register(model.providerId, services.models);
+        tools.register(tool);
+        prompts.register({ id: "rollback-prompt", render: () => `prompt:${owner}` });
+      },
+    };
+    return { plugin, tool, execute };
+  }
+
+  function resource(name: string, order: string[], cleanupError?: Error) {
+    let released = false;
+    const dispose = vi.fn(async () => {
+      order.push(name);
+      if (cleanupError) throw cleanupError;
+      released = true;
+    });
+    return {
+      dispose,
+      get released() {
+        return released;
+      },
+    };
+  }
+
+  function containsError(error: unknown, expected: Error): boolean {
+    return (
+      error === expected ||
+      (error instanceof AggregateError &&
+        error.errors.some((nested: unknown) => containsError(nested, expected)))
+    );
+  }
+
+  it.each(["providerId", "tool name", "prompt id"] as const)(
+    "rolls back a cross-plugin %s conflict and reuses the failed ID in the same application",
+    async (conflict) => {
+      const f = installationFixture();
+      const app = createAgentApplication(f.services);
+      onTestFinished(() => app.close());
+      const order: string[] = [];
+      const first = resource("first", order);
+      const second = resource("second", order);
+      const installed = capability("first-plugin", f.services);
+      const conflicting = capability("second-plugin", f.services);
+      let secondSetupEntered = false;
+      await expect(
+        app.agents.create(
+          creation({
+            model,
+            plugins: [
+              {
+                ...installed.plugin,
+                setup(context) {
+                  context.scope.own(first);
+                  return installed.plugin.setup(context);
+                },
+              },
+              {
+                ...conflicting.plugin,
+                setup({ scope, models, tools, prompts }) {
+                  secondSetupEntered = true;
+                  scope.own(second);
+                  if (conflict === "providerId")
+                    models.register(model.providerId, f.services.models);
+                  else if (conflict === "tool name") tools.register(conflicting.tool);
+                  else prompts.register({ id: "rollback-prompt", render: () => "conflict" });
+                },
+              },
+            ],
+          }),
+        ),
+      ).rejects.toThrow();
+      expect(secondSetupEntered).toBe(true);
+      expect(order).toEqual(["second", "first"]);
+      for (const owned of [first, second]) {
+        expect(owned.dispose).toHaveBeenCalledTimes(1);
+        expect(owned.released).toBe(true);
+      }
+      expect(f.bind).not.toHaveBeenCalled();
+      expect(f.generate).not.toHaveBeenCalled();
+      expect(installed.execute).not.toHaveBeenCalled();
+      expect(conflicting.execute).not.toHaveBeenCalled();
+      expect(f.borrowedDisposed).not.toHaveBeenCalled();
+      const replacement = capability("replacement", f.services);
+      const agent = await app.agents.create(creation({ model, plugins: [replacement.plugin] }));
+      expect(f.bindings[0].generate).not.toHaveBeenCalled();
+      const handle = await agent.run(activation());
+      expect((await handle.completed).status).toBe("completed");
+      expect(replacement.execute).toHaveBeenCalledTimes(1);
+      const committedHistory = await f.history.read("thread");
+      expect(committedHistory.messages.at(-1)).toEqual({
+        role: "assistant",
+        content: [{ type: "text", text: "installed:replacement" }],
+      });
+      await app.close();
+      expect(f.bindings[0].dispose).toHaveBeenCalledTimes(1);
+      expect(f.bindings[0].released).toBe(true);
+      for (const owned of [first, second]) expect(owned.dispose).toHaveBeenCalledTimes(1);
+      expect(f.borrowedDisposed).not.toHaveBeenCalled();
+      expect(await f.history.read("thread")).toEqual(committedHistory);
+    },
+  );
+
+  it("rolls back later setup in reverse order without poisoning retained contexts or healthy installations", async () => {
+    const f = installationFixture();
+    const app = createAgentApplication(f.services);
+    onTestFinished(() => app.close());
+    const healthy = capability("healthy", f.services);
+    const healthyResource = resource("healthy", []);
+    const healthyAgent = await app.agents.create(
+      creation({
+        agentId: "healthy",
+        model,
+        plugins: [
+          {
+            ...healthy.plugin,
+            setup(context) {
+              context.scope.own(healthyResource);
+              return healthy.plugin.setup(context);
+            },
+          },
+        ],
+      }),
+    );
+    const healthyBinding = f.bindings[0];
+    const healthyActivation = (runId: string) => ({
+      ...activation(runId),
+      threadId: "healthy-thread",
+    });
+    expect((await (await healthyAgent.run(healthyActivation("before"))).completed).status).toBe(
+      "completed",
+    );
+    const healthyCalls = healthyBinding.generate.mock.calls.length;
+    const order: string[] = [];
+    const first = resource("first", order);
+    const second = resource("second", order);
+    const third = resource("third", order);
+    const failed = capability("failed-first", f.services);
+    const later = capability("failed-later", f.services);
+    const setupError = new Error("named setup failure");
+    let retained: PluginContext | undefined;
+    const creating = app.agents.create(
+      creation({
+        model,
+        plugins: [
+          {
+            ...failed.plugin,
+            setup(context) {
+              context.scope.own(first);
+              return failed.plugin.setup(context);
+            },
+          },
+          {
+            ...later.plugin,
+            setup(context) {
+              retained = context;
+              context.scope.own(second);
+              context.models.register("later-model", f.services.models);
+              context.tools.register({ ...later.tool, name: "later.read" });
+              context.prompts.register({ id: "later-prompt", render: () => "later" });
+              context.scope.own(third);
+              throw setupError;
+            },
+          },
+        ],
+      }),
+    );
+    const error = await creating.then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+    expect(containsError(error, setupError)).toBe(true);
+    expect(order).toEqual(["third", "second", "first"]);
+    for (const owned of [first, second, third]) {
+      expect(owned.dispose).toHaveBeenCalledTimes(1);
+      expect(owned.released).toBe(true);
+    }
+    if (!retained) throw new Error("The later setup did not retain its public context");
+    const closedContext = retained;
+    expect(closedContext.scope.signal.aborted).toBe(true);
+    expect(() => closedContext.models.register("late-model", f.services.models)).toThrow();
+    expect(() => closedContext.tools.register({ ...later.tool, name: "late.read" })).toThrow();
+    expect(() =>
+      closedContext.prompts.register({ id: "late-prompt", render: () => "late" }),
+    ).toThrow();
+    expect(f.bind).toHaveBeenCalledTimes(1);
+    expect(healthyBinding.generate).toHaveBeenCalledTimes(healthyCalls);
+    expect(failed.execute).not.toHaveBeenCalled();
+    expect(later.execute).not.toHaveBeenCalled();
+    expect(healthyBinding.released).toBe(false);
+    expect(healthyResource.dispose).not.toHaveBeenCalled();
+    expect(healthyResource.released).toBe(false);
+    const replacement = capability("replacement", f.services);
+    const replacementAgent = await app.agents.create(
+      creation({ model, plugins: [replacement.plugin] }),
+    );
+    const replacementBinding = f.bindings[1];
+    expect(replacementBinding.binding).not.toBe(healthyBinding.binding);
+    expect(replacementBinding.generate).not.toHaveBeenCalled();
+    expect((await (await replacementAgent.run(activation("replacement"))).completed).status).toBe(
+      "completed",
+    );
+    expect((await f.history.read("thread")).messages.at(-1)).toEqual({
+      role: "assistant",
+      content: [{ type: "text", text: "installed:replacement" }],
+    });
+    await replacementAgent.dispose();
+    expect(replacementBinding.dispose).toHaveBeenCalledTimes(1);
+    expect(replacementBinding.released).toBe(true);
+    expect(healthyBinding.dispose).not.toHaveBeenCalled();
+    expect(healthyBinding.released).toBe(false);
+    expect((await (await healthyAgent.run(healthyActivation("after"))).completed).status).toBe(
+      "completed",
+    );
+    expect(healthy.execute).toHaveBeenCalledTimes(2);
+    expect(replacement.execute).toHaveBeenCalledTimes(1);
+    expect((await f.history.read("healthy-thread")).messages.at(-1)).toEqual({
+      role: "assistant",
+      content: [{ type: "text", text: "installed:healthy" }],
+    });
+    await app.close();
+    expect(healthyBinding.dispose).toHaveBeenCalledTimes(1);
+    expect(healthyBinding.released).toBe(true);
+    expect(healthyResource.dispose).toHaveBeenCalledTimes(1);
+    expect(healthyResource.released).toBe(true);
+    expect(replacementBinding.dispose).toHaveBeenCalledTimes(1);
+    for (const owned of [first, second, third]) expect(owned.dispose).toHaveBeenCalledTimes(1);
+    expect(f.borrowedDisposed).not.toHaveBeenCalled();
+  });
+
+  it("retains rollback failure after external creation cancellation and keeps the application usable", async () => {
+    const f = installationFixture();
+    const app = createAgentApplication(f.services);
+    const controller = new AbortController();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const cleanupError = new Error("external cancellation cleanup failed");
+    const order: string[] = [];
+    const first = resource("first", order);
+    const broken = resource("broken", order, cleanupError);
+    const last = resource("last", order);
+    const installed = capability("cancelled-installation", f.services);
+    let setupSignal: AbortSignal | undefined;
+    let setupExited = false;
+    let committedHistory: SessionHistory | undefined;
+    const creating = app.agents.create(
+      creation({
+        model,
+        signal: controller.signal,
+        plugins: [
+          {
+            ...installed.plugin,
+            async setup(context) {
+              setupSignal = context.scope.signal;
+              context.scope.own(first);
+              await installed.plugin.setup(context);
+              context.scope.own(broken);
+              context.scope.own(last);
+              entered.resolve();
+              await release.promise;
+              setupExited = true;
+            },
+          },
+        ],
+      }),
+    );
+    const observed = creating.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    try {
+      await entered.promise;
+      controller.abort(new Error("creation cancelled"));
+      expect(setupSignal?.aborted).toBe(true);
+      expect(setupExited).toBe(false);
+      release.resolve();
+      expect(containsError(await observed, cleanupError)).toBe(true);
+      expect(setupExited).toBe(true);
+      expect(order).toEqual(["last", "broken", "first"]);
+      for (const owned of [first, broken, last]) expect(owned.dispose).toHaveBeenCalledTimes(1);
+      expect(first.released).toBe(true);
+      expect(last.released).toBe(true);
+      expect(broken.released).toBe(false);
+      expect(f.bind).not.toHaveBeenCalled();
+      expect(f.generate).not.toHaveBeenCalled();
+      expect(installed.execute).not.toHaveBeenCalled();
+      expect(f.borrowedDisposed).not.toHaveBeenCalled();
+      const replacement = capability("after-cancellation", f.services);
+      const agent = await app.agents.create(creation({ model, plugins: [replacement.plugin] }));
+      expect((await (await agent.run(activation())).completed).status).toBe("completed");
+      expect(replacement.execute).toHaveBeenCalledTimes(1);
+      committedHistory = await f.history.read("thread");
+      expect(committedHistory.messages.at(-1)).toEqual({
+        role: "assistant",
+        content: [{ type: "text", text: "installed:after-cancellation" }],
+      });
+    } finally {
+      release.resolve();
+      await observed;
+      await app.close();
+    }
+    for (const owned of [first, broken, last]) expect(owned.dispose).toHaveBeenCalledTimes(1);
+    expect(broken.released).toBe(false);
+    expect(f.bindings[0].dispose).toHaveBeenCalledTimes(1);
+    expect(f.bindings[0].released).toBe(true);
+    expect(f.borrowedDisposed).not.toHaveBeenCalled();
+    expect(await f.history.read("thread")).toEqual(committedHistory);
+  });
+
+  it("drains unpublished setup on close and reports rollback failure from both creation and close", async () => {
+    const f = installationFixture();
+    const app = createAgentApplication(f.services);
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const cleanupError = new Error("application close cleanup failed");
+    const order: string[] = [];
+    const first = resource("first", order);
+    const broken = resource("broken", order, cleanupError);
+    const last = resource("last", order);
+    const installed = capability("closing-installation", f.services);
+    let setupSignal: AbortSignal | undefined;
+    let setupExited = false;
+    const creating = app.agents.create(
+      creation({
+        model,
+        plugins: [
+          {
+            ...installed.plugin,
+            async setup(context) {
+              setupSignal = context.scope.signal;
+              context.scope.own(first);
+              await installed.plugin.setup(context);
+              context.scope.own(broken);
+              context.scope.own(last);
+              entered.resolve();
+              await release.promise;
+              setupExited = true;
+            },
+          },
+        ],
+      }),
+    );
+    const creationObserved = creating.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    let closing: Promise<void> | undefined;
+    let closeObserved: Promise<unknown> | undefined;
+    try {
+      await entered.promise;
+      let closeSettled = false;
+      closing = app.close();
+      closeObserved = closing.then(
+        () => {
+          closeSettled = true;
+          return undefined;
+        },
+        (error: unknown) => {
+          closeSettled = true;
+          return error;
+        },
+      );
+      expect(app.close()).toBe(closing);
+      expect(setupSignal?.aborted).toBe(true);
+      await expect(app.agents.create(creation({ agentId: "new" }))).rejects.toMatchObject({
+        code: "application-closed",
+      });
+      expect(setupExited).toBe(false);
+      expect(closeSettled).toBe(false);
+      release.resolve();
+      const [creationError, closeError] = await Promise.all([creationObserved, closeObserved]);
+      expect(containsError(creationError, cleanupError)).toBe(true);
+      expect(containsError(closeError, cleanupError)).toBe(true);
+      expect(setupExited).toBe(true);
+      expect(closeSettled).toBe(true);
+      expect(app.close()).toBe(closing);
+      expect(order).toEqual(["last", "broken", "first"]);
+      for (const owned of [first, broken, last]) expect(owned.dispose).toHaveBeenCalledTimes(1);
+      expect(first.released).toBe(true);
+      expect(last.released).toBe(true);
+      expect(broken.released).toBe(false);
+      expect(f.bind).not.toHaveBeenCalled();
+      expect(f.generate).not.toHaveBeenCalled();
+      expect(installed.execute).not.toHaveBeenCalled();
+      expect(f.borrowedDisposed).not.toHaveBeenCalled();
+      expect(await f.history.read("borrowed-after-close")).toEqual({
+        threadId: "borrowed-after-close",
+        revision: 0,
+        messages: [],
+      });
+      const acquired = await f.services.checkpoints.acquire(
+        { agentId: "borrowed", threadId: "borrowed-after-close", queryId: "query" },
+        "host",
+      );
+      expect(acquired.status).toBe("acquired");
+      if (acquired.status === "acquired") await f.services.checkpoints.release(acquired.lease);
+    } finally {
+      release.resolve();
+      await creationObserved;
+      if (closeObserved) await closeObserved;
+      else await app.close().catch(() => {});
+    }
   });
 });
 

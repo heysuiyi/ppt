@@ -1,6 +1,6 @@
 # mimo-token-plan-cn 具体实施方案
 
-状态：已实现 P1–P3，并完成 P4 的小范围实际 CN 验收。第 1–9 节保留实施设计与原始基线，当前实现、检查结果和未验收边界以第 11 节为准；生产聊天、PPT 能力及生产会话未切换或迁移。持续约束见 [AGENTS.md](../AGENTS.md)，路线见 [项目整体规划](project-plan.md)，当前入口见 [下一步计划](next-steps/README.md)。
+状态：前序已实现 P1–P3，并完成 P4 的小范围实际 CN 验收。第 1–9 节保留实施设计与原始基线，第 11 节保留原生 MiMo 接入当时的结果与未验收边界；随后实现已迁入单个 `@agent-harness/models` 包，当前四入口、调用方迁移及本地验收见[模型包实施记录](next-steps/models-package.md#12-实施与验收记录)。本轮抽包没有新增远程验收，生产聊天、PPT 能力及生产会话未切换或迁移。持续约束见 [AGENTS.md](../AGENTS.md)，路线见 [项目整体规划](project-plan.md)，当前入口见 [下一步计划](next-steps/README.md)。
 
 ## 1. 已确定范围
 

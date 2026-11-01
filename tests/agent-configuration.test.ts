@@ -10,17 +10,23 @@ vi.mock("openai", () => ({
   },
 }));
 
+import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import { AgentGateway } from "../src/main/agent/gateway";
 import {
   createAgentConfiguration,
   registerAgentConfigurationIpc,
 } from "../src/main/agent-configuration";
 import type { SafeStorageAdapter } from "../src/main/agent-configuration/internal/credential-store";
-import {
-  MIMO_REASONING_EFFORTS,
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-} from "../src/models/mimo-token-plan-cn-contract";
+
+const mimoProfile = getModelProfile("mimo-token-plan-cn");
+if (mimoProfile?.endpoint?.kind !== "fixed")
+  throw new Error("The MiMo fixed endpoint profile is required.");
+const mimoBaseURL = mimoProfile.endpoint.url;
+const mimoAdapterId = mimoProfile.adapterId;
+const mimoSupport = getModelSupport(mimoAdapterId, "mimo-v2.6-pro");
+if (!mimoSupport?.supported) throw new Error("The MiMo Pro support profile is required.");
+const mimoReasoningEfforts = mimoSupport.reasoningEfforts;
+
 import type { VendorConfiguration } from "../src/shared/agent-configuration";
 import type { AgentSettings } from "../src/shared/agent-settings";
 import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
@@ -56,8 +62,8 @@ function vendor(
 }
 function mimoVendor(): VendorConfiguration {
   return {
-    ...vendor("mimo", MIMO_TOKEN_PLAN_CN_BASE_URL),
-    kind: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+    ...vendor("mimo", mimoBaseURL),
+    kind: mimoAdapterId,
   };
 }
 function settings(vendors = [vendor()]): AgentSettings {
@@ -322,7 +328,7 @@ describe("agent configuration management", () => {
 });
 
 describe("native MiMo execution configuration", () => {
-  it.each([undefined, ...MIMO_REASONING_EFFORTS])(
+  it.each([undefined, ...mimoReasoningEfforts])(
     "preserves effort %s through management, disk reopening, plan and runtime",
     async (reasoningEffort) => {
       const config = await configuration();
@@ -341,7 +347,7 @@ describe("native MiMo execution configuration", () => {
       });
       expect((await reopened.management.getSnapshot())?.settings.vendors[0]).toEqual(selected);
       const plan = await reopened.runtime.loadExecutionPlan("mimo-model");
-      expect(plan.modelAdapter).toBe(MIMO_TOKEN_PLAN_CN_PROVIDER_ID);
+      expect(plan.modelAdapter).toBe(mimoAdapterId);
       expect(plan.model).toMatchObject({
         configurationId: "mimo-model",
         vendorId: "mimo",
@@ -352,7 +358,7 @@ describe("native MiMo execution configuration", () => {
       expect(JSON.stringify(plan)).not.toContain("bound-mimo-key");
       if (reasoningEffort === undefined) expect(plan.model).not.toHaveProperty("reasoningEffort");
       const resolved = await reopened.runtime.resolveRuntime(plan);
-      expect(resolved.modelAdapter).toBe(MIMO_TOKEN_PLAN_CN_PROVIDER_ID);
+      expect(resolved.modelAdapter).toBe(mimoAdapterId);
       expect(resolved.primary.reasoningEffort).toBe(reasoningEffort);
       expect(resolved.primary.apiKey).toBe("bound-mimo-key");
     },
@@ -380,14 +386,14 @@ describe("native MiMo execution configuration", () => {
       credential: { type: "keep" },
     });
     const resolved = await config.runtime.resolveRuntime(plan);
-    expect(resolved.modelAdapter).toBe(MIMO_TOKEN_PLAN_CN_PROVIDER_ID);
+    expect(resolved.modelAdapter).toBe(mimoAdapterId);
     expect(resolved.primary.reasoningEffort).toBe("ultra");
   });
 
   it("never uses environment model credentials or fallback for the native adapter", async () => {
     const config = await configuration({
       OPENAI_API_KEY: "unrelated-openai-key",
-      OPENAI_BASE_URL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      OPENAI_BASE_URL: mimoBaseURL,
       OPENAI_API_MODE: "chat-completions",
       MIMO_API_KEY: "unbound-mimo-key",
       AGENT_FALLBACK_PROVIDER: "openai",
@@ -399,7 +405,7 @@ describe("native MiMo execution configuration", () => {
     expect(plan.services.fallbackModel).toBeUndefined();
     const resolved = await config.runtime.resolveRuntime(plan);
     expect(resolved.primary.apiKey).toBeUndefined();
-    expect(resolved.primary.baseURL).toBe(MIMO_TOKEN_PLAN_CN_BASE_URL);
+    expect(resolved.primary.baseURL).toBe(mimoBaseURL);
     expect(resolved.primary.openaiApiMode).toBe("responses");
     expect(resolved.gateway.fallbackModel).toBeUndefined();
     await expect(
@@ -449,7 +455,7 @@ describe("native MiMo execution configuration", () => {
       /native MiMo fallback/,
     );
     const native = await config.runtime.loadExecutionPlan("mimo-model");
-    expect(native.modelAdapter).toBe(MIMO_TOKEN_PLAN_CN_PROVIDER_ID);
+    expect(native.modelAdapter).toBe(mimoAdapterId);
     expect(native.services.fallbackModel).toBeUndefined();
   });
 });

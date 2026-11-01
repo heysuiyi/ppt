@@ -1,11 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { AgentError } from "@agent-harness/core/protocol-errors";
-import {
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-  MIMO_TOKEN_PLAN_CN_MAX_OUTPUT_TOKENS,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-  supportsMimoTokenPlanCNModel,
-} from "../../models/mimo-token-plan-cn-contract";
+import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import type {
   AgentConfigurationSnapshot,
   ConfigurationManagement,
@@ -14,6 +9,12 @@ import type {
 import { credentialApiKeySchema } from "../../shared/credentials";
 import type { RemoteModelInfo } from "../../shared/remote-models";
 import { projectDevelopmentModels } from "./development-command";
+
+const mimoProfile = getModelProfile("mimo-token-plan-cn");
+if (mimoProfile?.endpoint?.kind !== "fixed")
+  throw new Error("MiMo Token Plan CN requires its fixed endpoint profile.");
+const mimoBaseURL = mimoProfile.endpoint.url;
+const mimoMaxOutputTokens = mimoProfile.maxOutputTokens;
 
 export interface DevelopmentSetupIO {
   readonly interactive: boolean;
@@ -77,13 +78,13 @@ async function discoverModel(
           : {
               type: "draft",
               provider: "openai",
-              baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
-              modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+              baseURL: mimoBaseURL,
+              modelAdapter: "mimo-token-plan-cn",
               apiKey,
             },
       );
       models = result.models.filter(
-        (model) => model.supported !== false && supportsMimoTokenPlanCNModel(model.id),
+        (model) => model.supported !== false && getModelSupport(vendor.kind, model.id)?.supported,
       );
     } catch {
       models = [];
@@ -122,7 +123,9 @@ async function chooseVendorModel(
     apiKey = await readKey(io);
     if (apiKey === undefined) return undefined;
   }
-  const localModels = vendor.models.filter((model) => supportsMimoTokenPlanCNModel(model.model));
+  const localModels = vendor.models.filter(
+    (model) => getModelSupport(vendor.kind, model.model)?.supported,
+  );
   let selected: RemoteModelInfo;
   let selectedLocalId: string | undefined;
   if (!isNew && localModels.length) {
@@ -216,12 +219,15 @@ export async function ensureDevelopmentModel(
   if (!io.interactive) {
     throw setupError("没有可用的 CLI 默认模型；请先在交互终端完成模型设置。");
   }
-  if (snapshot.settings.gateway.maxOutputTokens > MIMO_TOKEN_PLAN_CN_MAX_OUTPUT_TOKENS) {
+  if (
+    mimoMaxOutputTokens !== undefined &&
+    snapshot.settings.gateway.maxOutputTokens > mimoMaxOutputTokens
+  ) {
     throw setupError("当前输出预算超过 MiMo 上限，请先在配置中调整输出预算。");
   }
   for (;;) {
     const vendors = snapshot.settings.vendors.filter(
-      (vendor) => vendor.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      (vendor) => vendor.kind === "mimo-token-plan-cn",
     );
     const index = await choose(io, "选择厂商/已有连接：", [
       ...vendors.map((vendor) => `${JSON.stringify(vendor.label)}（MiMo 中国）`),
@@ -232,10 +238,10 @@ export async function ensureDevelopmentModel(
     const vendor: VendorConfiguration = isNew
       ? {
           id: randomUUID(),
-          kind: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+          kind: "mimo-token-plan-cn",
           label: "MiMo Token Plan 中国",
           protocol: "openai",
-          baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+          baseURL: mimoBaseURL,
           enabled: true,
           models: [],
         }

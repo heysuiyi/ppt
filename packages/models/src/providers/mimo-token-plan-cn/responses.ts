@@ -6,8 +6,8 @@ import type {
 } from "@agent-harness/core/model/model-contract";
 import type { JsonObject, JsonValue } from "@agent-harness/core/protocol-values";
 import type { ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
-import { MIMO_TOKEN_PLAN_CN_PROVIDER_ID } from "../mimo-token-plan-cn-contract";
-import { invalid, MimoModelError, nonempty, object, outputBudget, text } from "./mimo-errors";
+import { invalid, mimoError, nonempty, object, outputBudget, text } from "./errors.js";
+import { MIMO_TOKEN_PLAN_CN_PROVIDER_ID } from "./profile.js";
 
 export const REPLAY_FORMAT = "mimo-token-plan-cn/responses-output";
 export const REPLAY_VERSION = 1;
@@ -211,7 +211,7 @@ function replay(
       throw new Error();
     return projected.output;
   } catch {
-    throw new MimoModelError("REPLAY_INCOMPATIBLE");
+    throw mimoError("REPLAY_INCOMPATIBLE");
   }
 }
 
@@ -230,7 +230,7 @@ export function requestBody(
     if (message.role === "tool") {
       for (const result of message.content) {
         const parts = result.content.map((part) => {
-          if (part.type !== "text") throw new MimoModelError("MODEL_CAPABILITY");
+          if (part.type !== "text") throw mimoError("MODEL_CAPABILITY");
           return { type: "input_text", text: part.text };
         });
         // 用明示的错误标记表达本地工具失败，不改写或拼接原始文本片段。
@@ -240,8 +240,8 @@ export function requestBody(
       continue;
     }
     const content = message.content.map((part) => {
-      if (part.type === "image") throw new MimoModelError("MODEL_CAPABILITY");
-      if (part.type !== "text") throw new MimoModelError("REPLAY_INCOMPATIBLE");
+      if (part.type === "image") throw mimoError("MODEL_CAPABILITY");
+      if (part.type !== "text") throw mimoError("REPLAY_INCOMPATIBLE");
       return { type: "input_text", text: part.text };
     });
     input.push({ role: message.role, content });

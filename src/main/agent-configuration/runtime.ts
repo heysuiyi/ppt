@@ -1,8 +1,8 @@
+import type { ModelAdapterId } from "@agent-harness/models/model-contract";
 import type { AgentModelSelection, AgentModelSettings } from "@shared/agent";
 import { DEFAULT_WEB_SEARCH_ENDPOINT } from "@shared/agent-gateway-config";
 import { normalizeCredentialUrl } from "@shared/credentials";
 import { getModelReasoningEfforts } from "@shared/model-reasoning";
-import { MIMO_TOKEN_PLAN_CN_PROVIDER_ID } from "../../models/mimo-token-plan-cn-contract";
 import { type CredentialStore, CredentialStoreError } from "./internal/credential-store";
 import { modelCredentialBindingFromSelection } from "./internal/credential-types";
 import {
@@ -38,7 +38,7 @@ export function createRuntime(
   async function resolveModel(
     selection: AgentModelSelection,
     env: NodeJS.ProcessEnv,
-    modelAdapter?: "mimo-token-plan-cn",
+    modelAdapter?: ModelAdapterId,
   ): Promise<AgentModelSettings> {
     const stored = await storedKey(selection);
     const apiKey =
@@ -82,10 +82,10 @@ export function createRuntime(
         const settings = await settingsStore.get();
         if (!settings) throw new Error("Execution settings have not been initialized.");
         const model = resolveConfiguredModel(settings, modelId);
-        const modelAdapter =
+        const modelAdapter: ModelAdapterId | undefined =
           settings.vendors.find((vendor) => vendor.id === model.vendorId)?.kind ===
-          MIMO_TOKEN_PLAN_CN_PROVIDER_ID
-            ? MIMO_TOKEN_PLAN_CN_PROVIDER_ID
+          "mimo-token-plan-cn"
+            ? "mimo-token-plan-cn"
             : undefined;
         if (reasoningEffort !== undefined) {
           if (modelAdapter || !getModelReasoningEfforts(model).includes(reasoningEffort))
@@ -105,7 +105,7 @@ export function createRuntime(
           fallbackModel &&
           settings.vendors.some(
             (vendor) =>
-              vendor.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID &&
+              vendor.kind === "mimo-token-plan-cn" &&
               vendor.models.some((entry) => entry.id === fallbackId),
           )
         ) {

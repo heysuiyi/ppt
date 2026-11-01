@@ -3,8 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AgentConfiguration, createAgentConfiguration } from "../src/main/agent-configuration";
+import { prepareConfiguredModel } from "../src/main/agent-host/configured-model-factory";
 import { type AgentHost, createAgentHost } from "../src/main/agent-host/create-agent-host";
 import {
   parseDevelopmentArguments,
@@ -13,8 +15,12 @@ import {
   projectDevelopmentResult,
 } from "../src/main/agent-host/development-command";
 import { createSqliteAgentStores } from "../src/main/agent-host/sqlite-agent-stores";
-import { MIMO_TOKEN_PLAN_CN_BASE_URL } from "../src/models/mimo-token-plan-cn-contract";
 import type { ToolsMode } from "../src/tools/tools";
+
+const mimoProfile = getModelProfile("mimo-token-plan-cn");
+if (mimoProfile?.endpoint?.kind !== "fixed")
+  throw new Error("The MiMo fixed endpoint profile is required.");
+const mimoBaseURL = mimoProfile.endpoint.url;
 
 const cleanup: Array<() => Promise<unknown>> = [];
 const nativeFetch = globalThis.fetch;
@@ -93,7 +99,7 @@ async function fixture(
   const endpoint = `http://127.0.0.1:${address.port}`;
   vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.href !== `${MIMO_TOKEN_PLAN_CN_BASE_URL}/responses`) {
+    if (url.href !== `${mimoBaseURL}/responses`) {
       const error = new Error(`Unexpected native test destination: ${url.href}`);
       fixtureErrors.push(error);
       throw error;
@@ -115,7 +121,7 @@ async function fixture(
           kind: "mimo-token-plan-cn",
           label: "Native consumer fixture",
           protocol: "openai",
-          baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+          baseURL: mimoBaseURL,
           enabled: true,
           models: [
             {
@@ -303,7 +309,7 @@ describe("independent configured Agent host", () => {
         { role: "user", content: [{ type: "input_text", text: "Hello" }] },
       ]),
     });
-    expect(f.publicURLs).toEqual([`${MIMO_TOKEN_PLAN_CN_BASE_URL}/responses`]);
+    expect(f.publicURLs).toEqual([`${mimoBaseURL}/responses`]);
     expect(f.authorizations).toEqual(["Bearer first-stored-key"]);
     expect(host.binding.toolMode).toBe("read-only");
     const tools = f.requests[0].tools as Array<{ name: string }>;
@@ -753,6 +759,17 @@ describe("independent configured Agent host", () => {
       code: "MODEL_ADAPTER_UNSUPPORTED",
     });
     expect(f.requests).toHaveLength(1);
+  });
+
+  it("rejects an unknown adapter before resolving the signed plan or credentials", async () => {
+    const runtime: AgentConfiguration["runtime"] = {
+      loadExecutionPlan: vi.fn().mockResolvedValue({ modelAdapter: "unknown-adapter" }),
+      resolveRuntime: vi.fn(),
+    };
+    await expect(
+      prepareConfiguredModel(runtime, "configured-model", new AbortController().signal),
+    ).rejects.toMatchObject({ code: "MODEL_ADAPTER_UNSUPPORTED" });
+    expect(runtime.resolveRuntime).not.toHaveBeenCalled();
   });
 
   it("lists model eligibility from saved configuration without making a model request", async () => {

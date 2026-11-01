@@ -1,8 +1,12 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { app, safeStorage } from "electron";
-import { createAgentConfiguration } from "../../src/main/agent-configuration";
-import { MIMO_TOKEN_PLAN_CN_BASE_URL } from "../../src/models/mimo-token-plan-cn-contract";
+
+const mimoProfile = getModelProfile("mimo-token-plan-cn");
+if (mimoProfile?.endpoint?.kind !== "fixed")
+  throw new Error("The MiMo fixed endpoint profile is required.");
+const mimoBaseURL = mimoProfile.endpoint.url;
 
 const root = process.env.AGENT_PPT_DATA_DIR;
 const endpoint = process.env.AGENT_DEV_TEST_ENDPOINT;
@@ -21,7 +25,7 @@ if (
   local.password
 )
   throw new Error("Isolated integration transport must use local HTTP.");
-const native = new URL(MIMO_TOKEN_PLAN_CN_BASE_URL);
+const native = new URL(mimoBaseURL);
 const transport = globalThis.fetch;
 // 测试专用且失败关闭：真实 SDK 只能将固定 CN Responses 请求转发至本地服务。
 globalThis.fetch = (input, init) => {
@@ -41,6 +45,8 @@ globalThis.fetch = (input, init) => {
     redirect: "error",
   });
 };
+// Load the host only after interception: external SDK modules may capture global fetch on import.
+const { createAgentConfiguration } = await import("../../src/main/agent-configuration");
 if (process.argv[2] === "seed") {
   app.setName("agent-ppt");
   mkdirSync(join(root, "electron"), { recursive: true });
@@ -58,7 +64,7 @@ if (process.argv[2] === "seed") {
         kind: "mimo-token-plan-cn" as const,
         label: "Isolated native MiMo integration",
         protocol: "openai" as const,
-        baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+        baseURL: mimoBaseURL,
         enabled: true,
         models: [
           {

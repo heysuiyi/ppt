@@ -1,8 +1,14 @@
+import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import { describe, expect, it } from "vitest";
-import {
-  MIMO_REASONING_EFFORTS,
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-} from "../src/models/mimo-token-plan-cn-contract";
+
+const mimoProfile = getModelProfile("mimo-token-plan-cn");
+if (mimoProfile?.endpoint?.kind !== "fixed")
+  throw new Error("The MiMo fixed endpoint profile is required.");
+const mimoBaseURL = mimoProfile.endpoint.url;
+const mimoSupport = getModelSupport("mimo-token-plan-cn", "mimo-v2.6-pro");
+if (!mimoSupport?.supported) throw new Error("The MiMo Pro support profile is required.");
+const mimoReasoningEfforts = mimoSupport.reasoningEfforts;
+
 import {
   agentPreferencesSchema,
   discoverAgentModelsSchema,
@@ -83,10 +89,10 @@ describe("agent configuration management boundary", () => {
   const mimoVendor = {
     ...vendor,
     kind: "mimo-token-plan-cn",
-    baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+    baseURL: mimoBaseURL,
   };
 
-  it.each(MIMO_REASONING_EFFORTS)("preserves the exact MiMo effort %s", (reasoningEffort) => {
+  it.each(mimoReasoningEfforts)("preserves the exact MiMo effort %s", (reasoningEffort) => {
     const result = saveAgentVendorSchema.parse({
       vendor: {
         ...mimoVendor,
@@ -150,7 +156,7 @@ describe("agent configuration management boundary", () => {
     const draft = {
       type: "draft",
       provider: "openai",
-      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      baseURL: mimoBaseURL,
       modelAdapter: "mimo-token-plan-cn",
       apiKey: "temporary-key",
     };

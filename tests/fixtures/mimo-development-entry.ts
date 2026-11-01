@@ -1,9 +1,12 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { app, safeStorage } from "electron";
-import { createAgentConfiguration } from "../../src/main/agent-configuration";
-import { createSqliteAgentStores } from "../../src/main/agent-host/sqlite-agent-stores";
-import { MIMO_TOKEN_PLAN_CN_BASE_URL } from "../../src/models/mimo-token-plan-cn-contract";
+
+const mimoProfile = getModelProfile("mimo-token-plan-cn");
+if (mimoProfile?.endpoint?.kind !== "fixed")
+  throw new Error("The MiMo fixed endpoint profile is required.");
+const mimoBaseURL = mimoProfile.endpoint.url;
 
 // 只在测试入口替换 transport；生产 provider 的固定地址与 SDK 均保持原样。
 const endpoint = process.env.MIMO_TEST_HTTP_ENDPOINT;
@@ -12,11 +15,14 @@ if (!endpoint || !root) throw new Error("Isolated native integration environment
 const transport = globalThis.fetch;
 globalThis.fetch = (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input));
-  if (!url.href.startsWith(`${MIMO_TOKEN_PLAN_CN_BASE_URL}/`))
+  if (!url.href.startsWith(`${mimoBaseURL}/`))
     throw new Error("Unexpected native integration destination");
-  const target = endpoint + url.href.slice(MIMO_TOKEN_PLAN_CN_BASE_URL.length);
+  const target = endpoint + url.href.slice(mimoBaseURL.length);
   return transport(input instanceof Request ? new Request(target, input) : target, init);
 };
+// Load the host only after interception: external SDK modules may capture global fetch on import.
+const { createAgentConfiguration } = await import("../../src/main/agent-configuration");
+const { createSqliteAgentStores } = await import("../../src/main/agent-host/sqlite-agent-stores");
 const mode = process.argv[2];
 if (["seed", "inspect", "set-effort", "set-budget", "rotate-key"].includes(mode)) {
   app.setName("agent-ppt");
@@ -35,7 +41,7 @@ if (["seed", "inspect", "set-effort", "set-budget", "rotate-key"].includes(mode)
           kind: "mimo-token-plan-cn" as const,
           label: "MiMo isolated integration",
           protocol: "openai" as const,
-          baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+          baseURL: mimoBaseURL,
           enabled: true,
           models: [
             {

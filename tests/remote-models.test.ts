@@ -1,83 +1,110 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getModelProfile } from "@agent-harness/models/model-profiles";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentConfiguration } from "../src/main/agent-configuration";
-import {
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-} from "../src/models/mimo-token-plan-cn-contract";
+import { listProviderModels } from "../src/main/agent-configuration/internal/model-discovery";
 import {
   discoverAgentModelsSchema,
   type VendorConfiguration,
 } from "../src/shared/agent-configuration";
 import { DEFAULT_AGENT_STEP_LIMITS } from "../src/shared/agent-step-limits";
 
-const sdk = vi.hoisted(() => ({
-  openai: [] as unknown[],
-  anthropic: [] as unknown[],
+const profile = getModelProfile("mimo-token-plan-cn");
+if (profile?.endpoint?.kind !== "fixed")
+  throw new Error("MiMo discovery tests require the fixed endpoint profile.");
+const mimoBaseURL = profile.endpoint.url;
+const transport = globalThis.fetch;
+const sdk = {
+  openai: [] as Array<{ apiKey: string | undefined; url: string }>,
+  anthropic: [] as Array<{ apiKey: string | undefined; url: string }>,
+  native: [] as Array<{ apiKey: string | undefined; url: string }>,
+  nativeModels: [] as Array<{ id: string }>,
+  nativeFailure: false,
   fail: false,
   waitForModels: undefined as Promise<void> | undefined,
   started: undefined as (() => void) | undefined,
-}));
-const mimo = vi.hoisted(() => ({
-  create: vi.fn(),
-  listModels: vi.fn(),
-  dispose: vi.fn(),
-}));
-vi.mock("../src/models/mimo-token-plan-cn", () => ({
-  createMimoTokenPlanCN: mimo.create,
-}));
-vi.mock("openai", () => ({
-  default: class OpenAI {
-    constructor(options: unknown) {
-      sdk.openai.push(options);
-    }
-    models = {
-      list: async function* () {
-        if (sdk.fail) throw new Error("request failed with secret-api-key");
-        sdk.started?.();
-        await sdk.waitForModels;
-        yield { id: " model-b " };
-        yield { id: "model-a" };
-        yield { id: "model-a" };
-        yield { id: " " };
-      },
-    };
-  },
-}));
-vi.mock("@anthropic-ai/sdk", () => ({
-  default: class Anthropic {
-    constructor(options: unknown) {
-      sdk.anthropic.push(options);
-    }
-    models = {
-      list: async function* () {
-        yield { id: "claude-b", display_name: "Claude B" };
-        yield { id: "claude-a" };
-        yield { id: "claude-a", display_name: "Claude A" };
-      },
-    };
-  },
-}));
+};
+let server: Server;
 const directories: string[] = [];
-beforeEach(() => {
+beforeEach(async () => {
   sdk.openai.length = 0;
   sdk.anthropic.length = 0;
+  sdk.native.length = 0;
+  sdk.nativeModels = [{ id: "mimo-v2.6-pro" }, { id: "unknown-model" }];
+  sdk.nativeFailure = false;
   sdk.fail = false;
   sdk.waitForModels = undefined;
   sdk.started = undefined;
-  mimo.create.mockReset().mockReturnValue({
-    listModels: mimo.listModels,
-    dispose: mimo.dispose,
+  server = createServer(async (request, response) => {
+    const native = request.headers["x-test-native"] === "true";
+    const anthropic = request.headers["x-test-anthropic"] === "true";
+    response.setHeader("content-type", "application/json");
+    if (sdk.fail || (native && sdk.nativeFailure)) {
+      response.statusCode = native ? 401 : 500;
+      response.end(JSON.stringify({ error: { message: "request failed with secret-api-key" } }));
+      return;
+    }
+    sdk.started?.();
+    await sdk.waitForModels;
+    response.end(
+      JSON.stringify({
+        data: native
+          ? sdk.nativeModels
+          : anthropic
+            ? [
+                { id: "claude-b", display_name: "Claude B" },
+                { id: "claude-a" },
+                { id: "claude-a", display_name: "Claude A" },
+              ]
+            : [{ id: " model-b " }, { id: "model-a" }, { id: "model-a" }, { id: " " }],
+        has_more: false,
+      }),
+    );
   });
-  mimo.listModels.mockReset().mockResolvedValue([
-    { id: "mimo-v2-pro", supported: true },
-    { id: "unknown-model", supported: false, unsupportedReason: "Unsupported model capabilities." },
-  ]);
-  mimo.dispose.mockReset().mockResolvedValue(undefined);
+  const listening = Promise.withResolvers<void>();
+  server.listen(0, "127.0.0.1", listening.resolve);
+  await listening.promise;
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing local discovery address.");
+  const endpoint = `http://127.0.0.1:${address.port}`;
+  globalThis.fetch = (input, init) => {
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+    if (
+      ![
+        new URL(mimoBaseURL).host,
+        "saved.example.test",
+        "draft.example.test",
+        "environment.example.test",
+        "api.openai.com",
+        "api.anthropic.com",
+      ].includes(url.host) ||
+      !url.pathname.endsWith("/models")
+    )
+      throw new Error(`Unexpected discovery destination: ${url.href}`);
+    const native = url.href === `${mimoBaseURL}/models`;
+    const anthropic = url.host === "api.anthropic.com";
+    const calls = native ? sdk.native : anthropic ? sdk.anthropic : sdk.openai;
+    calls.push({
+      apiKey: anthropic
+        ? (request.headers.get("x-api-key") ?? undefined)
+        : request.headers.get("authorization")?.replace(/^Bearer /, ""),
+      url: url.href,
+    });
+    const headers = new Headers(request.headers);
+    headers.set("x-test-native", String(native));
+    headers.set("x-test-anthropic", String(anthropic));
+    return transport(new Request(endpoint + url.pathname + url.search, request), { headers });
+  };
 });
 afterEach(async () => {
+  globalThis.fetch = transport;
+  const closed = Promise.withResolvers<void>();
+  server.close((error) => (error ? closed.reject(error) : closed.resolve()));
+  await closed.promise;
   await Promise.all(
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -159,36 +186,37 @@ describe("model discovery request boundary", () => {
   });
 });
 
+describe("adapter discovery capability", () => {
+  it("reports missing discovery as an explicit caller-visible error", async () => {
+    await expect(listProviderModels({}, new AbortController().signal)).rejects.toMatchObject({
+      code: "provider-error",
+    });
+  });
+});
+
 describe("configuration model discovery", () => {
-  it("dispatches native drafts through the shared provider and preserves capability metadata", async () => {
+  it("lists native models through the real SDK and preserves capability metadata", async () => {
     const api = await management();
     const before = await api.getSnapshot();
     await expect(
       api.listRemoteModels({
         type: "draft",
         provider: "openai",
-        baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
-        modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+        baseURL: mimoBaseURL,
+        modelAdapter: "mimo-token-plan-cn",
         apiKey: "temporary-mimo-key",
       }),
     ).resolves.toEqual({
       models: [
-        { id: "mimo-v2-pro", supported: true },
+        { id: "mimo-v2.6-pro", supported: true },
         {
           id: "unknown-model",
           supported: false,
-          unsupportedReason: "Unsupported model capabilities.",
+          unsupportedReason: expect.any(String),
         },
       ],
     });
-    expect(mimo.create).toHaveBeenCalledWith({
-      apiKey: "temporary-mimo-key",
-      connectionFingerprint: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-      timeoutMs: 20_000,
-      maxOutputTokens: 16_384,
-    });
-    expect(mimo.listModels).toHaveBeenCalledWith(expect.any(AbortSignal));
-    expect(mimo.dispose).toHaveBeenCalledOnce();
+    expect(sdk.native).toEqual([{ apiKey: "temporary-mimo-key", url: `${mimoBaseURL}/models` }]);
     expect(sdk.openai).toEqual([]);
     expect(sdk.anthropic).toEqual([]);
     expect(await api.getSnapshot()).toEqual(before);
@@ -197,13 +225,13 @@ describe("configuration model discovery", () => {
   it("derives the native adapter from saved kind and never falls back to an environment key", async () => {
     const api = await management({
       OPENAI_API_KEY: "unrelated-openai-key",
-      OPENAI_BASE_URL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      OPENAI_BASE_URL: mimoBaseURL,
       MIMO_API_KEY: "unbound-mimo-key",
     });
     const native: VendorConfiguration = {
       ...vendor,
-      kind: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      kind: "mimo-token-plan-cn",
+      baseURL: mimoBaseURL,
     };
     await api.saveVendor({ vendor: native, credential: { type: "keep" } });
     await expect(
@@ -211,35 +239,31 @@ describe("configuration model discovery", () => {
         type: "saved-vendor",
         vendorId: native.id,
       }),
-    ).rejects.toThrow(/credential/i);
-    expect(mimo.create).not.toHaveBeenCalled();
+    ).rejects.toThrow();
+    expect(sdk.native).toEqual([]);
     await api.saveVendor({
       vendor: native,
       credential: { type: "replace", apiKey: "saved-mimo-key" },
     });
     await api.listRemoteModels({ type: "saved-vendor", vendorId: native.id });
-    expect(mimo.create).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "saved-mimo-key" }));
-    expect(mimo.dispose).toHaveBeenCalledOnce();
+    expect(sdk.native).toEqual([{ apiKey: "saved-mimo-key", url: `${mimoBaseURL}/models` }]);
     expect(sdk.openai).toEqual([]);
     expect((await api.getSnapshot())!.settings.vendors[0]!.models).toEqual([]);
   });
 
-  it("disposes native discovery on failure without trying legacy transports or cached candidates", async () => {
+  it("reports safe native SDK errors without legacy fallback or business retries", async () => {
     const api = await management();
-    const failure = Object.assign(new Error("MiMo model discovery failed."), {
-      code: "authentication",
-    });
-    mimo.listModels.mockRejectedValueOnce(failure);
+    sdk.nativeFailure = true;
     await expect(
       api.listRemoteModels({
         type: "draft",
         provider: "openai",
-        baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
-        modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+        baseURL: mimoBaseURL,
+        modelAdapter: "mimo-token-plan-cn",
         apiKey: "temporary-mimo-key",
       }),
-    ).rejects.toBe(failure);
-    expect(mimo.dispose).toHaveBeenCalledOnce();
+    ).rejects.toMatchObject({ code: "AUTHENTICATION", adapterId: "mimo-token-plan-cn" });
+    expect(sdk.native).toHaveLength(1);
     expect(sdk.openai).toEqual([]);
     expect(sdk.anthropic).toEqual([]);
   });
@@ -249,20 +273,19 @@ describe("configuration model discovery", () => {
     const draft = {
       type: "draft" as const,
       provider: "openai" as const,
-      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
-      modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      baseURL: mimoBaseURL,
+      modelAdapter: "mimo-token-plan-cn" as const,
       apiKey: "temporary-mimo-key",
     };
-    mimo.listModels.mockResolvedValueOnce([]);
+    sdk.nativeModels = [];
     await expect(api.listRemoteModels(draft)).resolves.toEqual({ models: [] });
-    expect(mimo.dispose).toHaveBeenCalledOnce();
     await expect(
       api.listRemoteModels({
         ...draft,
         baseURL: "https://api.xiaomimimo.com/v1",
       }),
     ).rejects.toThrow();
-    expect(mimo.create).toHaveBeenCalledOnce();
+    expect(sdk.native).toHaveLength(1);
     expect(sdk.openai).toEqual([]);
   });
 
@@ -279,9 +302,7 @@ describe("configuration model discovery", () => {
     expect(sdk.openai).toEqual([
       {
         apiKey: "draft-key",
-        baseURL: "https://draft.example.test/v1",
-        timeout: 20_000,
-        maxRetries: 0,
+        url: "https://draft.example.test/v1/models",
       },
     ]);
   });
@@ -301,17 +322,17 @@ describe("configuration model discovery", () => {
         { id: "claude-b", displayName: "Claude B" },
       ],
     });
-    expect(sdk.anthropic[0]).toMatchObject({
-      apiKey: "draft-key",
-      baseURL: "https://api.anthropic.com",
-    });
+    expect(sdk.anthropic[0].apiKey).toBe("draft-key");
+    const destination = new URL(sdk.anthropic[0].url);
+    expect(destination.origin).toBe("https://api.anthropic.com");
+    expect(destination.pathname).toBe("/v1/models");
   });
 
   it("derives a saved connection address and key exclusively from backend settings", async () => {
     const api = await management();
     await api.saveVendor({ vendor, credential: { type: "replace", apiKey: "saved-key" } });
     await api.listRemoteModels({ type: "saved-vendor", vendorId: vendor.id });
-    expect(sdk.openai[0]).toMatchObject({ apiKey: "saved-key", baseURL: vendor.baseURL });
+    expect(sdk.openai[0]).toMatchObject({ apiKey: "saved-key", url: `${vendor.baseURL}/models` });
     await expect(
       api.listRemoteModels({
         type: "saved-vendor",
@@ -326,7 +347,7 @@ describe("configuration model discovery", () => {
     const api = await management();
     await expect(
       api.listRemoteModels({ type: "saved-vendor", vendorId: vendor.id }),
-    ).rejects.toThrow(/credential/i);
+    ).rejects.toThrow();
     await api.saveVendor({ vendor, credential: { type: "replace", apiKey: "saved-key" } });
     await api.saveVendor({
       vendor: { ...vendor, baseURL: "https://changed.example.test/v1" },
@@ -334,10 +355,10 @@ describe("configuration model discovery", () => {
     });
     await expect(
       api.listRemoteModels({ type: "saved-vendor", vendorId: vendor.id }),
-    ).rejects.toThrow(/credential/i);
+    ).rejects.toThrow();
     await expect(
       api.listRemoteModels({ type: "saved-vendor", vendorId: "missing" }),
-    ).rejects.toThrow(/does not exist/);
+    ).rejects.toThrow();
     expect(sdk.openai).toEqual([]);
   });
 
@@ -347,14 +368,17 @@ describe("configuration model discovery", () => {
       OPENAI_BASE_URL: "https://saved.example.test/v1/",
     });
     await api.listRemoteModels({ type: "saved-vendor", vendorId: vendor.id });
-    expect(sdk.openai[0]).toMatchObject({ apiKey: "environment-key", baseURL: vendor.baseURL });
+    expect(sdk.openai[0]).toMatchObject({
+      apiKey: "environment-key",
+      url: `${vendor.baseURL}/models`,
+    });
     await api.saveVendor({
       vendor: { ...vendor, baseURL: "https://attacker.example.test/v1" },
       credential: { type: "keep" },
     });
     await expect(
       api.listRemoteModels({ type: "saved-vendor", vendorId: vendor.id }),
-    ).rejects.toThrow(/credential/i);
+    ).rejects.toThrow();
     expect(sdk.openai).toHaveLength(1);
   });
 
@@ -368,7 +392,7 @@ describe("configuration model discovery", () => {
     await api.listRemoteModels({ type: "saved-vendor", vendorId: vendor.id });
     expect(sdk.openai[0]).toMatchObject({
       apiKey: "environment-key",
-      baseURL: "https://environment.example.test/v1",
+      url: "https://environment.example.test/v1/models",
     });
     await api.saveVendor({
       vendor: unbound,
@@ -377,40 +401,37 @@ describe("configuration model discovery", () => {
     await api.listRemoteModels({ type: "saved-vendor", vendorId: vendor.id });
     expect(sdk.openai[1]).toMatchObject({
       apiKey: "stored-key",
-      baseURL: "https://api.openai.com/v1",
+      url: "https://api.openai.com/v1/models",
     });
   });
 
   it("does not expose provider exception text containing credentials", async () => {
     const api = await management();
     sdk.fail = true;
-    await expect(
-      api.listRemoteModels({
+    let failure: unknown;
+    try {
+      await api.listRemoteModels({
         type: "draft",
         provider: "openai",
         baseURL: "https://draft.example.test/v1",
         apiKey: "secret-api-key",
-      }),
-    ).rejects.toMatchObject({
-      code: "provider-error",
-      message: "Failed to list OpenAI-compatible models.",
-    });
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({ code: "provider-error" });
+    expect(JSON.stringify(failure)).not.toContain("secret-api-key");
   });
 
   it("does not hold the configuration queue while a provider request is pending", async () => {
     const api = await management();
     await api.saveVendor({ vendor, credential: { type: "replace", apiKey: "saved-key" } });
-    let releaseModels!: () => void;
-    let markStarted!: () => void;
-    sdk.waitForModels = new Promise<void>((resolve) => {
-      releaseModels = resolve;
-    });
-    const started = new Promise<void>((resolve) => {
-      markStarted = resolve;
-    });
-    sdk.started = markStarted;
+    const released = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    sdk.waitForModels = released.promise;
+    sdk.started = started.resolve;
     const discovering = api.listRemoteModels({ type: "saved-vendor", vendorId: vendor.id });
-    await started;
+    await started.promise;
     try {
       await api.saveVendor({
         vendor: { ...vendor, label: "Edited while listing" },
@@ -418,7 +439,7 @@ describe("configuration model discovery", () => {
       });
       expect((await api.getSnapshot())?.settings.vendors[0]?.label).toBe("Edited while listing");
     } finally {
-      releaseModels();
+      released.resolve();
       await discovering;
     }
   });

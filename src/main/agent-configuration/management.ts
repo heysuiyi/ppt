@@ -20,7 +20,7 @@ import {
 import { DEFAULT_AGENT_STEP_LIMITS } from "@shared/agent-step-limits";
 import { normalizeCredentialUrl } from "@shared/credentials";
 import { APPLICATION_DEFAULT_TEMPLATE_ID } from "@shared/template-protocol";
-import { MIMO_TOKEN_PLAN_CN_PROVIDER_ID } from "../../models/mimo-token-plan-cn-contract";
+
 import { type CredentialStore, CredentialStoreError } from "./internal/credential-store";
 import { normalizeModelCredentialBinding } from "./internal/credential-types";
 import {
@@ -61,7 +61,7 @@ export function createManagement(
           ...entry,
           configured:
             entry.configured ||
-            (settings.vendors[index]!.kind !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID &&
+            (settings.vendors[index]!.kind !== "mimo-token-plan-cn" &&
               Boolean(
                 resolveEnvironmentModelApiKey(
                   models[index]!.provider,
@@ -220,7 +220,7 @@ export function createManagement(
               }
               const apiKey =
                 storedKey ??
-                (vendor.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID
+                (vendor.kind === "mimo-token-plan-cn"
                   ? undefined
                   : resolveEnvironmentModelApiKey(binding.provider, binding.baseURL, environment));
               if (!apiKey) throw new Error("No credential matches this vendor connection.");
@@ -230,8 +230,8 @@ export function createManagement(
                   : environment.ANTHROPIC_BASE_URL?.trim();
               // The saved connection determines address and protocol together.
               return {
-                ...(vendor.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID
-                  ? { modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID }
+                ...(vendor.kind === "mimo-token-plan-cn"
+                  ? { modelAdapter: "mimo-token-plan-cn" as const }
                   : {}),
                 provider: vendor.protocol,
                 baseURL: normalizeCredentialUrl(

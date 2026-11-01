@@ -11,7 +11,7 @@ export default defineConfig({
         name: "watch-workspace-artifacts",
         buildStart() {
           // The dependency remains external; watch its emitted files to restart Main in dev.
-          for (const name of ["harness", "logs"]) {
+          for (const name of ["harness", "logs", "models"]) {
             const directory = resolve(`packages/${name}/dist`);
             for (const file of readdirSync(directory, { recursive: true })) {
               if (typeof file === "string" && file.endsWith(".js")) {

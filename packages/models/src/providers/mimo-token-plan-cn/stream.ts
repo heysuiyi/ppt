@@ -1,6 +1,6 @@
 import type { ModelContentDelta, ModelStreamEvent } from "@agent-harness/core/model/model-contract";
-import { invalid, MimoModelError, nonempty, object, text } from "./mimo-errors";
-import { projectItem, same } from "./mimo-responses";
+import { invalid, mimoError, nonempty, object, text } from "./errors.js";
+import { projectItem, same } from "./responses.js";
 
 type Delta = Extract<ModelStreamEvent, { type: "content-delta" }>;
 interface Slot {
@@ -37,7 +37,7 @@ export class MimoStreamProjection {
     if (type === "response.incomplete") {
       const response = object(event.response);
       if (object(response.incomplete_details).reason === "max_output_tokens") {
-        throw new MimoModelError("TRUNCATED");
+        throw mimoError("TRUNCATED");
       }
       return invalid();
     }
@@ -121,7 +121,7 @@ export class MimoStreamProjection {
   }
 
   finish(): Record<string, unknown> {
-    if (!this.terminal) throw new MimoModelError("INCOMPLETE_STREAM");
+    if (!this.terminal) throw mimoError("INCOMPLETE_STREAM");
     return this.terminal;
   }
 

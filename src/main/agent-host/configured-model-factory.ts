@@ -7,12 +7,10 @@ import type {
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import { type Disposable, sameValue } from "@agent-harness/core/protocol-values";
 import type { Logger } from "@agent-harness/logs/log-contract";
-import { createMimoTokenPlanCN, MimoModelError } from "../../models/mimo-token-plan-cn";
-import {
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-  type MimoTokenPlanCN,
-} from "../../models/mimo-token-plan-cn-contract";
+import type { ModelAdapterId, ModelProvider } from "@agent-harness/models/model-contract";
+import { ModelProviderError } from "@agent-harness/models/model-errors";
+import { getModelProfile } from "@agent-harness/models/model-profiles";
+import { createModelProvider } from "@agent-harness/models/models";
 import type { AgentModelSelection, AgentModelSettings } from "../../shared/agent";
 import { getEffectiveMainMaxSteps } from "../../shared/agent-step-limits";
 import type { AgentConfiguration } from "../agent-configuration";
@@ -30,12 +28,15 @@ export function configuredModelFingerprint(
   model: AgentModelSelection,
   maxOutputTokens: number,
 ): string {
+  const profile = getModelProfile("mimo-token-plan-cn");
+  if (profile?.endpoint?.kind !== "fixed")
+    throw new AgentError("MODEL_CONFIGURATION_FAILED", "MiMo 必须使用固定 CN Responses 连接。");
   return createHash("sha256")
     .update(
       JSON.stringify({
-        adapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+        adapter: profile.adapterId,
         replayVersion: 1,
-        baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+        baseURL: profile.endpoint.url,
         configuredModelId,
         configurationId: model.configurationId ?? null,
         vendorId: model.vendorId ?? null,
@@ -48,8 +49,8 @@ export function configuredModelFingerprint(
 }
 
 // 只转换适配器已脱敏的具名错误，未知异常仍由通用执行边界隐藏。
-function mimoAgentError(error: unknown): unknown {
-  return error instanceof MimoModelError ? new AgentError(error.code, error.message) : error;
+function modelProviderAgentError(error: unknown): unknown {
+  return error instanceof ModelProviderError ? new AgentError(error.code, error.message) : error;
 }
 
 /** 只绑定已签发计划的主模型；凭据、搜索和备用模型均不进入通用内核。 */
@@ -64,13 +65,13 @@ export async function prepareConfiguredModel(
   let timeoutMs: number;
   let maxOutputTokens: number;
   let maxSteps: number;
-  let modelAdapter: "mimo-token-plan-cn" | undefined;
+  let modelAdapter: ModelAdapterId | undefined;
   try {
     // resolveRuntime 用 WeakMap 识别计划；必须传回原对象，不能 JSON 重建。
     const plan = await runtime.loadExecutionPlan(configuredModelId);
     signal.throwIfAborted();
     // 先检查签发的适配器身份，不为不支持的配置解析凭据或创建旧执行路径。
-    if (plan.modelAdapter !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID) {
+    if (!plan.modelAdapter || !getModelProfile(plan.modelAdapter)) {
       throw new AgentError(
         "MODEL_ADAPTER_UNSUPPORTED",
         "所选模型尚无可用的原生适配器，请选择已接入的原生模型配置。",
@@ -97,16 +98,19 @@ export async function prepareConfiguredModel(
       "所选模型没有可用凭据，请先在应用设置中配置。",
     );
   }
-  if (modelAdapter === MIMO_TOKEN_PLAN_CN_PROVIDER_ID) {
+  const profile = modelAdapter ? getModelProfile(modelAdapter) : undefined;
+  if (profile) {
     if (
+      profile.protocol !== "openai-responses" ||
+      profile.endpoint?.kind !== "fixed" ||
       settings.provider !== "openai" ||
       settings.openaiApiMode !== "responses" ||
-      settings.baseURL !== MIMO_TOKEN_PLAN_CN_BASE_URL
+      settings.baseURL !== profile.endpoint.url
     ) {
       throw new AgentError("MODEL_CONFIGURATION_FAILED", "MiMo 必须使用固定 CN Responses 连接。");
     }
     const selection: ModelSelection = Object.freeze({
-      providerId: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      providerId: profile.adapterId,
       modelId: settings.model,
       ...(settings.reasoningEffort === undefined
         ? {}
@@ -117,19 +121,26 @@ export async function prepareConfiguredModel(
       settings,
       maxOutputTokens,
     );
-    let provider: MimoTokenPlanCN;
+    let provider: ModelProvider | undefined;
     try {
-      provider = createMimoTokenPlanCN({
-        apiKey: settings.apiKey,
-        connectionFingerprint,
-        timeoutMs,
-        maxOutputTokens,
-        ...(logger ? { logger } : {}),
-      });
+      provider = await createModelProvider(
+        {
+          adapterId: profile.adapterId,
+          apiKey: settings.apiKey,
+          connectionFingerprint,
+          timeoutMs,
+          maxOutputTokens,
+          ...(logger ? { logger } : {}),
+        },
+        signal,
+      );
+      signal.throwIfAborted();
     } catch (error) {
-      throw mimoAgentError(error);
+      await provider?.dispose();
+      throw modelProviderAgentError(error);
     }
     settings = undefined;
+    const preparedProvider = provider;
     return {
       selection,
       connectionFingerprint,
@@ -139,7 +150,7 @@ export async function prepareConfiguredModel(
           if (!sameValue(requested, selection))
             throw new AgentError("MODEL_SELECTION_CHANGED", "模型绑定与已准备配置不一致。");
           try {
-            const binding = await provider.create(requested, bindingSignal);
+            const binding = await preparedProvider.create(requested, bindingSignal);
             return {
               dispose: () => binding.dispose(),
               client: {
@@ -149,24 +160,24 @@ export async function prepareConfiguredModel(
                   try {
                     return await binding.client.generate(request, requestSignal, context);
                   } catch (error) {
-                    throw mimoAgentError(error);
+                    throw modelProviderAgentError(error);
                   }
                 },
                 async *stream(request, requestSignal, context) {
                   try {
                     yield* binding.client.stream(request, requestSignal, context);
                   } catch (error) {
-                    throw mimoAgentError(error);
+                    throw modelProviderAgentError(error);
                   }
                 },
               },
             };
           } catch (error) {
-            throw mimoAgentError(error);
+            throw modelProviderAgentError(error);
           }
         },
       },
-      dispose: () => provider.dispose(),
+      dispose: () => preparedProvider.dispose(),
     };
   }
   throw new AgentError("MODEL_ADAPTER_UNSUPPORTED", "运行配置没有可用的原生模型适配器。");

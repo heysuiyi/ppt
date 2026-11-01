@@ -19,7 +19,10 @@ export default defineConfig({
     server: {
       // Public entries and exact white-box dist imports share one emitted module graph.
       deps: {
-        inline: [/\/packages\/(?:harness|logs)\/dist\//, /^@agent-harness\/(?:core|logs)(?:\/|$)/],
+        inline: [
+          /\/packages\/(?:harness|logs|models)\/dist\//,
+          /^@agent-harness\/(?:core|logs|models)(?:\/|$)/,
+        ],
       },
     },
     maxWorkers: 4,

@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 
+import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  MIMO_REASONING_EFFORTS,
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-} from "../src/models/mimo-token-plan-cn-contract";
+
+const mimoProfile = getModelProfile("mimo-token-plan-cn");
+if (mimoProfile?.endpoint?.kind !== "fixed")
+  throw new Error("The MiMo fixed endpoint profile is required.");
+const mimoBaseURL = mimoProfile.endpoint.url;
+const mimoSupport = getModelSupport("mimo-token-plan-cn", "mimo-v2.6-pro");
+if (!mimoSupport?.supported) throw new Error("The MiMo Pro support profile is required.");
+const mimoReasoningEfforts = mimoSupport.reasoningEfforts;
+
 import { ModelManagement } from "../src/renderer/src/components/ModelManagement";
 import type { ModelVendorConnection } from "../src/renderer/src/modelCatalog";
 import { flattenVendors } from "../src/renderer/src/modelCatalog";
@@ -92,7 +98,7 @@ describe("ModelManagement vendor onboarding", () => {
     expect(listRemoteModels).toHaveBeenCalledWith({
       type: "draft",
       provider: "openai",
-      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      baseURL: mimoBaseURL,
       apiKey: "test-secret",
       modelAdapter: "mimo-token-plan-cn",
     });
@@ -102,7 +108,7 @@ describe("ModelManagement vendor onboarding", () => {
     fireEvent.click(checkbox);
     fireEvent.click(screen.getByRole("button", { name: /高级设置/ }));
     expect(screen.queryByRole("combobox", { name: /API 模式/ })).toBeNull();
-    for (const effort of MIMO_REASONING_EFFORTS) {
+    for (const effort of mimoReasoningEfforts) {
       fireEvent.click(screen.getByRole("combobox", { name: "MiMo Pro 思考强度" }));
       fireEvent.click(screen.getByRole("option", { name: effort, exact: true }));
       fireEvent.click(screen.getByRole("button", { name: "保存" }));

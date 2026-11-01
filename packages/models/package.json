@@ -1,0 +1,44 @@
+{
+  "name": "@agent-harness/models",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "npm run build"
+  },
+  "exports": {
+    "./models": {
+      "types": "./dist/models.d.ts",
+      "import": "./dist/models.js"
+    },
+    "./model-contract": {
+      "types": "./dist/model-contract.d.ts",
+      "import": "./dist/model-contract.js"
+    },
+    "./model-profiles": {
+      "types": "./dist/model-profiles.d.ts",
+      "import": "./dist/model-profiles.js"
+    },
+    "./model-errors": {
+      "types": "./dist/model-errors.d.ts",
+      "import": "./dist/model-errors.js"
+    }
+  },
+  "dependencies": {
+    "@agent-harness/core": "0.1.0",
+    "@agent-harness/logs": "0.1.0",
+    "openai": "^6.42.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  }
+}

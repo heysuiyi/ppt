@@ -240,7 +240,8 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `src/main/agent-host/`：新内核的宿主适配，不从内核反向导入业务。
   - `createSqliteAgentStores(filePath)` 使用独立 SQLite 表持久保存历史、批次收据和检查点，不迁移或替换旧生产数据库。独立 Node 运行需要支持 `node:sqlite` 的版本（Node 22.13+；项目开发使用 Node 24）。
   - `createAgentHost()` 在独立数据库中绑定会话、规范工作目录、工具模式、模型连接摘要、执行定义、插件版本和步数预算；`prepareConfiguredModel()` 只接受已签发且已接入的原生适配器，当前为 `mimo-token-plan-cn`。其他配置在凭据解析前以 `MODEL_ADAPTER_UNSUPPORTED` 拒绝，不再提供 Gateway 桥接或备用模型回退。
-- `src/models/`：`createMimoTokenPlanCN()` 提供固定中国 Token Plan 连接的原生 Responses、模型发现、真实流式、工具和版本化私有重放，不依赖旧 Gateway。已知对话能力覆盖 `mimo-v2.6-flash`、`mimo-v2.6-pro`、`mimo-v2.6-pro-ultraspeed`；其他发现项显示未支持，不按名称猜能力。
+- `packages/models/`：私有单包 `@agent-harness/models@0.1.0`，厂商是包内模块，不一厂商一包。`models` 子路径的 `createModelProvider(options, signal)` 按 adapterId 懒加载实现；`model-profiles` 提供浏览器安全资料，`model-contract` 提供公共类型，`model-errors` 提供统一安全错误。当前真实适配器为 MiMo Token Plan CN，保留固定地址、Responses、发现、流式、工具和私有重放；已知型号为 Flash、Pro、Pro Ultraspeed，未知项明确不支持。模型执行协议与注册仍由 Core 拥有，凭据来源/配置/连接指纹仍由宿主拥有。
+  - `npm run build:models` 构建模型包及其 workspace 前置，`npm run verify:models-package` 在仓库外离线安装真实 tarball，执行真实 SDK 到本地 HTTP/SSE、声明与错误边界验收。资料入口不加载 SDK 或 Node 工厂；提供方关闭不关闭借用 Logger。旧 `src/models` 工厂与错误类已删除，无兼容路径，生产旧 Gateway 与其 SDK 依赖仍保留。
 - `src/tools/`：基础工具 `read`、`write`、`edit`、`glob`、`grep` 的约定、默认实现与装配。`createTools({ workspaceRoot, mode })` 返回插件，默认 `read-only`；`read-write` 再安装写入和编辑工具，不自行批准调用。各同名文件拥有输入/输出 schema、工具定义与模型投影；内部共享路径守卫、稳定快照、观察记录、有界搜索与原子发布，不依赖 PPT 或当前宿主。
   - `read` 按 UTF-16 单元分页（默认最多 4000 单元），后续窗口必须携带 `expectedVersion`；完整观察同一文件版本后才能替换或编辑。`write` 显式区分 `create` 与带版本的 `replace`，`edit` 使用精确文本匹配。读取记录按安装隔离，重启丢失记录后要求重新读取。
   - `glob` 支持 `*`、`**`、`?`；`grep` 只做字面量逐行搜索，不执行正则或 Shell。遍历、文件字节数、搜索总字节数与结果都有上限，未完成扫描明确报告 `truncated`，二进制/过大文件明确列为跳过；搜索不授予修改资格。
@@ -249,7 +250,7 @@ PPTX exporter (hybrid: SVG background + editable text)
 - `packages/logs/`：私有 workspace 包 `@agent-harness/logs@0.1.0`，Node >=24、ESM-only、无运行依赖，与 Harness 并列且互不依赖。通过 `@agent-harness/logs/logs` 的 `createLogs()` 创建通用实例，通过 `@agent-harness/logs/node-logs` 的 `createNodeLogs()` 使用 stderr、按日 JSONL、近期环形缓冲与管理；窄协议由 `@agent-harness/logs/log-contract` 提供，不导出内部路径。尚未替换旧 logger、Harness 埋点或现有日志面板。
   - Logger 只负责记录与绑定上下文；输出配置、清理与关闭归宿主。记录先做有界快照和凭据遮蔽再分发，单个输出失败不阻止其他输出，日志不能替代规范历史或检查点。
   - 文件写入显式根下的 `<instanceId>/diagnostic-YYYY-MM-DD.jsonl`，日期使用 UTC；保留与清理仅处理当前实例的托管旧日文件，不读写旧日志、应用设置或 Gateway 归档。
-  - `npm run build:packages` 构建 Harness 与 logs；应用/测试/开发入口在消费前构建，dev 等待两个包首次 emit 并持续监听。`npm run verify:logs-package` 验证真实 tarball 的仓库外独立安装、原生 Node 行为及通用声明闭包；日志包不管理应用配置持久化，不提供全局单例或自动服务发现。
+  - `npm run build:packages` 按顺序构建 Core、logs 与 models；应用/测试/开发入口在消费前构建，dev 等待三个包首次 emit 并持续监听。`npm run verify:logs-package` 验证真实 tarball 的仓库外独立安装、原生 Node 行为及通用声明闭包；日志包不管理应用配置持久化，不提供全局单例或自动服务发现。
 - `src/main/agent/`：Agent runtime、工具注册、模型网关、审批门禁、子任务
 - `src/main/agent-configuration/`：通过 `createAgentConfiguration()` 提供 `management` 和 `runtime` 两套操作，不公开 Store、凭据绑定或解密接口。
   - Renderer 只使用管理 IPC：读取无密钥快照、初始化、保存/删除厂商、保存执行偏好、修改搜索凭据、发现远程模型。厂商保存完成后才发布已提交状态；历史浏览器配置只读迁移，Main 初始化成功后清理。

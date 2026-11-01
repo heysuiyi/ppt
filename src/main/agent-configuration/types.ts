@@ -1,3 +1,4 @@
+import type { ModelAdapterId } from "@agent-harness/models/model-contract";
 import type {
   AgentExecutionStrategy,
   AgentModelSelection,
@@ -12,7 +13,7 @@ import type {
 import type { AgentStepLimits } from "@shared/agent-step-limits";
 
 export interface ExecutionPlan {
-  modelAdapter?: "mimo-token-plan-cn";
+  modelAdapter?: ModelAdapterId;
   model: AgentModelSelection;
   services: Omit<AgentGatewayPreferences, "fallbackModelId"> & {
     fallbackModel?: AgentModelSelection;
@@ -22,7 +23,7 @@ export interface ExecutionPlan {
   defaultTemplateId: string;
 }
 export interface ResolvedRunConfiguration {
-  modelAdapter?: "mimo-token-plan-cn";
+  modelAdapter?: ModelAdapterId;
   primary: AgentModelSettings;
   gateway: AgentGatewayConfig;
   search: AgentSearchConfig;

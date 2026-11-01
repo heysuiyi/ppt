@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AgentConfiguration, createAgentConfiguration } from "../src/main/agent-configuration";
 import type { SafeStorageAdapter } from "../src/main/agent-configuration/internal/credential-store";
@@ -8,10 +9,13 @@ import {
   type DevelopmentSetupIO,
   ensureDevelopmentModel,
 } from "../src/main/agent-host/development-setup";
-import {
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-} from "../src/models/mimo-token-plan-cn-contract";
+
+const mimoProfile = getModelProfile("mimo-token-plan-cn");
+if (mimoProfile?.endpoint?.kind !== "fixed")
+  throw new Error("The MiMo fixed endpoint profile is required.");
+const mimoBaseURL = mimoProfile.endpoint.url;
+const mimoAdapterId = mimoProfile.adapterId;
+
 import type { VendorConfiguration } from "../src/shared/agent-configuration";
 
 const directories: string[] = [];
@@ -59,10 +63,10 @@ function io(inputs: readonly string[], interactive = true) {
 function vendor(id: string): VendorConfiguration {
   return {
     id,
-    kind: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+    kind: mimoAdapterId,
     label: `Connection ${id}`,
     protocol: "openai",
-    baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+    baseURL: mimoBaseURL,
     enabled: true,
     models: [
       {
@@ -102,9 +106,9 @@ describe("development model setup", () => {
     expect(modelId).toBe(snapshot.settings.cli?.defaultModelId);
     expect(snapshot.settings.vendors).toHaveLength(1);
     expect(snapshot.settings.vendors[0]).toMatchObject({
-      kind: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      kind: mimoAdapterId,
       protocol: "openai",
-      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
+      baseURL: mimoBaseURL,
       models: [
         { id: modelId, model: "mimo-v2.6-flash", openaiApiMode: "responses", enabled: true },
       ],
@@ -113,8 +117,8 @@ describe("development model setup", () => {
     expect(discover).toHaveBeenCalledWith({
       type: "draft",
       provider: "openai",
-      baseURL: MIMO_TOKEN_PLAN_CN_BASE_URL,
-      modelAdapter: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+      baseURL: mimoBaseURL,
+      modelAdapter: mimoAdapterId,
       apiKey: "temporary-plain-key",
     });
     expect(discover.mock.invocationCallOrder[0]).toBeLessThan(save.mock.invocationCallOrder[0]!);

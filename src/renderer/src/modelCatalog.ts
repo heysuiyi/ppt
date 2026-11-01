@@ -1,3 +1,4 @@
+import { getModelProfile } from "@agent-harness/models/model-profiles";
 import type { AgentProvider } from "@shared/agent";
 import type {
   ModelCatalogEntry,
@@ -6,10 +7,6 @@ import type {
   PresetVendorKind,
   VendorKind,
 } from "@shared/model-catalog";
-import {
-  MIMO_TOKEN_PLAN_CN_BASE_URL,
-  MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
-} from "../../models/mimo-token-plan-cn-contract";
 import { markCredentialReentryRequired } from "./credentialMigration";
 
 export type {
@@ -61,14 +58,23 @@ export interface ModelVendorDraft {
   isNew: boolean;
 }
 
+const nativeAdapterProfile = getModelProfile("mimo-token-plan-cn");
+if (
+  nativeAdapterProfile?.protocol !== "openai-responses" ||
+  nativeAdapterProfile.endpoint?.kind !== "fixed"
+) {
+  throw new Error("MiMo Token Plan CN profile is unavailable.");
+}
+const nativeEndpoint = nativeAdapterProfile.endpoint;
+
 export const MODEL_VENDOR_PRESETS: readonly ModelVendorPreset[] = [
   {
-    id: MIMO_TOKEN_PLAN_CN_PROVIDER_ID,
+    id: "mimo-token-plan-cn",
     label: "MiMo Token Plan 中国",
     hint: "中国连接 · Responses API",
     defaultProvider: "openai",
     supportedProviders: ["openai"],
-    baseURLs: { openai: MIMO_TOKEN_PLAN_CN_BASE_URL },
+    baseURLs: { openai: nativeEndpoint.url },
     defaultModelId: "",
     models: [],
   },
@@ -291,7 +297,7 @@ export function changeModelVendorDraftProtocol(
   draft: ModelVendorDraft,
   protocol: AgentProvider,
 ): ModelVendorDraft {
-  if (draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID) return draft;
+  if (draft.kind === "mimo-token-plan-cn") return draft;
   const preset = getModelVendorPreset(draft.kind);
   const baseURL = preset?.baseURLs[protocol] ?? draft.baseURL;
   return {
@@ -312,8 +318,8 @@ export function changeModelVendorDraftProtocol(
 }
 
 export function materializeVendorDraft(draft: ModelVendorDraft): ModelVendorConnection {
-  const isMimo = draft.kind === MIMO_TOKEN_PLAN_CN_PROVIDER_ID;
-  const baseURL = isMimo ? MIMO_TOKEN_PLAN_CN_BASE_URL : draft.baseURL.trim().replace(/\/+$/, "");
+  const isMimo = draft.kind === "mimo-token-plan-cn";
+  const baseURL = isMimo ? nativeEndpoint.url : draft.baseURL.trim().replace(/\/+$/, "");
   return {
     id: draft.id,
     kind: draft.kind,
@@ -424,7 +430,7 @@ function inferVendorKind(
 ): PresetVendorKind | "custom" {
   for (const preset of MODEL_VENDOR_PRESETS) {
     // 原生适配器必须显式选择，旧兼容连接不能因 URL 相同而改变执行协议。
-    if (preset.id === MIMO_TOKEN_PLAN_CN_PROVIDER_ID) continue;
+    if (preset.id === "mimo-token-plan-cn") continue;
     if (preset.models.some((model) => model.id === modelId)) return preset.id;
     for (const candidate of Object.values(preset.baseURLs)) {
       if (candidate && normalizedBaseURL(candidate) === normalizedBaseURL(baseURL)) {
@@ -469,7 +475,7 @@ function normalizeVendorConnection(value: unknown): ModelVendorConnection | unde
     (item.kind !== "openai" &&
       item.kind !== "anthropic" &&
       item.kind !== "deepseek" &&
-      item.kind !== MIMO_TOKEN_PLAN_CN_PROVIDER_ID &&
+      item.kind !== "mimo-token-plan-cn" &&
       item.kind !== "custom") ||
     (item.protocol !== "openai" && item.protocol !== "anthropic") ||
     typeof item.baseURL !== "string" ||
