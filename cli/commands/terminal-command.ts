@@ -24,14 +24,19 @@ Without prompt/resume, piped stdin up to EOF is one query (slash lines are text)
 JSONL and print never prompt. Waiting is preserved and exits with code 3.
 
 Interactive commands:
-  /help /hotkeys /status /paste /exit /new /model /resume /tools /tools-output
+  /help /hotkeys /status /paste /exit /new /model /connect /resume /tools /tools-output
   // escapes an initial slash. /paste ends only with a separate /end line;
   //end inside /paste inserts /end. EOF never submits unfinished /paste.
+  /model groups configured connections; /connect adds/configures a connection.
+  Saving a connection/default does not switch the current session without confirmation.
 
 Keys:
   Enter send (idle only); Alt+Enter newline; arrows edit/select; Tab accept
   Ctrl+O tool detail; Alt+M model; Esc close local UI or cancel active run
   Ctrl+C clear draft or cancel query; empty Ctrl+D exit
+  Models: Left/Right or Tab switch panes; Up/Down move; Enter chooses; Esc returns.
+  Type to search; All searches every connection. Plain: number/id + Enter,
+  /groups returns to groups, /connect configures, /back or /cancel leaves safely.
 
 Exit: 0 success, 1 failure, 2 arguments, 3 waiting, 130 user cancellation,
       143 host termination, 141 broken output pipe.
@@ -143,6 +148,7 @@ export const LOCAL_COMMANDS: readonly (TerminalLocalCommand | TerminalHostComman
   "exit",
   "new",
   "model",
+  "connect",
   "resume",
   "tools",
   "tools-output",

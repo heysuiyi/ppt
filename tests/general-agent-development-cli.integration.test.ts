@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   cliChild,
+  cliAuthority,
+  expectCliAuthority,
   cliSdkServer,
   cliToolOutput,
   jsonlRecords,
@@ -86,6 +88,13 @@ describe.skipIf(process.platform !== "win32")(
           exitCode: 0,
           reason: "completed",
         });
+        const identity = queryRecord(result).identity;
+        const authority = cliAuthority(root, identity);
+        expectCliAuthority(authority, identity, "completed", ["user", "assistant"]);
+        expect(JSON.stringify(authority.messages)).toContain("authoritative-conversation");
+        for (const record of records) {
+          if (record.identity) expect(record.identity).toEqual(identity);
+        }
         expect(records.some((record) => record.type === "model.delta")).toBe(false);
         expect(result.stdout).not.toContain("\u001b");
         expect(result.stdout + result.stderr).not.toContain("controlled-cli-integration-key");
@@ -131,6 +140,12 @@ describe.skipIf(process.platform !== "win32")(
         expect(records.some((record) => record.type === "model.delta")).toBe(false);
         expect(await readFile(join(root, "workspace", "notes.txt"), "utf8")).toBe(notes);
         const { identity } = queryRecord(result);
+        const authority = cliAuthority(root, identity);
+        expectCliAuthority(authority, identity, "completed", ["user", "assistant", "tool", "assistant"]);
+        expect(JSON.stringify(authority.messages.at(-1))).toContain(`read:${notes}`);
+        for (const record of records) {
+          if (record.identity) expect(record.identity).toEqual(identity);
+        }
         const inspection = await runCliChild(
           root,
           server.endpoint,
@@ -206,6 +221,16 @@ describe.skipIf(process.platform !== "win32")(
         );
         expect(inspection.leaseReleased).toBe(true);
         expect(["completed", "interrupted"]).toContain(inspection.status);
+        const authority = cliAuthority(root, started.identity);
+        expectCliAuthority(
+          authority, started.identity, inspection.status,
+          inspection.status === "completed" ? ["user", "assistant"] : ["user"],
+        );
+        if (inspection.status === "completed") {
+          expect(JSON.stringify(authority.messages.at(-1))).toContain("authoritative result after downstream closure");
+        } else {
+          expect(JSON.stringify(authority.messages)).not.toContain("authoritative result after downstream closure");
+        }
         expect(server.requests).toHaveLength(1);
         expect(server.errors).toEqual([]);
       } finally {

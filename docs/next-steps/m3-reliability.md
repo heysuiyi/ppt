@@ -4,7 +4,7 @@
 
 ## M3 执行计划
 
-状态：M3-A/B/C 均已完成各自验收；[C 的增量实施](m3-c-persistence.md#12-c1c3-增量实施与验收记录)补齐 C1 真实进程竞争、C3 恢复兼容及只读回归，复用 P1/P2 的 C2 原子准入，不重复改造。D–E 待执行，M3 尚未整体完成。以下保留总计划与初始设计证据，历史数字不作为本轮新增证据；前序记录见[计划目录](README.md)。
+状态：M3-A/B/C/D 均已完成各自验收；[D：持久故障与恢复](m3-d-recovery.md#12-本轮实施与验收记录)已修复 release 双失败错误覆盖，完成 B/R 与真实强杀、第三进程权威状态、权限/回答/预算验收。[E：观察与入口闭环](m3-e-observation.md)已完成实施方案、新增矩阵仍待执行，M3 尚未整体完成。初始设计与前序历史数字不作本轮新增证据；前序记录见[计划目录](README.md)。
 
 ### M3.1 目标、范围与非目标
 
@@ -51,7 +51,7 @@ Netty 的事件传递不是本项目 `RuntimeEvent` 的定义：后者是观察�
 | `runtime/run-controller.ts`、`runtime/query/checkpoint-session.ts` | runtime 已覆盖累计预算、模型流中断、历史追加已提交但丢确认、派发/续传后结果丢失；部分场景使用真实磁盘文件 | 补版本拒绝、回答消费后尚未进入续传的窗口、工具/最终响应批次对账，以及 unknown+applied 的持久结果 |
 | `src/main/agent-host/sqlite-agent-stores.ts`、`host-session-binding.ts` | host/host-binding 已覆盖跨连接租约、旧围栏拒绝、revision CAS、重开幂等收据、逐项绑定拒绝 | 独立进程 barrier 驱动的真实竞争；同进程 DatabaseSync 的 Promise.all 不算跨进程竞争证据 |
 | `runtime/event-stream.ts` | 单消费者；执行不等消费；退订不取消；close 后仍可读取积压 | 经 handle 验证有限积压、慢观察、各 Run 身份隔离；不宣称容量有界 |
-| 两个现有 CLI integration 与 `scripts/verify-harness-package.mjs` | 已有真实 Electron/SQLite/文件及本地 HTTP/SSE 恢复场景；tarball 脚本有原生 Node 消费，但其存储夹具在内存中 | 复用真实入口与独立安装消费；分别标记受控模型、本地 SDK/HTTP、跨进程持久性，不升级成真实厂商或崩溃恢复证据 |
+| 两个现有 CLI integration 与 `scripts/verify-harness-package.mjs` | 初始为 Electron 入口；当前已是实际 Node CLI/DPAPI/SQLite/本地 HTTP，详见 E 的覆盖盘点；tarball 脚本仍为内存端口 | 复用当前入口及独立安装消费，补 E 的持久断言与输出边界；历史 Electron 成功不冒充本轮 Node/崩溃恢复证据 |
 
 ### M3.4 执行任务与验收矩阵
 
@@ -59,7 +59,7 @@ Netty 的事件传递不是本项目 `RuntimeEvent` 的定义：后者是观察�
 
 第一步 [M3-A](m3-a-composition.md#10-后续独立复核与完成结论)、第二步 [M3-B](m3-b-lifecycle.md#10-后续独立审核与完成结论)及第三步 [M3-C](m3-c-persistence.md#12-c1c3-增量实施与验收记录)均已完成验收。C1/C3 新增行为、失败定位、进程/CLI/包消费与门禁结果见 C 第 12 节；C2 的持久化 P1/P2 历史证据独立保留。D/E 不随 C 完成而自动通过。
 
-下一步按 D1/D2/D3 验证明确故障窗口、提交未知对账和审批/权限/预算，再按 E 验证观察独立性与最终入口闭环；复用 C 已交付的原生 worker 与真实存储，不重做 P1/P2 分层或 C2 准入。第二后端不作为 M3 前置。
+第四步 [D 已完成本地验收](m3-d-recovery.md#12-本轮实施与验收记录)：首存失败叠加 release 双失败先失败后通过，acquire 空占位与终态分类、D1/D2/D3 同进程 B/R、新增 39 个 K0/K1/副作用体内强杀场景及第三进程核验通过；全量 205 文件、1897 项通过（3 项既有平台跳过），完整 integration 3 文件、62 项通过，typecheck/边界、Core/tools 包消费与静态门禁通过。下一步按 [E 方案](m3-e-observation.md)集中验收有限观察与 Node 入口结算，复用 D 的真实持久故障证据，不重做 P1/P2 或 C2，不把第二后端或 PPT 作为前置。
 
 | 编号 | 任务与最小场景 | 必须观察的结果 |
 | --- | --- | --- |
@@ -71,10 +71,10 @@ Netty 的事件传递不是本项目 `RuntimeEvent` 的定义：后者是观察�
 | C2 | 相同 agent/thread 不同 Query；固定延迟 acquire、首存前与终态释放前窗口 | 已原子化 acquire，失败侧 THREAD_PENDING、无模型/工具派发；同进程及三个真实 Node 进程场景通过，原 waiting 仍可恢复。完整 C1/C3 不据此通过 |
 | C3 | 原实现保存 waiting；重建实例后分别改变 definition、插件版本/增删/顺序、model selection、工具版本和宿主绑定；原配置作成功对照 | 不兼容在进一步模型/工具调用及回答消费前拒绝，原 waiting 和规范历史不被失败内存快照覆盖，原配置仍可恢复。插件当前按有序列表精确比较，不擅自改 semver 或集合兼容 |
 | D1 | 明确故障窗口：dispatched 保存后执行前；真实副作用后结果保存前；回答消费 CAS 后续传前；续传副作用后结果保存前 | 恢复不重复 execute/resume，不重复消费旧回答；公开 tool.completed、检查点与历史呈现 TOOL_OUTCOME_UNKNOWN；有既存 applied 时保持 status=unknown/effects=applied；副作用零次或一次按实际窗口核对，unknown 不表示回滚 |
-| D2 | acquire 已提交却丢返回确认（含首存前无 payload）；历史 input、工具调用/结果、最终 assistant 批次提交后丢确认；追加完成后 checkpoint 确认失败；终态保存后丢确认 | acquire 未确认时不派发模型/工具、不新建 Query 绕开、不盲目重取；按权威 owner/generation 与确认旧激活停止后的显式规则对账。历史沿原 batchId 对账且配对不重复，陈旧 revision 不覆盖权威状态；持久 completed 不再次续跑；未知与可恢复窗口分别记录 |
+| D2 | acquire 已提交却丢确认（含无 payload）；input/tool/final append 与 checkpoint 确认、终态与 release 的提交前/后失败 | 空占位不在 unfinished 中但仍占租约，不能伪造 checkpoint resume；已有断点按权威状态和精确接管。历史原 batchId 对账、终态不续跑；执行与清理双失败都保留，实际 owner 不由 error 猜测 |
 | D3 | 等待期间宿主权限撤销、拒绝审批、错误交互/旧回答重交、恢复预算不增加 | 未批准不进入能力；恢复重新授权；拒绝或取消不抹掉先前 applied；Query 不变、Run 更新，累计预算不重置；终态不可恢复 |
 | E1 | 有限且确定的流式增量/事实序列：不消费、门闩式慢消费、提前 return、完成后 drain；两个 handle 交错观察 | completed 不等待消费；退订不取消；身份/有序事实不串 Run；completed 等待实际清理及租约释放；观察输出不是恢复历史 |
-| E2 | 原生 Node 包消费者及现有 Electron CLI：普通对话、随机码读取、写审批、EOF 重启批准/拒绝/取消、绑定变更拒绝 | 消费构建产物，不回退源码；工作区 read/glob/grep 按当前策略自动允许，write/edit 未批准不写；真实临时文件结果匹配；最终 checkpoint/status 与 lease 同时核验；不把退出码 0 当 completed |
+| E2 | 原生 Node 包消费者与当前 Node CLI：无插件、随机文件读取、写审批、EOF 重启批准/拒绝/取消、绑定拒绝与原配置恢复、慢输出/EPIPE | 消费产物；默认只读自动允许，显式读审批另验；write/edit 未批准不写。身份/历史/checkpoint/lease 同验，Core 退订不取消与 CLI 主动 close 分开；退出码 0 不等于 completed |
 
 C2 的修复前 TOCTOU 证据保留在 [M3-C 方案记录](m3-c-persistence.md#3-c2-已复现陈旧空读取越过-thread-待决检查)；随后已在[持久化实施](persistence-backends.md#13-p1p2-实施与验收记录)修复：SQLite 的同一 acquire 写事务检查其他 Query 的 owner/非终态，再取得目标 lease，Core 统一处理 thread-pending。没有增加单进程锁，不以 history CAS 或异常兜底冒充保护；更完整的进程竞争/故障与兼容矩阵仍按独立门槛执行。
 
@@ -83,8 +83,8 @@ C2 的修复前 TOCTOU 证据保留在 [M3-C 方案记录](m3-c-persistence.md#3
 - **公开入口优先**：组合和生命周期只用 createAgentApplication/createSessionHost 及公开端口；保持现有内部实现白盒测试，不新增私有路径导入或白名单。
 - **能力组合不是新增生产业务**：A1 的两个插件为隔离验收夹具，分别贡献模型/提示词和可恢复能力。副作用能力在临时目录真实追加执行凭据，模型读取实际结果；不是仅返回预设成功的 mock，也不把它描述为已交付的新业务插件。真实文件能力仍使用 createTools，不另造文件安全实现。
 - **精确交错**：Promise.withResolvers、IPC ready/barrier/ack 固定窗口；不使用 sleep 猜竞态、不用随机压力或耗时阈值代替不变量。超时仅作夹具失败退出保护，不算优雅关闭证明。
-- **真实进程竞争**：C1 各子进程独立打开同一磁盘库；同线程同步 SQLite 的 Promise.all 不能代替。进程夹具可借用当前 Vite/Electron 构建方式，不为测试新增生产导出。
-- **崩溃与等待分开**：正常恢复用 EOF 保留 waiting；崩溃场景在公开存储包装器委托真实提交后发送 ack 并阻塞，再由父进程终止本次创建的子进程，等待确认 exit。确认旧 writer 停止后，才由受信任夹具提交完整旧租约显式接管；SessionHost/CLI 不开放前端 takeover。
+- **真实进程竞争**：C1 各子进程独立打开同一磁盘库；同线程 DatabaseSync 的 Promise.all 不能代替。D 复用已交付的原生 Node/IPC worker 和 build:cli 产物，不新建 Vite/Electron 路线或生产导出。
+- **崩溃与等待分开**：EOF 保留 waiting；强杀只针对本次 worker，并等待 close 后才接管。存储已提交但 Core 未收到确认的 K0，与 Core 已确认后在下一公开端口暂停的 K1 分开；不能用 events 消费者暂停 Core，也不先 disconnect/close 触发优雅 finally。SessionHost/CLI 不开放前端 takeover。
 - **不修改生产行为来造故障**：包装公开端口注入“提交前失败/提交后丢确认”；不新增内核测试钩子，不手工伪造恢复快照替代真实执行。损坏 checkpoint schema 属于额外存储损坏场景，不以此扩大白盒面。
 - **副作用计数**：使用独立磁盘追加凭据，区分 execute/resume 与调用身份。只检查同内容覆写的最终文件会漏掉重复执行，不能作为唯一证据；不打印完整工具结果、重放状态、凭据或原生 SDK 异常。
 - **分层记录**：受控模型只证明协议；真实 SDK 到本地 HTTP/SSE 证明适配与入口；跨进程 SQLite 证明持久边界；真实厂商另需说明 API 用量。本次 M3 默认不新增远程调用，不能沿用历史厂商成功作新增证据。
@@ -95,10 +95,10 @@ C2 的修复前 TOCTOU 证据保留在 [M3-C 方案记录](m3-c-persistence.md#3
 | --- | --- | --- |
 | 1 | 现有 general-agent 系列测试、`scripts/verify-harness-package.mjs` | 运行基线，按 A–E 编号登记现有断言与缺口；已有有效测试不重写，源码措辞/简单转发测试不重新钉住 |
 | 2 | `tests/general-agent-lifecycle.test.ts`、`general-agent-session-host.test.ts` | 补 A1/A2/B1/B2/E1 的缺失公开行为；逐 binding 所有权、门闩和真实结果断言，不复制安装器或资源树 |
-| 3 | [M3-C](m3-c-persistence.md)所列现有 host/runtime 回归、新 reliability fixture/integration 与 `cli/host/sqlite-agent-stores.ts` | 先 C2 失败回归及原子准入修复，再 C1 独立进程竞争和 C3 恢复兼容；D 的崩溃恢复后续复用进程夹具，不提前标完成 |
-| 4 | `tests/general-agent-runtime.test.ts`、`general-agent-development-host.test.ts` | 补 C3/D1/D2/D3 的持久与公开事件断言；复用现有真实 SQLite 和受控模型，不扩基础设施抽象 |
+| 3 | 已完成的 [M3-C](m3-c-persistence.md)、现有 reliability fixture/integration、`cli/host/internal/sqlite/` | 保留 C 证据；D 原位增加工具/resume、一次性故障 selector、强杀/接管和独立 ledger，不重做原子准入或另建框架 |
+| 4 | [D](m3-d-recovery.md)/[E](m3-e-observation.md)所列 runtime/infrastructure/lifecycle/session-host/CLI 测试 | 先失败回归与最小 release 错误保留修复，再补故障、权限预算和有限观察/真实输出证据；不扩 Core 白盒面 |
 | 5 | `packages/harness/src/agent/` 对应 application/runtime/tools/session 文件及 SQLite 适配 | 仅修已复现缺陷，先失败后通过；公开符号变更前检查引用，同步所有适配器、消费者和声明闭包；不借机重写 Loop |
-| 6 | 原有两项 CLI integration、包消费脚本、根 package.json（仅若新增集成文件） | 复用 E2；若新增 reliability integration，将其接入现有 test:integration:harness。npm test 默认排除 integration 的规则保持，不能只手动跑而漏进常规集成入口 |
+| 6 | 现有两项 Node CLI integration、reliability integration 与包消费脚本 | 三文件已在 test:integration:harness 中，原位扩展并运行；如确需新文件才同步注册，保持 npm test 默认排除 integration 的规则 |
 | 7 | 本文及 project-plan.md | 集中验收后记录实际修复、覆盖、限制和命令结果，再决定 M3 完成状态；不以新测试数量作为门槛 |
 
 所有者划分不变：Application 管理创建和 Agent，Agent 拥有模型 binding/插件作用域，Run 拥有激活资源；宿主拥有 SQLite、provider 与日志。模型和工具不响应取消时，当前关闭可能一直等待；本轮不许用强制提前 dispose 伪装为成功关闭，也不承诺固定关闭时限。
@@ -114,18 +114,18 @@ M3 的 E1 只证明**有限场景下观察独立与身份正确**，不是内存
 实施后使用 Windows 的 npm.cmd/npx.cmd；其他平台使用对应 npm/npx。以下为待执行命令，不是已经通过的记录：
 
 ```text
-npm.cmd run build:packages
+npm.cmd run build:cli
 npx.cmd vitest run tests/general-agent-lifecycle.test.ts tests/general-agent-infrastructure.test.ts tests/general-agent-session-host.test.ts tests/general-agent-runtime.test.ts tests/general-agent-host.test.ts tests/general-agent-host-binding.test.ts tests/general-agent-development-host.test.ts tests/base-tools.test.ts
 npm.cmd run test:integration:harness
-npm.cmd run verify:harness-package
+node scripts/verify-harness-package.mjs
+node scripts/verify-tools-package.mjs
 npm.cmd run typecheck
 npx.cmd biome check <本次修改的受支持代码和配置文件>
 npm.cmd test
-npm.cmd run build
-npm.cmd run agent:dev -- --help
+npm.cmd run agent -- --help
 ```
 
-新增 reliability integration 必须由上面的 test:integration:harness 实际运行。若没有改包公开面或封装机制，不重复整套 ASAR/安装器验收；若改包声明/产物边界，重跑相应既有真实消费验收。开发入口 help 仅证明可启动，不能代替 E2 的审批/恢复烟测。
+新增 integration 必须由 test:integration:harness 实际运行；现有 reliability/Node CLI 文件优先原位扩展。构建与测试顺序执行，避免同时清理 dist。未改 UI/封装机制不重复 Electron 生产构建或 ASAR/安装器；若改产物边界则补相应真实消费。help 只证明启动，不能代替 E2 审批/恢复烟测。
 
 完成门槛：
 

@@ -16,6 +16,16 @@ export interface ConfiguredModelItem extends TerminalModelItem {
   readonly connectionFingerprint?: string;
 }
 
+const statusReasons: Record<ConfiguredModelStatus, string> = {
+  ready: "本地配置就绪 · 未验证网络连接",
+  disabled: "模型或供应商已禁用",
+  "unsupported-adapter": "不支持此模型协议",
+  "unsupported-model": "不支持此模型或推理设置",
+  "invalid-budget": "输出预算超出模型上限",
+  "credential-storage-unavailable": "安全凭据存储不可用",
+  "missing-credential": "尚未配置凭据",
+};
+
 /** 公开配置与凭据状态足以判断本地就绪；列表不解析密钥，也不创建模型。 */
 export function configuredModels(
   snapshot: AgentConfigurationSnapshot | undefined,
@@ -63,7 +73,13 @@ export function configuredModels(
       return {
         id: model.id,
         label: `${vendor.label} / ${model.name}`,
+        vendor: { id: vendor.id, label: vendor.label },
+        modelName: model.name,
         status,
+        availability: {
+          state: status === "ready" ? "ready" : "unavailable",
+          reason: statusReasons[status],
+        },
         ...(profile
           ? {
               connectionFingerprint: configuredModelFingerprint(

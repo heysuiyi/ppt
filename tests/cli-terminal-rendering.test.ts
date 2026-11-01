@@ -56,13 +56,13 @@ function delta(
   };
 }
 
-function capture(mode: TerminalOutputMode, width = 80) {
+function capture(mode: TerminalOutputMode, width = 80, rows = 24, color = false) {
   const output: string[] = [];
   const error: string[] = [];
-  const size = { columns: width, rows: 24 };
+  const size = { columns: width, rows };
   const renderer = createTerminalRenderer({
     mode,
-    color: false,
+    color,
     columns: () => size.columns,
     rows: () => size.rows,
     writeOutput: async (text) => {
@@ -75,11 +75,12 @@ function capture(mode: TerminalOutputMode, width = 80) {
   return { renderer, output, error, size };
 }
 
-/** Minimal inline terminal: controls affect the mutable screen, never the captured immutable facts. */
-function terminalScreen(writes: readonly string[]): string {
-  const lines: string[] = [""];
+/** Tracks display cells and the final cursor, including wide graphemes and redraw controls. */
+function terminalState(writes: readonly string[]) {
+  const lines: string[][] = [[]];
   let row = 0;
   let column = 0;
+  let cursorVisible = true;
   const text = writes.join("");
   for (let index = 0; index < text.length; ) {
     const control = /^\x1b\[([?\d;]*)([A-Za-z])/.exec(text.slice(index));
@@ -96,26 +97,45 @@ function terminalScreen(writes: readonly string[]): string {
           column += amount;
           break;
         case "K":
-          lines[row] = "";
+          lines[row] = [];
+          break;
+        case "h":
+        case "l":
+          if (control[1] === "?25") cursorVisible = control[2] === "h";
           break;
       }
       index += control[0].length;
       continue;
     }
-    const character = text[index++]!;
+    const character = text[index]!;
     if (character === "\r") {
       column = 0;
+      index += 1;
       continue;
     }
     if (character === "\n") {
       row += 1;
+      index += 1;
       continue;
     }
-    const old = lines[row] ?? "";
-    lines[row] = old.padEnd(column, " ").slice(0, column) + character + old.slice(column + 1);
-    column += 1;
+    const chunk = /^[^\x1b\r\n]+/.exec(text.slice(index))?.[0];
+    if (!chunk) throw new Error("Unsupported terminal control in captured output");
+    for (const cluster of graphemes(chunk)) {
+      lines[row] ??= [];
+      const line = lines[row];
+      while (line.length < column) line.push(" ");
+      line[column] = cluster;
+      const width = visibleWidth(cluster);
+      for (let cell = 1; cell < width; cell += 1) line[column + cell] = "";
+      column += width;
+    }
+    index += chunk.length;
   }
-  return lines.join("\n");
+  return { lines: lines.map((line) => line.join("")), row, column, cursorVisible };
+}
+
+function terminalScreen(writes: readonly string[]): string {
+  return terminalState(writes).lines.join("\n");
 }
 
 const failedTool: TerminalToolRecord = {
@@ -475,26 +495,143 @@ describe("production renderer modes", () => {
     expect(output.join("")).toContain("中文");
     await renderer.close();
   });
+
+  for (const [columns, rows] of [
+    [40, 12],
+    [80, 24],
+    [140, 40],
+  ] as const) {
+    it(`preserves selector context and selection in ${columns}x${rows}`, async () => {
+      const { renderer, output } = capture("tui", columns, rows);
+      const items = Array.from({ length: 30 }, (_, index) => ({
+        id: String(index),
+        label: `choice-${index}`,
+        description: "中文👩‍💻".repeat(20),
+      }));
+      for (const selected of [0, 14, 29]) {
+        await renderer.view({
+          ...idle,
+          activity: "CATALOG_ACTIVITY",
+          notification: "LOCAL_NOTICE",
+          context: { ...idle.context!, modelStatus: "MODEL_STATE" },
+          selector: {
+            title: "MODEL_PICKER",
+            query: "choice",
+            items,
+            selectedId: String(selected),
+          },
+        });
+        const screen = terminalState(output);
+        const text = screen.lines.join("\n");
+        expect(text).toContain("MODEL_PICKER");
+        expect(text).toContain("choice");
+        expect(text).toContain(`› choice-${selected}`);
+        expect(text).toContain(`${selected + 1}/30`);
+        expect(text).toContain("MODEL_STATE");
+        expect(text).toContain("CATALOG_ACTIVITY");
+        expect(screen.lines.length).toBeLessThan(rows);
+        expect(screen.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
+        expect(screen.cursorVisible).toBe(false);
+      }
+      await renderer.close();
+    });
+
+    it(`places the cursor before a wrapped wide grapheme in ${columns}x${rows}`, async () => {
+      const { renderer, output } = capture("tui", columns, rows);
+      const prefix = "a".repeat(columns - 6);
+      await renderer.view({
+        ...idle,
+        composer: {
+          ...idle.composer,
+          draft: { text: `${prefix}中👩‍💻é`, cursor: prefix.length },
+        },
+      });
+      const screen = terminalState(output);
+      expect(screen.lines[screen.row]).toContain("中👩‍💻é");
+      expect(screen.column).toBe(2);
+      expect(screen.cursorVisible).toBe(true);
+      expect(screen.lines.length).toBeLessThan(rows);
+      expect(screen.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
+      await renderer.close();
+    });
+
+    it(`retains the confirmation action and input cursor for long prompts in ${columns}x${rows}`, async () => {
+      const { renderer, output } = capture("tui", columns, rows);
+      await renderer.view({
+        ...idle,
+        context: { ...idle.context!, modelStatus: "local configuration ready" },
+        prompt: {
+          text: `TARGET_MODEL ${"会话绑定说明".repeat(20)}\nTYPE_CONFIRMATION_TOKEN`,
+          secret: false,
+        },
+        composer: { ...idle.composer, draft: { text: "answer", cursor: 6 } },
+      });
+      const screen = terminalState(output);
+      expect(screen.lines.join("\n")).toContain("TARGET_MODEL");
+      expect(screen.lines.join("\n")).toContain("TYPE_CONFIRMATION_TOKEN");
+      expect(screen.lines[screen.row]).toContain("answer");
+      expect(screen.column).toBe(8);
+      expect(screen.cursorVisible).toBe(true);
+      expect(screen.lines.length).toBeLessThan(rows);
+      expect(screen.lines.every((line) => visibleWidth(line) < columns)).toBe(true);
+      await renderer.close();
+    });
+  }
+
+  it("keeps secret drafts out of framed and plain views across resize", async () => {
+    const { renderer, output, error, size } = capture("tui", 40, 12);
+    const view: TerminalView = {
+      ...idle,
+      prompt: { text: "SECRET_PROMPT", secret: true },
+      composer: { ...idle.composer, draft: { text: "PRIVATE_DRAFT", cursor: 13 } },
+    };
+    await renderer.view(view);
+    const screen = terminalState(output);
+    expect(screen.lines.join("\n")).toContain("SECRET_PROMPT");
+    expect(screen.column).toBe(2);
+    size.columns = 30;
+    await renderer.view(view);
+    expect(output.join("") + error.join("")).not.toContain("PRIVATE_DRAFT");
+    await renderer.close();
+  });
+
+  it("adds styling only when color is enabled", async () => {
+    for (const color of [false, true]) {
+      const { renderer, output } = capture("tui", 40, 12, color);
+      await renderer.view(idle);
+      expect(/\x1b\[[\d;]*m/.test(output.join(""))).toBe(color);
+      expect(terminalState(output).lines.every((line) => visibleWidth(line) < 40)).toBe(true);
+      await renderer.close();
+    }
+  });
 });
 
 describe("terminal Unicode and content safety", () => {
-  it("keeps running and waiting visible beside long CJK and emoji model labels at 40 columns", async () => {
-    const context = {
-      workspace: "C:/项目",
-      threadId: "thread",
-      model: "MiMo 超长模型👩‍💻中文".repeat(12),
-      capabilities: "files",
+  it("keeps model identity, local activity and model state separate from phase and focused actions", () => {
+    const view: TerminalView = {
+      ...idle,
+      activity: "LOCAL_ACTIVITY",
+      context: { ...idle.context!, model: "MODEL_ID", modelStatus: "MODEL_STATE" },
     };
-    for (const phase of ["running", "waiting"] as const) {
-      const view = { ...idle, phase, context };
-      const lines = statusLines(view, 40);
-      expect(lines[0]).toContain(phase);
+    const variants: TerminalView[] = [
+      view,
+      { ...view, phase: "running" },
+      { ...view, phase: "waiting" },
+      { ...view, prompt: { text: "INPUT_PROMPT", secret: false } },
+      {
+        ...view,
+        selector: { title: "PICKER", query: "", items: [], selectedId: null },
+      },
+    ];
+    const statuses = variants.map((variant) => statusLines(variant, 40));
+    for (const lines of statuses) {
+      expect(lines[0]).toContain("MODEL_ID");
+      expect(lines.slice(1).join("\n")).toContain("LOCAL_ACTIVITY");
+      expect(lines.slice(1).join("\n")).toContain("MODEL_STATE");
       expect(lines.every((line) => visibleWidth(line) <= 40)).toBe(true);
-      const { renderer, output } = capture("tui", 40);
-      await renderer.view(view);
-      expect(terminalScreen(output)).toContain(phase);
-      await renderer.close();
     }
+    expect(new Set(statuses.map((lines) => lines.at(-1))).size).toBe(variants.length);
+    expect(new Set(statuses.slice(0, 3).map((lines) => lines[0])).size).toBe(3);
   });
 
   it("wraps visible columns without splitting graphemes", () => {

@@ -941,7 +941,11 @@ describe("independent configured Agent host", () => {
     cleanup.push(() => host.close());
     await host.open({ toolsMode: "none" });
     expect(await host.models()).toEqual([
-      { id: "configured-model", label: "Native consumer fixture / MiMo Flash" },
+      expect.objectContaining({
+        id: "configured-model",
+        label: "Native consumer fixture / MiMo Flash",
+        availability: { state: "ready", reason: expect.any(String) },
+      }),
     ]);
     const first = await host.run("Hello without tools");
     const result = await first.completed;
@@ -962,6 +966,66 @@ describe("independent configured Agent host", () => {
     expect(host.context.threadId).not.toBe(first.identity.threadId);
     await host.selectSession(first.identity.threadId);
     expect(host.context.toolsMode).toBe("none");
+  });
+
+  it("retains unavailable catalog entries, rejects their activation, and binds a new model to a fresh session", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("Original host still usable")]),
+    );
+    const configuration = await f.configure();
+    const snapshot = await configuration.management.getSnapshot();
+    if (!snapshot) throw new Error("Expected saved configuration");
+    const vendor = snapshot.settings.vendors[0];
+    await configuration.management.saveVendor({
+      vendor: {
+        ...vendor,
+        models: [
+          ...vendor.models,
+          { ...vendor.models[0], id: "other", name: "Other" },
+          { ...vendor.models[0], id: "disabled", enabled: false },
+        ],
+      },
+      credential: { type: "keep" },
+    });
+    const host = createNodeHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+    });
+    cleanup.push(() => host.close());
+    await host.open({ modelId: "configured-model", toolsMode: "none" });
+    const original = host.context;
+    const models = await host.models();
+    expect(models).toEqual([
+      expect.objectContaining({
+        id: "configured-model",
+        availability: { state: "ready", reason: expect.any(String) },
+      }),
+      expect.objectContaining({
+        id: "other",
+        availability: { state: "ready", reason: expect.any(String) },
+      }),
+      expect.objectContaining({
+        id: "disabled",
+        availability: { state: "unavailable", reason: expect.any(String) },
+      }),
+    ]);
+    expect(models.some((model) => "connectionFingerprint" in model)).toBe(false);
+    expect(f.requests).toHaveLength(0);
+    await expect(host.newSession({ modelId: "disabled" })).rejects.toMatchObject({
+      code: "HOST_SWITCH_REJECTED",
+    });
+    expect(host.context).toBe(original);
+    expect((await (await host.run("Keep old binding")).completed).status).toBe("completed");
+    await host.newSession({ modelId: "other" });
+    expect(host.context.model.id).toBe("other");
+    expect(host.context.threadId).not.toBe(original.threadId);
+    const oldSession = (await host.sessions()).find((session) => session.id === original.threadId);
+    expect(oldSession?.modelId).toBe(original.model.id);
+    await host.selectSession(original.threadId);
+    expect(host.context.model.id).toBe(original.model.id);
+    expect(host.context.threadId).toBe(original.threadId);
+    expect(f.requests).toHaveLength(1);
   });
 
   it("restores the authoritative waiting interaction in a fresh Run and consumes only an explicit matching choice", async () => {

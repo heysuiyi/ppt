@@ -1,6 +1,6 @@
 # 下一步计划目录
 
-[通用包身份修正](package-identities.md)及[单包多厂商 models 抽取](models-package.md#12-实施与验收记录)已完成本地验收。[M3-A](m3-a-composition.md#10-后续独立复核与完成结论)、[M3-B](m3-b-lifecycle.md#10-后续独立审核与完成结论)与 [M3-C](m3-c-persistence.md#12-c1c3-增量实施与验收记录)均已验收。C2 由持久化 P1/P2 交付，本轮补齐真实进程存储竞争、分层恢复兼容和只读回归，实际 CLI/包消费通过；D–E 及第二后端仍待执行，无新增远程厂商调用。
+[通用包身份修正](package-identities.md)及[单包多厂商 models 抽取](models-package.md#12-实施与验收记录)已完成本地验收。[M3-A](m3-a-composition.md#10-后续独立复核与完成结论)、[M3-B](m3-b-lifecycle.md#10-后续独立审核与完成结论)、[M3-C](m3-c-persistence.md#12-c1c3-增量实施与验收记录)与 [M3-D](m3-d-recovery.md#12-本轮实施与验收记录)均已验收。D 已修复 release 双失败覆盖，完成故障恢复、权限预算、真实强杀与第三进程核验；[M3-E](m3-e-observation.md)方案已制定、待实施。无新增远程厂商调用，M3 尚未整体完成。
 
 每个迭代或独立切片使用一个文件，设计、实施记录和验收证据保留在对应文件内。
 
@@ -15,9 +15,9 @@ CLI 已按[生产直切方案](cli-terminal.md#83-下一步执行方案生产-cl
 | M1：Harness 公开面收敛 | 已完成本地验收及审核修复 | [公开协议、插件作用域与边界门禁](m1-public-api.md) |
 | M2-A：通用会话宿主装配 | 已完成本地验收 | [通用机制与具体运行配置分离](m2-a-session-host.md) |
 | M2-B：独立包边界与实际消费 | 已完成本地验收 | [构建、包导出、tarball 与 Electron 消费](m2-b-package-boundary.md) |
-| M3：扩展与可靠性通用验收 | A/B/C 已验收；D–E 待执行，M3 尚未整体完成 | [总计划](m3-reliability.md)；[A：组合与安装原子性](m3-a-composition.md)；[B：执行隔离与关闭排空](m3-b-lifecycle.md)；[C：持久并发准入与恢复兼容](m3-c-persistence.md) |
+| M3：扩展与可靠性通用验收 | A/B/C/D 已验收；E 方案已制定、待实施，M3 尚未整体完成 | [总计划](m3-reliability.md)；[A：组合](m3-a-composition.md)；[B：隔离与排空](m3-b-lifecycle.md)；[C：持久并发与兼容](m3-c-persistence.md)；[D：故障恢复](m3-d-recovery.md)；[E：观察与入口](m3-e-observation.md) |
 
-M3-C 的[增量实施与结果](m3-c-persistence.md#12-c1c3-增量实施与验收记录)已记录，后续按总计划推进 D1/D2/D3，再完成 E。acquire 提交确认未知归 D2；P3 第二后端与 P4 迁移/包化继续独立规划。
+下一步按 [E 方案](m3-e-observation.md)补齐有限观察和实际 Node 入口结算验收，复用 [D 的错误保留与恢复证据](m3-d-recovery.md#12-本轮实施与验收记录)：acquire 空占位不能当作可 resume 的 Query；终态事实不等于 completed 已成功，release B/R 需核对权威 owner。P3 第二后端与 P4 迁移/包化继续独立规划，不提前进入 PPT。
 
 M0 的既有闭环与 M4 的后续消费侧迁移见[整体路线](../project-plan.md#6-通用-harness-演进路线)；没有独立详细计划的阶段不新增占位文件。生产 UI/PPT、旧 Agent/Gateway 未因本次文档拆分而迁移。
 

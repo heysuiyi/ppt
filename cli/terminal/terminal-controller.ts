@@ -23,6 +23,7 @@ import type {
   TerminalExitDecision,
   TerminalFailureStage,
   TerminalPhase,
+  TerminalModelItem,
   TerminalSelectionItem,
 } from "./terminal-contract.js";
 import {
@@ -42,6 +43,13 @@ export interface TerminalControllerOptions {
   readonly writeError: (text: string) => Promise<void>;
 }
 
+interface ModelNavigation {
+  readonly models: readonly TerminalModelItem[];
+  readonly groups: Selector;
+  readonly action: TerminalSelectionItem;
+  pane: "groups" | "models";
+}
+
 type Focus =
   | { readonly type: "composer" }
   | {
@@ -54,8 +62,9 @@ type Focus =
   | {
       readonly type: "selector";
       readonly title: string;
-      readonly selector: Selector;
-      readonly sourceItems: readonly TerminalSelectionItem[];
+      selector: Selector;
+      sourceItems: readonly TerminalSelectionItem[];
+      readonly navigation?: ModelNavigation;
       typed: string;
       readonly resolve: (value: string | undefined) => void;
     };
@@ -80,6 +89,8 @@ export async function runTerminalController(options: TerminalControllerOptions):
   let focus: Focus = { type: "composer" };
   const composer = createComposer();
   let notification: string | undefined;
+  let activity: string | undefined;
+  let modelStatus: string | undefined;
   let pendingInteraction: InteractionRequest | undefined;
   let active: AgentRunHandle | undefined;
   let lastResult: AgentRunResult | undefined;
@@ -174,10 +185,20 @@ export async function runTerminalController(options: TerminalControllerOptions):
             title: focus.title,
             query: focus.typed,
             items:
-              terminal.mode === "plain" && /^\d+$/.test(focus.typed)
+              !focus.navigation && terminal.mode === "plain" && /^\d+$/.test(focus.typed)
                 ? focus.sourceItems
                 : focus.selector.items,
             selectedId: focus.selector.selectedId,
+            ...(focus.navigation
+              ? {
+                  navigation: {
+                    groups: focus.navigation.groups.items,
+                    selectedGroupId: focus.navigation.groups.selectedId!,
+                    pane: focus.navigation.pane,
+                    action: focus.navigation.action,
+                  },
+                }
+              : {}),
           }
         : completion
           ? {
@@ -189,6 +210,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
           : undefined;
     const view: TerminalView = {
       phase,
+      ...(activity ? { activity } : {}),
       composer: {
         draft: focus.type === "text" && focus.secret ? { text: "", cursor: 0 } : draft,
         editable: true,
@@ -207,6 +229,9 @@ export async function runTerminalController(options: TerminalControllerOptions):
               workspace: host.context.workspaceRoot,
               threadId: host.context.threadId,
               model: host.context.model.label,
+              ...((modelStatus ?? host.context.model.availability?.reason)
+                ? { modelStatus: modelStatus ?? host.context.model.availability?.reason }
+                : {}),
               capabilities: host.context.toolsMode,
             },
           }
@@ -238,6 +263,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
   async function askSelection(
     title: string,
     items: readonly TerminalSelectionItem[],
+    selectedId: string | null = null,
   ): Promise<string | undefined> {
     if (stopping || eof) return undefined;
     if (!items.length) {
@@ -248,13 +274,146 @@ export async function runTerminalController(options: TerminalControllerOptions):
     switchFocus({
       type: "selector",
       title,
-      selector: createSelector(items, null),
+      selector: createSelector(items, selectedId),
       sourceItems: items,
       typed: "",
       resolve,
     });
     await refresh();
     return promise;
+  }
+
+  function modelGroup(model: TerminalModelItem): string {
+    return model.vendor ? `vendor:${model.vendor.id}` : "legacy";
+  }
+
+  function filterModels(current: Extract<Focus, { type: "selector" }>): void {
+    const navigation = current.navigation!;
+    const group = navigation.groups.selectedId;
+    const items = navigation.models
+      .filter((model) => group === "all" || modelGroup(model) === group)
+      .map((model) => ({
+        id: model.id,
+        label: `${model.modelName ?? model.label}${model.id === host.context.model.id ? " · 当前" : ""}${model.availability?.state === "unavailable" ? " · 不可用" : ""}`,
+        description: `${model.vendor?.label ?? "已配置连接"} · ${model.availability?.reason ?? "本地状态未提供"}`,
+      }));
+    current.sourceItems = [...items, navigation.action];
+    const filtered = createSelector(items);
+    // Plain 数字是当前组的稳定序号，不作为搜索条件；配置动作永不被搜索隐藏。
+    filtered.search(terminal.mode === "plain" && /^\d+$/.test(current.typed) ? "" : current.typed);
+    current.selector = createSelector(
+      [...filtered.items, navigation.action],
+      current.selector.selectedId,
+    );
+  }
+
+  async function askModel(models: readonly TerminalModelItem[]): Promise<string | undefined> {
+    if (stopping || eof) return undefined;
+    const groups: TerminalSelectionItem[] = [{ id: "all", label: "All · 全部连接" }];
+    for (const model of models) {
+      const id = modelGroup(model);
+      if (!groups.some((group) => group.id === id))
+        groups.push({ id, label: model.vendor?.label ?? "已配置连接" });
+    }
+    let actionId = "__configure_connection";
+    while (models.some((model) => model.id === actionId)) actionId += "_";
+    const action = { id: actionId, label: "+ 添加/配置连接" };
+    const { promise, resolve } = Promise.withResolvers<string | undefined>();
+    const next: Extract<Focus, { type: "selector" }> = {
+      type: "selector",
+      title: "选择已配置模型 · 仅检查本地配置",
+      selector: createSelector([], host.context.model.id),
+      sourceItems: [],
+      typed: "",
+      navigation: {
+        models,
+        groups: createSelector(groups, "all"),
+        pane: "models",
+        action,
+      },
+      resolve: (value) => resolve(value === actionId ? undefined : value),
+    };
+    filterModels(next);
+    next.selector = createSelector(next.selector.items, host.context.model.id);
+    // 配置动作与退出必须区分；模型 ID 本身不承担动作协议。
+    next.resolve = resolve;
+    switchFocus(next);
+    await refresh();
+    const selected = await promise;
+    return selected === actionId ? await configureConnection() : selected;
+  }
+
+  async function loadModels(): Promise<readonly TerminalModelItem[] | undefined> {
+    return withActivity("正在加载模型目录", async () => {
+      try {
+        return await host.models();
+      } catch (error) {
+        notification = `模型目录加载失败：${terminalError(error).message}`;
+        await output(() => renderer.message(notification!));
+        return undefined;
+      }
+    });
+  }
+
+  async function configureConnection(): Promise<string | undefined> {
+    let selected: string | undefined;
+    try {
+      selected = await withActivity("正在配置连接", () => host.configureModel(setup));
+    } catch (error) {
+      if (terminalError(error).code !== "HOST_CONFIGURATION_REJECTED") throw error;
+      notification = `连接配置未完成：${terminalError(error).message}；当前会话保持不变。`;
+      await output(() => renderer.message(notification!));
+      return undefined;
+    }
+    if (!selected) {
+      notification = "已取消连接配置；当前会话与草稿保持不变。";
+      return undefined;
+    }
+    notification = "连接与 CLI 默认模型已保存；当前会话未切换，须另确认新建绑定。";
+    await output(() => renderer.message(notification!));
+    return selected;
+  }
+
+  async function chooseModel(connect: boolean): Promise<void> {
+    let models = await loadModels();
+    if (!models && !connect) {
+      // 即便目录读取失败，仍保留进入真实配置向导的入口。
+      models = [];
+    }
+    const currentId = host.context.model.id;
+    modelStatus = models?.find((item) => item.id === currentId)?.availability?.reason;
+    const selectedId = connect ? await configureConnection() : await askModel(models ?? []);
+    if (!selectedId) {
+      notification ??= "已取消模型选择；当前模型与会话保持不变。";
+      return;
+    }
+    // 向导可能新增连接或更新既有模型；确认绑定前重新读取权威本地目录。
+    models = await loadModels();
+    const selected = models?.find((item) => item.id === selectedId);
+    if (!selected) {
+      notification = "未找到所选模型；当前会话保持不变。已保存的连接配置不会删除。";
+      return;
+    }
+    if (selected.id === currentId) {
+      notification = "当前模型已选中；未创建新会话。";
+      return;
+    }
+    if (selected.availability?.state === "unavailable") {
+      notification = `模型不可用：${selected.availability.reason}`;
+      await output(() => renderer.message(notification!));
+      return;
+    }
+    if (!(await confirmSwitch(`模型 ${selected.label}`))) {
+      notification = "已取消模型切换；当前模型、会话与草稿保持不变；已保存的连接/默认配置保留。";
+      return;
+    }
+    await withActivity(`正在切换模型：${selected.label}`, () =>
+      host.newSession({ modelId: selected.id }),
+    );
+    modelStatus = selected.availability?.reason;
+    await sessionRecord();
+    notification = `已切换模型：${host.context.model.label}；新绑定会话 ${host.context.threadId}`;
+    await output(() => renderer.message(notification!));
   }
 
   const setup: TerminalSetupIO = {
@@ -271,7 +430,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
         version: 1,
         type: "session",
         threadId: context.threadId,
-        model: context.model,
+        model: { id: context.model.id, label: context.model.label },
         capabilities:
           context.toolsMode === "none" ? [] : [{ id: context.toolsMode, label: context.toolsMode }],
       }),
@@ -465,19 +624,41 @@ export async function runTerminalController(options: TerminalControllerOptions):
 
   function launchUI(action: () => Promise<void>): void {
     if (uiTask || stopping) return;
-    uiTask = action()
+    uiTask = Promise.resolve()
+      .then(action)
       .catch(async (error: unknown) => {
-        await report(error, "activation");
-        requestStop();
+        const publicError = terminalError(error);
+        if (publicError.code === "HOST_SWITCH_REJECTED") {
+          notification = publicError.message;
+          await output(() => renderer.message(publicError.message));
+        } else {
+          await report(error, "activation");
+          requestStop();
+        }
       })
       .finally(() => {
         uiTask = undefined;
+        activity = undefined;
         void refresh();
       });
   }
 
-  async function confirmSwitch(): Promise<boolean> {
-    const answer = await askText("将新建绑定会话；当前草稿会保留，不迁移旧 Query。输入 yes 确认：");
+  async function withActivity<T>(text: string, operation: () => Promise<T>): Promise<T> {
+    activity = text;
+    notification = undefined;
+    await refresh();
+    try {
+      return await operation();
+    } finally {
+      activity = undefined;
+      await refresh();
+    }
+  }
+
+  async function confirmSwitch(target = "新会话"): Promise<boolean> {
+    const answer = await askText(
+      `目标：${target}\n将新建绑定会话；保留草稿，不迁移旧 Query。\n输入 yes 确认：`,
+    );
     return answer?.trim() === "yes";
   }
 
@@ -503,18 +684,15 @@ export async function runTerminalController(options: TerminalControllerOptions):
         break;
       case "new":
         if (await confirmSwitch()) {
-          await host.newSession();
+          await withActivity("正在创建绑定会话", () => host.newSession());
+          modelStatus = undefined;
           await sessionRecord();
         }
         break;
-      case "model": {
-        const selected = await askSelection("选择已配置模型", await host.models());
-        if (selected && (await confirmSwitch())) {
-          await host.newSession({ modelId: selected });
-          await sessionRecord();
-        }
+      case "model":
+      case "connect":
+        await chooseModel(name === "connect");
         break;
-      }
       case "tools": {
         const modes: readonly TerminalSelectionItem[] = [
           { id: "none", label: "无业务插件" },
@@ -523,16 +701,22 @@ export async function runTerminalController(options: TerminalControllerOptions):
         ];
         const selected = await askSelection("选择能力模式", modes);
         if (selected && (await confirmSwitch())) {
-          await host.newSession({ toolsMode: selected as TerminalToolsMode });
+          await withActivity("正在切换能力与绑定会话", () =>
+            host.newSession({ toolsMode: selected as TerminalToolsMode }),
+          );
+          modelStatus = undefined;
           await sessionRecord();
         }
         break;
       }
       case "resume": {
-        const sessions = await host.sessions();
+        const sessions = await withActivity("正在加载会话目录", () => host.sessions());
         const selected = await askSelection("当前工作区会话", sessions);
         if (selected && (await confirmSwitch())) {
-          const session = await host.selectSession(selected);
+          const session = await withActivity("正在恢复绑定会话", () =>
+            host.selectSession(selected),
+          );
+          modelStatus = undefined;
           await output(() => renderer.history(session.history));
           await sessionRecord();
           if (session.unfinished) launchQuery(() => host.resume(session.unfinished!.queryId));
@@ -801,12 +985,14 @@ export async function runTerminalController(options: TerminalControllerOptions):
   try {
     terminal.start();
     await refresh();
-    await host.open({
-      ...(command.modelId ? { modelId: command.modelId } : {}),
-      ...(command.threadId ? { threadId: command.threadId } : {}),
-      ...(command.toolsMode ? { toolsMode: command.toolsMode } : {}),
-      ...(!oneShot && terminal.mode !== "headless" ? { setup } : {}),
-    });
+    await withActivity("正在打开本地宿主与模型配置", () =>
+      host.open({
+        ...(command.modelId ? { modelId: command.modelId } : {}),
+        ...(command.threadId ? { threadId: command.threadId } : {}),
+        ...(command.toolsMode ? { toolsMode: command.toolsMode } : {}),
+        ...(!oneShot && terminal.mode !== "headless" ? { setup } : {}),
+      }),
+    );
     if (!stopping) {
       ready = true;
       phase = "idle";

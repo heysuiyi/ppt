@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentRunHandle, AgentRunInput } from "@agent-harness/core/agent-contract";
 import type { AgentCreationOptions, AgentServices } from "@agent-harness/core/agent-factory";
 import { createAgentApplication } from "@agent-harness/core/application/agent-application";
@@ -19,10 +22,11 @@ import type {
   CheckpointLease,
 } from "@agent-harness/core/session/checkpoint-contract";
 import type { AgentCheckpoint, SessionHistory } from "@agent-harness/core/session/session-contract";
+import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
 import type { ToolExecutionContext, ToolResult } from "@agent-harness/core/tools/tool-contract";
 import { describe, expect, it, type Mock, onTestFinished, vi } from "vitest";
 import { z } from "zod";
-import { RuntimeEventStream } from "../packages/harness/dist/agent/runtime/event-stream.js";
+import { createSqliteAgentStores } from "../cli/host/sqlite-agent-stores.js";
 
 const response: ModelResponse = {
   message: { role: "assistant", content: [{ type: "text", text: "saved answer" }] },
@@ -1446,17 +1450,203 @@ describe("general agent activation lifecycle", () => {
   });
 });
 
-describe("runtime observation channel", () => {
-  it("keeps buffered facts until observed, closes pending reads, and rejects a second consumer", async () => {
-    const events = new RuntimeEventStream();
-    const identity = { agentId: "agent", threadId: "thread", queryId: "query", runId: "run" };
-    const event = { kind: "fact" as const, type: "run.started" as const, identity };
-    events.emit(event);
-    const iterator = events[Symbol.asyncIterator]();
-    expect(await iterator.next()).toEqual({ done: false, value: event });
-    const pending = iterator.next();
-    events.close();
-    expect(await pending).toEqual({ done: true, value: undefined });
-    expect(() => events[Symbol.asyncIterator]()).toThrow("只允许一个消费者");
+function controlledObservationModel() {
+  const entered = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  const state: { signal?: AbortSignal } = {};
+  const stream: ModelClient["stream"] = async function* (_request, signal) {
+    state.signal = signal;
+    entered.resolve();
+    yield { type: "content-delta", index: 0, delta: { type: "text", text: "temporary:first" } };
+    await finish.promise;
+    signal.throwIfAborted();
+    yield { type: "content-delta", index: 0, delta: { type: "text", text: "temporary:second" } };
+    yield { type: "completed", response: snapshot(response) };
+  };
+  return { entered, finish, state, stream };
+}
+
+function sqliteObservationFixture(stream: ModelClient["stream"]) {
+  const f = fixture();
+  const directory = mkdtempSync(join(tmpdir(), "general-agent-observation-"));
+  const stores = createSqliteAgentStores(join(directory, "sessions.sqlite"));
+  const app = createAgentApplication({
+    ...f.services,
+    history: stores.history,
+    checkpoints: stores.checkpoints,
+  });
+  f.bind.mockResolvedValue({
+    ...f.binding,
+    client: {
+      ...f.binding.client,
+      capabilities: { ...f.binding.client.capabilities, streaming: true },
+      stream,
+    },
+  });
+  onTestFinished(async () => {
+    try {
+      await app.close();
+    } finally {
+      await stores.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+  return { ...f, app, stores };
+}
+
+describe("public runtime observation channel with SQLite", () => {
+  it("E1-3 returns after run.started and a delta without cancelling, then ignores the old cancel", async () => {
+    const first = controlledObservationModel();
+    const second = controlledObservationModel();
+    const f = sqliteObservationFixture((request, signal, context) =>
+      (context?.identity.runId === "run" ? first : second).stream(request, signal, context),
+    );
+    const agent = await f.app.agents.create(creation());
+    const handle = await agent.run(activation());
+    const iterator = handle.events[Symbol.asyncIterator]();
+    let next: AgentRunHandle | undefined;
+    try {
+      const observed: RuntimeEvent[] = [];
+      for (;;) {
+        const event = await iterator.next();
+        if (event.done) throw new Error("Expected a delta before this Run settles.");
+        observed.push(event.value);
+        expect(event.value.identity).toEqual(handle.identity);
+        if (event.value.type === "model.delta") break;
+      }
+      expect(observed.map((event) => event.type)).toEqual([
+        "run.started",
+        "step.committed",
+        "step.started",
+        "model.delta",
+      ]);
+      expect(observed.at(-1)).toMatchObject({
+        delta: { type: "text", text: "temporary:first" },
+      });
+      expect(await iterator.return?.()).toEqual({ done: true, value: undefined });
+      expect(await iterator.next()).toEqual({ done: true, value: undefined });
+      expect(() => handle.events[Symbol.asyncIterator]()).toThrow(
+        expect.objectContaining({ code: "event-stream-consumed" }),
+      );
+      expect(first.state.signal?.aborted).toBe(false);
+      first.finish.resolve();
+      expect((await handle.completed).status).toBe("completed");
+      const history = await f.stores.history.read("thread");
+      expect(history.messages).toEqual([...activation().input, response.message]);
+      const acquired = await f.stores.checkpoints.acquire(checkpointKey("query-run"), "inspector");
+      if (acquired.status !== "acquired") throw new Error("Expected the abandoned Run released.");
+      try {
+        expect(acquired.checkpoint).toMatchObject({
+          status: "completed",
+          lastRunId: "run",
+          committed: { messages: history.messages, historyRevision: history.revision },
+        });
+      } finally {
+        await f.stores.checkpoints.release(acquired.lease);
+      }
+      expect(await iterator.next()).toEqual({ done: true, value: undefined });
+      expect(() => handle.events[Symbol.asyncIterator]()).toThrow(
+        expect.objectContaining({ code: "event-stream-consumed" }),
+      );
+      next = await agent.run(activation("next"));
+      await second.entered.promise;
+      handle.cancel("old abandoned observer must not cancel the new Run");
+      expect(second.state.signal?.aborted).toBe(false);
+      second.finish.resolve();
+      expect((await next.completed).status).toBe("completed");
+      expect((await f.stores.history.read("thread")).messages).toEqual([
+        ...history.messages,
+        ...activation("next").input,
+        response.message,
+      ]);
+      expect(f.generate).not.toHaveBeenCalled();
+    } finally {
+      first.finish.resolve();
+      second.finish.resolve();
+      await Promise.allSettled([handle.completed, ...(next ? [next.completed] : [])]);
+    }
+  });
+
+  it("E1-5 rejects only an empty-queue pending-next collision and never reopens a claimed stream", async () => {
+    const model = controlledObservationModel();
+    const f = sqliteObservationFixture(model.stream);
+    const agent = await f.app.agents.create(creation());
+    const handle = await agent.run(activation());
+    const iterator = handle.events[Symbol.asyncIterator]();
+    try {
+      await model.entered.promise;
+      expect(() => handle.events[Symbol.asyncIterator]()).toThrow(
+        expect.objectContaining({ code: "event-stream-consumed" }),
+      );
+      // 已有队列时，两个未 await 的 next 各自立即取走一个事件，不是 busy。
+      const started = iterator.next();
+      const inputCommitted = iterator.next();
+      const prefix = [await started, await inputCommitted, await iterator.next(), await iterator.next()];
+      const events: RuntimeEvent[] = [];
+      for (const next of prefix) {
+        if (next.done) throw new Error("Expected the queued prefix before the model gate.");
+        events.push(next.value);
+      }
+      expect(events.map((event) => event.type)).toEqual([
+        "run.started",
+        "step.committed",
+        "step.started",
+        "model.delta",
+      ]);
+      expect(events.at(-1)).toMatchObject({
+        delta: { type: "text", text: "temporary:first" },
+      });
+      // 首个 delta 已被取走；模型自己的门闩阻止任何后续事件，队列确定为空。
+      const pending = iterator.next();
+      let pendingSettled = false;
+      void pending.then(() => {
+        pendingSettled = true;
+      });
+      await expect(iterator.next()).rejects.toMatchObject({ code: "event-stream-busy" });
+      expect(pendingSettled).toBe(false);
+      expect(() => handle.events[Symbol.asyncIterator]()).toThrow(
+        expect.objectContaining({ code: "event-stream-consumed" }),
+      );
+      model.finish.resolve();
+      const resumed = await pending;
+      expect(resumed.done).toBe(false);
+      if (resumed.done) throw new Error("The first pending next must receive the next delta.");
+      expect(resumed.value).toMatchObject({
+        type: "model.delta",
+        delta: { type: "text", text: "temporary:second" },
+      });
+      events.push(resumed.value);
+      expect((await handle.completed).status).toBe("completed");
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        events.push(next.value);
+      }
+      expect(events.map((event) => event.type)).toEqual([
+        "run.started",
+        "step.committed",
+        "step.started",
+        "model.delta",
+        "model.delta",
+        "step.committed",
+        "run.completed",
+      ]);
+      for (const event of events) expect(event.identity).toEqual(handle.identity);
+      expect(await iterator.next()).toEqual({ done: true, value: undefined });
+      expect(() => handle.events[Symbol.asyncIterator]()).toThrow(
+        expect.objectContaining({ code: "event-stream-consumed" }),
+      );
+      expect(await iterator.return?.()).toEqual({ done: true, value: undefined });
+      expect(() => handle.events[Symbol.asyncIterator]()).toThrow(
+        expect.objectContaining({ code: "event-stream-consumed" }),
+      );
+      expect((await f.stores.history.read("thread")).messages).toEqual([
+        ...activation().input,
+        response.message,
+      ]);
+    } finally {
+      model.finish.resolve();
+      await Promise.allSettled([handle.completed]);
+    }
   });
 });

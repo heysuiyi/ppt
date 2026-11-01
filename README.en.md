@@ -288,45 +288,44 @@ Dependency installation establishes the workspace link. `npm run build:harness` 
 
 `tests/base-tools.test.ts` and `tests/general-agent-*.test.ts` cover real files, SQLite, Gateway/SDK transport to local HTTP endpoints, lifecycle, tool authorization, and recovery boundaries. Remote inference needs separately configured credentials; local verification is not a claim of remote LLM or production-UI cutover validation.
 
-### Independent general Agent development entry
+### Production Node CLI
 
-First save a tool-capable model in the app's Settings. `--model` is the configured model ID from `agent-settings.json`, not the remote model name. The launcher builds a separate Electron Main entry without creating windows or starting the old Agent, Renderer, or PPT services:
-
-For MiMo, select the “MiMo Token Plan 中国” preset, discover and select models using its saved credential, and choose reasoning effort in advanced settings. The default omits `reasoning`; explicit values pass through unchanged. The fixed endpoint is `https://token-plan-cn.xiaomimimo.com/v1`, without other providers' environment-key fallback. Existing custom connections are not automatically upgraded. Native MiMo is available to this development host only; production chat rejects it before admission, without creating a session or falling back to the old Gateway.
-
-Separate evidence covers the actual Electron settings component, local SDK/HTTP/SSE, and real CN `mimo-v2.6-flash` with `high`: conversation, stream cancellation, file approval, and cross-process recovery. This does not validate Pro, other remote effort levels, or production chat. See the [MiMo implementation record](docs/mimo-token-plan-cn.md#11-实施与验收记录2026-10-31).
+Node >=24 is required. Production and development share the independent Node entry, without Electron or an IPC input bridge:
 
 ```powershell
-npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --prompt "Read notes.txt and summarize it"
+npm.cmd run build:cli
+npm.cmd run agent
+npm.cmd run agent:dev -- --help
+npm.cmd --silent run agent -- --prompt "Summarize this workspace" --output jsonl
+npm.cmd run agent -- --prompt "Hello" --tools none --print
 ```
 
-Omit `--prompt` for line-oriented conversation; `/exit` exits. The default `read/glob/grep` tools require `yes`, `no`, or `cancel` for every call. Pass `--tools read-write` to additionally install `write/edit`, still subject to per-call approval. Only regular UTF-8 workspace files are supported, up to 64 KiB by default; oversized files are rejected, not truncated. Reading, discovery, and search create no directories or locks and never recover interrupted writes. No PPT project artifacts are initialized.
+Interactive setup saves a connection, securely collects its credential, discovers supported models, and selects the CLI default. Windows CurrentUser DPAPI protects credentials; unavailable secure input or protection fails before collecting a secret. MiMo Token Plan CN, OpenAI Responses, OpenAI Chat Completions-compatible, and Anthropic Messages connections use native model adapters. `--model` takes a configured model ID, not a remote model name.
+
+The TUI separates committed history, provisional streaming output, the draft editor, selectors, and status. `/model` or Alt+M opens model selection; changing models creates a confirmed, separately bound session, never migrates an old Query. `/new`, `/resume`, `/tools`, `/tools-output`, `/status`, and `/help` use the real host. Enter sends only while idle; Alt+Enter inserts a newline, Esc closes local UI, Ctrl+O expands safe tool metadata, and empty Ctrl+D exits. Drafts survive menu cancellation.
+
+Model selection initially focuses the current model and distinguishes local readiness from unavailability reasons. Selecting the current model does not create a session; unavailable entries cannot activate. Cancelling a change preserves the current binding and draft. The footer separates model/configuration state, execution or switching activity, and workspace/session/capabilities. Local readiness is not proof of remote connectivity, authentication, or remaining quota.
+
+The default capability is read-only; `--tools none` disables business plugins and `--tools read-write` enables writes requiring explicit approval. The workspace follows the process working directory; there is no `--workspace` flag. Tool inputs, raw results, reasoning, credentials, and private replay data are not printed.
+
+Print and JSONL never open setup or approval menus. JSONL stdout contains only versioned records, not banners, ANSI, or provisional deltas; use direct Node or `npm --silent` for machine consumers. EOF during approval preserves `waiting` and exits 3; cancellation does not preserve a wait. Resume in the original workspace:
 
 ```powershell
-npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --tools read-write --prompt "Read all of notes.txt, then append a line of explanation"
+npm.cmd run agent -- --thread saved-thread-id --resume saved-query-id
 ```
 
-Execution facts and results use newline-delimited JSON (apart from build logs and interactive input echo), with thread/query/run IDs, public execution facts, and final text, not raw SDK exceptions, full tool results, reasoning, or private replay state. Gateway diagnostics remain in local logs under the underlying logging policy but are not mirrored to the terminal; this entry disables full Gateway IO archives. The Node launcher owns terminal/piped input and forwards it over parent-child IPC because Windows Electron Main cannot reliably receive stdin.
+Recovery reads authoritative checkpoints with a fresh Run ID and requires the original model connection, workspace, capability, definition/plugin versions, and budget. Changed bindings are rejected; same-connection key rotation is allowed. Abandoned leases are not automatically taken over.
 
-The development host owns `NodeLogs`, lending Logger instances to models and tools. Shutdown drains Agents, then closes the provider, stores, and Logs. Diagnostics use `agent-development-logs/<instanceId>/diagnostic-YYYY-MM-DD.jsonl` below the configuration root and exclude model text, tool payloads, and credentials, including `tp-` / `ttp-` patterns. `ModelCallContext` correlates Run/request/step diagnostics without entering request bodies or checkpoints.
+Production data defaults to `~/.agent-harness/cli`; development uses `~/.agent-harness/cli-development`. `AGENT_HARNESS_CLI_DATA_DIR` overrides either. Configuration, protected credentials, `sessions.sqlite`, and logs remain separate from desktop data, without automatic migration or desktop-key import. Shutdown drains execution before releasing models, stores, and logs.
 
-MiMo has no application or SDK retries (`maxRetries=0`), endpoint switching, or paid fallback. Node Fetch may still internally retransmit HTTP 421 according to the Fetch standard; this is not a guarantee of zero transport-level retransmission.
-
-EOF during approval preserves `waiting`. Resume with the IDs from the output:
+Exit codes: 0 success, 1 failure, 2 arguments, 3 waiting, 130 user cancellation, 143 host termination, 141 broken output pipe. MiMo has no application/SDK retries or paid fallback; Node Fetch may internally retransmit HTTP 421.
 
 ```powershell
-npm.cmd run agent:dev -- --model configured-model-id --workspace E:\work\notes --thread saved-thread-id --resume saved-query-id
+npx.cmd vitest run tests/cli-terminal-controller.test.ts tests/cli-terminal-input.test.ts tests/cli-terminal-rendering.test.ts
+npm.cmd run test:integration:harness
 ```
 
-Resuming displays the stored interaction before accepting an answer; each activation gets a fresh `runId`. Ctrl+C cancels the current query (exit 130). Graceful shutdown interrupts execution and preserves stored waits. Completed/waiting exit 0, execution failure 1, invalid arguments 2, and interruption 143; exit 0 does not mean a waiting query completed—check the result `status`.
-
-Configuration uses `getApplicationDataRoot()`: `~/.agent-ppt` by default, or `AGENT_PPT_DATA_DIR` for isolated development configuration. The command never initializes missing configuration or writes default settings. History, checkpoints, and host bindings use `agent-development.sqlite`, not production storage. Recovery requires the same Agent, workspace, tool mode, model connection, definition/plugin versions, and budget; writable sessions also require `--tools read-write` when resuming. Legacy `ReadFile` bindings are explicitly rejected without automatic migration: start a new thread. Same-connection key rotation is allowed; changed connections or workspaces require a new thread. Abandoned writer leases are never automatically stolen, and there is no forced-takeover flag.
-
-In addition to `npm run typecheck` and `npm test`, run the real Electron/encrypted-credential/local-HTTP regression separately (no remote provider key required; Linux requires a graphical environment):
-
-```powershell
-npx.cmd vitest run tests/general-agent-development-cli.integration.test.ts tests/mimo-development-cli.integration.test.ts
-```
+Evidence distinguishes controlled behavior tests, real SDK transport to local HTTP/SSE, Windows ConPTY, and remote calls. See the [CLI implementation record](docs/next-steps/cli-terminal.md#84-生产直切实施与验收记录); local checks do not establish remote-provider compatibility or a desktop/PPT cutover.
 
 ## Local Files And Privacy
 

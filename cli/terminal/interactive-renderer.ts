@@ -75,61 +75,111 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
     const height = Math.max(1, options.rows() - 1);
     const view = currentView;
     const statuses = view ? statusLines(view, columns) : [];
+    const rule = (title: string, bottom = false): string => {
+      const label = title ? truncateTerminalText(` ${title} `, columns - 3) : "";
+      const line = `${bottom ? "╰" : "╭"}─${label}${"─".repeat(Math.max(0, columns - visibleWidth(label) - 3))}${bottom ? "╯" : "╮"}`;
+      return options.color ? `\x1b[2m${line}\x1b[0m` : line;
+    };
+    const inset = (line: string): string => {
+      const text = truncateTerminalText(line, columns - 4);
+      return `│ ${text}${" ".repeat(Math.max(0, columns - 4 - visibleWidth(text)))} │`;
+    };
     let composer: string[] = [];
     let composerCursor = 0;
     let composerColumn = 0;
-    if (view) {
-      const clusters = graphemes(view.composer.draft.text);
-      const prefix = clusters.slice(0, view.composer.draft.cursor).join("");
+    if (view && !view.selector) {
       const secret = view.prompt?.secret === true;
-      const text = secret ? "" : view.composer.draft.text;
-      const before = secret ? "" : prefix;
-      const body = wrapTerminalText(text, Math.max(1, columns - 2));
-      const prior = wrapTerminalText(before, Math.max(1, columns - 2));
-      const position = prior.length - 1;
-      const max = Math.max(1, Math.floor(height / 3));
+      const clusters = secret ? [] : graphemes(view.composer.draft.text);
+      const body: string[] = [];
+      const width = Math.max(1, columns - 4);
+      let line = "";
+      let used = 0;
+      let position = 0;
+      let column = 0;
+      // 光标与正文共用同一次字素布局，避免宽字符在边界换行后光标仍留在上一行。
+      for (let index = 0; index <= clusters.length; index += 1) {
+        const cluster = clusters[index];
+        const text = cluster === "\t" ? " ".repeat(4 - (used % 4)) : safe(cluster ?? "");
+        const size = visibleWidth(text);
+        if (cluster !== "\n" && used > 0 && used + size > width) {
+          body.push(line);
+          line = "";
+          used = 0;
+        }
+        if (index === (secret ? 0 : view.composer.draft.cursor)) {
+          position = body.length;
+          column = used;
+        }
+        if (cluster === undefined) break;
+        if (cluster === "\n") {
+          body.push(line);
+          line = "";
+          used = 0;
+        } else {
+          line += text;
+          used += size;
+        }
+      }
+      body.push(line);
+      const promptLines = view.prompt ? wrapTerminalText(view.prompt.text, columns) : [];
+      const promptBudget = Math.max(1, height - statuses.length - 3);
+      const prompt =
+        promptLines.length <= promptBudget
+          ? promptLines
+          : [...promptLines.slice(0, promptBudget - 1), promptLines[promptLines.length - 1]!];
+      const reserve = view.interaction || selectedTool || previews.length > 0 ? 3 : 2;
+      const max = Math.max(
+        1,
+        Math.min(3, Math.floor(height / 3), height - statuses.length - prompt.length - reserve - 2),
+      );
       const offset = Math.max(0, Math.min(position - max + 1, body.length - max));
-      composer = body
-        .slice(offset, offset + max)
-        .map((line, index) => `${offset + index === 0 ? "> " : "  "}${line}`);
-      composerCursor = Math.max(0, position - offset);
-      composerColumn = Math.min(columns, 2 + visibleWidth(prior[prior.length - 1] ?? ""));
-      if (view.prompt)
-        composer.unshift(
-          truncateTerminalText(view.prompt.text + (secret ? " [hidden]" : ""), columns),
-        );
-      if (view.prompt) composerCursor += 1;
+      const title = view.prompt
+        ? secret
+          ? "安全输入 · 隐藏输入"
+          : "确认输入"
+        : view.phase === "idle" && view.composer.submission.enabled
+          ? "输入"
+          : "草稿 · 暂不发送";
+      composer = [
+        ...prompt,
+        rule(title),
+        ...body.slice(offset, offset + max).map(inset),
+        rule("", true),
+      ];
+      composerCursor = prompt.length + 1 + Math.max(0, position - offset);
+      composerColumn = 2 + column;
     }
     const available = Math.max(0, height - statuses.length - composer.length);
     const content: string[] = [];
     if (view?.selector) {
       const selector = view.selector;
-      content.push(truncateTerminalText(`${selector.title} | search: ${selector.query}`, columns));
       const selected = selector.items.findIndex((item) => item.id === selector.selectedId);
-      const capacity = Math.max(1, available - 2);
+      const capacity = Math.max(1, available - 3);
       const start = Math.max(
         0,
         Math.min(selected - Math.floor(capacity / 2), selector.items.length - capacity),
       );
+      content.push(rule(selector.title));
+      content.push(truncateTerminalText(`搜索: ${selector.query || "输入以筛选"}`, columns));
       for (const item of selector.items.slice(start, start + capacity)) {
+        const text = truncateTerminalText(
+          `${item.id === selector.selectedId ? "›" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`,
+          columns,
+        );
         content.push(
-          truncateTerminalText(
-            `${item.id === selector.selectedId ? ">" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`,
-            columns,
-          ),
+          options.color && item.id === selector.selectedId ? `\x1b[36m${text}\x1b[0m` : text,
         );
       }
-      if (selector.items.length === 0) content.push("No matching choices.");
-      content.push(truncateTerminalText("↑/↓ select · Enter confirm · Esc back", columns));
-    } else if (view?.interaction) {
-      const { reference, display } = view.interaction;
-      content.push(...wrapTerminalText(`Waiting: ${reference.interactionId}`, columns));
+      if (selector.items.length === 0) content.push("没有匹配项");
       content.push(
-        ...wrapTerminalText(
-          `${reference.owner}/${reference.payloadType}@${reference.payloadVersion}`,
+        truncateTerminalText(
+          `${selected >= 0 ? selected + 1 : 0}/${selector.items.length} 项${start > 0 ? " · ↑ 上方更多" : ""}${start + capacity < selector.items.length ? " · ↓ 下方更多" : ""}`,
           columns,
         ),
       );
+    } else if (view?.interaction) {
+      const { reference, display } = view.interaction;
+      content.push(truncateTerminalText(`待确认 · ${reference.interactionId}`, columns));
       if (display.support === "supported") {
         content.push(...wrapTerminalText(display.summary, columns));
         for (const choice of display.choices)
@@ -139,51 +189,58 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
         content.push(
           ...wrapTerminalText(
             display.confirmation === "interaction-id"
-              ? "Explicit choice and interaction ID confirmation required."
-              : "Explicit choice required; Enter alone does not approve.",
+              ? "需要明确选择并确认交互 ID。"
+              : "需要明确选择；仅按 Enter 不会批准。",
             columns,
           ),
         );
-      } else
+      } else {
         content.push(
           ...wrapTerminalText(
-            "Unsupported interaction. Private payload withheld; use a supported host to answer.",
+            `${reference.owner}/${reference.payloadType}@${reference.payloadVersion}`,
             columns,
           ),
+          ...wrapTerminalText("不支持此交互；私有内容已隐藏，请使用支持的宿主回答。", columns),
         );
+      }
     } else if (selectedTool && cards.has(selectedTool)) {
       const lines = toolCardLines(cards.get(selectedTool)!, columns, true);
       const summary = toolCardLines(cards.get(selectedTool)!, columns, false);
-      const pageSize = Math.max(1, available - summary.length - 1);
-      const details = lines.slice(summary.length);
+      const pinned = summary.slice(0, Math.max(1, available - 2));
+      const pageSize = Math.max(1, available - pinned.length - 1);
+      const details = lines.slice(pinned.length);
       const pages = Math.max(1, Math.ceil(details.length / pageSize));
       toolPages = pages;
       toolPage = Math.min(toolPage, pages - 1);
-      content.push(...summary, ...details.slice(toolPage * pageSize, (toolPage + 1) * pageSize));
+      content.push(...pinned, ...details.slice(toolPage * pageSize, (toolPage + 1) * pageSize));
       content.push(
-        truncateTerminalText(`Details ${toolPage + 1}/${pages} · Ctrl+O next/collapse`, columns),
+        truncateTerminalText(`详情 ${toolPage + 1}/${pages} · Ctrl+O 翻页/收起`, columns),
       );
     } else {
       for (const preview of previews) {
         content.push(
           truncateTerminalText(
-            `Preview · step ${preview.step} · ${preview.requestId} · part ${preview.contentIndex}${preview.truncated ? " · tail only; final result is authoritative" : " · not committed"}`,
+            `生成预览 · 步骤 ${preview.step}${preview.truncated ? " · 仅保留尾部" : ""}`,
             columns,
           ),
         );
         content.push(...markdownLines(preview.text, columns, true));
       }
       if (previews.length > 0)
-        content.push(
-          truncateTerminalText(
-            previews.some((item) => item.truncated)
-              ? "Preview tail only; final result authoritative"
-              : "Preview only; not committed",
-            columns,
-          ),
-        );
+        content.push(truncateTerminalText("预览尚未提交，以最终结果为准", columns));
       const latest = latestTool ? cards.get(latestTool) : undefined;
       if (latest) content.push(...toolCardLines(latest, columns, false));
+      if (content.length === 0 && view && !view.prompt) {
+        content.push(
+          truncateTerminalText(
+            view.phase === "idle" && view.composer.submission.enabled
+              ? "开始对话 · 描述任务，或输入 / 查看命令"
+              : view.activity || "状态将在此更新；草稿不会自动发送",
+            columns,
+          ),
+          "",
+        );
+      }
     }
     const visible =
       content.length <= available
@@ -193,10 +250,10 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
           : view?.interaction
             ? content
                 .slice(0, Math.max(0, available - 1))
-                .concat(
-                  truncateTerminalText("More interaction text is retained in history.", columns),
-                )
-            : content.slice(-available);
+                .concat(truncateTerminalText("完整交互内容保留在历史中", columns))
+            : view?.selector
+              ? content.slice(0, available)
+              : content.slice(-available);
     const lines = [...visible, ...composer, ...statuses].slice(0, height);
     if (lines.length === 0) lines.push("");
     return {
@@ -217,25 +274,27 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
         const text = [
           ...statusLines(view, Math.max(40, options.columns())),
           ...(view.prompt
-            ? [safe(view.prompt.text) + (view.prompt.secret ? " [hidden]" : "")]
+            ? [safe(view.prompt.text) + (view.prompt.secret ? " [隐藏输入]" : "")]
             : []),
-          ...(view.prompt?.secret ? [] : [`> ${safe(view.composer.draft.text)}`]),
+          ...(view.prompt?.secret || view.selector ? [] : [`> ${safe(view.composer.draft.text)}`]),
           ...(view.selector
             ? [
                 safe(view.selector.title),
+                safe(`搜索: ${view.selector.query}`),
                 ...view.selector.items.map((item) =>
                   safe(
                     `${item.id === view.selector?.selectedId ? ">" : " "} ${item.label}${item.description ? ` — ${item.description}` : ""}`,
                   ),
                 ),
+                `${view.selector.items.findIndex((item) => item.id === view.selector?.selectedId) + 1}/${view.selector.items.length} 项`,
               ]
             : []),
           ...(view.interaction
             ? [
-                safe(`Waiting: ${view.interaction.reference.interactionId}`),
+                safe(`待确认: ${view.interaction.reference.interactionId}`),
                 view.interaction.display.support === "supported"
                   ? safe(view.interaction.display.summary)
-                  : "Unsupported interaction; private payload withheld.",
+                  : "不支持此交互；私有内容已隐藏。",
               ]
             : []),
         ].join("\n");

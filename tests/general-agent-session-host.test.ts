@@ -28,6 +28,7 @@ import type {
   CheckpointLease,
   CheckpointStore,
 } from "@agent-harness/core/session/checkpoint-contract";
+import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
 import {
   createSessionHost,
   type SessionBindingPort,
@@ -103,7 +104,7 @@ class ComparingSessionBinding implements SessionBindingPort {
   }
 }
 
-function fixture() {
+function fixture(stream?: ModelClient["stream"]) {
   const directory = mkdtempSync(join(tmpdir(), "general-agent-session-host-"));
   cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
   const stores = createSqliteAgentStores(join(directory, "sessions.sqlite"));
@@ -118,11 +119,18 @@ function fixture() {
     async (selection: ModelSelection, _signal: AbortSignal): Promise<ModelBinding> => {
       const client: ModelClient = {
         selection: snapshot(selection),
-        capabilities: { streaming: false, toolCalls: true, images: false, reasoning: false },
-        generate,
-        async *stream(request, signal) {
-          yield { type: "completed", response: await generate(request, signal) };
+        capabilities: {
+          streaming: stream !== undefined,
+          toolCalls: true,
+          images: false,
+          reasoning: false,
         },
+        generate,
+        stream:
+          stream ??
+          (async function* (request, signal) {
+            yield { type: "completed", response: await generate(request, signal) };
+          }),
       };
       return { client, dispose: modelBindingDisposed };
     },
@@ -459,6 +467,263 @@ async function inspectCheckpoint(
   return acquired.checkpoint;
 }
 
+function observationModel(label: string) {
+  const entered = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  const state: { signal?: AbortSignal; context?: ModelCallContext } = {};
+  const stream = vi.fn<ModelClient["stream"]>(async function* (_request, signal, context) {
+    state.signal = signal;
+    state.context = context;
+    entered.resolve();
+    yield { type: "content-delta", index: 0, delta: { type: "text", text: `${label}:first` } };
+    await finish.promise;
+    signal.throwIfAborted();
+    yield { type: "content-delta", index: 0, delta: { type: "text", text: `${label}:second` } };
+    yield { type: "content-delta", index: 0, delta: { type: "text", text: `${label}:third` } };
+    yield { type: "completed", response: answer(`${label}:authoritative`) };
+  });
+  return { entered, finish, state, stream };
+}
+
+function expectObservation(
+  run: AgentRunHandle,
+  events: readonly RuntimeEvent[],
+  model: { readonly state: { readonly context?: ModelCallContext } },
+  label: string,
+) {
+  for (const event of events) expect(event.identity).toEqual(run.identity);
+  const inputCommits = events.filter(
+    (event) => event.type === "step.committed" && event.step === 0,
+  );
+  expect(inputCommits).toEqual([
+    { kind: "fact", type: "step.committed", identity: run.identity, step: 0, historyRevision: 1 },
+  ]);
+  expect(events.indexOf(inputCommits[0])).toBeLessThan(
+    events.findIndex((event) => event.type === "step.started"),
+  );
+  expect(
+    events
+      .filter((event) => event.type !== "step.committed" || event.step !== 0)
+      .map((event) => event.type),
+  ).toEqual([
+    "run.started",
+    "step.started",
+    "model.delta",
+    "model.delta",
+    "model.delta",
+    "step.committed",
+    "run.completed",
+  ]);
+  expect(events.filter((event) => event.type === "step.started")).toEqual([
+    { kind: "fact", type: "step.started", identity: run.identity, step: 1 },
+  ]);
+  expect(events.filter((event) => event.type === "model.delta")).toEqual(
+    ["first", "second", "third"].map((part) => ({
+      kind: "stream",
+      type: "model.delta",
+      identity: run.identity,
+      step: 1,
+      requestId: model.state.context?.requestId,
+      contentIndex: 0,
+      delta: { type: "text", text: `${label}:${part}` },
+    })),
+  );
+  expect(events.filter((event) => event.type === "step.committed" && event.step === 1)).toEqual([
+    { kind: "fact", type: "step.committed", identity: run.identity, step: 1, historyRevision: 2 },
+  ]);
+  expect(model.state.context).toMatchObject({ identity: run.identity, step: 1 });
+  expect(model.state.context?.requestId).toEqual(expect.any(String));
+}
+
+describe("M3-E public handle observation with SQLite", () => {
+  it("E1-1 completes and releases without claiming events, then drains every finite observation", async () => {
+    const model = observationModel("unobserved");
+    const f = fixture(model.stream);
+    const host = await ownHost(f.options);
+    const run = await host.run(activation());
+    try {
+      await model.entered.promise;
+      expect((await f.checkpoints.acquire(checkpointKey(), "active-observer")).status).toBe("busy");
+      expect((await f.history.read("fixed-thread")).messages).toEqual(activation().input);
+      model.finish.resolve();
+      expect(await run.completed).toMatchObject({
+        status: "completed",
+        identity: run.identity,
+        output: [answer("unobserved:authoritative").message],
+      });
+      const history = await f.history.read("fixed-thread");
+      expect(history.messages).toEqual([
+        ...activation().input,
+        answer("unobserved:authoritative").message,
+      ]);
+      expect(await inspectCheckpoint(f)).toMatchObject({
+        status: "completed",
+        lastRunId: run.identity.runId,
+        committed: { historyRevision: history.revision, messages: history.messages, step: 1 },
+      });
+      expect(model.state.signal?.aborted).toBe(false);
+      expect(f.generate).not.toHaveBeenCalled();
+      const iterator = run.events[Symbol.asyncIterator]();
+      const events: RuntimeEvent[] = [];
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        events.push(next.value);
+      }
+      expectObservation(run, events, model, "unobserved");
+      expect(await iterator.next()).toEqual({ done: true, value: undefined });
+    } finally {
+      model.finish.resolve();
+      await Promise.allSettled([run.completed]);
+    }
+  });
+
+  it("E1-2 commits and releases while a consumer is paused on its own gate", async () => {
+    const model = observationModel("slow");
+    const f = fixture(model.stream);
+    const host = await ownHost(f.options);
+    const run = await host.run(activation());
+    const paused = Promise.withResolvers<void>();
+    const consume = Promise.withResolvers<void>();
+    const events: RuntimeEvent[] = [];
+    let resumed = false;
+    const iterator = run.events[Symbol.asyncIterator]();
+    const observing = (async () => {
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) return;
+        events.push(next.value);
+        if (next.value.type === "model.delta" && !resumed) {
+          paused.resolve();
+          await consume.promise;
+          resumed = true;
+        }
+      }
+    })();
+    try {
+      await paused.promise;
+      expect(events.at(-1)).toMatchObject({
+        type: "model.delta",
+        delta: { type: "text", text: "slow:first" },
+      });
+      const pausedCount = events.length;
+      model.finish.resolve();
+      expect((await run.completed).status).toBe("completed");
+      const history = await f.history.read("fixed-thread");
+      expect(history.messages).toEqual([...activation().input, answer("slow:authoritative").message]);
+      expect(await inspectCheckpoint(f)).toMatchObject({
+        status: "completed",
+        committed: { messages: history.messages, historyRevision: history.revision },
+      });
+      expect(resumed).toBe(false);
+      expect(events).toHaveLength(pausedCount);
+      expect(model.state.signal?.aborted).toBe(false);
+      consume.resolve();
+      await observing;
+      expectObservation(run, events, model, "slow");
+      expect(await iterator.next()).toEqual({ done: true, value: undefined });
+    } finally {
+      model.finish.resolve();
+      consume.resolve();
+      await Promise.allSettled([run.completed, observing]);
+    }
+  });
+
+  it("E1-4 interleaves A.next, B.next, B.next, A.next across distinct identities sharing ports", async () => {
+    const modelA = observationModel("A");
+    const modelB = observationModel("B");
+    const f = fixture((request, signal, context) =>
+      (context?.identity.agentId === "agent-a" ? modelA : modelB).stream(request, signal, context),
+    );
+    const app = createAgentApplication(f.services);
+    const runs: AgentRunHandle[] = [];
+    try {
+      const a = await app.agents.create({ ...f.agent, agentId: "agent-a" });
+      const b = await app.agents.create({ ...f.agent, agentId: "agent-b" });
+      const identities = [
+        { agentId: "agent-a", threadId: "thread-a", queryId: "query-a", runId: "run-a" },
+        { agentId: "agent-b", threadId: "thread-b", queryId: "query-b", runId: "run-b" },
+      ];
+      const inputA = [{ role: "user" as const, content: [{ type: "text" as const, text: "input-A" }] }];
+      const inputB = [{ role: "user" as const, content: [{ type: "text" as const, text: "input-B" }] }];
+      const runA = await a.run({ ...identities[0], input: inputA });
+      runs.push(runA);
+      const runB = await b.run({ ...identities[1], input: inputB });
+      runs.push(runB);
+      await Promise.all([modelA.entered.promise, modelB.entered.promise]);
+      const iteratorA = runA.events[Symbol.asyncIterator]();
+      const iteratorB = runB.events[Symbol.asyncIterator]();
+      const eventsA: RuntimeEvent[] = [];
+      const eventsB: RuntimeEvent[] = [];
+      for (const [iterator, events, identity] of [
+        [iteratorA, eventsA, identities[0]],
+        [iteratorB, eventsB, identities[1]],
+        [iteratorB, eventsB, identities[1]],
+        [iteratorA, eventsA, identities[0]],
+      ] as const) {
+        const next = await iterator.next();
+        expect(next.done).toBe(false);
+        if (next.done) throw new Error("Expected the finite stream prefix.");
+        expect(next.value.identity).toEqual(identity);
+        events.push(next.value);
+      }
+      expect(eventsA.map((event) => event.type)).toEqual(["run.started", "step.committed"]);
+      expect(eventsB.map((event) => event.type)).toEqual(["run.started", "step.committed"]);
+      modelB.finish.resolve();
+      expect((await runB.completed).status).toBe("completed");
+      const keyA = {
+        agentId: identities[0].agentId,
+        threadId: identities[0].threadId,
+        queryId: identities[0].queryId,
+      };
+      expect((await f.checkpoints.acquire(keyA, "still-active")).status).toBe("busy");
+      expect((await f.history.read("thread-a")).messages).toEqual(inputA);
+      expect(modelA.state.signal?.aborted).toBe(false);
+      modelA.finish.resolve();
+      expect((await runA.completed).status).toBe("completed");
+      for (const [run, iterator, events, model, label, input] of [
+        [runA, iteratorA, eventsA, modelA, "A", inputA],
+        [runB, iteratorB, eventsB, modelB, "B", inputB],
+      ] as const) {
+        for (;;) {
+          const next = await iterator.next();
+          if (next.done) break;
+          events.push(next.value);
+        }
+        expectObservation(run, events, model, label);
+        expect(await iterator.next()).toEqual({ done: true, value: undefined });
+        const history = await f.history.read(run.identity.threadId);
+        expect(history.messages).toEqual([...input, answer(`${label}:authoritative`).message]);
+        const key = {
+          agentId: run.identity.agentId,
+          threadId: run.identity.threadId,
+          queryId: run.identity.queryId,
+        };
+        const acquired = await f.checkpoints.acquire(key, `inspector-${label}`);
+        if (acquired.status !== "acquired") throw new Error("Expected this Run's writer released.");
+        try {
+          expect(acquired.checkpoint).toMatchObject({
+            agentId: run.identity.agentId,
+            threadId: run.identity.threadId,
+            queryId: run.identity.queryId,
+            lastRunId: run.identity.runId,
+            status: "completed",
+            committed: { messages: history.messages, historyRevision: history.revision },
+          });
+        } finally {
+          await f.checkpoints.release(acquired.lease);
+        }
+      }
+      expect(f.generate).not.toHaveBeenCalled();
+    } finally {
+      modelA.finish.resolve();
+      modelB.finish.resolve();
+      await Promise.allSettled(runs.map((run) => run.completed));
+      await app.close();
+    }
+  });
+});
+
 describe("generic session host independent capability composition", () => {
   it.each(["model-first", "receipt-first"] as const)(
     "composes and resumes a real receipt with %s registration order",
@@ -573,9 +838,9 @@ describe("generic session host independent capability composition", () => {
       };
       const toolCompletions: ToolCompletion[] = [];
       for await (const event of resumed.events) {
+        expect(event.identity).toEqual(resumedIdentity);
         expect(event.type).not.toBe("run.waiting");
         if (event.type === "tool.completed") {
-          expect(event.identity).toEqual(resumedIdentity);
           expect(event.invocation).toMatchObject({
             identity: initialIdentity,
             call,
@@ -1932,6 +2197,18 @@ describe("M3-B shared Application and SessionHost lifecycle acceptance", () => {
           output: expect.arrayContaining([answer(`Observed nonce:${nonce}`).message]),
         });
         expect(nextInstall.execute).toHaveBeenCalledTimes(1);
+        const completions: ToolCompletion[] = [];
+        for await (const event of next.events) {
+          expect(event.identity).toEqual(next.identity);
+          if (event.type === "tool.completed") {
+            expect(event.invocation.identity).toEqual(
+              status === "waiting" ? old.identity : next.identity,
+            );
+            completions.push(event.completion);
+          }
+        }
+        expect(completions).toHaveLength(1);
+        expect(completions[0]).toMatchObject({ status: "succeeded", effects: "none" });
         expect(
           (await inspectCheckpoint(f, status === "waiting" ? "query" : "new-query"))?.status,
         ).toBe("completed");

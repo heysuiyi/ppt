@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   cliChild,
+  cliAuthority,
+  expectCliAuthority,
   cliSdkServer,
   cliToolOutput,
   jsonlRecords,
@@ -41,6 +43,10 @@ describe.skipIf(process.platform !== "win32")("production Node CLI approval and 
       const pending = waitingQuery(waiting);
       const identity = pending.identity;
       const interactionId = pending.interaction.interactionId;
+      const waitingState = cliAuthority(root, identity);
+      expectCliAuthority(waitingState, identity, "waiting", ["user"]);
+      expect(waitingState.checkpoint.pending?.interaction.id).toBe(interactionId);
+      expect(waitingState.checkpoint.pending).toMatchObject({ invocation: { identity } });
       await expect(stat(join(root, "workspace", "created.txt"))).rejects.toMatchObject({
         code: "ENOENT",
       });
@@ -82,6 +88,16 @@ describe.skipIf(process.platform !== "win32")("production Node CLI approval and 
       );
       expect(after).toMatchObject({ status: "completed", leaseReleased: true });
       expect(after.runId).not.toBe(identity.runId);
+      const authority = cliAuthority(root, identity);
+      expectCliAuthority(authority, { ...identity, runId: after.runId }, "completed", ["user", "assistant", "tool", "assistant"]);
+      expect(authority.messages.slice(0, waitingState.messages.length)).toEqual(waitingState.messages);
+      expect(JSON.stringify(authority.messages)).toContain(marker);
+      const stale = await runCliChild(root, server.endpoint, [
+        "--thread", identity.threadId, "--resume", identity.queryId, "--output", "jsonl",
+      ], `allow ${interactionId}\n`);
+      expect(stale.code).toBe(1);
+      expect(cliAuthority(root, identity).checkpoint).toEqual(authority.checkpoint);
+      expect(cliAuthority(root, identity).messages).toEqual(authority.messages);
       expect(result.stdout + result.stderr).not.toContain("controlled-cli-rotated-key");
       expect(server.requests).toHaveLength(2);
       expect(server.errors).toEqual([]);
@@ -121,6 +137,10 @@ describe.skipIf(process.platform !== "win32")("production Node CLI approval and 
         const pending = waitingQuery(waiting);
         const identity = pending.identity;
         const id = pending.interaction.interactionId;
+        const waitingState = cliAuthority(root, identity);
+        expectCliAuthority(waitingState, identity, "waiting", ["user"]);
+        expect(waitingState.checkpoint.pending?.interaction.id).toBe(id);
+        expect(waitingState.checkpoint.pending).toMatchObject({ invocation: { identity } });
         const resumed = cliChild(
           root,
           server.endpoint,
@@ -128,9 +148,16 @@ describe.skipIf(process.platform !== "win32")("production Node CLI approval and 
           "interactive",
         );
         await resumed.waitFor("stderr", /输入 choiceId interactionId/);
+        const beforeWrongAnswer = cliAuthority(root, identity);
+        expect(beforeWrongAnswer.checkpoint.status).toBe("waiting");
+        expect(beforeWrongAnswer.checkpoint.pending?.interaction.id).toBe(id);
+        expect(beforeWrongAnswer.messages).toEqual(waitingState.messages);
+        expect(beforeWrongAnswer.checkpoint.pending).toEqual(waitingState.checkpoint.pending);
         // A stale answer must not consume the stored interaction.
         resumed.child.stdin.write(`${action} stale-interaction\r`);
         await resumed.waitFor("stderr", /必须输入当前完整 interactionId/);
+        expect(cliAuthority(root, identity)).toEqual(beforeWrongAnswer);
+        expect(server.requests).toHaveLength(1);
         resumed.child.stdin.write(`${action} ${id}\r`);
         const result = await resumed.finished;
         expect(result.code).toBe(action === "cancel" ? 130 : 0);
@@ -152,6 +179,20 @@ describe.skipIf(process.platform !== "win32")("production Node CLI approval and 
           status: action === "cancel" ? "cancelled" : "completed",
           leaseReleased: true,
         });
+        const authority = cliAuthority(root, identity);
+        expect(authority.checkpoint.lastRunId).not.toBe(identity.runId);
+        expectCliAuthority(
+          authority, { ...identity, runId: authority.checkpoint.lastRunId },
+          action === "cancel" ? "cancelled" : "completed",
+          action === "cancel" ? ["user"] : ["user", "assistant", "tool", "assistant"],
+        );
+        expect(authority.messages.slice(0, waitingState.messages.length)).toEqual(waitingState.messages);
+        const stale = await runCliChild(root, server.endpoint, [
+          "--thread", identity.threadId, "--resume", identity.queryId, "--output", "jsonl",
+        ], `${action} ${id}\n`);
+        expect(stale.code).toBe(1);
+        expect(cliAuthority(root, identity).checkpoint).toEqual(authority.checkpoint);
+        expect(cliAuthority(root, identity).messages).toEqual(authority.messages);
         expect(server.requests).toHaveLength(action === "cancel" ? 1 : 2);
         expect(server.errors).toEqual([]);
       } finally {
@@ -164,9 +205,9 @@ describe.skipIf(process.platform !== "win32")("production Node CLI approval and 
 
   it("refuses changed execution bindings without consuming persistent waiting", async () => {
     const root = await mkdtemp(join(tmpdir(), "node-cli-binding-"));
-    const server = await cliSdkServer(() => ({
+    const server = await cliSdkServer(({ body }) => cliToolOutput(body) ? "restored-binding-completed" : ({
       name: "write",
-      input: { path: "unchanged.txt", content: "no", mode: "create" },
+      input: { path: "unchanged.txt", content: "restored", mode: "create" },
     }));
     try {
       await mkdir(join(root, "workspace"));
@@ -179,7 +220,9 @@ describe.skipIf(process.platform !== "win32")("production Node CLI approval and 
         "--output",
         "jsonl",
       ]);
-      const { identity } = waitingQuery(first);
+      const { identity, interaction } = waitingQuery(first);
+      const waitingState = cliAuthority(root, identity);
+      expectCliAuthority(waitingState, identity, "waiting", ["user"]);
       expect((await runCliChild(root, server.endpoint, [], "", "change-budget")).code).toBe(0);
       const resumed = await runCliChild(root, server.endpoint, [
         "--thread",
@@ -209,6 +252,22 @@ describe.skipIf(process.platform !== "win32")("production Node CLI approval and 
         code: "ENOENT",
       });
       expect(server.requests).toHaveLength(1);
+      expect(cliAuthority(root, identity)).toEqual(waitingState);
+      expect((await runCliChild(root, server.endpoint, [], "", "restore-budget")).code).toBe(0);
+      const original = cliChild(root, server.endpoint, [
+        "--thread", identity.threadId, "--resume", identity.queryId,
+      ], "interactive");
+      await original.waitFor("stderr", /输入 choiceId interactionId/);
+      original.child.stdin.write(`allow ${interaction.interactionId}\r`);
+      expect((await original.finished).code).toBe(0);
+      const authority = cliAuthority(root, identity);
+      expect(authority.checkpoint.lastRunId).not.toBe(identity.runId);
+      expectCliAuthority(authority, { ...identity, runId: authority.checkpoint.lastRunId },
+        "completed", ["user", "assistant", "tool", "assistant"]);
+      expect(authority.messages.slice(0, waitingState.messages.length)).toEqual(waitingState.messages);
+      expect(await readFile(join(root, "workspace", "unchanged.txt"), "utf8")).toBe("restored");
+      expect(server.requests).toHaveLength(2);
+      expect(server.errors).toEqual([]);
     } finally {
       await server.close();
       await rm(root, { recursive: true, force: true });

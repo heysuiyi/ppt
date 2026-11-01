@@ -14,6 +14,7 @@ import type {
   SessionHistory,
   SessionHistoryAppendResult,
 } from "@agent-harness/core/session/session-contract";
+import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
 import { describe, expect, it } from "vitest";
 import type { HostSessionBinding } from "../cli/host/host-session-binding.js";
 
@@ -34,6 +35,10 @@ interface WorkerReply {
   readonly appended?: SessionHistoryAppendResult;
   readonly binding?: HostSessionBinding | null;
   readonly ensured?: boolean;
+  readonly saves?: readonly AgentCheckpoint[];
+  readonly events?: readonly RuntimeEvent[];
+  readonly ledger?: readonly LedgerEntry[];
+  readonly unfinished?: AgentCheckpoint | null;
 }
 
 interface ProcessWorker {
@@ -41,6 +46,7 @@ interface ProcessWorker {
   readonly boundary: Promise<WorkerReply>;
   call(command: string, data?: Record<string, unknown>): Promise<WorkerReply>;
   close(): Promise<number | null>;
+  kill(): Promise<number | null>;
 }
 
 function worker(database: string): ProcessWorker {
@@ -67,7 +73,7 @@ function worker(database: string): ProcessWorker {
   }, 10000);
   child.stderr?.setEncoding("utf8");
   child.stderr?.on("data", (text: string) => {
-    stderr += text;
+    stderr = (stderr + text).slice(-8192);
   });
   // 启动/退出失败也会结束所有在途观察，测试失败时不留下悬空 Promise。
   void ready.promise.catch(() => {});
@@ -131,6 +137,11 @@ function worker(database: string): ProcessWorker {
     ready: ready.promise,
     boundary: boundary.promise,
     call,
+    async kill() {
+      // Do not disconnect or gracefully close: wait for forced death and stdio close.
+      if (!ended && !child.kill("SIGKILL")) throw new Error("Reliability worker kill failed");
+      return exited.promise;
+    },
     close() {
       closing ??= (async () => {
         const deadline = setTimeout(() => {
@@ -728,6 +739,484 @@ describe("real-process SQLite persistence competition", () => {
           state === "history-head" ? 1 : 2,
         );
       });
+    },
+    30000,
+  );
+});
+
+interface LedgerEntry {
+  readonly scenarioId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly queryId: string;
+  readonly runId: string;
+  readonly callId: string;
+  readonly phase: "execute" | "resume";
+  readonly interactionId?: string;
+  readonly pid: number;
+  readonly nonce: string;
+  readonly applied: boolean;
+}
+interface CrashCase {
+  readonly id: string;
+  readonly target:
+    | "dispatch"
+    | "consume"
+    | "completion"
+    | "effect"
+    | "append"
+    | "ack"
+    | "terminal"
+    | "acquire";
+  readonly kind: "K0" | "K1" | "effect-before-save";
+  readonly phase?: "execute" | "resume";
+  readonly effects?: "none" | "applied";
+  readonly batch?: "input" | "step:1" | "step:2";
+  readonly terminal?: "completed" | "failed" | "cancelled";
+  readonly acquireState?: "placeholder" | "waiting" | "running";
+}
+const crashCases: CrashCase[] = [];
+for (const kind of ["K0", "K1"] as const) {
+  crashCases.push({ id: "D1-1 dispatched", target: "dispatch", kind, phase: "execute" });
+  for (const phase of ["execute", "resume"] as const) {
+    for (const effects of phase === "resume" ? (["none", "applied"] as const) : (["none"] as const))
+      crashCases.push({
+        id: phase === "execute" ? "D1-2 completion" : "D1-4 completion",
+        target: "completion",
+        kind,
+        phase,
+        effects,
+      });
+  }
+  for (const effects of ["none", "applied"] as const)
+    crashCases.push({
+      id: "D1-3 consumed answer",
+      target: "consume",
+      kind,
+      phase: "resume",
+      effects,
+    });
+  for (const batch of ["input", "step:1", "step:2"] as const) {
+    for (const target of ["append", "ack"] as const)
+      crashCases.push({
+        id: target === "append" ? "D2-2 history append" : "D2-3 history acknowledgement",
+        target,
+        kind,
+        batch,
+      });
+  }
+  for (const terminal of ["completed", "failed", "cancelled"] as const)
+    crashCases.push({ id: "D2-4 terminal", target: "terminal", kind, terminal });
+  for (const acquireState of ["placeholder", "waiting", "running"] as const)
+    crashCases.push({ id: "D2-1 acquire", target: "acquire", kind, acquireState });
+}
+for (const phase of ["execute", "resume"] as const) {
+  for (const effects of phase === "resume" ? (["none", "applied"] as const) : (["none"] as const))
+    crashCases.push({
+      id: phase === "execute" ? "D1-2 effect" : "D1-4 effect",
+      target: "effect",
+      kind: "effect-before-save",
+      phase,
+      effects,
+    });
+}
+const recoveryKey = (queryId: string): CheckpointKey => ({
+  agentId: "recovery-agent",
+  threadId: "recovery-thread",
+  queryId,
+});
+const recoveryAnswer = { interactionId: "ledger-1:confirm", type: "answer", value: true };
+function completionOf(state: AgentCheckpoint) {
+  return "inflight" in state && state.inflight?.type === "tools"
+    ? state.inflight.completed.find((item) => item.invocation.call.callId === "ledger-1")
+        ?.completion
+    : undefined;
+}
+function expectHistoryPairs(history: SessionHistory, terminal: string) {
+  if (terminal !== "completed") {
+    expect(history.revision).toBe(1);
+    expect(history.messages.map((message) => message.role)).toEqual(["user"]);
+    return;
+  }
+  expect(history.revision).toBe(3);
+  expect(history.messages.map((message) => message.role)).toEqual([
+    "user",
+    "assistant",
+    "tool",
+    "assistant",
+  ]);
+  const calls = history.messages.flatMap((message) =>
+    message.content.filter((part) => part.type === "tool-call"),
+  );
+  const results = history.messages.flatMap((message) =>
+    message.content.filter((part) => part.type === "tool-result"),
+  );
+  expect(calls).toHaveLength(1);
+  expect(results).toHaveLength(1);
+  expect(calls[0]).toMatchObject({ callId: "ledger-1" });
+  expect(results[0]).toMatchObject({ callId: "ledger-1" });
+}
+
+describe("real-process recovery after forced writer death", () => {
+  it.each(crashCases)(
+    "$id $kind $phase $effects $batch $terminal $acquireState",
+    async (scenario) => {
+      const directory = await mkdtemp(join(tmpdir(), "harness-recovery-crash-"));
+      const database = join(directory, "sessions.sqlite");
+      const ledgerPath = join(directory, "effects.jsonl");
+      const queryId = "crash-query";
+      const key = recoveryKey(queryId);
+      const scenarioId = [
+        scenario.id,
+        scenario.kind,
+        scenario.phase,
+        scenario.effects,
+        scenario.batch,
+        scenario.terminal,
+        scenario.acquireState,
+      ]
+        .filter(Boolean)
+        .join(":");
+      const processes: ProcessWorker[] = [];
+      const killed = new Set<ProcessWorker>();
+      const pids = new Set<number>([process.pid]);
+      const open = async () => {
+        const instance = worker(database);
+        processes.push(instance);
+        const ready = await instance.ready;
+        expect(ready.pid).toBeTypeOf("number");
+        expect(pids.has(ready.pid as number)).toBe(false);
+        pids.add(ready.pid as number);
+        return instance;
+      };
+      const common = {
+        queryId,
+        scenarioId,
+        ledgerPath,
+        wait: scenario.phase === "resume" || scenario.acquireState === "waiting",
+        waitEffects: scenario.effects ?? "none",
+      };
+      const crash = async (
+        instance: ProcessWorker,
+        data: Record<string, unknown>,
+        phase: string,
+      ) => {
+        const running = instance.call("recovery", { ...common, ...data });
+        void running.catch(() => {});
+        const boundary = await Promise.race([
+          instance.boundary,
+          running.then((reply) => {
+            throw new Error(
+              `Worker completed before crash boundary: ${reply.error ?? reply.status}`,
+            );
+          }),
+        ]);
+        expect(boundary).toMatchObject({ phase });
+        await instance.kill();
+        killed.add(instance);
+        await expect(running).rejects.toThrow("Reliability worker closed");
+      };
+      try {
+        let doomed = await open();
+        let takeover: CheckpointLease | undefined;
+        if (scenario.acquireState === "running") {
+          await crash(
+            doomed,
+            {
+              runId: "seed-running",
+              fault: { target: "ack", kind: "K1", batchId: `${queryId}:input` },
+            },
+            "ack:K1",
+          );
+          doomed = await open();
+          const busy = await store(doomed, "acquire", { key, ownerId: "seed-probe" });
+          expect(busy.acquisition?.status).toBe("busy");
+          if (busy.acquisition?.status !== "busy") throw new Error("Expected seed owner");
+          takeover = busy.acquisition.lease;
+        } else if (common.wait) {
+          expect(await doomed.call("recovery", { ...common, runId: "seed-waiting" })).toMatchObject(
+            { status: "waiting" },
+          );
+        }
+        const batchId = scenario.batch ? `${queryId}:${scenario.batch}` : undefined;
+        await crash(
+          doomed,
+          {
+            runId: "doomed-run",
+            takeover,
+            resume:
+              scenario.phase === "resume" ||
+              scenario.acquireState === "waiting" ||
+              scenario.acquireState === "running",
+            response:
+              scenario.phase === "resume" || scenario.acquireState === "waiting"
+                ? recoveryAnswer
+                : undefined,
+            terminal: scenario.terminal,
+            fault: {
+              target: scenario.target,
+              kind: scenario.kind,
+              batchId,
+              status: scenario.target === "terminal" ? scenario.terminal : undefined,
+            },
+          },
+          `${scenario.target}:${scenario.kind}`,
+        );
+
+        // The replacement PID is created only after kill has reached close.
+        const next = await open();
+        const busy = await store(next, "inspect-store", {
+          key,
+          ownerId: "ordinary-reopen",
+          ledgerPath,
+        });
+        expect(busy.acquisition?.status).toBe("busy");
+        if (busy.acquisition?.status !== "busy")
+          throw new Error("Crash must retain the exact owner");
+        const old = busy.acquisition.lease;
+        expect(old).toMatchObject({ key, ownerId: "doomed-run" });
+        expect(
+          await next.call("recovery", {
+            ...common,
+            queryId: "forbidden-query",
+            runId: "blocked-new-query",
+          }),
+        ).toMatchObject({ error: "THREAD_PENDING", modelCalls: 0 });
+        expect(
+          await next.call("recovery", { ...common, resume: true, runId: "blocked-same-query" }),
+        ).toMatchObject({ error: "WRITER_BUSY", modelCalls: 0 });
+        const oldLedger = busy.ledger ?? [];
+        const observed = acquired(
+          await store(next, "acquire", { key, ownerId: "trusted-inspection", replace: old }),
+        );
+        expect(observed.lease.generation).toBe(old.generation + 1);
+        const saved = observed.checkpoint;
+        if (scenario.acquireState === "placeholder") {
+          expect(saved).toBeNull();
+          expect(observed.currentRevision).toBe(0);
+          expect(busy.unfinished).toBeNull();
+          expect(busy.history).toEqual({ threadId: key.threadId, revision: 0, messages: [] });
+          expect(oldLedger).toEqual([]);
+          // No input was saved: precise maintenance releases, never fabricates resume input.
+          await store(next, "release-lease", { lease: observed.lease });
+          const inspector = await open();
+          const final = await store(inspector, "inspect-store", {
+            key,
+            ownerId: "third-pid",
+            ledgerPath,
+          });
+          expect(acquired(final)).toMatchObject({
+            currentRevision: 0,
+            checkpoint: null,
+            lease: { generation: old.generation + 2 },
+          });
+          expect(final.history).toEqual(busy.history);
+          expect(final.ledger).toEqual([]);
+          return;
+        }
+        if (!saved) throw new Error("Expected authoritative checkpoint");
+        if (scenario.target === "dispatch") {
+          expect(saved).toMatchObject({
+            status: "running",
+            inflight: { type: "tools", remaining: [{ state: "dispatched" }] },
+          });
+          expect(oldLedger).toHaveLength(0);
+        }
+        const consumed =
+          scenario.target === "consume" ||
+          (scenario.target === "effect" && scenario.phase === "resume");
+        if (consumed)
+          expect(saved).toMatchObject({
+            status: "running",
+            inflight: { type: "resume", pending: { effects: common.waitEffects } },
+          });
+        if (scenario.target === "completion")
+          expect(completionOf(saved)).toMatchObject({ status: "succeeded", effects: "applied" });
+        if (scenario.target === "effect" && scenario.phase === "execute")
+          expect(saved).toMatchObject({
+            inflight: { type: "tools", remaining: [{ state: "dispatched" }] },
+          });
+        if (scenario.target === "append") {
+          expect(saved).toMatchObject({
+            status: "running",
+            inflight: { type: "history", batchId },
+          });
+          expect((busy.history as SessionHistory).revision).toBe(
+            saved.committed.historyRevision + 1,
+          );
+        }
+        if (scenario.target === "ack") {
+          expect(saved.committed.historyRevision).toBe(
+            scenario.batch === "input" ? 1 : scenario.batch === "step:1" ? 2 : 3,
+          );
+          if (scenario.kind === "K0" || scenario.batch === "step:2")
+            expect("inflight" in saved ? saved.inflight : undefined).toBeUndefined();
+          else expect(saved).toMatchObject({ inflight: { type: "model" } });
+        }
+        if (scenario.acquireState === "waiting") expect(saved.status).toBe("waiting");
+        if (scenario.acquireState === "running") expect(saved.status).toBe("running");
+        if (scenario.target === "terminal") expect(saved.status).toBe(scenario.terminal);
+        const terminal = ["completed", "failed", "cancelled"].includes(saved.status);
+        // Persist the exact authoritative payload under the replacement generation.
+        // No client-created checkpoint or altered recovery state is introduced.
+        expect(
+          await store(next, "save", {
+            lease: observed.lease,
+            expectedRevision: observed.currentRevision,
+            checkpoint: saved,
+          }),
+        ).toMatchObject({ saved: { status: "saved", revision: observed.currentRevision + 1 } });
+        // Stale precedence wins over revision conflict; old release cannot clear new owner.
+        expect(
+          await store(next, "save", { lease: old, expectedRevision: 0, checkpoint: saved }),
+        ).toMatchObject({ saved: { status: "stale" } });
+        await store(next, "release-lease", { lease: old });
+        expect(
+          await store(next, "acquire", { key, ownerId: "old-replace", replace: old }),
+        ).toMatchObject({ acquisition: { status: "stale" } });
+        expect(await store(next, "acquire", { key, ownerId: "still-owned" })).toMatchObject({
+          acquisition: { status: "busy", lease: observed.lease },
+        });
+        await store(next, "release-lease", { lease: observed.lease });
+        if (consumed)
+          expect(
+            await next.call("recovery", {
+              ...common,
+              resume: true,
+              response: recoveryAnswer,
+              runId: "stale-answer",
+            }),
+          ).toMatchObject({ error: "STALE_INTERACTION", modelCalls: 0 });
+        const recovered = await next.call("recovery", {
+          ...common,
+          resume: true,
+          runId: "recovered-run",
+          response: saved.status === "waiting" ? recoveryAnswer : undefined,
+        });
+        if (terminal) expect(recovered).toMatchObject({ error: "QUERY_TERMINAL", modelCalls: 0 });
+        else {
+          expect(recovered).toMatchObject({ status: "completed" });
+          expect(recovered.acquisition).toMatchObject({ status: "acquired", checkpoint: saved });
+          if (
+            scenario.target === "dispatch" ||
+            scenario.target === "consume" ||
+            scenario.target === "effect"
+          ) {
+            const effects =
+              scenario.phase === "resume" && scenario.effects === "applied" ? "applied" : "unknown";
+            expect(recovered.events).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  type: "tool.completed",
+                  identity: expect.objectContaining({ queryId, runId: "recovered-run" }),
+                  completion: expect.objectContaining({ status: "unknown", effects }),
+                }),
+              ]),
+            );
+            expect(
+              recovered.saves?.some(
+                (state) =>
+                  completionOf(state)?.status === "unknown" &&
+                  completionOf(state)?.effects === effects,
+              ),
+            ).toBe(true);
+          }
+        }
+        if (!terminal) {
+          // D2-6: the new Run has now actually saved, not merely acquired its generation.
+          expect(
+            await store(next, "save", { lease: old, expectedRevision: 0, checkpoint: saved }),
+          ).toMatchObject({ saved: { status: "stale" } });
+          await store(next, "release-lease", { lease: old });
+          expect(
+            await store(next, "acquire", { key, ownerId: "late-old-replace", replace: old }),
+          ).toMatchObject({ acquisition: { status: "stale" } });
+        }
+        expect(await next.call("recovery", { ...common, runId: "duplicate-run" })).toMatchObject({
+          error: "QUERY_EXISTS",
+          modelCalls: recovered.modelCalls,
+        });
+        expect(
+          await next.call("recovery", { ...common, resume: true, runId: "terminal-resume" }),
+        ).toMatchObject({ error: "QUERY_TERMINAL", modelCalls: recovered.modelCalls });
+        expect(await next.close()).toBe(0);
+        const inspector = await open();
+        const final = await store(inspector, "inspect-store", {
+          key,
+          ownerId: "third-pid",
+          ledgerPath,
+        });
+        const authoritative = acquired(final);
+        expect(authoritative.checkpoint).toMatchObject({
+          queryId,
+          status: terminal ? saved.status : "completed",
+        });
+        expect(authoritative.lease.generation).toBe(old.generation + 5 + (consumed ? 1 : 0));
+        expect(final.unfinished).toBeNull();
+        expectHistoryPairs(final.history as SessionHistory, terminal ? saved.status : "completed");
+        const entries = final.ledger ?? [];
+        const executeCount =
+          scenario.target === "dispatch" ||
+          scenario.terminal === "failed" ||
+          scenario.terminal === "cancelled"
+            ? 0
+            : 1;
+        const resumeCount =
+          scenario.phase === "resume"
+            ? scenario.target === "consume"
+              ? 0
+              : 1
+            : scenario.acquireState === "waiting"
+              ? 1
+              : 0;
+        expect(entries.filter((entry) => entry.phase === "execute")).toHaveLength(executeCount);
+        expect(entries.filter((entry) => entry.phase === "resume")).toHaveLength(resumeCount);
+        expect(new Set(entries.map((entry) => entry.nonce)).size).toBe(entries.length);
+        for (const entry of entries) {
+          expect(entry).toMatchObject({
+            scenarioId,
+            ...key,
+            callId: "ledger-1",
+            pid: expect.any(Number),
+            runId: expect.any(String),
+            nonce: expect.any(String),
+          });
+          if (entry.phase === "resume")
+            expect(entry.interactionId).toBe(recoveryAnswer.interactionId);
+        }
+        // Third-PID receipt replay proves exact stable batch/payload and no revision growth.
+        const history = final.history as SessionHistory;
+        if (history.revision === 3) {
+          const batches = [
+            { batchId: `${queryId}:input`, messages: history.messages.slice(0, 1) },
+            { batchId: `${queryId}:step:1`, messages: history.messages.slice(1, 3) },
+            { batchId: `${queryId}:step:2`, messages: history.messages.slice(3) },
+          ];
+          for (const [index, batch] of batches.entries())
+            expect(
+              await store(inspector, "append-history", {
+                threadId: key.threadId,
+                expectedRevision: index,
+                ...batch,
+              }),
+            ).toMatchObject({ appended: { status: "appended", revision: index + 1 } });
+          const again = await store(inspector, "inspect-store", {
+            key,
+            ownerId: "receipt-inspection",
+            ledgerPath,
+          });
+          expect(again.history).toEqual(history);
+          expect(again.ledger).toEqual(entries);
+          expect(acquired(again).checkpoint).toEqual(authoritative.checkpoint);
+        }
+      } finally {
+        await Promise.allSettled(
+          processes.map((instance) =>
+            killed.has(instance) ? Promise.resolve() : instance.close(),
+          ),
+        );
+        await rm(directory, { recursive: true, force: true });
+      }
     },
     30000,
   );

@@ -5,6 +5,7 @@ import {
   createAgentConfiguration,
 } from "@agent-harness/configuration/configuration";
 import { createNodeCredentialProtection } from "@agent-harness/configuration/node-credentials";
+import type { CredentialProtection } from "@agent-harness/configuration/credential-contract";
 import type { AgentRunHandle } from "@agent-harness/core/agent-contract";
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { InteractionRequest } from "@agent-harness/core/protocol-values";
@@ -17,9 +18,10 @@ import type {
   TerminalHostContext,
   TerminalHostOpenOptions,
   TerminalHostSession,
+  TerminalSetupIO,
   TerminalToolsMode,
 } from "./host-contract.js";
-import { configuredModels } from "./model-catalog.js";
+import { type ConfiguredModelItem, configuredModels } from "./model-catalog.js";
 import { ensureConfiguredModel } from "./model-setup.js";
 import { listHostSessions } from "./session-directory.js";
 import { parseWorkspaceApproval } from "./workspace-configuration.js";
@@ -27,6 +29,7 @@ import { parseWorkspaceApproval } from "./workspace-configuration.js";
 /** 显式依赖注入仅供真实宿主集成；生产入口不从环境或命令行启用替身。 */
 export interface NodeHostIntegrationOptions extends NodeHostOptions {
   readonly configuration?: AgentConfiguration;
+  readonly credentialProtection?: CredentialProtection;
   readonly createProvider?: typeof createModelProvider;
   readonly requireReadApproval?: boolean;
 }
@@ -37,7 +40,8 @@ export function createNodeHost(options: NodeHostIntegrationOptions): TerminalHos
   const dataRoot = resolve(options.dataRoot);
   const workspacePath = resolve(options.workspaceRoot);
   const lifetime = new AbortController();
-  const protection = createNodeCredentialProtection({ signal: lifetime.signal });
+  const protection =
+    options.credentialProtection ?? createNodeCredentialProtection({ signal: lifetime.signal });
   const configuration =
     options.configuration ??
     createAgentConfiguration({
@@ -110,24 +114,31 @@ export function createNodeHost(options: NodeHostIntegrationOptions): TerminalHos
     signal?: AbortSignal,
   ) {
     const activationSignal = signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal;
-    const model = (await catalog()).find(
-      (entry) => entry.id === modelId && entry.status === "ready",
-    );
-    if (!model)
-      throw new AgentError("CLI_MODEL_UNAVAILABLE", "所选模型没有就绪的受支持连接与凭据。");
-    activationSignal.throwIfAborted();
-    const opened = await createAgentHost({
-      configuration: configuration.runtime,
-      applicationDataRoot: dataRoot,
-      workspaceRoot: await canonicalWorkspace(),
-      modelId,
-      threadId,
-      toolMode: toolsMode,
-      resume,
-      requireReadApproval,
-      ...(createProvider ? { createProvider } : {}),
-      signal: activationSignal,
-    });
+    let model: ConfiguredModelItem | undefined;
+    let opened: AgentHost;
+    try {
+      model = (await catalog()).find((entry) => entry.id === modelId && entry.status === "ready");
+      if (!model)
+        throw new AgentError("CLI_MODEL_UNAVAILABLE", "所选模型没有就绪的受支持连接与凭据。");
+      activationSignal.throwIfAborted();
+      opened = await createAgentHost({
+        configuration: configuration.runtime,
+        applicationDataRoot: dataRoot,
+        workspaceRoot: await canonicalWorkspace(),
+        modelId,
+        threadId,
+        toolMode: toolsMode,
+        resume,
+        requireReadApproval,
+        ...(createProvider ? { createProvider } : {}),
+        signal: activationSignal,
+      });
+    } catch (error) {
+      // 只有旧宿主尚未开始关闭时，终端才可安全继续使用原绑定。
+      if (current && !closing)
+        throw new AgentError("HOST_SWITCH_REJECTED", "目标会话未能就绪；当前模型与会话保持不变。");
+      throw error;
+    }
     try {
       await current?.close();
     } catch {
@@ -147,7 +158,13 @@ export function createNodeHost(options: NodeHostIntegrationOptions): TerminalHos
       dataRoot,
       workspaceRoot: opened.binding.workspaceRoot,
       threadId,
-      model: Object.freeze({ id: model.id, label: model.label }),
+      model: Object.freeze({
+        id: model.id,
+        label: model.label,
+        vendor: model.vendor ? Object.freeze({ ...model.vendor }) : undefined,
+        modelName: model.modelName,
+        availability: model.availability,
+      }),
       toolsMode,
     });
   }
@@ -189,6 +206,29 @@ export function createNodeHost(options: NodeHostIntegrationOptions): TerminalHos
       return await Promise.race([operation(), interruption.promise]);
     } finally {
       signal.removeEventListener("abort", aborted);
+    }
+  }
+  async function configureModel(setup: TerminalSetupIO, signal: AbortSignal) {
+    try {
+      return await ensureConfiguredModel(
+        configuration.management,
+        {
+          select: (title, items) => setupInput(() => setup.select(title, items), signal),
+          secret: (prompt) => setupInput(() => setup.secret(prompt), signal),
+          text: (prompt) => setupInput(() => setup.text(prompt), signal),
+          notify: (message) => setupInput(() => setup.notify(message), signal),
+          protection,
+          signal,
+        },
+        true,
+      );
+    } catch (error) {
+      signal.throwIfAborted();
+      if (error instanceof AgentError && error.code === "CLI_MODEL_SETUP_FAILED") throw error;
+      throw new AgentError(
+        "CLI_MODEL_SETUP_FAILED",
+        "模型配置未完成；已保存的配置保留，当前模型与会话保持不变。",
+      );
     }
   }
 
@@ -241,15 +281,7 @@ export function createNodeHost(options: NodeHostIntegrationOptions): TerminalHos
               "CLI_MODEL_SETUP_REQUIRED",
               "没有可用的 CLI 默认模型；请在安全交互终端完成配置。",
             );
-          modelId = await ensureConfiguredModel(configuration.management, {
-            select: (title, items) =>
-              setupInput(() => openOptions.setup!.select(title, items), signal),
-            secret: (prompt) => setupInput(() => openOptions.setup!.secret(prompt), signal),
-            text: (prompt) => setupInput(() => openOptions.setup!.text(prompt), signal),
-            notify: (message) => setupInput(() => openOptions.setup!.notify(message), signal),
-            protection,
-            signal,
-          });
+          modelId = await configureModel(openOptions.setup, signal);
           if (!modelId) throw new AgentError("CLI_SETUP_CANCELLED", "模型设置已取消。");
         }
         await install(modelId, openOptions.toolsMode ?? "read-only", randomUUID(), false, signal);
@@ -257,9 +289,27 @@ export function createNodeHost(options: NodeHostIntegrationOptions): TerminalHos
     },
     async models() {
       if (closing) throw new AgentError("HOST_CLOSED", "Node 宿主已经关闭。");
-      return (await catalog())
-        .filter((entry) => entry.status === "ready")
-        .map(({ id, label }) => ({ id, label }));
+      return (await catalog()).map(({ id, label, vendor, modelName, availability }) => ({
+        id,
+        label,
+        vendor,
+        modelName,
+        availability,
+      }));
+    },
+    configureModel(setup) {
+      return exclusive(async () => {
+        ensureOpen();
+        try {
+          return await configureModel(setup, lifetime.signal);
+        } catch {
+          lifetime.signal.throwIfAborted();
+          throw new AgentError(
+            "HOST_CONFIGURATION_REJECTED",
+            "模型配置未完成；已保存的配置保留，当前模型与会话保持不变。",
+          );
+        }
+      });
     },
     async sessions() {
       if (closing) throw new AgentError("HOST_CLOSED", "Node 宿主已经关闭。");

@@ -15,15 +15,23 @@ export interface TerminalSelectorView {
   readonly query: string;
   readonly items: readonly TerminalSelectionItem[];
   readonly selectedId: string | null;
+  readonly navigation?: {
+    readonly groups: readonly TerminalSelectionItem[];
+    readonly selectedGroupId: string;
+    readonly pane: "groups" | "models";
+    readonly action: TerminalSelectionItem;
+  };
 }
 
 export interface TerminalView {
   readonly phase: TerminalPhase;
+  readonly activity?: string;
   readonly composer: TerminalComposerState;
   readonly context?: {
     readonly workspace: string;
     readonly threadId: string;
     readonly model: string;
+    readonly modelStatus?: string;
     readonly capabilities: string;
   };
   readonly selector?: TerminalSelectorView;

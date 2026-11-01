@@ -15,6 +15,7 @@ import type {
 import type { Disposable } from "@agent-harness/core/protocol-values";
 import type { CheckpointStore } from "@agent-harness/core/session/checkpoint-contract";
 import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
+import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
 import { createSessionHost } from "@agent-harness/core/session-host";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -1370,5 +1371,107 @@ describe("general Agent execution and recovery", () => {
           await observed;
         }
       }),
+  );
+});
+
+describe("execution and lease release failures", () => {
+  it.each(
+    (["success", "persistence", "fenced"] as const).flatMap((execution) =>
+      (["before", "after"] as const).map((release) => ({ execution, release })),
+    ),
+  )("preserves $execution with release rejection $release commit", async ({ execution, release }) =>
+    fixture(async (directory, own) => {
+      const database = join(directory, "release.sqlite");
+      const stores = own(createSqliteAgentStores(database));
+      const releaseError = new Error("Native cleanup detail must stay internal");
+      let modelCalls = 0;
+      let lease: Parameters<CheckpointStore["release"]>[0] | undefined;
+      let replacement: Parameters<CheckpointStore["release"]>[0] | undefined;
+      const checkpoints: CheckpointStore = {
+        findUnfinished: (...args) => stores.checkpoints.findUnfinished(...args),
+        acquire: (...args) => stores.checkpoints.acquire(...args),
+        async save(current, revision, state) {
+          lease = current;
+          if (execution === "persistence") throw new Error("Checkpoint unavailable");
+          if (execution === "fenced") {
+            const next = await stores.checkpoints.acquire(current.key, "replacement", {
+              replace: current,
+            });
+            expect(next.status).toBe("acquired");
+            if (next.status !== "acquired") throw new Error("Replacement did not acquire");
+            replacement = next.lease;
+          }
+          return stores.checkpoints.save(current, revision, state);
+        },
+        async release(current) {
+          if (release === "after") await stores.checkpoints.release(current);
+          throw releaseError;
+        },
+      };
+      const app = own(
+        createAgentApplication(
+          services(
+            stores,
+            models(() => {
+              modelCalls += 1;
+              return answer("finished");
+            }),
+            checkpoints,
+          ),
+        ),
+      );
+      const agent = own(await app.agents.create(options([])));
+      const handle = await agent.run(input("query", "run-1"));
+      const error: unknown = await handle.completed.then(
+        () => {
+          throw new Error("Release rejection must reject completed");
+        },
+        (reason: unknown) => reason,
+      );
+      // E1-6：事后排空观察仍可能看见成功 fact；它不能取代已拒绝的 completed。
+      const observed: RuntimeEvent[] = [];
+      for await (const event of handle.events) {
+        expect(event.identity).toEqual(handle.identity);
+        observed.push(event);
+      }
+      expect(observed.filter((event) => event.type === "run.completed")).toHaveLength(
+        execution === "success" ? 1 : 0,
+      );
+      expect(observed.some((event) => event.type === "run.failed")).toBe(false);
+      if (execution === "success") expect(error).toBe(releaseError);
+      else {
+        expect(error).toBeInstanceOf(AggregateError);
+        expect((error as AggregateError).errors).toEqual([
+          expect.objectContaining({
+            code: execution === "persistence" ? "PERSISTENCE_FAILED" : "CHECKPOINT_CONFLICT",
+          }),
+          releaseError,
+        ]);
+      }
+      expect(modelCalls).toBe(execution === "success" ? 1 : 0);
+      const reader = new DatabaseSync(database, { readOnly: true });
+      try {
+        const row = reader
+          .prepare("SELECT owner_id, generation, payload FROM general_agent_checkpoints")
+          .get() as { owner_id: string | null; generation: number; payload: string | null };
+        expect(row.owner_id).toBe(
+          execution === "fenced" ? "replacement" : release === "before" ? "run-1" : null,
+        );
+        expect(row.generation).toBe(execution === "fenced" ? 2 : 1);
+        if (execution === "success") {
+          expect(JSON.parse(row.payload!)).toMatchObject({ status: "completed" });
+          expect(
+            (await stores.history.read("thread")).messages.map((message) => message.role),
+          ).toEqual(["user", "assistant"]);
+        } else {
+          expect(row.payload).toBeNull();
+          expect(await stores.history.read("thread")).toMatchObject({ revision: 0, messages: [] });
+        }
+      } finally {
+        reader.close();
+        if (replacement) await stores.checkpoints.release(replacement);
+        else if (lease) await stores.checkpoints.release(lease);
+      }
+    }),
   );
 });

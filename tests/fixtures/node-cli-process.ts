@@ -2,6 +2,8 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { expect } from "vitest";
 import { z } from "zod";
 
 export interface CliProcessResult {
@@ -125,6 +127,89 @@ export function waitingQuery(result: CliProcessResult) {
   return querySchema
     .extend({ status: z.literal("waiting"), interaction: z.object({ interactionId: z.string() }) })
     .parse(jsonlRecords(result).find((record) => record.type === "query.result"));
+}
+
+const storedMessage = z.object({
+  role: z.string(),
+  content: z.array(z.object({
+    type: z.string(),
+    callId: z.string().optional(),
+  }).passthrough()),
+}).passthrough();
+
+export interface CliAuthority {
+  row: { agent_id: string; owner_id: string | null; revision: number; payload: string };
+  checkpoint: {
+    agentId: string; threadId: string; queryId: string; lastRunId: string; status: string;
+    committed: { historyRevision: number; messages: z.infer<typeof storedMessage>[] };
+    pending?: { interaction: { id: string } };
+  };
+  history: { revision: number };
+  batches: { batch_id: string; revision: number; payload: string }[];
+  messages: z.infer<typeof storedMessage>[];
+  binding: unknown;
+}
+
+/** Parent-only authority inspection; never serialized into CLI output. */
+export function cliAuthority(root: string, identity: { threadId: string; queryId: string }): CliAuthority {
+  const database = new DatabaseSync(join(root, "data", "sessions.sqlite"), { readOnly: true });
+  try {
+    const row = z.object({
+      agent_id: z.string(), owner_id: z.string().nullable(), revision: z.number(),
+      payload: z.string(),
+    }).passthrough().parse(database.prepare(
+      "SELECT * FROM general_agent_checkpoints WHERE thread_id = ? AND query_id = ?",
+    ).get(identity.threadId, identity.queryId));
+    const checkpoint = z.object({
+      agentId: z.string(), threadId: z.string(), queryId: z.string(), lastRunId: z.string(),
+      status: z.string(),
+      committed: z.object({ historyRevision: z.number(), messages: z.array(storedMessage) }),
+      pending: z.object({ interaction: z.object({ id: z.string() }) }).passthrough().optional(),
+    }).passthrough().parse(JSON.parse(row.payload));
+    const history = z.object({ revision: z.number() }).parse(database.prepare(
+      "SELECT revision FROM general_agent_history WHERE thread_id = ?",
+    ).get(identity.threadId));
+    const batches = database.prepare(
+      "SELECT batch_id, revision, payload FROM general_agent_history_batches WHERE thread_id = ? ORDER BY revision",
+    ).all(identity.threadId).map((value) => z.object({
+      batch_id: z.string(), revision: z.number(), payload: z.string(),
+    }).parse(value));
+    const messages = batches.flatMap((batch) => z.array(storedMessage).parse(JSON.parse(batch.payload)));
+    const binding = database.prepare(
+      "SELECT payload FROM general_agent_host_bindings WHERE thread_id = ?",
+    ).get(identity.threadId);
+    return { row, checkpoint, history, batches, messages, binding };
+  } finally {
+    database.close();
+  }
+}
+
+export function expectCliAuthority(
+  state: CliAuthority,
+  identity: { agentId: string; threadId: string; queryId: string; runId: string },
+  status: string,
+  roles: readonly string[],
+) {
+  expect(state.row.owner_id).toBeNull();
+  expect(state.row.revision).toBeGreaterThan(0);
+  expect(state.checkpoint).toMatchObject({
+    agentId: identity.agentId, threadId: identity.threadId, queryId: identity.queryId,
+    lastRunId: identity.runId, status,
+  });
+  expect(state.row.agent_id).toBe(identity.agentId);
+  expect(state.history.revision).toBe(state.checkpoint.committed.historyRevision);
+  expect(state.messages).toEqual(state.checkpoint.committed.messages);
+  expect(state.messages.map((message) => message.role)).toEqual(roles);
+  expect(state.batches.map((batch) => batch.revision)).toEqual(
+    Array.from({ length: state.history.revision }, (_, index) => index + 1),
+  );
+  expect(new Set(state.batches.map((batch) => batch.batch_id)).size).toBe(state.batches.length);
+  const contents = state.messages.flatMap((message) => message.content);
+  const calls = contents.filter((content) => content.type === "tool-call").map((call) => call.callId);
+  const results = contents.filter((content) => content.type === "tool-result").map((result) => result.callId);
+  expect(results).toEqual(calls);
+  expect(new Set(calls).size).toBe(calls.length);
+  if (status !== "waiting") expect(state.checkpoint.pending).toBeUndefined();
 }
 export function cliToolOutput(body: Record<string, unknown>): Record<string, unknown> | undefined {
   const input = z

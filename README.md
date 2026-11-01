@@ -310,7 +310,8 @@ npm.cmd run agent -- --thread "<threadId>" --resume "<queryId>"
 
 | 命令 | 行为 |
 | --- | --- |
-| `/model`、`/new` | 选择真实已配置模型或创建会话；明确确认，新建绑定而非迁移旧 Query |
+| `/model`、Alt+M | 搜索模型，标记并定位当前项，显示本地配置就绪或不可用原因；同项不新建会话，更换需确认新绑定，不迁移旧 Query |
+| `/new` | 明确确认后创建新会话 |
 | `/resume` | 查询当前工作区的权威会话目录并恢复；原连接/定义/权限/预算不匹配则拒绝 |
 | `/tools` | 选择无插件、只读或读写；确认后新建会话，不改变旧绑定 |
 | `/tools-output`、Ctrl+O | 选择/展开安全工具元数据，status/effects 分列；不 dump 输入、结果或私有展示载荷 |
@@ -318,6 +319,8 @@ npm.cmd run agent -- --thread "<threadId>" --resume "<queryId>"
 | `/paste`、`/exit` | 显式多行后备；独立行 `/end` 提交，`//end` 为正文；退出保留 waiting |
 
 交互是 inline TUI，不使用备用屏幕，不清空滚动历史；模型文本增量只进入临时 viewport，权威完成结果结算一次。Composer 支持多行、中文/emoji 字素编辑、Alt+Enter、整块 bracketed paste；运行中可以编辑但不能提交或排队。命令补全只接受候选，不顺便发送；Esc 先关闭局部 UI，Ctrl+C 清草稿或取消当前 Query，空草稿 Ctrl+D 正常退出。`NO_COLOR`/`--no-color` 只关颜色；无必要 TTY、TERM=dumb 或尺寸不足降级 plain。
+
+页面将输入框、选择面板和底部状态分层；状态栏分别显示模型、本地配置状态、执行/切换活动及工作区/会话/工具信息。选择器显示位置与滚动提示，搜索或确认期间不提示可发送；取消保留原草稿和绑定。模型不可用项可查看原因但不能激活；“配置就绪”仅反映本地配置与凭据条件，不表示已联网、鉴权通过或额度充足。
 
 默认只读安装 read/glob/grep，并由宿主允许读取；读写再安装 write/edit，写入逐次要求明确选择与完整 interactionId。plain 回答格式为 `allow <interactionId>`、`reject <interactionId>`、`cancel <interactionId>`，`exit` 保留等待；未知载荷不能猜回答。工具继续校验工作区、路径、UTF-8、大小、完整读取与版本，审批不替代这些边界。
 

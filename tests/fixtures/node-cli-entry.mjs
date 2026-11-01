@@ -1,5 +1,7 @@
+import { once } from "node:events";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { Writable } from "node:stream";
 import { getModelProfile } from "@agent-harness/models/model-profiles";
 
 const profile = getModelProfile("mimo-token-plan-cn");
@@ -83,7 +85,7 @@ if (mode === "seed") {
   } finally {
     database.close();
   }
-} else if (mode === "rotate-key" || mode === "change-budget") {
+} else if (mode === "rotate-key" || mode === "change-budget" || mode === "restore-budget") {
   const snapshot = await configuration.management.getSnapshot();
   if (!snapshot) throw new Error("Expected configuration");
   if (mode === "rotate-key")
@@ -95,20 +97,34 @@ if (mode === "seed") {
     const { vendors: _vendors, cli: _cli, ...preferences } = snapshot.settings;
     await configuration.management.savePreferences({
       ...preferences,
-      gateway: { ...preferences.gateway, maxOutputTokens: 2048 },
+      gateway: {
+        ...preferences.gateway,
+        maxOutputTokens: mode === "restore-budget" ? 1024 : 2048,
+      },
     });
   }
   console.log(JSON.stringify({ updated: true }));
 } else {
+  const activated = Promise.withResolvers();
   const ports = {
     environment: { ...process.env, AGENT_HARNESS_CLI_DATA_DIR: root },
     workspaceRoot: process.env.CLI_TEST_WORKSPACE,
-    createHost: (options) =>
-      createNodeHost({
+    createHost: (options) => {
+      const host = createNodeHost({
         ...options,
         configuration,
         requireReadApproval: process.env.CLI_TEST_REQUIRE_READ === "1",
-      }),
+      });
+      if (mode === "slow-output") {
+        const run = host.run.bind(host);
+        host.run = async (text) => {
+          const handle = await run(text);
+          activated.resolve(handle);
+          return handle;
+        };
+      }
+      return host;
+    },
   };
   if (mode === "interactive") {
     // Controlled raw/plain owner for process/approval regression, NOT PTY evidence.
@@ -122,5 +138,61 @@ if (mode === "seed") {
     Object.defineProperty(process.stderr, "columns", { value: 80 });
     Object.defineProperty(process.stderr, "rows", { value: 24 });
   }
-  process.exitCode = await runCli(process.argv.slice(3), ports);
+  if (mode === "slow-output") {
+    const paused = Promise.withResolvers();
+    let flush;
+    let callbackPending = false;
+    const output = new Writable({
+      write(chunk, encoding, callback) {
+        const record = JSON.parse(chunk.toString());
+        if (record.type === "progress" && record.phase === "run.started") {
+          callbackPending = true;
+          flush = () => {
+            callbackPending = false;
+            process.stdout.write(chunk, encoding, callback);
+          };
+          paused.resolve();
+        } else process.stdout.write(chunk, encoding, callback);
+      },
+    });
+    let cliSettled = false;
+    const running = runCli(process.argv.slice(3), { ...ports, output }).finally(() => {
+      cliSettled = true;
+    });
+    await paused.promise;
+    const handle = await activated.promise;
+    const result = await handle.completed;
+    const database = new DatabaseSync(join(root, "sessions.sqlite"), { readOnly: true });
+    let checkpoint;
+    let leaseReleased;
+    try {
+      const row = database
+        .prepare(
+          "SELECT payload, owner_id FROM general_agent_checkpoints WHERE thread_id = ? AND query_id = ?",
+        )
+        .get(handle.identity.threadId, handle.identity.queryId);
+      if (!row) throw new Error("Expected slow-output checkpoint");
+      checkpoint = JSON.parse(row.payload);
+      leaseReleased = row.owner_id === null;
+    } finally {
+      database.close();
+    }
+    const release = once(process.stdin, "data");
+    process.stderr.write(
+      `${JSON.stringify({
+        type: "slow-output.observation",
+        identity: handle.identity,
+        completedStatus: result.status,
+        checkpointStatus: checkpoint.status,
+        checkpointRunId: checkpoint.lastRunId,
+        leaseReleased,
+        cliSettled,
+        callbackPending,
+      })}\n`,
+    );
+    const [command] = await release;
+    if (command.toString() !== "flush\n") throw new Error("Expected slow-output flush command");
+    flush();
+    process.exitCode = await running;
+  } else process.exitCode = await runCli(process.argv.slice(3), ports);
 }

@@ -9,6 +9,13 @@ interface TerminalRecordBase {
 export interface TerminalModelItem {
   readonly id: string;
   readonly label: string;
+  readonly vendor?: { readonly id: string; readonly label: string };
+  readonly modelName?: string;
+  /** 仅表示本地配置与凭据就绪，不代表已连接远程服务。 */
+  readonly availability?: {
+    readonly state: "ready" | "unavailable";
+    readonly reason: string;
+  };
 }
 
 export interface TerminalCapabilityItem {
@@ -321,7 +328,7 @@ export type TerminalLocalCommand =
   | "paste"
   | "exit"
   | "tools-output";
-export type TerminalHostCommand = "new" | "model" | "resume" | "tools";
+export type TerminalHostCommand = "new" | "model" | "connect" | "resume" | "tools";
 
 export type TerminalCommandDefinition =
   | { readonly name: TerminalLocalCommand; readonly availability: "local" }

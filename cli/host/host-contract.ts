@@ -31,7 +31,7 @@ export interface TerminalHostSession extends TerminalSelectionItem {
   };
 }
 
-/** 初始化交互借用终端唯一输入 owner；不向终端传递完整配置对象。 */
+/** 配置交互借用终端唯一输入 owner；不向终端传递完整配置对象。 */
 export interface TerminalSetupIO {
   select(title: string, items: readonly TerminalSelectionItem[]): Promise<string | undefined>;
   secret(prompt: string): Promise<string | undefined>;
@@ -51,6 +51,8 @@ export interface TerminalHost {
   readonly context: TerminalHostContext;
   open(options: TerminalHostOpenOptions): Promise<void>;
   models(): Promise<readonly TerminalModelItem[]>;
+  /** 保存连接与 CLI 默认模型；不改变当前会话绑定，取消返回 undefined。 */
+  configureModel(setup: TerminalSetupIO): Promise<string | undefined>;
   sessions(): Promise<readonly TerminalHostSession[]>;
   newSession(options?: {
     readonly modelId?: string;

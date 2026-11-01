@@ -294,118 +294,136 @@ export async function executeRun(
       "Query writer is not available",
     );
   let session: CheckpointSession | undefined;
-  try {
-    env.signal.throwIfAborted();
-    if (request.kind === "run") {
-      if (acquired.checkpoint)
-        throw new AgentError("QUERY_EXISTS", "Query identity has already been used");
-      const history = await env.history.read(key.threadId);
-      const state: AgentCheckpoint = {
-        schemaVersion: 1,
-        ...key,
-        lastRunId: env.identity.runId,
-        definition: { id: env.definition.id, version: env.definition.version },
-        plugins: snapshot(env.plugins),
-        model: snapshot(env.model.selection),
-        maxSteps: env.maxSteps,
-        committed: {
-          historyRevision: history.revision,
-          messages: snapshot(history.messages),
-          step: 0,
-        },
-        startMessageCount: history.messages.length,
-        extensions: [],
-        status: "running",
-        inflight: {
-          type: "history",
-          batchId: `${key.queryId}:input`,
-          messages: snapshot(request.input.input),
-          step: 0,
-          terminal: false,
-        },
-      };
-      session = new CheckpointSession(
-        acquired.lease,
-        acquired.currentRevision,
-        state,
-        env.checkpoints,
-        env.history,
-      );
-      await session.save(state);
-      env.emit({ identity: env.identity, kind: "fact", type: "run.started" });
-    } else {
-      if (!acquired.checkpoint)
-        throw new AgentError("QUERY_NOT_FOUND", "No checkpoint exists for this query");
-      const saved = snapshot(acquired.checkpoint);
-      validateResume(saved, env);
-      if (
-        request.input.response &&
-        (saved.status !== "waiting" ||
-          saved.pending.interaction.id !== request.input.response.interactionId)
-      )
-        throw new AgentError(
-          "STALE_INTERACTION",
-          "Response is not for the stored pending interaction",
+  const execute = async (): Promise<AgentRunResult> => {
+    try {
+      env.signal.throwIfAborted();
+      if (request.kind === "run") {
+        if (acquired.checkpoint)
+          throw new AgentError("QUERY_EXISTS", "Query identity has already been used");
+        const history = await env.history.read(key.threadId);
+        const state: AgentCheckpoint = {
+          schemaVersion: 1,
+          ...key,
+          lastRunId: env.identity.runId,
+          definition: { id: env.definition.id, version: env.definition.version },
+          plugins: snapshot(env.plugins),
+          model: snapshot(env.model.selection),
+          maxSteps: env.maxSteps,
+          committed: {
+            historyRevision: history.revision,
+            messages: snapshot(history.messages),
+            step: 0,
+          },
+          startMessageCount: history.messages.length,
+          extensions: [],
+          status: "running",
+          inflight: {
+            type: "history",
+            batchId: `${key.queryId}:input`,
+            messages: snapshot(request.input.input),
+            step: 0,
+            terminal: false,
+          },
+        };
+        session = new CheckpointSession(
+          acquired.lease,
+          acquired.currentRevision,
+          state,
+          env.checkpoints,
+          env.history,
         );
-      const state: AgentCheckpoint =
-        saved.status === "waiting"
-          ? { ...saved, lastRunId: env.identity.runId }
-          : {
-              ...running(saved, "inflight" in saved ? saved.inflight : undefined),
-              lastRunId: env.identity.runId,
-            };
-      session = new CheckpointSession(
-        acquired.lease,
-        acquired.currentRevision,
-        state,
-        env.checkpoints,
-        env.history,
-      );
-      // 先对账已有历史追加意图，再核对前缀，避免已提交但未确认的追加重复。
-      await session.reconcileHistory();
-      await session.verifyHistory();
-      await session.save(session.state);
-      env.emit({ identity: env.identity, kind: "fact", type: "run.started" });
-      if (request.input.response) await resumeTool(session, env, snapshot(request.input.response));
-    }
-    await drive(session, env);
-    const result = resultOf(session, env);
-    emitResult(result, env);
-    return result;
-  } catch (error) {
-    if (!session) {
-      if (env.signal.aborted) return cancelledBeforeStart();
-      throw error;
-    }
-    // 落盘结果不确定或写权限已丢失时，不得用当前内存状态覆盖持久断点。
-    if (
-      error instanceof AgentError &&
-      ["PERSISTENCE_FAILED", "CHECKPOINT_CONFLICT", "HISTORY_CONFLICT"].includes(error.code)
-    )
-      throw error;
-    const state = session.state;
-    if (state.status === "waiting") {
-      if (!env.signal.aborted) throw error;
+        await session.save(state);
+        env.emit({ identity: env.identity, kind: "fact", type: "run.started" });
+      } else {
+        if (!acquired.checkpoint)
+          throw new AgentError("QUERY_NOT_FOUND", "No checkpoint exists for this query");
+        const saved = snapshot(acquired.checkpoint);
+        validateResume(saved, env);
+        if (
+          request.input.response &&
+          (saved.status !== "waiting" ||
+            saved.pending.interaction.id !== request.input.response.interactionId)
+        )
+          throw new AgentError(
+            "STALE_INTERACTION",
+            "Response is not for the stored pending interaction",
+          );
+        const state: AgentCheckpoint =
+          saved.status === "waiting"
+            ? { ...saved, lastRunId: env.identity.runId }
+            : {
+                ...running(saved, "inflight" in saved ? saved.inflight : undefined),
+                lastRunId: env.identity.runId,
+              };
+        session = new CheckpointSession(
+          acquired.lease,
+          acquired.currentRevision,
+          state,
+          env.checkpoints,
+          env.history,
+        );
+        // 先对账已有历史追加意图，再核对前缀，避免已提交但未确认的追加重复。
+        await session.reconcileHistory();
+        await session.verifyHistory();
+        await session.save(session.state);
+        env.emit({ identity: env.identity, kind: "fact", type: "run.started" });
+        if (request.input.response)
+          await resumeTool(session, env, snapshot(request.input.response));
+      }
+      await drive(session, env);
+      const result = resultOf(session, env);
+      emitResult(result, env);
+      return result;
+    } catch (error) {
+      if (!session) {
+        if (env.signal.aborted) return cancelledBeforeStart();
+        throw error;
+      }
+      // 落盘结果不确定或写权限已丢失时，不得用当前内存状态覆盖持久断点。
+      if (
+        error instanceof AgentError &&
+        ["PERSISTENCE_FAILED", "CHECKPOINT_CONFLICT", "HISTORY_CONFLICT"].includes(error.code)
+      )
+        throw error;
+      const state = session.state;
+      if (state.status === "waiting") {
+        if (!env.signal.aborted) throw error;
+        const result = resultOf(session, env);
+        emitResult(result, env);
+        return result;
+      }
+      const inflight = "inflight" in state ? state.inflight : undefined;
+      if (env.signal.aborted) {
+        const status = env.isInterrupted() ? "interrupted" : "cancelled";
+        await session.save({ ...checkpointData(state), status, ...(inflight ? { inflight } : {}) });
+      } else {
+        await session.save({
+          ...checkpointData(state),
+          status: "failed",
+          error: asProtocolError(error),
+          ...(inflight ? { inflight } : {}),
+        });
+      }
       const result = resultOf(session, env);
       emitResult(result, env);
       return result;
     }
-    const inflight = "inflight" in state ? state.inflight : undefined;
-    if (env.signal.aborted) {
-      const status = env.isInterrupted() ? "interrupted" : "cancelled";
-      await session.save({ ...checkpointData(state), status, ...(inflight ? { inflight } : {}) });
-    } else {
-      await session.save({
-        ...checkpointData(state),
-        status: "failed",
-        error: asProtocolError(error),
-        ...(inflight ? { inflight } : {}),
-      });
-    }
-    const result = resultOf(session, env);
-    emitResult(result, env);
-    return result;
-  } finally {
-    await env.checkpoints.release(acquired.lease);
+  };
+  let result: AgentRunResult | undefined;
+  const failures: unknown[] = [];
+  try {
+    result = await execute();
+  } catch (error) {
+    failures.push(error);
   }
+  try {
+    await env.checkpoints.release(acquired.lease);
+  } catch (error) {
+    failures.push(error);
+  }
+  // 清理失败不能覆盖执行的持久化/围栏错误，也不能被终态成功掩盖。
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(failures, "Execution and checkpoint release failed");
+  return result!;
 }

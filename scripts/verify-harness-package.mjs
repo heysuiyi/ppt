@@ -263,10 +263,13 @@ const textResponse = (text: string): ModelResponse => ({ message: { role: "assis
 const input = [{ role: "user" as const, content: [{ type: "text" as const, text: "hello" }] }];
 async function finish(handle: AgentRunHandle): Promise<AgentRunResult> {
   const events: RuntimeEvent[] = [];
-  const consume = (async () => { for await (const event of handle.events) events.push(event); })();
   const result = await handle.completed;
-  await consume;
-  check(events.some((event) => event.kind === "fact" && event.type === "run." + result.status && event.identity.runId === result.identity.runId), "Native Node event stream must report the authoritative run boundary");
+  // The installed package must finish without observation, then retain its finite queue.
+  for await (const event of handle.events) {
+    equal(event.identity, handle.identity, "Native Node events must retain the full Run identity");
+    events.push(event);
+  }
+  check(events.filter((event) => event.kind === "fact" && event.type === "run." + result.status).length === 1, "Native Node post-completion drain must retain one terminal fact");
   return result;
 }
 
@@ -449,7 +452,7 @@ check(admitted.status === "acquired" && admitted.lease.generation === 2, "Termin
 await admission.release(admitted.lease);
 
 console.log(JSON.stringify({
-  nativeNode: true, plainConversation: true, zodSchema: true,
+  nativeNode: true, plainConversation: true, postCompletionDrain: true, fullEventIdentity: true, zodSchema: true,
   approvalWaitingResume: true, rejectionWithoutEffects: true, policyDenialWithoutEffects: true,
   schemaValidationBeforeAuthorization: true, borrowedHistoryAfterClose: true,
   publicAgentErrorIdentity: true, protocolErrorConversion: true,

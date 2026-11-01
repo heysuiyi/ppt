@@ -326,4 +326,4 @@ P1/P2 交付时，完整 M3-C1/C3 与 D/E 尚未完成；后续 C1/C3 的新增�
 
 [M3-C 第 12 节](m3-c-persistence.md#12-c1c3-增量实施与验收记录)记录本轮新增 C1/C3：复用 P1 的分层与 P2 的原子 acquire，扩展现有真实 PID 夹具验证直接存储竞争、第三进程重开及 binding 跨表不收养；真实 waiting 的定义/插件/模型/工具/宿主兼容拒绝均有原配置恢复对照，并固化只读 history/无创建边界。没有修改存储协议或表格式。
 
-本轮类型/边界、全量回归、注册集成文件、Core/tools tarball 及原生 CLI 烟测通过；精确数字、初轮失败与最终命令结果以 C 的记录为准，不重复计入 P1/P2。下一步 D 包含 acquire 提交确认未知、dispatched/回答消费结果丢失及 unknown/applied；这些仍未验收，P3/P4 不因 C 完成而启动或通过。
+本轮类型/边界、全量回归、注册集成文件、Core/tools tarball 及原生 CLI 烟测通过；精确数字、初轮失败与最终命令结果以 C 的记录为准，不重复计入 P1/P2。后续 [M3-D 方案](m3-d-recovery.md)明确 acquire 提交未知的空占位/已有断点分类与 release 双失败错误保留，再验 dispatched/回答消费及 unknown/applied；[M3-E](m3-e-observation.md)覆盖观察和实际入口。方案已制定但尚未实施，不将临时调查或 C 的通过当作 D/E 已验收；P3/P4 不随之启动。
