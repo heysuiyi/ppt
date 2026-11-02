@@ -11,13 +11,14 @@ import {
   TERMINAL_HELP,
   type TerminalCommand,
 } from "../commands/terminal-command.js";
+import type { HostHistoryEntry, HostModel, HostToolsMode } from "../host/host-contract.js";
+import { projectHostError } from "../host/host-projection.js";
 import type {
   TerminalConnectionItem,
   TerminalConnectionTarget,
   TerminalHost,
   TerminalSetupIO,
-  TerminalToolsMode,
-} from "../host/host-contract.js";
+} from "../host/terminal-host-contract.js";
 import { createComposer } from "./composer.js";
 import { composerContentWidth } from "./composer-layout.js";
 import type { Composer, NodeTerminal, Selector, TerminalKeyEvent } from "./input-contract.js";
@@ -36,8 +37,6 @@ import { createSelector } from "./selector.js";
 import type {
   TerminalExitDecision,
   TerminalFailureStage,
-  TerminalHistoryEntry,
-  TerminalModelItem,
   TerminalPhase,
   TerminalSelectionItem,
 } from "./terminal-contract.js";
@@ -45,7 +44,6 @@ import {
   interactionReference,
   projectTerminalEvent,
   projectTerminalSettlement,
-  terminalError,
 } from "./terminal-projection.js";
 
 export interface TerminalControllerOptions {
@@ -59,7 +57,7 @@ export interface TerminalControllerOptions {
 }
 
 interface ModelNavigation {
-  readonly models: readonly TerminalModelItem[];
+  readonly models: readonly HostModel[];
   readonly connections: readonly TerminalConnectionItem[];
   readonly actionId: string;
   groups: Selector;
@@ -142,7 +140,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
   } = {};
   let activity: string | undefined;
   let runActivity = "等待模型响应";
-  let modelAvailability: TerminalModelItem["availability"];
+  let modelAvailability: HostModel["availability"];
   let pendingInteraction: InteractionRequest | undefined;
   let active: AgentRunHandle | undefined;
   let lastResult: AgentRunResult | undefined;
@@ -223,7 +221,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
         version: 1,
         type: "error",
         stage,
-        error: terminalError(error),
+        error: projectHostError(error),
         outcomeUncertain: stage === "completion" || stage === "persistence" || stage === "close",
         ...(lastIdentity ? { identity: lastIdentity } : {}),
       }),
@@ -506,7 +504,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
   }
 
   async function askModel(
-    models: readonly TerminalModelItem[],
+    models: readonly HostModel[],
     connections: readonly TerminalConnectionItem[],
     selectedGroupId = "all",
     pane: ModelNavigation["pane"] = "models",
@@ -554,14 +552,14 @@ export async function runTerminalController(options: TerminalControllerOptions):
     return { type: "model", modelId: selected };
   }
 
-  async function loadModels(): Promise<readonly TerminalModelItem[] | undefined> {
+  async function loadModels(): Promise<readonly HostModel[] | undefined> {
     return withActivity("正在加载模型目录", async () => {
       try {
         const models = await host.models();
         clearBlocking("catalog");
         return models;
       } catch (error) {
-        setBlocking("catalog", `模型目录加载失败：${terminalError(error).message}`);
+        setBlocking("catalog", `模型目录加载失败：${projectHostError(error).message}`);
         await output(() => renderer.message(feedback.blocking!.message));
         return undefined;
       }
@@ -573,7 +571,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       try {
         return await host.connections();
       } catch (error) {
-        setBlocking("catalog", `连接目录加载失败：${terminalError(error).message}`);
+        setBlocking("catalog", `连接目录加载失败：${projectHostError(error).message}`);
         return [];
       }
     });
@@ -586,10 +584,10 @@ export async function runTerminalController(options: TerminalControllerOptions):
     try {
       selected = await withActivity("正在配置连接", () => host.configureModel(setup, target));
     } catch (error) {
-      if (terminalError(error).code !== "HOST_CONFIGURATION_REJECTED") throw error;
+      if (projectHostError(error).code !== "HOST_CONFIGURATION_REJECTED") throw error;
       setBlocking(
         "connection",
-        `连接配置未完成：${terminalError(error).message}；当前会话保持不变。`,
+        `连接配置未完成：${projectHostError(error).message}；当前会话保持不变。`,
       );
       return undefined;
     }
@@ -691,7 +689,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
     );
   }
 
-  async function bindSession(history: readonly TerminalHistoryEntry[]): Promise<void> {
+  async function bindSession(history: readonly HostHistoryEntry[]): Promise<void> {
     const context = host.context;
     // Host can publish its target before an await returns. Refreshes retain the
     // previous display snapshot until context and history are ready together.
@@ -755,7 +753,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
         try {
           return host.answerInteraction(request, split[0]!, split[1]);
         } catch (error) {
-          const code = terminalError(error).code;
+          const code = projectHostError(error).code;
           if (
             code !== "CLI_INTERACTION_CHOICE_INVALID" &&
             code !== "CLI_INTERACTION_UNSUPPORTED" &&
@@ -793,7 +791,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
       try {
         return host.answerInteraction(request, selected, confirmation);
       } catch (error) {
-        const code = terminalError(error).code;
+        const code = projectHostError(error).code;
         if (
           code !== "CLI_INTERACTION_CHOICE_INVALID" &&
           code !== "CLI_INTERACTION_UNSUPPORTED" &&
@@ -948,7 +946,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
     uiTask = Promise.resolve()
       .then(action)
       .catch(async (error: unknown) => {
-        const publicError = terminalError(error);
+        const publicError = projectHostError(error);
         if (publicError.code === "HOST_SWITCH_REJECTED") {
           setBlocking("binding", publicError.message);
         } else {
@@ -1028,7 +1026,7 @@ export async function runTerminalController(options: TerminalControllerOptions):
         const selected = await askSelection("选择能力模式", modes);
         if (selected && (await confirmSwitch())) {
           await withActivity("正在切换能力与绑定会话", async () => {
-            await host.newSession({ toolsMode: selected as TerminalToolsMode });
+            await host.newSession({ toolsMode: selected as HostToolsMode });
             await bindSession([]);
           });
         }

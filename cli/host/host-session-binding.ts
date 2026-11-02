@@ -1,7 +1,7 @@
 import type { ModelSelection } from "@agent-harness/core/model/model-contract";
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import { snapshot } from "@agent-harness/core/protocol-values";
-import type { TerminalToolsMode } from "./host-contract.js";
+import type { HostToolsMode } from "./host-contract.js";
 
 /** 仅宿主保存的恢复边界，不进入内核协议，也不携带连接凭据或地址。 */
 export interface HostSessionBinding {
@@ -9,7 +9,7 @@ export interface HostSessionBinding {
   readonly agentId: string;
   readonly threadId: string;
   readonly workspaceRoot: string;
-  readonly toolMode: TerminalToolsMode;
+  readonly toolMode: HostToolsMode;
   readonly model: ModelSelection;
   readonly connectionFingerprint: string;
   readonly definition: { readonly id: string; readonly version: string };

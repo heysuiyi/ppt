@@ -1,4 +1,6 @@
 import type { RunIdentity } from "@agent-harness/core/protocol-values";
+import type { HostHistoryEntry } from "../host/host-contract.js";
+import { escapeDisplayControls as safe } from "../host/safe-display-text.js";
 import { shimmerActivity } from "./activity-shimmer.js";
 import { renderCommandCompletions } from "./completion-list.js";
 import { renderComposerFrame } from "./composer-frame.js";
@@ -17,7 +19,6 @@ import type {
 import { RunStatistics } from "./run-summary.js";
 import { activityLines, contextLines, hintLines, statusLines } from "./status-line.js";
 import type {
-  TerminalHistoryEntry,
   TerminalQueryResultRecord,
   TerminalRecord,
   TerminalSelectionItem,
@@ -25,12 +26,7 @@ import type {
   TerminalToolRecord,
 } from "./terminal-contract.js";
 import { sanitizeTerminalRecord } from "./terminal-projection.js";
-import {
-  sanitizeTerminalText as safe,
-  truncateTerminalText,
-  visibleWidth,
-  wrapTerminalText,
-} from "./terminal-text.js";
+import { truncateTerminalText, visibleWidth, wrapTerminalText } from "./terminal-text.js";
 import { TerminalTitle } from "./terminal-title.js";
 import { renderThinkingBlock } from "./thinking-block.js";
 import { toolCardId, toolCardLines, toolCardPageCount, toolSelection } from "./tool-card.js";
@@ -1044,7 +1040,7 @@ export function createTerminalRenderer(options: TerminalRendererOptions): Termin
   }
 
   return {
-    bindSession(next: TerminalView, messages: readonly TerminalHistoryEntry[]) {
+    bindSession(next: TerminalView, messages: readonly HostHistoryEntry[]) {
       return enqueue(async () => {
         if (closed) return;
         stopActivityAnimation();

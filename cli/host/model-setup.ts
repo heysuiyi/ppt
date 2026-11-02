@@ -10,12 +10,12 @@ import type { RemoteModelInfo } from "@agent-harness/configuration/remote-models
 import { AgentError } from "@agent-harness/core/protocol-errors";
 import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
 import { configuredModelAdapter } from "./configured-model-factory.js";
+import { configuredModels } from "./model-catalog.js";
 import type {
   TerminalConnectionItem,
   TerminalConnectionTarget,
   TerminalSetupIO,
-} from "./host-contract.js";
-import { configuredModels } from "./model-catalog.js";
+} from "./terminal-host-contract.js";
 
 const mimoProfile = getModelProfile("mimo-token-plan-cn");
 if (mimoProfile?.endpoint?.kind !== "fixed")

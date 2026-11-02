@@ -1,3 +1,4 @@
+import { escapeDisplayControls } from "../host/safe-display-text.js";
 /**
  * Slash completion layout adapted from oh-my-pi's SelectList, getMenuWindow
  * and scrollbarThumbRange (packages/tui/src/components/).
@@ -27,12 +28,7 @@
  * SOFTWARE.
  */
 import type { TerminalSelectorView } from "./renderer-contract.js";
-import {
-  sanitizeTerminalText,
-  truncateTerminalText,
-  visibleWidth,
-  wrapTerminalText,
-} from "./terminal-text.js";
+import { truncateTerminalText, visibleWidth, wrapTerminalText } from "./terminal-text.js";
 
 interface CompletionRow {
   readonly text: string;
@@ -65,7 +61,7 @@ export function renderCommandCompletions(
   const renderItems = (rowWidth: number): CompletionRow[][] =>
     selector.items.map((item, index) => {
       const prefix = index === selected ? "› " : "  ";
-      const description = sanitizeTerminalText(item.description ?? "")
+      const description = escapeDisplayControls(item.description ?? "")
         .replace(/\s+/gu, " ")
         .trim();
       const columnWidth = Math.max(1, Math.min(primaryWidth, rowWidth - 6));

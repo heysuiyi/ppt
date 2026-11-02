@@ -1,83 +1,110 @@
 import type { AgentRunHandle } from "@agent-harness/core/agent-contract";
-import type { InteractionRequest, InteractionResponse } from "@agent-harness/core/protocol-values";
 import type {
-  TerminalHistoryEntry,
-  TerminalInteractionDisplay,
-  TerminalModelItem,
-  TerminalSelectionItem,
-} from "../terminal/terminal-contract.js";
+  InteractionRequest,
+  InteractionResponse,
+  ProtocolError,
+  RunIdentity,
+} from "@agent-harness/core/protocol-values";
 
-export type TerminalToolsMode = "none" | "read-only" | "read-write";
+export type HostToolsMode = "none" | "read-only" | "read-write";
 
-export type TerminalConnectionTarget =
-  | { readonly type: "existing"; readonly vendorId: string }
-  | {
-      readonly type: "new";
-      readonly adapterId:
-        | "mimo-token-plan-cn"
-        | "openai-responses"
-        | "openai-chat-completions"
-        | "anthropic-messages";
-    };
-
-export interface TerminalConnectionItem extends TerminalSelectionItem {
-  readonly target: TerminalConnectionTarget;
+export interface HostModel {
+  readonly id: string;
+  readonly label: string;
+  readonly vendor?: { readonly id: string; readonly label: string };
+  readonly modelName?: string;
+  /** 仅表示本地配置与凭据就绪，不代表已连接远程服务。 */
+  readonly availability?: {
+    readonly state: "ready" | "unavailable";
+    readonly reason: string;
+  };
 }
 
-export interface TerminalHostContext {
+/** 宿主白名单投影的有界纯文本，不包含工具原始结果或可恢复载荷。 */
+export interface HostToolDisplay {
+  readonly title: string;
+  readonly input: readonly string[];
+  readonly output: readonly string[];
+  readonly summary?: readonly string[];
+}
+
+export interface HostToolOutcome {
+  readonly display?: HostToolDisplay;
+  readonly status?: "completed" | "failed" | "unknown";
+  readonly effects?: "none" | "applied" | "unknown";
+  readonly error?: ProtocolError;
+}
+
+/** 宿主的只读安全时间线；不是规范历史或恢复载荷。 */
+export type HostHistoryEntry =
+  | { readonly role: "user" | "assistant" | "reasoning"; readonly text: string }
+  | {
+      readonly role: "tool";
+      readonly tool: HostToolOutcome & {
+        readonly callId: string;
+        readonly name: string;
+        readonly identity?: RunIdentity;
+        readonly step?: number;
+        readonly result: "recorded" | "error" | "missing";
+      };
+    };
+
+export interface HostContext {
   readonly dataRoot: string;
   readonly workspaceRoot: string;
   readonly threadId: string;
-  readonly model: TerminalModelItem;
-  readonly toolsMode: TerminalToolsMode;
+  readonly model: HostModel;
+  readonly toolsMode: HostToolsMode;
 }
 
-export interface TerminalHostSession extends TerminalSelectionItem {
+export interface HostSession {
+  readonly id: string;
+  readonly label: string;
   readonly modelId: string | undefined;
-  readonly toolsMode: TerminalToolsMode;
-  readonly history: readonly TerminalHistoryEntry[];
+  readonly toolsMode: HostToolsMode;
+  readonly history: readonly HostHistoryEntry[];
   readonly unfinished?: {
     readonly queryId: string;
     readonly status: "running" | "waiting" | "interrupted";
   };
 }
 
-/** 配置交互借用终端唯一输入 owner；不向终端传递完整配置对象。 */
-export interface TerminalSetupIO {
-  select(title: string, items: readonly TerminalSelectionItem[]): Promise<string | undefined>;
-  secret(prompt: string): Promise<string | undefined>;
-  text(prompt: string): Promise<string | undefined>;
-  notify(message: string): Promise<void>;
+/** 只包含认可的交互描述，不包含原始 payload.data。 */
+export type HostInteractionDisplay =
+  | { readonly support: "unsupported" }
+  | {
+      readonly support: "supported";
+      readonly summary: string;
+      readonly confirmation: "explicit-choice" | "interaction-id";
+      readonly choices: readonly HostInteractionChoice[];
+    };
+
+export interface HostInteractionChoice {
+  readonly id: string;
+  readonly label: string;
+  readonly responseType: "answer" | "reject";
 }
 
-export interface TerminalHostOpenOptions {
+export interface HostOpenOptions {
   readonly modelId?: string;
   readonly threadId?: string;
-  readonly toolsMode?: TerminalToolsMode;
-  readonly setup?: TerminalSetupIO;
+  readonly toolsMode?: HostToolsMode;
   readonly signal?: AbortSignal;
 }
 
-export interface TerminalHost {
-  readonly context: TerminalHostContext;
-  open(options: TerminalHostOpenOptions): Promise<void>;
-  models(): Promise<readonly TerminalModelItem[]>;
-  /** 仅列出已保存连接（包括零模型连接）和创建入口，不解析凭据或发现远程模型。 */
-  connections(): Promise<readonly TerminalConnectionItem[]>;
-  /** 保存连接与 CLI 默认模型；不改变当前会话绑定，取消返回 undefined。 */
-  configureModel(
-    setup: TerminalSetupIO,
-    target: TerminalConnectionTarget,
-  ): Promise<string | undefined>;
-  sessions(): Promise<readonly TerminalHostSession[]>;
+export interface NodeHost {
+  readonly context: HostContext;
+  open(options: HostOpenOptions): Promise<void>;
+  models(): Promise<readonly HostModel[]>;
+  sessions(): Promise<readonly HostSession[]>;
   newSession(options?: {
     readonly modelId?: string;
-    readonly toolsMode?: TerminalToolsMode;
+    readonly toolsMode?: HostToolsMode;
   }): Promise<void>;
-  selectSession(threadId: string): Promise<TerminalHostSession>;
+  selectSession(threadId: string): Promise<HostSession>;
   run(text: string): Promise<AgentRunHandle>;
   resume(queryId: string, response?: InteractionResponse): Promise<AgentRunHandle>;
-  describeInteraction(request: InteractionRequest): TerminalInteractionDisplay;
+  describeInteraction(request: InteractionRequest): HostInteractionDisplay;
   answerInteraction(
     request: InteractionRequest,
     choiceId: string,

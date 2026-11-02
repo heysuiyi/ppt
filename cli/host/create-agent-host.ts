@@ -9,7 +9,7 @@ import {
   type PreparedConfiguredModel,
   prepareConfiguredModel,
 } from "./configured-model-factory.js";
-import type { TerminalToolsMode } from "./host-contract.js";
+import type { HostToolsMode } from "./host-contract.js";
 import type { HostSessionBinding } from "./host-session-binding.js";
 import { createSqliteAgentStores, type SqliteAgentStores } from "./sqlite-agent-stores.js";
 import { createWorkspaceConfiguration } from "./workspace-configuration.js";
@@ -18,7 +18,7 @@ export interface AgentHostOptions {
   readonly configuration: AgentConfiguration["runtime"];
   readonly applicationDataRoot: string;
   readonly workspaceRoot: string;
-  readonly toolMode?: TerminalToolsMode;
+  readonly toolMode?: HostToolsMode;
   readonly modelId: string;
   readonly threadId: string;
   readonly agentId?: string;

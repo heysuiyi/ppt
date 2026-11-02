@@ -1,21 +1,10 @@
 import type { ProtocolError, RunIdentity } from "@agent-harness/core/protocol-values";
 import type { ToolSideEffects } from "@agent-harness/core/tools/tool-contract";
+import type { HostInteractionDisplay, HostModel, HostToolDisplay } from "../host/host-contract.js";
 
 /** CLI 本地展示协议；不是 Core 事件、规范历史或可恢复快照。 */
 interface TerminalRecordBase {
   readonly version: 1;
-}
-
-export interface TerminalModelItem {
-  readonly id: string;
-  readonly label: string;
-  readonly vendor?: { readonly id: string; readonly label: string };
-  readonly modelName?: string;
-  /** 仅表示本地配置与凭据就绪，不代表已连接远程服务。 */
-  readonly availability?: {
-    readonly state: "ready" | "unavailable";
-    readonly reason: string;
-  };
 }
 
 export interface TerminalCapabilityItem {
@@ -26,7 +15,7 @@ export interface TerminalCapabilityItem {
 export interface TerminalSessionRecord extends TerminalRecordBase {
   readonly type: "session";
   readonly threadId: string;
-  readonly model?: TerminalModelItem;
+  readonly model?: HostModel;
   readonly capabilities?: readonly TerminalCapabilityItem[];
 }
 
@@ -49,21 +38,12 @@ export interface TerminalToolReference {
   readonly toolVersion: string | null;
 }
 
-/** 宿主白名单投影后的纯文本；不是工具原始输入、输出或可恢复载荷。 */
-export interface TerminalToolDisplay {
-  readonly title: string;
-  readonly input: readonly string[];
-  readonly output: readonly string[];
-  /** 可选事实统计，不占正文预览行数；旧记录缺省时 output 仍按原样展示。 */
-  readonly summary?: readonly string[];
-}
-
 export type TerminalToolRecord = TerminalRecordBase &
   TerminalToolReference & {
     readonly type: "tool";
     readonly identity: RunIdentity;
     readonly step: number;
-    readonly display?: TerminalToolDisplay;
+    readonly display?: HostToolDisplay;
   } & (
     | { readonly phase: "started" }
     | {
@@ -86,22 +66,6 @@ export interface TerminalInteractionReference {
   readonly payloadVersion: number;
 }
 
-/** 文案和选项仅来自宿主认可的 owner/type/version 描述器，不包含原始 data。 */
-export type TerminalInteractionDisplay =
-  | { readonly support: "unsupported" }
-  | {
-      readonly support: "supported";
-      readonly summary: string;
-      readonly confirmation: "explicit-choice" | "interaction-id";
-      readonly choices: readonly TerminalInteractionChoice[];
-    };
-
-export interface TerminalInteractionChoice {
-  readonly id: string;
-  readonly label: string;
-  readonly responseType: "answer" | "reject";
-}
-
 export type TerminalInteractionRecord = TerminalRecordBase & {
   readonly type: "interaction";
   readonly identity: RunIdentity;
@@ -109,7 +73,7 @@ export type TerminalInteractionRecord = TerminalRecordBase & {
 } & (
     | (TerminalInteractionReference & {
         readonly phase: "requested";
-        readonly display: TerminalInteractionDisplay;
+        readonly display: HostInteractionDisplay;
       })
     | {
         /** resolved 事件不带原载荷描述，不从终端缓存猜 owner/type/version。 */
@@ -152,18 +116,6 @@ export interface TerminalModelCompletedRecord extends TerminalRecordBase {
   readonly usage?: { readonly inputTokens: number; readonly outputTokens: number };
 }
 
-/** 宿主的只读安全时间线；缺失历史执行元数据时只报告结果记录，不猜副作用。 */
-export type TerminalHistoryEntry =
-  | { readonly role: "user" | "assistant" | "reasoning"; readonly text: string }
-  | {
-      readonly role: "tool";
-      readonly tool: {
-        readonly callId: string;
-        readonly name: string;
-        readonly result: "recorded" | "error" | "missing";
-      };
-    };
-
 export type TerminalQueryResultRecord = TerminalRecordBase & {
   readonly type: "query.result";
   readonly identity: RunIdentity;
@@ -172,7 +124,7 @@ export type TerminalQueryResultRecord = TerminalRecordBase & {
     | {
         readonly status: "waiting";
         readonly interaction: TerminalInteractionReference;
-        readonly display: TerminalInteractionDisplay;
+        readonly display: HostInteractionDisplay;
       }
     | { readonly status: "failed"; readonly error: ProtocolError }
   );
@@ -312,7 +264,7 @@ export type TerminalInputRequest = TerminalInputToken &
         readonly purpose: "interaction";
         readonly identity: RunIdentity;
         readonly interaction: TerminalInteractionReference;
-        readonly display: TerminalInteractionDisplay;
+        readonly display: HostInteractionDisplay;
         readonly restoreDraft: TerminalDraft;
       }
   );

@@ -6,8 +6,11 @@ import type { VendorConfiguration } from "@agent-harness/configuration/configura
 import type { CredentialProtection } from "@agent-harness/configuration/credential-contract";
 import { getModelProfile } from "@agent-harness/models/model-profiles";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TerminalConnectionTarget, TerminalSetupIO } from "../cli/host/host-contract.js";
 import { ensureConfiguredModel } from "../cli/host/model-setup.js";
+import type {
+  TerminalConnectionTarget,
+  TerminalSetupIO,
+} from "../cli/host/terminal-host-contract.js";
 
 const roots: string[] = [];
 afterEach(async () => {

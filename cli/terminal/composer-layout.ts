@@ -1,5 +1,6 @@
+import { escapeDisplayControls } from "../host/safe-display-text.js";
 import type { TerminalDraft } from "./terminal-contract.js";
-import { graphemes, sanitizeTerminalText, visibleWidth } from "./terminal-text.js";
+import { graphemes, visibleWidth } from "./terminal-text.js";
 
 export interface ComposerLayout {
   readonly lines: readonly string[];
@@ -24,7 +25,8 @@ export function layoutComposer(draft: TerminalDraft, columns: number): ComposerL
 
   for (let index = 0; index <= clusters.length; index++) {
     const cluster = clusters[index];
-    let value = cluster === "\t" ? " ".repeat(4 - (used % 4)) : sanitizeTerminalText(cluster ?? "");
+    let value =
+      cluster === "\t" ? " ".repeat(4 - (used % 4)) : escapeDisplayControls(cluster ?? "");
     let size = visibleWidth(value);
     if (cluster !== "\n" && used > 0 && used + size > width) {
       lines.push(line);

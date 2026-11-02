@@ -1,3 +1,4 @@
+import type { HarnessDesktopApi, HarnessDesktopEvent } from "@app/shared/harness-ipc";
 import type { AgentStreamEvent, DesktopApi } from "@app/shared/ipc";
 import type { PptJobProjection } from "@shared/presentation-lifecycle";
 import { contextBridge, ipcRenderer } from "electron";
@@ -117,3 +118,24 @@ const api: DesktopApi = {
 };
 
 contextBridge.exposeInMainWorld("desktopApi", api);
+
+const harnessDesktop: HarnessDesktopApi = {
+  snapshot: () => ipcRenderer.invoke("harness:snapshot"),
+  models: () => ipcRenderer.invoke("harness:models"),
+  sessions: () => ipcRenderer.invoke("harness:sessions"),
+  chooseWorkspace: () => ipcRenderer.invoke("harness:chooseWorkspace"),
+  selectWorkspace: (id) => ipcRenderer.invoke("harness:selectWorkspace", id),
+  setDefaultModel: (id) => ipcRenderer.invoke("harness:setDefaultModel", id),
+  newSession: (options) => ipcRenderer.invoke("harness:newSession", options),
+  selectSession: (id) => ipcRenderer.invoke("harness:selectSession", id),
+  run: (request) => ipcRenderer.invoke("harness:run", request),
+  resume: (request) => ipcRenderer.invoke("harness:resume", request),
+  cancel: (request) => ipcRenderer.invoke("harness:cancel", request),
+  subscribe: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, value: HarnessDesktopEvent) =>
+      listener(value);
+    ipcRenderer.on("harness:event", handler);
+    return () => ipcRenderer.removeListener("harness:event", handler);
+  },
+};
+contextBridge.exposeInMainWorld("harnessDesktop", harnessDesktop);

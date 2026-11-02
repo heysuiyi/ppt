@@ -1,4 +1,4 @@
-import type { TerminalToolsMode } from "../host/host-contract.js";
+import type { HostToolsMode } from "../host/host-contract.js";
 import type { TerminalHostCommand, TerminalLocalCommand } from "../terminal/terminal-contract.js";
 
 export const TERMINAL_HELP = `Agent Harness — Node CLI
@@ -57,7 +57,7 @@ export interface TerminalCommand {
   readonly threadId?: string;
   readonly queryId?: string;
   readonly modelId?: string;
-  readonly toolsMode?: TerminalToolsMode;
+  readonly toolsMode?: HostToolsMode;
 }
 
 export class TerminalArgumentError extends Error {
@@ -73,7 +73,7 @@ export function parseTerminalArguments(args: readonly string[]): TerminalCommand
   let threadId: string | undefined;
   let queryId: string | undefined;
   let modelId: string | undefined;
-  let toolsMode: TerminalToolsMode | undefined;
+  let toolsMode: HostToolsMode | undefined;
   const seen = new Set<string>();
   for (let index = 0; index < args.length; index++) {
     const option = args[index]!;

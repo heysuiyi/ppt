@@ -1,3 +1,4 @@
+import { escapeDisplayControls } from "../host/safe-display-text.js";
 import {
   type OutputBlockRow,
   outputBlockContentWidth,
@@ -6,7 +7,7 @@ import {
   wrapOutputBlockText,
 } from "./output-block.js";
 import type { TerminalSelectionItem, TerminalToolRecord } from "./terminal-contract.js";
-import { sanitizeTerminalText, truncateTerminalText, visibleWidth } from "./terminal-text.js";
+import { truncateTerminalText, visibleWidth } from "./terminal-text.js";
 
 export function toolCardId(tool: TerminalToolRecord): string {
   return JSON.stringify([
@@ -44,7 +45,7 @@ export function toolSummary(tool: TerminalToolRecord): string {
       ? ` · ${tool.error.code}: ${tool.error.message}`
       : "";
   const target = tool.display?.title ? ` · ${tool.display.title}` : "";
-  return sanitizeTerminalText(`${tool.name}${target} · ${toolOutcome(tool)}${error}`);
+  return escapeDisplayControls(`${tool.name}${target} · ${toolOutcome(tool)}${error}`);
 }
 
 export interface ToolCardOptions {
@@ -338,7 +339,7 @@ export function toolCardLines(
 export function toolSelection(tool: TerminalToolRecord): TerminalSelectionItem {
   return {
     id: toolCardId(tool),
-    label: sanitizeTerminalText(tool.name),
+    label: escapeDisplayControls(tool.name),
     description: toolSummary(tool),
   };
 }

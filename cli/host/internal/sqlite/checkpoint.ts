@@ -10,6 +10,7 @@ import type {
 import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
 import type { SqliteConnection } from "./connection.js";
 import { assertRevision, nextRevision } from "./revision.js";
+import { createToolDisplayWriter } from "./tool-display.js";
 
 interface CheckpointRow {
   owner_id: string | null;
@@ -37,6 +38,7 @@ function matches(row: CheckpointRow | undefined, lease: CheckpointLease): row is
 
 export function createSqliteCheckpointStore(connection: SqliteConnection): CheckpointStore {
   const database = connection.database;
+  const saveToolDisplays = createToolDisplayWriter(database);
   const checkpointRow = database.prepare(
     "SELECT owner_id, generation, revision, payload FROM general_agent_checkpoints WHERE agent_id = ? AND thread_id = ? AND query_id = ?",
   );
@@ -149,6 +151,8 @@ export function createSqliteCheckpointStore(connection: SqliteConnection): Check
           lease.key.threadId,
           lease.key.queryId,
         );
+        // 只有围栏与 CAS 成功才写展示事实，与权威 completion 原子提交。
+        saveToolDisplays(detached);
         return { status: "saved", revision };
       });
     },

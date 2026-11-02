@@ -1,7 +1,8 @@
 import type { ModelMessage } from "@agent-harness/core/model/model-contract";
 import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
-import { snapshotHostSessionBinding } from "./host-session-binding.js";
+import { type HostSessionBinding, snapshotHostSessionBinding } from "./host-session-binding.js";
 import { openSqliteReader } from "./internal/sqlite/connection.js";
+import { readToolDisplayFacts } from "./internal/sqlite/tool-display.js";
 import { projectSessionHistory } from "./session-history-projection.js";
 import type { HostSessionSummary } from "./session-persistence-contract.js";
 
@@ -54,6 +55,7 @@ export function readSqliteAgentSessions(
             messages: JSON.parse(batch.payload as string) as readonly ModelMessage[],
           })),
           authoritative,
+          readToolDisplayFacts(database, binding.agentId, binding.threadId),
         );
         const pending = unfinished[0];
         summaries.push({
@@ -79,5 +81,52 @@ export function readSqliteAgentSessions(
   } catch (error) {
     connection.closeAfterFailure();
     throw error;
+  }
+}
+
+/** 只读恢复绑定；策略继承仍须通过创建宿主时的完整 binding 校验。 */
+export function readSqliteHostBinding(
+  filePath: string,
+  workspaceRoot: string,
+  threadId: string,
+): HostSessionBinding | undefined {
+  const connection = openSqliteReader(filePath);
+  try {
+    const row = connection.database
+      .prepare("SELECT payload FROM general_agent_host_bindings WHERE thread_id = ?")
+      .get(threadId);
+    if (!row) return undefined;
+    const binding = snapshotHostSessionBinding(JSON.parse(row.payload as string));
+    return binding.workspaceRoot === workspaceRoot ? binding : undefined;
+  } finally {
+    connection.close();
+  }
+}
+
+/** 宿主恢复边界专用：先匹配持久绑定的目录，再读取权威检查点；不供展示层消费。 */
+export function readSqliteHostCheckpoint(
+  filePath: string,
+  workspaceRoot: string,
+  threadId: string,
+): AgentCheckpoint | undefined {
+  const connection = openSqliteReader(filePath);
+  try {
+    return connection.transaction(() => {
+      const row = connection.database
+        .prepare("SELECT payload FROM general_agent_host_bindings WHERE thread_id = ?")
+        .get(threadId);
+      if (!row) return undefined;
+      const binding = snapshotHostSessionBinding(JSON.parse(row.payload as string));
+      if (binding.workspaceRoot !== workspaceRoot) return undefined;
+      const checkpoint = connection.database
+        .prepare(`SELECT payload FROM general_agent_checkpoints
+          WHERE agent_id = ? AND thread_id = ? ORDER BY updated_order DESC LIMIT 1`)
+        .get(binding.agentId, threadId);
+      return checkpoint?.payload
+        ? (JSON.parse(checkpoint.payload as string) as AgentCheckpoint)
+        : undefined;
+    }, "read");
+  } finally {
+    connection.close();
   }
 }

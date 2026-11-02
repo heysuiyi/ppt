@@ -1,7 +1,8 @@
 import { MicromarkAstBuilder } from "@incremark/core/engines/micromark";
 import type { Definition, Nodes, Table } from "mdast";
 import stringWidth from "string-width";
-import { graphemes, sanitizeTerminalText, wrapTerminalText } from "./terminal-text.js";
+import { escapeDisplayControls } from "../host/safe-display-text.js";
+import { graphemes, wrapTerminalText } from "./terminal-text.js";
 
 interface Span {
   text: string;
@@ -19,7 +20,7 @@ export function markdownLines(
   viewport = false,
   color = false,
 ): string[] {
-  const source = sanitizeTerminalText(text);
+  const source = escapeDisplayControls(text);
   const root = builder.parse(source);
   const definitions = new Map<string, Definition>();
   const collect = (node: Nodes): void => {
@@ -37,7 +38,7 @@ export function markdownLines(
       const add = (code: string): string => (style ? `${style};${code}` : code);
       switch (node.type) {
         case "text":
-          return [{ text: sanitizeTerminalText(node.value), style }];
+          return [{ text: escapeDisplayControls(node.value), style }];
         case "strong":
           return inline(node.children, add("1"));
         case "emphasis":
@@ -45,7 +46,7 @@ export function markdownLines(
         case "delete":
           return inline(node.children, add("9"));
         case "inlineCode":
-          return [{ text: sanitizeTerminalText(node.value), style: add("36") }];
+          return [{ text: escapeDisplayControls(node.value), style: add("36") }];
         case "break":
           return [{ text: "\n", style }];
         case "link":
@@ -55,7 +56,7 @@ export function markdownLines(
           const label = inline(node.children, add("4;36"));
           // 不发 OSC 8；地址作为可复制文字保留，不能让协议或控制字符触发终端动作。
           if (url && label.map((span) => span.text).join("") !== url)
-            label.push({ text: ` (${sanitizeTerminalText(url)})`, style });
+            label.push({ text: ` (${escapeDisplayControls(url)})`, style });
           return label;
         }
         case "image":
@@ -64,13 +65,13 @@ export function markdownLines(
             node.type === "image" ? node.url : definitions.get(node.identifier.toUpperCase())?.url;
           return [
             {
-              text: `Image: ${sanitizeTerminalText(node.alt ?? "")}${url ? ` (${sanitizeTerminalText(url)})` : ""}`,
+              text: `Image: ${escapeDisplayControls(node.alt ?? "")}${url ? ` (${escapeDisplayControls(url)})` : ""}`,
               style,
             },
           ];
         }
         default:
-          return [{ text: sanitizeTerminalText("value" in node ? node.value : raw(node)), style }];
+          return [{ text: escapeDisplayControls("value" in node ? node.value : raw(node)), style }];
       }
     });
   }
@@ -222,8 +223,8 @@ export function markdownLines(
           if (fence) lines.push(...wrap([{ text: original[0]!, style: "2" }], width));
           for (const line of node.value.split("\n")) {
             if (viewport)
-              lines.push(...wrap([{ text: sanitizeTerminalText(line), style: "36" }], width));
-            else lines.push(paint(sanitizeTerminalText(line), "36"));
+              lines.push(...wrap([{ text: escapeDisplayControls(line), style: "36" }], width));
+            else lines.push(paint(escapeDisplayControls(line), "36"));
           }
           // 未闭合的流式代码块不能凭空出现结束围栏。
           const last = original.at(-1) ?? "";

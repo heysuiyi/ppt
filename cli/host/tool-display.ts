@@ -1,8 +1,9 @@
 import { posix } from "node:path";
 import type { VersionedData } from "@agent-harness/core/protocol-values";
 import type { StoredToolInvocation } from "@agent-harness/core/session/session-contract";
-import type { TerminalToolDisplay } from "./terminal-contract.js";
-import { sanitizeTerminalText } from "./terminal-text.js";
+import type { ToolCompletion } from "@agent-harness/core/tools/tool-contract";
+import type { HostToolDisplay, HostToolOutcome } from "./host-contract.js";
+import { escapeDisplayControls } from "./safe-display-text.js";
 
 // 展示副本上限，不改变工具执行、原始结果或 tools.<name>@1 协议版本。
 const MAX_LINES = 200;
@@ -48,7 +49,7 @@ function line(text: string, maxBytes = MAX_TEXT_BYTES): string {
   // 先限输入，再转义，再限输出，控制字符膨胀也不能突破预算。
   const bounded = clip(visible, MAX_TEXT_BYTES);
   return clip(
-    sanitizeTerminalText(bounded).replaceAll("\n", "\\n").replaceAll("\t", "    "),
+    escapeDisplayControls(bounded).replaceAll("\n", "\\n").replaceAll("\t", "    "),
     maxBytes,
   );
 }
@@ -58,7 +59,7 @@ export function sanitizeToolDisplay(
   value: unknown,
   name: string,
   version: string | null,
-): TerminalToolDisplay | undefined {
+): HostToolDisplay | undefined {
   if (!installedTool(name, version)) return undefined;
   const display = object(value);
   if (!display || typeof display.title !== "string") return undefined;
@@ -141,7 +142,7 @@ function preview(
   return result;
 }
 
-type ResultDisplay = Pick<TerminalToolDisplay, "summary" | "output">;
+type ResultDisplay = Pick<HostToolDisplay, "summary" | "output">;
 
 function resultDisplay(
   name: string,
@@ -267,7 +268,7 @@ function resultDisplay(
 export function projectToolDisplay(
   invocation: StoredToolInvocation,
   presentation?: VersionedData,
-): TerminalToolDisplay | undefined {
+): HostToolDisplay | undefined {
   const { name } = invocation.call;
   if (!installedTool(name, invocation.toolVersion)) return undefined;
   const input = object(invocation.call.input);
@@ -320,4 +321,32 @@ export function projectToolDisplay(
     name,
     invocation.toolVersion,
   );
+}
+
+/** Completion 的公开错误字段与 CLI 同样逐字段转义，绝不复制 details 或原始输出。 */
+export function projectToolOutcome(
+  invocation: StoredToolInvocation,
+  completion?: ToolCompletion,
+): HostToolOutcome {
+  const display = projectToolDisplay(
+    invocation,
+    completion?.status === "succeeded" ? completion.presentation : undefined,
+  );
+  return {
+    ...(display ? { display } : {}),
+    ...(completion
+      ? {
+          status: completion.status === "succeeded" ? ("completed" as const) : completion.status,
+          effects: completion.effects,
+          ...(completion.status !== "succeeded"
+            ? {
+                error: {
+                  code: escapeDisplayControls(completion.error.code),
+                  message: escapeDisplayControls(completion.error.message),
+                },
+              }
+            : {}),
+        }
+      : {}),
+  };
 }

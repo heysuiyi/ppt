@@ -1,12 +1,14 @@
 import { basename, resolve } from "node:path";
+import type { HostHistoryEntry } from "../host/host-contract.js";
+import { escapeDisplayControls } from "../host/safe-display-text.js";
 import type { TerminalView } from "./renderer-contract.js";
-import type { TerminalHistoryEntry } from "./terminal-contract.js";
-import { sanitizeTerminalText, truncateTerminalText } from "./terminal-text.js";
+
+import { truncateTerminalText } from "./terminal-text.js";
 
 function titleLabel(text: string | undefined): string | undefined {
   if (!text) return undefined;
   const firstLine = /^[^\r\n\u2028\u2029]*/u.exec(text)?.[0] ?? "";
-  const label = sanitizeTerminalText(firstLine).replace(/\s+/gu, " ").trim();
+  const label = escapeDisplayControls(firstLine).replace(/\s+/gu, " ").trim();
   return label ? truncateTerminalText(label, 80) : undefined;
 }
 
@@ -23,7 +25,7 @@ export class TerminalTitle {
     private readonly write: (text: string) => Promise<void>,
   ) {}
 
-  bindSession(history: readonly TerminalHistoryEntry[]): void {
+  bindSession(history: readonly HostHistoryEntry[]): void {
     this.topic = undefined;
     for (const entry of history) {
       if (entry.role === "user") {

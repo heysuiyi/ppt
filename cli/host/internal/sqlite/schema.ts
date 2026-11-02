@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-/** 保留既有物理格式；这里只初始化已有表定义，不引入版本或数据迁移。 */
+/** 规范历史格式不变；宿主展示副本独立于 Core 检查点与恢复状态。 */
 export function initializeSqliteSchema(database: DatabaseSync): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS general_agent_history (
@@ -33,6 +33,19 @@ export function initializeSqliteSchema(database: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS general_agent_host_bindings (
       thread_id TEXT PRIMARY KEY,
       payload TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS general_agent_host_tool_displays (
+      agent_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      query_id TEXT NOT NULL,
+      step INTEGER NOT NULL,
+      message_index INTEGER NOT NULL,
+      content_index INTEGER NOT NULL,
+      call_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      tool_version TEXT,
+      payload TEXT NOT NULL,
+      PRIMARY KEY (agent_id, thread_id, query_id, step, message_index, content_index, call_id)
     );
   `);
 }

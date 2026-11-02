@@ -1,0 +1,176 @@
+.ui-root .ui-markdown {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--ui-text);
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-font-size-16);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.ui-root .ui-markdown > :first-child {
+  margin-top: 0;
+}
+
+.ui-root .ui-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.ui-root .ui-markdown p {
+  margin: 0 0 var(--ui-space-12);
+  white-space: normal;
+}
+
+/* The component heading class outranks workspace message-label heading rules. */
+.ui-root .ui-markdown .ui-markdown__heading {
+  margin: var(--ui-space-24) 0 var(--ui-space-12);
+  color: var(--ui-text);
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.ui-root .ui-markdown h1.ui-markdown__heading {
+  font-size: var(--ui-font-size-24);
+}
+
+.ui-root .ui-markdown h2.ui-markdown__heading {
+  font-size: 21px;
+}
+
+.ui-root .ui-markdown h3.ui-markdown__heading {
+  font-size: var(--ui-font-size-18);
+}
+
+.ui-root .ui-markdown h4.ui-markdown__heading,
+.ui-root .ui-markdown h5.ui-markdown__heading,
+.ui-root .ui-markdown h6.ui-markdown__heading {
+  font-size: var(--ui-font-size-16);
+}
+
+.ui-root .ui-markdown a {
+  color: var(--ui-focus-ring);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.ui-root .ui-markdown a:focus-visible,
+.ui-root .ui-markdown pre:focus-visible,
+.ui-root .ui-markdown .ui-markdown__table-scroll:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-root .ui-markdown code {
+  padding: 0.12em 0.3em;
+  border-radius: var(--ui-space-4);
+  background: var(--ui-surface-inset);
+  font-family: var(--ui-font-mono);
+  font-size: var(--ui-font-size-14);
+  font-weight: normal;
+  white-space: break-spaces;
+}
+
+.ui-root .ui-markdown pre {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 0 var(--ui-space-16);
+  padding: var(--ui-space-16);
+  overflow-x: auto;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-surface-inset);
+  color: var(--ui-text);
+  font-family: var(--ui-font-mono);
+  font-size: var(--ui-font-size-14);
+  line-height: 1.65;
+  tab-size: 4;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.ui-root .ui-markdown pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font: inherit;
+  white-space: inherit;
+  overflow-wrap: normal;
+}
+
+.ui-root .ui-markdown ul,
+.ui-root .ui-markdown ol {
+  margin: 0 0 var(--ui-space-12);
+  padding-inline-start: var(--ui-space-24);
+}
+
+.ui-root .ui-markdown li {
+  margin: var(--ui-space-4) 0;
+}
+
+.ui-root .ui-markdown li > ul,
+.ui-root .ui-markdown li > ol,
+.ui-root .ui-markdown li > p {
+  margin-bottom: var(--ui-space-4);
+}
+
+.ui-root .ui-markdown input[type="checkbox"] {
+  margin: 0 var(--ui-space-8) 0 0;
+  accent-color: var(--ui-focus-ring);
+  vertical-align: middle;
+}
+
+.ui-root .ui-markdown blockquote {
+  margin: 0 0 var(--ui-space-16);
+  padding: var(--ui-space-4) 0 var(--ui-space-4) var(--ui-space-16);
+  border-inline-start: 3px solid var(--ui-border);
+  color: var(--ui-text-muted);
+}
+
+.ui-root .ui-markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.ui-root .ui-markdown .ui-markdown__table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: var(--ui-space-16);
+  overflow-x: auto;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: var(--ui-radius-control);
+}
+
+.ui-root .ui-markdown table {
+  width: max-content;
+  min-width: 100%;
+  border-spacing: 0;
+  border-collapse: collapse;
+  font-size: var(--ui-font-size-14);
+  overflow-wrap: normal;
+}
+
+.ui-root .ui-markdown th,
+.ui-root .ui-markdown td {
+  padding: var(--ui-space-8) var(--ui-space-12);
+  border: 1px solid var(--ui-border-subtle);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.ui-root .ui-markdown th {
+  background: var(--ui-surface-inset);
+  font-weight: 650;
+}
+
+.ui-root .ui-markdown hr {
+  margin: var(--ui-space-24) 0;
+  border: 0;
+  border-top: 1px solid var(--ui-border-subtle);
+}
+
+.ui-root .ui-markdown .ui-markdown__literal-html {
+  white-space: pre-wrap;
+}

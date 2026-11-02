@@ -1,4 +1,4 @@
-// 新 UI 的静态依赖门禁：解析真实模块/CSS 图，预览只能消费公开入口，不接入旧桌面链路。
+// 新 UI 的静态依赖门禁：纯组件/预览保持独立；桌面消费层只借用公开组件与明确 IPC。
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire, isBuiltin } from "node:module";
 import path from "node:path";
@@ -16,6 +16,8 @@ const browserPackages = new Set([
   "react/jsx-dev-runtime",
   "react-dom",
   "react-dom/client",
+  "@incremark/core/engines/micromark",
+  "mdast-util-to-hast",
 ]);
 const configurationPackages = new Set(["node:url", "node:path", "vite", "@vitejs/plugin-react"]);
 const sourceExtension = /\.(?:[cm]?[jt]sx?|css)$/i;
@@ -161,6 +163,19 @@ export function checkUiBoundaries(root = defaultRoot) {
   const base = identity(absoluteRoot);
   const ui = identity(path.join(absoluteRoot, "app/renderer/src/ui"));
   const preview = identity(path.join(absoluteRoot, "app/renderer/src/ui-preview"));
+  const desktop = identity(path.join(absoluteRoot, "app/renderer/src/desktop"));
+  const desktopContract = identity(path.join(absoluteRoot, "app/shared/harness-ipc.ts"));
+  const pureConfigurationEntries = new Set([
+    "configuration-contract",
+    "credential-contract",
+    "settings",
+    "model-contract",
+    "gateway-settings",
+    "step-limits",
+    "model-reasoning",
+    "model-catalog",
+    "remote-models",
+  ]);
   const configuration = identity(path.join(absoluteRoot, "vite.ui.config.ts"));
   const failures = new Set();
   const queue = [];
@@ -203,14 +218,25 @@ export function checkUiBoundaries(root = defaultRoot) {
     "@vitejs/plugin-react",
     "@types/react",
     "@types/react-dom",
+    "@incremark/core",
+    "mdast-util-to-hast",
+    "@types/hast",
+    "@types/mdast",
   ]) {
     try {
       let directory;
       try {
         directory = path.dirname(projectRequire.resolve(`${name}/package.json`));
       } catch {
-        // 有些合法包不导出 package.json；从真实运行入口向上核对包身份。
-        directory = path.dirname(projectRequire.resolve(name));
+        // 导出可仅提供 import/types 条件；不使用项目 alias 冒充已安装依赖。
+        const installed = ts.resolveModuleName(
+          name,
+          path.join(absoluteRoot, "ui-dependency.ts"),
+          { ...options, paths: undefined, baseUrl: undefined },
+          ts.sys,
+        ).resolvedModule;
+        if (!installed) throw new Error(`Cannot resolve installed package ${name}`);
+        directory = path.dirname(installed.resolvedFileName);
         while (true) {
           const manifest = path.join(directory, "package.json");
           if (existsSync(manifest) && JSON.parse(readFileSync(manifest, "utf8")).name === name)
@@ -240,6 +266,7 @@ export function checkUiBoundaries(root = defaultRoot) {
   }
   collect(path.join(absoluteRoot, "app/renderer/src/ui"));
   collect(path.join(absoluteRoot, "app/renderer/src/ui-preview"));
+  collect(path.join(absoluteRoot, "app/renderer/src/desktop"));
   if (existsSync(configuration)) queue.push(configuration);
   else report(configuration, "missing independent Vite configuration");
 
@@ -261,7 +288,11 @@ export function checkUiBoundaries(root = defaultRoot) {
       report(importer, `configuration cannot enter application/source graph: ${name}`);
       return;
     }
-    const allowed = inside(ui, target) || (inside(preview, importer) && inside(preview, target));
+    const allowed =
+      inside(ui, target) ||
+      (inside(preview, importer) && inside(preview, target)) ||
+      (inside(desktop, importer) &&
+        (inside(desktop, target) || (inside(preview, target) && /\.css$/i.test(target))));
     if (!allowed) {
       report(
         importer,
@@ -269,8 +300,12 @@ export function checkUiBoundaries(root = defaultRoot) {
       );
       return;
     }
-    if (inside(preview, importer) && inside(ui, target) && !publicUiEntry(target)) {
-      report(importer, `preview must use a public UI entry: ${name}`);
+    if (
+      (inside(preview, importer) || inside(desktop, importer)) &&
+      inside(ui, target) &&
+      !publicUiEntry(target)
+    ) {
+      report(importer, `consumer must use a public UI entry: ${name}`);
       return;
     }
     if (sourceExtension.test(target)) queue.push(target);
@@ -302,7 +337,7 @@ export function checkUiBoundaries(root = defaultRoot) {
     }
   }
 
-  function moduleReference(source, specifier) {
+  function moduleReference(source, specifier, typeOnly = false) {
     const importer = identity(source.fileName);
     if (!specifier || !ts.isStringLiteralLike(specifier)) {
       report(importer, "computed module loads are forbidden");
@@ -355,8 +390,39 @@ export function checkUiBoundaries(root = defaultRoot) {
       return;
     }
     const target = identity(resolution.resolvedFileName);
-    if (allowedPackages.has(name)) {
-      const packageName = name.startsWith("@vitejs/") ? "@vitejs/plugin-react" : name.split("/")[0];
+    if (inside(desktop, importer)) {
+      // 跨进程契约只借用类型；不沿此边把 Node/旧桌面的依赖图带入 renderer。
+      if (target === desktopContract && typeOnly) return;
+      const packageFolder =
+        name === "@agent-harness/models/model-profiles" ? "models" : "configuration";
+      const prefix = `@agent-harness/${packageFolder}/`;
+      if (
+        name === "@agent-harness/models/model-profiles" ||
+        (name.startsWith(prefix) && pureConfigurationEntries.has(name.slice(prefix.length)))
+      ) {
+        const manifest = path.join(absoluteRoot, `packages/${packageFolder}/package.json`);
+        if (existsSync(manifest)) {
+          const definition = JSON.parse(readFileSync(manifest, "utf8"));
+          const entry = definition.exports?.[`./${name.slice(prefix.length)}`];
+          const entries = typeof entry === "string" ? [entry] : Object.values(entry ?? {});
+          if (
+            entries.some(
+              (file) =>
+                typeof file === "string" &&
+                identity(path.join(absoluteRoot, `packages/${packageFolder}`, file)) === target,
+            )
+          )
+            return;
+        }
+      }
+    }
+    if (
+      allowedPackages.has(name) ||
+      (!isConfig && typeOnly && (name === "hast" || name === "mdast"))
+    ) {
+      const packageName = name.startsWith("@")
+        ? name.split("/").slice(0, 2).join("/")
+        : name.split("/")[0];
       const expected = [
         dependencyRoots.get(packageName),
         dependencyRoots.get(`@types/${packageName}`),
@@ -478,13 +544,25 @@ export function checkUiBoundaries(root = defaultRoot) {
         )
           report(file, "Vite resolver mutation is not supported by the checked graph");
       }
-      if (ts.isImportDeclaration(node)) moduleReference(source, node.moduleSpecifier);
+      if (ts.isImportDeclaration(node))
+        moduleReference(
+          source,
+          node.moduleSpecifier,
+          Boolean(
+            node.importClause?.isTypeOnly ||
+              (node.importClause?.namedBindings &&
+                ts.isNamedImports(node.importClause.namedBindings) &&
+                !node.importClause.name &&
+                node.importClause.namedBindings.elements.every((item) => item.isTypeOnly)),
+          ),
+        );
       else if (ts.isExportDeclaration(node) && node.moduleSpecifier)
-        moduleReference(source, node.moduleSpecifier);
+        moduleReference(source, node.moduleSpecifier, node.isTypeOnly);
       else if (ts.isImportTypeNode(node))
         moduleReference(
           source,
           ts.isLiteralTypeNode(node.argument) ? node.argument.literal : undefined,
+          true,
         );
       else if (ts.isImportEqualsDeclaration(node)) {
         if (ts.isExternalModuleReference(node.moduleReference))
@@ -528,7 +606,7 @@ export function checkUiBoundaries(root = defaultRoot) {
         if (!ts.isPropertyAccessExpression(parent) || !["url", "env"].includes(parent.name.text))
           report(file, "indirect import.meta module loading is forbidden");
       }
-      if (!isConfig) {
+      if (!isConfig && !inside(desktop, file)) {
         if (ts.isIdentifier(node) && node.text === "desktopApi")
           report(file, "desktopApi is forbidden in browser UI");
         if (
@@ -566,7 +644,12 @@ export function checkUiBoundaries(root = defaultRoot) {
     const visitKey = `${css ? "css" : "source"}:${file}`;
     if (visited.has(visitKey)) continue;
     visited.add(visitKey);
-    if (file !== configuration && !inside(ui, file) && !inside(preview, file)) {
+    if (
+      file !== configuration &&
+      !inside(ui, file) &&
+      !inside(preview, file) &&
+      !inside(desktop, file)
+    ) {
       report(file, "source realpath escapes new UI directories");
       continue;
     }

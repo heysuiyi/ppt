@@ -1,5 +1,4 @@
 import type { AgentRunResult } from "@agent-harness/core/agent-contract";
-import { AgentError } from "@agent-harness/core/protocol-errors";
 import type {
   InteractionRequest,
   ProtocolError,
@@ -7,15 +6,16 @@ import type {
 } from "@agent-harness/core/protocol-values";
 import type { StoredToolInvocation } from "@agent-harness/core/session/session-contract";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
+import type { HostInteractionDisplay } from "../host/host-contract.js";
+import { projectHostInteractionDisplay } from "../host/host-projection.js";
+import { escapeDisplayControls as safe } from "../host/safe-display-text.js";
+import { projectToolDisplay, sanitizeToolDisplay } from "../host/tool-display.js";
 import type { TerminalTimelinePart, TerminalTurnSettlement } from "./renderer-contract.js";
 import type {
-  TerminalInteractionDisplay,
   TerminalInteractionReference,
   TerminalRecord,
   TerminalToolReference,
 } from "./terminal-contract.js";
-import { sanitizeTerminalText as safe } from "./terminal-text.js";
-import { projectToolDisplay, sanitizeToolDisplay } from "./tool-display.js";
 
 export function terminalIdentity(value: RunIdentity): RunIdentity {
   return {
@@ -23,15 +23,6 @@ export function terminalIdentity(value: RunIdentity): RunIdentity {
     threadId: safe(value.threadId),
     queryId: safe(value.queryId),
     runId: safe(value.runId),
-  };
-}
-
-/** Only Core's public error class is trusted at a catch boundary. SDK/server values stay private. */
-export function terminalError(error: unknown): ProtocolError {
-  if (error instanceof AgentError) return sanitizeProtocolError(error);
-  return {
-    code: "TERMINAL_OPERATION_FAILED",
-    message: "The operation failed; private diagnostic details were withheld.",
   };
 }
 
@@ -49,22 +40,6 @@ export function interactionReference(request: InteractionRequest): TerminalInter
   };
 }
 
-export function terminalInteractionDisplay(
-  display: TerminalInteractionDisplay,
-): TerminalInteractionDisplay {
-  if (display.support !== "supported") return { support: "unsupported" };
-  return {
-    support: "supported",
-    summary: safe(display.summary),
-    confirmation: display.confirmation,
-    choices: display.choices.map((choice) => ({
-      id: safe(choice.id),
-      label: safe(choice.label),
-      responseType: choice.responseType,
-    })),
-  };
-}
-
 function invocationReference(invocation: StoredToolInvocation): TerminalToolReference {
   return {
     invocationIdentity: terminalIdentity(invocation.identity),
@@ -76,7 +51,7 @@ function invocationReference(invocation: StoredToolInvocation): TerminalToolRefe
 
 export function projectTerminalEvent(
   event: RuntimeEvent,
-  describe: (request: InteractionRequest) => TerminalInteractionDisplay,
+  describe: (request: InteractionRequest) => HostInteractionDisplay,
 ): TerminalRecord | undefined {
   if (event.kind !== "fact") return undefined;
   const identity = terminalIdentity(event.identity);
@@ -178,7 +153,7 @@ export function projectTerminalEvent(
         owner: reference.owner,
         payloadType: reference.payloadType,
         payloadVersion: reference.payloadVersion,
-        display: terminalInteractionDisplay(describe(event.interaction)),
+        display: projectHostInteractionDisplay(describe(event.interaction)),
       };
     }
     case "interaction.resolved":
@@ -196,7 +171,7 @@ export function projectTerminalEvent(
 
 export function projectTerminalResult(
   result: AgentRunResult,
-  describe: (request: InteractionRequest) => TerminalInteractionDisplay,
+  describe: (request: InteractionRequest) => HostInteractionDisplay,
 ): readonly TerminalRecord[] {
   const identity = terminalIdentity(result.identity);
   const records: TerminalRecord[] = [];
@@ -230,7 +205,7 @@ export function projectTerminalResult(
       identity,
       status: "waiting",
       interaction: interactionReference(result.interaction),
-      display: terminalInteractionDisplay(describe(result.interaction)),
+      display: projectHostInteractionDisplay(describe(result.interaction)),
     });
   } else if (result.status === "failed") {
     records.push({
@@ -249,7 +224,7 @@ export function projectTerminalResult(
 /** Public canonical positions only; tool payloads and private replay never cross this boundary. */
 export function projectTerminalSettlement(
   result: AgentRunResult,
-  describe: (request: InteractionRequest) => TerminalInteractionDisplay,
+  describe: (request: InteractionRequest) => HostInteractionDisplay,
 ): TerminalTurnSettlement {
   const timeline: TerminalTimelinePart[] = [];
   const pendingCalls = new Map<string, number>();
@@ -384,7 +359,7 @@ export function sanitizeTerminalRecord(record: TerminalRecord): TerminalRecord {
         owner: safe(record.owner),
         payloadType: safe(record.payloadType),
         payloadVersion: record.payloadVersion,
-        display: terminalInteractionDisplay(record.display),
+        display: projectHostInteractionDisplay(record.display),
       };
     }
     case "assistant.message":
@@ -447,7 +422,7 @@ export function sanitizeTerminalRecord(record: TerminalRecord): TerminalRecord {
             payloadType: safe(record.interaction.payloadType),
             payloadVersion: record.interaction.payloadVersion,
           },
-          display: terminalInteractionDisplay(record.display),
+          display: projectHostInteractionDisplay(record.display),
         };
       return { version: 1, type: record.type, identity, status: record.status };
     }

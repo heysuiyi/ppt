@@ -1,3 +1,4 @@
+import { escapeDisplayControls } from "../host/safe-display-text.js";
 /**
  * Activity sweep adapted from oh-my-pi's theme/shimmer.ts and components/loader.ts.
  *
@@ -25,7 +26,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { graphemes, sanitizeTerminalText, visibleWidth } from "./terminal-text.js";
+import { graphemes, visibleWidth } from "./terminal-text.js";
 
 const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const accent = "\x1b[38;5;147m";
@@ -33,7 +34,7 @@ const accent = "\x1b[38;5;147m";
 /** 按经过时间而非输出次数推进；扫光不拆字素，不改变通知文字或显示列数。 */
 export function shimmerActivity(text: string, elapsedMs: number): string {
   const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
-  const clusters = graphemes(sanitizeTerminalText(text));
+  const clusters = graphemes(escapeDisplayControls(text));
   const width = clusters.reduce((total, cluster) => total + visibleWidth(cluster), 0);
   // OMP classic: 30 列/秒、两端各十列空程、六列半宽的余弦亮度曲线。
   const head = ((elapsed / 1000) * 30) % (width + 20);

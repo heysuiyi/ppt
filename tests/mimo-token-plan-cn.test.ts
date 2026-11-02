@@ -19,9 +19,9 @@ import { createModelProvider } from "@agent-harness/models/models";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareConfiguredModel } from "../cli/host/configured-model-factory.js";
 import { createAgentHost } from "../cli/host/create-agent-host.js";
+import { projectHostError } from "../cli/host/host-projection.js";
 import { createSqliteAgentStores } from "../cli/host/sqlite-agent-stores.js";
 import { createPreviewBuffer } from "../cli/terminal/preview-buffer.js";
-import { terminalError } from "../cli/terminal/terminal-projection.js";
 
 const adapterId = "mimo-token-plan-cn";
 const profile = getModelProfile(adapterId)!;
@@ -1145,8 +1145,8 @@ describe("MiMo configured host error boundary", () => {
         failure = error;
       }
       expect(failure).toBeInstanceOf(AgentError);
-      expect(terminalError(failure)).toMatchObject({ code });
-      expect(JSON.stringify(terminalError(failure))).not.toContain("tp-synthetic");
+      expect(projectHostError(failure)).toMatchObject({ code });
+      expect(JSON.stringify(projectHostError(failure))).not.toContain("tp-synthetic");
       expect(observed).toHaveLength(0);
     },
   );

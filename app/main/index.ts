@@ -60,6 +60,8 @@ import { formatMailboxMessagesForHistory, MessageBus } from "./agent/teammate/me
 import { TeammateManager } from "./agent/teammate/spawn-teammate";
 import { createDesktopAgentConfiguration } from "./agent-configuration/desktop-configuration";
 import { registerAgentConfigurationIpc } from "./agent-configuration/ipc";
+import { type DesktopHarnessRegistration, registerDesktopHarnessIpc } from "./agent-host/ipc";
+import { attachDesktopHarnessWindowLifecycle } from "./agent-host/window-lifecycle";
 import { configureApplicationDataRoot, getApplicationDataRoot } from "./application-data";
 import { recoverInterruptedExport } from "./deck/export-recovery";
 import { createDesktopLogs, type DesktopLogs } from "./logging/desktop-logs";
@@ -92,6 +94,7 @@ let desktopLogs: DesktopLogs | undefined;
 let logger: Logger;
 let deckExportService: DeckExportService;
 let agentGateway: AgentGateway;
+let desktopHarness: DesktopHarnessRegistration | undefined;
 let stopping = false;
 let stopped = false;
 let clearingLogs = false;
@@ -438,6 +441,7 @@ async function startApplication(): Promise<void> {
   const sessionActiveRuns = new Map<string, string>(); // sessionId -> runId
   const trustedRendererWebContentsIds = new Set<number>();
   const agentConfiguration = createDesktopAgentConfiguration({ applicationDataRoot, safeStorage });
+  await agentConfiguration.management.initialize();
   let activeSessionId = sessionStore.getBootstrap().activeSession?.session.id ?? "";
 
   const ensureRuntime = async (snapshot: SessionSnapshot): Promise<SessionRuntime> => {
@@ -522,6 +526,10 @@ async function startApplication(): Promise<void> {
   const attachWindowLifecycle = (window: BrowserWindow) => {
     const webContentsId = window.webContents.id;
     trustedRendererWebContentsIds.add(webContentsId);
+    if (desktopHarness)
+      attachDesktopHarnessWindowLifecycle(window, desktopHarness, (stage, id) => {
+        logger.error("harness.window.close-failed", { webContentsId: id, stage });
+      });
     window.on("unresponsive", () => {
       logger.error("renderer.unresponsive", { webContentsId });
     });
@@ -633,6 +641,32 @@ async function startApplication(): Promise<void> {
   registerAgentConfigurationIpc(ipcMain, agentConfiguration.management, (event) =>
     assertTrustedCredentialIpc(event, trustedRendererWebContentsIds),
   );
+  desktopHarness = registerDesktopHarnessIpc({
+    ipcMain,
+    configuration: agentConfiguration,
+    dataRoot: join(applicationDataRoot, "harness"),
+    assertTrusted: (event) => {
+      assertTrustedCredentialIpc(event, trustedRendererWebContentsIds);
+      if (stopping) throw new Error("Application is shutting down.");
+    },
+    chooseDirectory: async (sender, assertCurrentDocument) => {
+      assertCurrentDocument();
+      const window = BrowserWindow.fromWebContents(sender);
+      if (!window || window.isDestroyed() || sender.isDestroyed())
+        throw new Error("The originating desktop window is unavailable.");
+      const result = await dialog.showOpenDialog(window, {
+        properties: ["openDirectory"],
+      });
+      assertCurrentDocument();
+      if (
+        window.isDestroyed() ||
+        sender.isDestroyed() ||
+        BrowserWindow.fromWebContents(sender) !== window
+      )
+        throw new Error("The originating desktop window is unavailable.");
+      return result.canceled ? undefined : result.filePaths[0];
+    },
+  });
 
   handleDesktopIpc("session:get-state", () => sessionStore.getBootstrap());
   handleDesktopIpc("token-usage:get-stats", () => tokenUsageStore.getStats());
@@ -1377,6 +1411,9 @@ function shutdown(): Promise<void> {
   stopping = true;
   shutdownPromise = (async () => {
     await startup.catch(() => undefined);
+    const harnessClose = desktopHarness?.close();
+    // 立即安装拒绝观察者，旧链路排空期间也不能留下未处理的关闭异常。
+    void harnessClose?.catch(() => undefined);
     for (const [runId, controller] of activeRuns) {
       toolApprovalBroker.cancelForRun(runId);
       controller.abort();
@@ -1398,6 +1435,12 @@ function shutdown(): Promise<void> {
     // 排空请求期间已经派发的工具可能刚发布协作任务，关闭依赖前再统一排空。
     await drainTeammates();
     const failures: unknown[] = [];
+    try {
+      await harnessClose;
+    } catch (error) {
+      failures.push(error);
+      logger?.error("harness.application.close-failed");
+    }
     for (const close of [
       () => slideThumbnailService.dispose(),
       () => presentationLifecycleRepository?.close(),

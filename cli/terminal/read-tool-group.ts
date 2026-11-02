@@ -1,3 +1,4 @@
+import { escapeDisplayControls } from "../host/safe-display-text.js";
 import {
   type OutputBlockRow,
   outputBlockContentWidth,
@@ -6,7 +7,7 @@ import {
   wrapOutputBlockText,
 } from "./output-block.js";
 import type { TerminalToolRecord } from "./terminal-contract.js";
-import { sanitizeTerminalText, truncateTerminalText, visibleWidth } from "./terminal-text.js";
+import { truncateTerminalText, visibleWidth } from "./terminal-text.js";
 
 function stringLines(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((line) => typeof line === "string");
@@ -93,7 +94,7 @@ export function readToolGroupLines(
     if (index < tools.length - 3 && !risky) continue;
     // The ordinal keeps repeated and similarly truncated targets distinguishable.
     // Only display.title is read; error messages, raw arguments and results are not.
-    const target = sanitizeTerminalText(tool.display!.title)
+    const target = escapeDisplayControls(tool.display!.title)
       .replaceAll("\n", "\\n")
       .replaceAll("\t", "    ");
     const status =

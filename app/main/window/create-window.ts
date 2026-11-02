@@ -70,12 +70,12 @@ export function createWindow(
     openInSystemBrowser(url);
     return { action: "deny" };
   });
+  onWindowCreated?.(window);
   if (process.env.ELECTRON_RENDERER_URL) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
     void window.loadFile(join(__dirname, "../renderer/index.html"));
   }
 
-  onWindowCreated?.(window);
   return window;
 }

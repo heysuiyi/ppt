@@ -7,7 +7,7 @@
 - [AGENTS.md](../AGENTS.md)：持续适用的开发规范、架构约束与验证底线。
 - 本文：项目整体方向、模块职责和分阶段路线。
 - [下一步计划](next-steps/README.md)：当前待执行迭代的具体范围、改动落点与验收条件。
-- [独立页面 UI 设计体系](next-steps/ui-design-system.md)：U0–U2 / R1 基线保留；参考用户 DeepSeek Harness / Cursor 截图完成 R2 会话工作区首页与分类设置，[本地复核及全仓 CLI 失败](next-steps/ui-design-system.md#124-r2-会话工作区与分类设置实施记录)分开记录。用户风格及完整 U3–U5 待复核，不接后端/Harness、不改旧生产 UI。
+- [页面 UI 设计体系](next-steps/ui-design-system.md)：保留 U0–U2 / R1 / R2 / Select 历史基线；[新桌面真实接入](next-steps/ui-design-system.md#125-新桌面-ui-真实接入)已切换默认会话入口，接通配置、模型、文件审批与持久恢复；完整 U3–U5 和 PPT 业务接入仍分别验收。
 - [独立 Node CLI 终端](next-steps/cli-terminal.md)：C0–C4 已同轮实施，生产/开发入口直接运行 Node，旧 CLI/Electron 桥接已删除；真实 ConPTY、Windows DPAPI、本地 SDK 与小范围 MiMo 远程验收分开记录，不保留预览或兼容入口。
 - [README](../README.md)：当前产品能力、使用方式和现有执行入口。
 
@@ -38,11 +38,11 @@ PPT 只是其中一个可选插件能力，不是与 Harness 并列的项目主�
 
 | 方面 | 已有事实 | 尚未完成的边界 |
 | --- | --- | --- |
-| 通用执行 | 私有 workspace `@agent-harness/core` 提供通用执行协议与默认实现；独立 ESM/声明构建、精确 exports 及仓库外 tarball 消费已通过 | 不代表通用体系的所有扩展能力或生产 UI 已完成 |
-| 宿主接入 | `@agent-harness/core/session-host` 提供固定 Thread、发布前绑定确认及公开 Application 装配；生产 CLI 的 `cli/host/` 负责 Node 配置、模型、SQLite、日志、能力与授权，闭包不依赖 app/根 src/Electron；已接入 MiMo 与旧 Gateway 的三种协议 | 新协议仅有本地 SDK/HTTP/SSE 与 CLI 验证，生产 UI 未迁移，异常租约不自动接管 |
+| 通用执行 | 私有 workspace `@agent-harness/core` 提供通用执行协议与默认实现；独立 ESM/声明构建、精确 exports 及仓库外 tarball 消费已通过 | 不代表通用体系的所有扩展能力已完成 |
+| 宿主接入 | 生产 CLI 与新桌面消费同一 NodeHost/SessionHost 机制；桌面逐窗口 IPC、safeStorage、模型、SQLite、目录、审批及关闭已接通，CLI 仍不依赖 app/根 src/Electron | 桌面当前向 `cli/host` 复用窄入口，尚非独立宿主包；不自动接管异常租约或迁移旧数据 |
 | 基础工具 | 私有 `@agent-harness/tools` 已收敛插件、纯契约/错误、受控 Node 文件支撑五入口；全部新旧调用方迁移，无旧源码别名；独立安装、旧 waiting/磁盘恢复、实际编辑器和 ASAR 消费通过 | 观察记录不跨进程恢复，重启须重新读取；低层 Node 读可能恢复写入，不能当新只读工具；不代表生产聊天/PPT 已迁移 |
 | 端到端 | 已完成一个已配置真实模型的普通对话、读取、EOF 等待、目录变更拒绝、重启恢复、拒绝审批与取消验证 | 不代表所有厂商、业务插件或生产 UI 都已验收 |
-| 现有消费侧 | 旧 `app/main/agent/` 与现有 PPT/UI 继续运行；生产 CLI 已独立消费新执行链，具备 inline TUI、print/JSONL、审批及持久恢复；文件能力归 tools 包 | 桌面生产聊天/PPT 尚未迁移；CLI 切换不迁移或删除旧桌面配置、凭据和会话库 |
+| 现有消费侧 | 默认桌面已切换通用会话/分类设置，生产 CLI 独立消费新链；旧 `app/main/agent/`、PPT 领域和历史数据保留 | 新首页未接 PPT 预览/导出、Skill 或子 Agent；桌面与 CLI 的凭据保护和执行数据保持分离 |
 | 模块治理 | M1 公开协议/窄资源能力及门禁已落地；M2-A 分离通用 SessionHost 与工作区配置；M2-B 完成单包、声明闭包门禁、tarball 安装及实际 Electron ASAR 消费 | 未公开发布 npm，未统一不同配置的历史目录或引入动态装配，不声称完整 Harness 已完成 |
 | 日志能力 | 私有 workspace `@agent-harness/logs` 提供通用记录与 Node 默认管理；开发宿主、原生 MiMo 与 tools 消费精确包子路径，宿主拥有实例，消费者借用 Logger | Harness 全生命周期和日志 UI 未迁移；旧 logger、Gateway 正文归档与历史日志保持原样，跨实例治理未实现 |
 | 模型适配 | 单一 `@agent-harness/models` 包的四个公开入口内聚统一创建、纯资料、安全错误和私有适配器；已实现 MiMo、OpenAI Chat Completions、OpenAI Responses、Anthropic Messages；原包阶段的安装/Electron/ASAR 证据与本次三协议本地 SDK/CLI 证据分开记录 | 新增协议未调用远程厂商；不代表全部型号、思考档位、远程兼容端点或生产聊天已验收 |
@@ -137,7 +137,7 @@ Harness 内部不得反向依赖具体宿主或业务。PPT 插件和其他能�
 | M1：Harness 公开面收敛 | 已实施并完成本地验收，两项审核门禁缺陷已修复，见下一步计划 M1.12–M1.13 | 基于现有 Agent 模块明确功能与扩展协议，迁移消费方，约束内部依赖 | 公开入口可完整执行；私有路径绕过被阻止；无业务插件与文件插件两类消费方式都成立，且既有恢复语义不变 |
 | M2：通用装配与包边界 | M2-A、M2-B 均已实施并完成各自本地验收 | 分离可复用宿主机制、具体运行配置和适配器，验证模块独立消费 | 定义和插件清单可显式选择；不依赖固定业务或 Electron 才能使用通用模块；独立构建、真实 tarball 仓库外安装与 Electron ASAR 消费已验证 |
 | M3：扩展与可靠性通用验收 | A～E 已验收，独立审核修复与最终门禁通过，计划范围完成收口 | 按公开协议验证能力组合、安装失败回滚、版本兼容和副作用恢复，重点核验竞争条件下的隔离、关闭及持久写入安全 | 真实进程/CLI/观察证据及 [D 最终修复验收](next-steps/m3-d-recovery.md#137-修复实施与最终验收记录)通过，第三 PID 完整历史、committed 与独立收据预期已补齐；不新增并行调度，不宣称容量有界、插件沙箱或业务入口已迁移 |
-| M4：宿主消费侧迁移 | 后续按宿主需求推进 | 让实际入口消费 Harness 的公开输入、事件和结果协议 | 输入、审批和恢复不穿透内核；数据与会话兼容性明确；相应旧调用迁出后删除失效路径 |
+| M4：宿主消费侧迁移 | [A](next-steps/m4-a-host-boundary.md#9-实施与本地验收记录)、[B](next-steps/m4-b-desktop-lifecycle.md#8-实施与本地验收记录)已实施并完成各自本地验收，C～E 待实施；CLI/新桌面既有接入作为基线 | 收敛宿主与终端展示边界，补齐双端生命周期、数据兼容、旧路径退出及当前产物消费 | 输入、审批和恢复不穿透内核；双宿主真实验收、兼容矩阵与打包产物通过；删除已替代的失效路径，未迁领域保留明确归属 |
 
 阶段按验收门槛推进，不用提前排日历日期替代依赖分析。M2 以实际 JS/声明、受控导出、独立安装消费及宿主产物运行完成验收，不以转发文件或源码编译通过代替包边界。
 
@@ -168,6 +168,10 @@ logs/tools 与 MiMo/CLI 能力切片的既有实现和证据保留在下一步�
 交付应说明本阶段完成了什么、保留了哪些依赖、哪些场景实际运行过；不能把后续规划写成当前功能。
 
 ## 8. 当前行动
+
+当前按 [M4 宿主消费侧迁移与收口](next-steps/m4-host-consumption.md)推进；[M4-A](next-steps/m4-a-host-boundary.md#9-实施与本地验收记录)已拆分中立 NodeHost 与 CLI 配置适配并完成双端本地验收，[M4-B](next-steps/m4-b-desktop-lifecycle.md#8-实施与本地验收记录)已完成文档世代、异步结果、双窗口/关闭和原生目录选择验收。C～E 的完整兼容、旧路径退出与当前产物总验收仍待实施；PPT、Skill、子 Agent、第二后端与全量旧 Agent/Gateway 退出不作为隐含范围。
+
+M4-B 最终源码一致的隔离构建、类型/边界、222 文件/2348 项单测（3 项既有跳过）、62 项集成、12 文件静态检查和 CLI 两入口通过；真实桌面正常退出 0，19 个检查点全部释放租约，跨进程 waiting 保持 Query/新 Run 并消费真实文件。保留共享产物首轮失败与原生交互限制，未改变持久格式、调用远程厂商或将 C～E/ASAR 认证提前标记完成。
 
 [M3-A](next-steps/m3-a-composition.md#10-后续独立复核与完成结论)与 [M3-B](next-steps/m3-b-lifecycle.md#10-后续独立审核与完成结论)均已通过独立审核并验收完成。B 已修复两个 binding 交接点的清理错误保留，补齐执行隔离、单实例准入及关闭排空；独立审核通过七文件 110 项、全仓 typecheck/四包边界、全量 193 文件/1654 项（2 项既有跳过）、原生 Node/真实 SQLite、两项真实 CLI 集成与包消费。实施当时的 tools 边界阻塞保留为历史，已不再阻塞 B；模型/工具/CLI 独立迁移与其证据不混算。
 

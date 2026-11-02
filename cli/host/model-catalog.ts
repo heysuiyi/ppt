@@ -1,7 +1,7 @@
 import type { AgentConfigurationSnapshot } from "@agent-harness/configuration/configuration-contract";
 import { getModelProfile, getModelSupport } from "@agent-harness/models/model-profiles";
-import type { TerminalModelItem } from "../terminal/terminal-contract.js";
 import { configuredModelAdapter, configuredModelFingerprint } from "./configured-model-factory.js";
+import type { HostModel } from "./host-contract.js";
 
 export type ConfiguredModelStatus =
   | "ready"
@@ -11,7 +11,7 @@ export type ConfiguredModelStatus =
   | "invalid-budget"
   | "credential-storage-unavailable"
   | "missing-credential";
-export interface ConfiguredModelItem extends TerminalModelItem {
+export interface ConfiguredModelItem extends HostModel {
   readonly status: ConfiguredModelStatus;
   readonly connectionFingerprint?: string;
 }

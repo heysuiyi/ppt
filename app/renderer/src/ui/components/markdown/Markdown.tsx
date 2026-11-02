@@ -1,0 +1,213 @@
+import { MicromarkAstBuilder } from "@incremark/core/engines/micromark";
+import type { Nodes } from "hast";
+import type { Html } from "mdast";
+import { toHast } from "mdast-util-to-hast";
+import { createElement, type ReactNode, useId, useMemo } from "react";
+import "./markdown.css";
+
+interface LiteralHtml extends Omit<Html, "type"> {
+  type: "uiLiteralHtml";
+}
+
+declare module "mdast" {
+  interface BlockContentMap {
+    uiLiteralHtml: LiteralHtml;
+  }
+  interface PhrasingContentMap {
+    uiLiteralHtml: LiteralHtml;
+  }
+  interface RootContentMap {
+    uiLiteralHtml: LiteralHtml;
+  }
+}
+
+type SyntaxNode = { type: string; children?: SyntaxNode[] };
+
+// Keep raw HTML literal before the parser's optional HTML-to-Markdown conversion.
+function preserveHtml(node: SyntaxNode): void {
+  if (node.type === "html") node.type = "uiLiteralHtml";
+  for (const child of node.children ?? []) preserveHtml(child);
+}
+
+const builder = new MicromarkAstBuilder({
+  gfm: true,
+  math: false,
+  plugins: [
+    {
+      name: "ui-literal-html",
+      type: "micromark",
+      micromark: { extensions: [], mdastExtensions: [{ transforms: [preserveHtml] }] },
+    },
+  ],
+});
+
+// Only these parser-generated elements are rendered; arbitrary HTML never becomes DOM.
+const elements: Record<string, true> = {
+  p: true,
+  h1: true,
+  h2: true,
+  h3: true,
+  h4: true,
+  h5: true,
+  h6: true,
+  strong: true,
+  em: true,
+  del: true,
+  code: true,
+  pre: true,
+  a: true,
+  ul: true,
+  ol: true,
+  li: true,
+  blockquote: true,
+  table: true,
+  thead: true,
+  tbody: true,
+  tr: true,
+  th: true,
+  td: true,
+  br: true,
+  hr: true,
+  input: true,
+  span: true,
+  section: true,
+  sup: true,
+};
+
+function safeUrl(value: string): string | undefined {
+  // Ignore ASCII whitespace/control characters exactly as browser protocol parsing does.
+  const url = value.trim();
+  const protocol = url.replace(/[\u0000-\u0020\u007f]/g, "");
+  if (!url || protocol.startsWith("\\") || protocol.startsWith("//")) return undefined;
+  const colon = protocol.indexOf(":");
+  const boundary = protocol.search(/[/?#]/);
+  if (colon !== -1 && (boundary === -1 || colon < boundary)) {
+    if (!/^(https?|mailto)$/i.test(protocol.slice(0, colon))) return undefined;
+  }
+  return url;
+}
+
+function renderNode(node: Nodes, key: number): ReactNode {
+  if (node.type === "text") return node.value;
+  if (node.type === "root") return node.children.map(renderNode);
+  if (node.type !== "element") return null;
+
+  const tableStructure = ["table", "thead", "tbody", "tr"].includes(node.tagName);
+  const children = node.children
+    .filter((child) => !tableStructure || child.type !== "text" || Boolean(child.value.trim()))
+    .map(renderNode);
+  const properties = node.properties;
+  if (node.tagName === "img") {
+    const label = `图片：${String(properties.alt || "未提供描述")}`;
+    const href = safeUrl(String(properties.src ?? ""));
+    return href ? (
+      <a
+        key={key}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        referrerPolicy="no-referrer"
+      >
+        {label}
+      </a>
+    ) : (
+      <span key={key}>{label}</span>
+    );
+  }
+  if (!Object.hasOwn(elements, node.tagName)) return <span key={key}>{children}</span>;
+  if (node.tagName === "a") {
+    const href = safeUrl(String(properties.href ?? ""));
+    return href ? (
+      <a
+        key={key}
+        href={href}
+        title={typeof properties.title === "string" ? properties.title : undefined}
+        target={href.startsWith("#") ? undefined : "_blank"}
+        rel="noopener noreferrer"
+        referrerPolicy="no-referrer"
+      >
+        {children}
+      </a>
+    ) : (
+      <span key={key}>{children}</span>
+    );
+  }
+  if (node.tagName === "input") {
+    return properties.type === "checkbox" ? (
+      <input
+        key={key}
+        type="checkbox"
+        checked={properties.checked === true}
+        disabled
+        aria-label={properties.checked === true ? "已完成任务" : "未完成任务"}
+      />
+    ) : null;
+  }
+
+  const props: Record<string, unknown> = { key };
+  if (/^h[1-6]$/.test(node.tagName)) props.className = "ui-markdown__heading";
+  if (node.tagName === "span") props.className = "ui-markdown__literal-html";
+  if (node.tagName === "ol" && typeof properties.start === "number") props.start = properties.start;
+  if (node.tagName === "code" && Array.isArray(properties.className)) {
+    props.className = properties.className
+      .filter((value) => String(value).startsWith("language-"))
+      .join(" ");
+  }
+  if (node.tagName === "pre") {
+    props.tabIndex = 0;
+    props["aria-label"] = "代码块";
+  }
+  if (node.tagName === "td" || node.tagName === "th") {
+    if (["left", "right", "center"].includes(String(properties.align))) {
+      props.style = { textAlign: properties.align };
+    }
+    if (node.tagName === "th") props.scope = "col";
+  }
+  // Footnote IDs are generated by toHast with its default user-content clobber prefix.
+  if (typeof properties.id === "string") props.id = properties.id;
+  if (node.tagName === "section" && properties.dataFootnotes) {
+    props["aria-label"] = "脚注";
+  }
+  const element = children.length
+    ? createElement(node.tagName, props, children)
+    : createElement(node.tagName, props);
+  return node.tagName === "table" ? (
+    <div
+      key={key}
+      className="ui-markdown__table-scroll"
+      role="region"
+      aria-label="表格"
+      tabIndex={0}
+    >
+      {element}
+    </div>
+  ) : (
+    element
+  );
+}
+
+/** Native, immediately readable Markdown; no remote image requests or HTML execution. */
+export function Markdown({ content, className }: { content: string; className?: string }) {
+  const documentId = useId();
+  const tree = useMemo(
+    () =>
+      toHast(builder.parse(content), {
+        clobberPrefix: `${documentId}-`,
+        handlers: {
+          uiLiteralHtml: (_state, node) => ({
+            type: "element",
+            tagName: "span",
+            properties: {},
+            children: [{ type: "text", value: "value" in node ? String(node.value) : "" }],
+          }),
+        },
+      }),
+    [content, documentId],
+  );
+
+  return (
+    <div className={["ui-markdown", className].filter(Boolean).join(" ")}>
+      {renderNode(tree, 0)}
+    </div>
+  );
+}

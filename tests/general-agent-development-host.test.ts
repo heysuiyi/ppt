@@ -15,10 +15,11 @@ import type { ToolsMode } from "@agent-harness/tools/tools-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { prepareConfiguredModel } from "../cli/host/configured-model-factory";
 import { type AgentHost, createAgentHost } from "../cli/host/create-agent-host";
-import type { TerminalSetupIO } from "../cli/host/host-contract";
 import { configuredModels } from "../cli/host/model-catalog";
 import { createNodeHost } from "../cli/host/node-host";
 import { createSqliteAgentStores } from "../cli/host/sqlite-agent-stores";
+import { createTerminalHost } from "../cli/host/terminal-host";
+import type { TerminalSetupIO } from "../cli/host/terminal-host-contract";
 import { projectTerminalEvent, projectTerminalResult } from "../cli/terminal/terminal-projection";
 
 const mimoProfile = getModelProfile("mimo-token-plan-cn");
@@ -947,7 +948,7 @@ describe("independent configured Agent host", () => {
     });
     const decrypt = vi.spyOn(fakeProtection, "decrypt");
     const discover = vi.spyOn(configuration.management, "listRemoteModels");
-    const host = createNodeHost({
+    const host = createTerminalHost({
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
       configuration,
@@ -1034,7 +1035,7 @@ describe("independent configured Agent host", () => {
     );
     const configuration = await f.configure();
     await configuration.management.saveCliPreferences({ defaultModelId: "configured-model" });
-    const host = createNodeHost({
+    const host = createTerminalHost({
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
       configuration,
@@ -1064,6 +1065,12 @@ describe("independent configured Agent host", () => {
     await expect(host.run("Cannot borrow setup input")).rejects.toMatchObject({
       code: "HOST_BUSY",
     });
+    await expect(host.resume("cannot-resume-during-setup")).rejects.toMatchObject({
+      code: "HOST_BUSY",
+    });
+    await expect(host.selectSession(original.threadId)).rejects.toMatchObject({
+      code: "HOST_BUSY",
+    });
     selection.resolve(undefined);
     await expect(configuring).resolves.toBeUndefined();
     expect(setup.secret).not.toHaveBeenCalled();
@@ -1075,13 +1082,104 @@ describe("independent configured Agent host", () => {
     );
   });
 
+  it("rejects configuration throughout an active execution and admits it after settlement", async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const f = await fixture(async (_body, response) => {
+      entered.resolve();
+      await release.promise;
+      respondNative(response, [textOutput("Execution finished before setup")]);
+    });
+    cleanup.push(async () => release.resolve());
+    const host = createTerminalHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration: await f.configure(),
+      credentialProtection: fakeProtection,
+    });
+    cleanup.push(() => host.close());
+    await host.open({ modelId: "configured-model", toolsMode: "none" });
+    const original = host.context;
+    const setup: TerminalSetupIO = {
+      select: vi.fn(async () => undefined),
+      secret: vi.fn(async () => undefined),
+      text: vi.fn(async () => undefined),
+      notify: vi.fn(async () => {}),
+    };
+    const run = await host.run("Keep execution active");
+    await entered.promise;
+    try {
+      await expect(
+        host.configureModel(setup, { type: "existing", vendorId: "loopback" }),
+      ).rejects.toMatchObject({ code: "HOST_BUSY" });
+      expect(setup.select).not.toHaveBeenCalled();
+      expect(setup.secret).not.toHaveBeenCalled();
+      expect(host.context).toBe(original);
+    } finally {
+      release.resolve();
+    }
+    expect((await run.completed).status).toBe("completed");
+    await expect(
+      host.configureModel(setup, { type: "existing", vendorId: "loopback" }),
+    ).resolves.toBeUndefined();
+    expect(setup.select).toHaveBeenCalledTimes(1);
+    expect(host.context).toBe(original);
+  });
+
+  it("rejects configuration while a session switch is preparing and releases admission afterward", async () => {
+    const f = await fixture((_body, response) =>
+      respondNative(response, [textOutput("New session remains usable")]),
+    );
+    const configuration = await f.configure();
+    const host = createTerminalHost({
+      dataRoot: f.directory,
+      workspaceRoot: f.workspace,
+      configuration,
+      credentialProtection: fakeProtection,
+    });
+    cleanup.push(() => host.close());
+    await host.open({ modelId: "configured-model", toolsMode: "none" });
+    const original = host.context;
+    const snapshot = await configuration.management.getSnapshot();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    vi.spyOn(configuration.management, "getSnapshot").mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return snapshot;
+    });
+    const setup: TerminalSetupIO = {
+      select: vi.fn(async () => undefined),
+      secret: vi.fn(async () => undefined),
+      text: vi.fn(async () => undefined),
+      notify: vi.fn(async () => {}),
+    };
+    const switching = host.newSession();
+    await entered.promise;
+    try {
+      await expect(
+        host.configureModel(setup, { type: "existing", vendorId: "loopback" }),
+      ).rejects.toMatchObject({ code: "HOST_BUSY" });
+      expect(setup.select).not.toHaveBeenCalled();
+      expect(host.context).toBe(original);
+    } finally {
+      release.resolve();
+    }
+    await switching;
+    expect(host.context.threadId).not.toBe(original.threadId);
+    await expect(
+      host.configureModel(setup, { type: "existing", vendorId: "loopback" }),
+    ).resolves.toBeUndefined();
+    expect((await (await host.run("Use switched session")).completed).status).toBe("completed");
+  });
+
   it("adds a second vendor through local discovery without rebinding the ready session or exposing credentials", async () => {
     const f = await fixture((_body, response) =>
       respondNative(response, [textOutput("Original model is still bound")]),
     );
     const configuration = await f.configure();
     await configuration.management.saveCliPreferences({ defaultModelId: "configured-model" });
-    const host = createNodeHost({
+    const host = createTerminalHost({
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
       configuration,
@@ -1172,7 +1270,7 @@ describe("independent configured Agent host", () => {
       respondNative(response, [textOutput("Original host survives configuration failure")]),
     );
     const configuration = await f.configure();
-    const host = createNodeHost({
+    const host = createTerminalHost({
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
       configuration,
@@ -1212,7 +1310,7 @@ describe("independent configured Agent host", () => {
     const f = await fixture((_body, response) =>
       respondNative(response, [textOutput("unexpected")]),
     );
-    const host = createNodeHost({
+    const host = createTerminalHost({
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
       configuration: await f.configure(),
@@ -1359,7 +1457,19 @@ describe("independent configured Agent host", () => {
       { role: "user", text: "Read notes.txt" },
       { role: "reasoning", text: "public reasoning provided by the model" },
       { role: "assistant", text: "Inspecting notes." },
-      { role: "tool", tool: { callId: "read-1", name: "read", result: "recorded" } },
+      expect.objectContaining({
+        role: "tool",
+        tool: expect.objectContaining({
+          callId: "read-1",
+          name: "read",
+          result: "recorded",
+          identity: first.identity,
+          step: 1,
+          status: "completed",
+          effects: "none",
+          display: expect.objectContaining({ title: "notes.txt", output: ["first file revision"] }),
+        }),
+      }),
       { role: "assistant", text: "Approved read complete" },
     ]);
   });
@@ -1390,6 +1500,7 @@ describe("independent configured Agent host", () => {
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
       configuration,
+      requireReadApproval: false,
     });
     cleanup.push(() => unprotectedHost.close());
     await expect(unprotectedHost.open({ threadId })).rejects.toMatchObject({
@@ -1544,10 +1655,11 @@ describe("independent configured Agent host", () => {
     const f = await fixture((_body, response) =>
       respondNative(response, [textOutput("unexpected")]),
     );
-    const host = createNodeHost({
+    const host = createTerminalHost({
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
       configuration: await f.configure(),
+      credentialProtection: fakeProtection,
     });
     cleanup.push(() => host.close());
     const secret = vi.fn();
@@ -1566,45 +1678,52 @@ describe("independent configured Agent host", () => {
     expect(f.requests).toEqual([]);
   });
 
-  it("aborts and drains model preparation on close without publishing a live host", async () => {
-    const f = await fixture((_body, response) =>
-      respondNative(response, [textOutput("unexpected")]),
-    );
-    const entered = Promise.withResolvers<void>();
-    const host = createNodeHost({
-      dataRoot: f.directory,
-      workspaceRoot: f.workspace,
-      configuration: await f.configure(),
-      createProvider: async (_options: ModelProviderOptions, signal: AbortSignal) => {
-        const pending = Promise.withResolvers<never>();
-        const aborted = () => pending.reject(signal.reason);
-        signal.addEventListener("abort", aborted, { once: true });
-        entered.resolve();
-        try {
-          return await pending.promise;
-        } finally {
-          signal.removeEventListener("abort", aborted);
-        }
-      },
-    });
-    cleanup.push(() => host.close());
-    const opening = host.open({ modelId: "configured-model" });
-    const rejected = expect(opening).rejects.toMatchObject({ code: "HOST_CLOSED" });
-    await entered.promise;
-    await host.close();
-    await rejected;
-    expect(() => host.context).toThrow(expect.objectContaining({ code: "HOST_CLOSED" }));
-    expect(f.requests).toEqual([]);
-  });
+  it.each([
+    ["neutral", createNodeHost],
+    ["terminal", createTerminalHost],
+  ] as const)(
+    "%s host aborts and drains model preparation on close without publishing a live host",
+    async (_kind, createHost) => {
+      const f = await fixture((_body, response) =>
+        respondNative(response, [textOutput("unexpected")]),
+      );
+      const entered = Promise.withResolvers<void>();
+      const host = createHost({
+        dataRoot: f.directory,
+        workspaceRoot: f.workspace,
+        configuration: await f.configure(),
+        createProvider: async (_options: ModelProviderOptions, signal: AbortSignal) => {
+          const pending = Promise.withResolvers<never>();
+          const aborted = () => pending.reject(signal.reason);
+          signal.addEventListener("abort", aborted, { once: true });
+          entered.resolve();
+          try {
+            return await pending.promise;
+          } finally {
+            signal.removeEventListener("abort", aborted);
+          }
+        },
+      });
+      cleanup.push(() => host.close());
+      const opening = host.open({ modelId: "configured-model" });
+      const rejected = expect(opening).rejects.toMatchObject({ code: "HOST_CLOSED" });
+      await entered.promise;
+      await host.close();
+      await rejected;
+      expect(() => host.context).toThrow(expect.objectContaining({ code: "HOST_CLOSED" }));
+      expect(f.requests).toEqual([]);
+    },
+  );
 
   it("closes while the terminal owns a pending setup prompt without publishing a host", async () => {
     const f = await fixture((_body, response) =>
       respondNative(response, [textOutput("unexpected")]),
     );
-    const host = createNodeHost({
+    const host = createTerminalHost({
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
       configuration: await f.configure(),
+      credentialProtection: fakeProtection,
     });
     cleanup.push(() => host.close());
     const entered = Promise.withResolvers<void>();

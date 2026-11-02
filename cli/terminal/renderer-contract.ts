@@ -1,8 +1,7 @@
 import type { RunIdentity } from "@agent-harness/core/protocol-values";
+import type { HostHistoryEntry, HostInteractionDisplay } from "../host/host-contract.js";
 import type {
   TerminalComposerState,
-  TerminalHistoryEntry,
-  TerminalInteractionDisplay,
   TerminalInteractionReference,
   TerminalPhase,
   TerminalRecord,
@@ -86,7 +85,7 @@ export interface TerminalView {
   readonly completion?: TerminalSelectorView;
   readonly interaction?: {
     readonly reference: TerminalInteractionReference;
-    readonly display: TerminalInteractionDisplay;
+    readonly display: HostInteractionDisplay;
   };
   readonly prompt?: { readonly text: string; readonly secret: boolean };
   readonly feedback?: TerminalFeedback;
@@ -94,7 +93,7 @@ export interface TerminalView {
 
 export interface TerminalRenderer {
   /** 绑定成功后一次交接上下文与目标历史；保留已有终端滚动历史。 */
-  bindSession(view: TerminalView, history: readonly TerminalHistoryEntry[]): Promise<void>;
+  bindSession(view: TerminalView, history: readonly HostHistoryEntry[]): Promise<void>;
   beginRun(identity: RunIdentity): Promise<void>;
   settle(settlement: TerminalTurnSettlement): Promise<void>;
   record(record: TerminalRecord): Promise<void>;

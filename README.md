@@ -10,9 +10,17 @@
 
 本项目正在从演示文稿应用演进为通用 Agent Harness：提供模型中立执行、工具与插件装配、授权、规范历史及恢复能力。通用内核为 `@agent-harness/core`，诊断日志为独立的 `@agent-harness/logs`；PPT 是后续按公开协议接入的可选业务能力，不是内核定位。
 
-## 现有 Electron/PPT 宿主
+## 当前桌面入口
 
-现有生产 UI 与旧 Agent 仍是本地优先的演示文稿工作台，尚未切换到新 Harness。下方界面、PPT 功能与使用说明描述这一保留宿主，不代表通用内核已经完成生产接入。宿主的产品名、appId、`.agent-ppt` 数据目录和 `AGENT_PPT_DATA_DIR` 暂时保持兼容。
+`npm run dev` / 构建后的桌面默认打开新的 Harness 会话工作区，接入与 Node CLI 相同的模型、文件工具、审批和持久恢复机制。先在「设置 → 模型」创建连接、发现或手工添加模型，再选择真实工作区目录开始对话。输入区不再提供工具模式切换，新会话默认启用工作区读写工具；模型与目录固定绑定，审批可以拒绝，运行可以取消，已保存的等待可在重启后继续。
+
+新会话默认不为工作区内的 `read` / `glob` / `grep` 弹审批；读写会话中的 `write` / `edit` 仍逐次要求明确批准。目录边界、文件版本和已安装工具限制不变。旧会话保留原有授权定义，已有读取审批仍须明确回答；新建会话才使用新的默认策略。
+
+桌面配置继续使用 safeStorage；CLI 使用独立数据根和 Windows DPAPI，两者不自动同步密钥。新执行数据位于 `~/.agent-ppt/harness/`，不迁移或混用旧 PPT 会话库。厂商网络请求由 Main 发起，renderer 只接收安全展示协议。细节及验证边界见 [桌面接入记录](docs/next-steps/ui-design-system.md#125-新桌面-ui-真实接入)。
+
+## 旧 Electron/PPT 工作台
+
+下方截图、主题和 PPT 使用说明描述保留的旧实现，不是新首页已接入的能力。旧 Agent、PPT 领域服务和历史数据未删除；新首页尚不提供幻灯片预览、PPT 导出、Skill 或子 Agent。产品名、appId 和 `.agent-ppt` 数据根保持不变。
 
 该宿主适合这些场景：
 
@@ -21,7 +29,7 @@
 - 用本地项目文件追踪 Brief、大纲、分镜、设计规格、导出记录和对话过程
 - 研究“AI 如何可靠地参与文档编辑”，包括工具调用、审批、风险控制和视觉质检
 
-## 界面一览
+## 旧 PPT 界面一览
 
 三栏工作台：左侧管理会话与项目文件，中间查看 Agent 过程与审批，右侧实时预览幻灯片。Agent 生成的演示可直接进入放映，预览与导出共用同一套 SVG 视觉源；设置台可管理模型、搜索与联网、提交与审批、用量与费用等。下方样张为默认界面与 Agent 产出示例。
 
@@ -126,7 +134,7 @@ flowchart LR
 
 每次 Agent Run 产生的 Proposal 都有独立审批卡。同一对话线程连续生成多套方案时，后一个提案不会继承前一个提案的“已应用”状态。对于旧版本曾错误复用审批卡的会话，应用重新加载时会检测审批动作与提案 Run 不一致的记录，并把该卡恢复为待审核，避免把未执行的替换误报为已完成。
 
-## 你能在应用里做什么
+## 旧 PPT 工作台的已有能力（未接入新首页）
 
 - 用居中的 AI 输入框新建对话，输入自然语言需求开始生成
 - 在左侧切换 Agent 工作区、浏览项目文件、搜索历史会话
@@ -227,10 +235,10 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 关键模块：
 
-- `app/renderer/`：React 工作台、聊天流、实时 PPT 镜像、设置台；`app/renderer/src/App.tsx` 直接承载公共布局与工作台/设置页切换
+- `app/renderer/`：生产入口为 `src/desktop/DesktopApp.tsx`，通过独立 Harness IPC 消费真实会话与配置；旧 React PPT 工作台代码保留但不作为默认入口。
   - 布局由容器分配空间：根节点限定窗口高度，主体通过 Flex/Grid 伸展；栏宽由 `useWorkbenchLayout` 的 CSS 变量统一控制，并通过 `ResizeObserver` 按实际容器尺寸适配。内部面板独立滚动，局部响应式使用容器查询；窗口缩小时不会覆盖用户保存的预览宽度。SVG 预览保持 16:9，作者坐标仍为 1280×720。
   - 面板尺寸拖拽统一使用 `app/renderer/src/components/ResizeHandle.tsx`：受控 `value/min/max/onValueChange`，`axis` 选择左右或上下拖动，`direction` 决定增减方向。组件统一管理 idle/hover/dragging/disabled、指针捕获、全局光标和清理；支持方向键（10px）、Home/End。取消保留最后尺寸，禁用、失焦、失去捕获、卸载或边界变化时结束拖拽；尺寸约束和持久化仍由布局层负责。
-- `packages/harness/`：私有 npm workspace 包 `@agent-harness/core@0.1.0`，Node >=24、ESM-only；独立生成 JS 与声明，运行时仅依赖 Zod。普通消费方使用包的精确子路径，不直接引用源码或私有 dist 文件；未接入生产 UI，现有 `app/main/agent/` 继续运行。
+- `packages/harness/`：私有 npm workspace 包 `@agent-harness/core@0.1.0`，Node >=24、ESM-only；独立生成 JS 与声明，运行时仅依赖 Zod。普通消费方使用包的精确子路径，不直接引用源码或私有 dist 文件；新桌面与 CLI 已消费，旧 `app/main/agent/` 仍保留。
   - `src/agent/application/agent-application.ts`：公开 `@agent-harness/core/application/agent-application` 的 `createAgentApplication()`；内部默认工厂安装插件、绑定模型、就绪后发布实例，失败回滚。应用关闭先拒绝新创建、打断并排空执行，再释放拥有的资源；调用方不直接使用默认工厂。以下子目录均位于 `src/agent/` 内，不代表可导入路径。
   - `scope/`：Application → Agent → Run 的资源所有权、逆序释放与注册句柄；借用的宿主服务不随 Agent 关闭。
   - `runtime/`：单实例单激活的 `run/resume`、独立事件观察通道、Query 检查点协调，以及模型步/工具步。新请求只接收用户消息，不强制转换为业务 Task；Step 在提交边界更新快照。
@@ -290,7 +298,7 @@ PPTX exporter (hybrid: SVG background + editable text)
 - 历史与检查点不假设共享事务：先保存追加意图，再按稳定批次 ID 提交历史。崩溃后先对账；工具已派发或回答已消费、但没有持久结果时记为 `unknown`，不自动重做副作用。这不承诺外部操作恰好一次。
 - 模型流必须有权威完成响应，临时增量不作为规范历史；截断、缺失完成响应、存储失败不会被报告为成功。定义、插件或续传契约改变时必须升级相应版本。
 
-新链路的回归入口为 `tests/base-tools.test.ts`、`tests/mimo-token-plan-cn.test.ts` 与 `tests/general-agent-*.test.ts`，覆盖真实文件、SQLite、原生 SDK 到本地 HTTP/SSE 的传输、生命周期、工具授权与恢复边界。远程厂商推理需要另外配置凭据；这些本地验证不代表已经完成远程 LLM 或生产 UI 的切换验证。
+新链路回归入口包括 `tests/desktop-*.test.*`、`tests/base-tools.test.ts`、`tests/mimo-token-plan-cn.test.ts` 与 `tests/general-agent-*.test.ts`。本地受控 HTTP/SSE、真实 Electron 和持久化验证不代表全部远程厂商或 PPT 插件验收。
 
 ### 独立 UI 预览
 
@@ -300,7 +308,7 @@ npm.cmd run ui:build
 npm.cmd run ui:typecheck
 ```
 
-开发地址为 `http://127.0.0.1:5178/`。此入口不启动 Electron、不构建 Harness，也不替换生产桌面。按 DeepSeek Harness / Cursor 参考改为工作区与会话首页：空会话居中输入，发送本地用户示例后输入区留在底部；切换会话或进入/返回设置保留草稿和模型选择。
+开发地址为 `http://127.0.0.1:5178/`。此入口仍是纯浏览器的独立设计预览，不启动 Electron、不构建 Harness，也不连接真实服务；真实桌面使用 `npm run dev`。预览保留工作区与会话首页、内存示例消息、草稿及模型选择，便于单独检查组件与布局。
 
 底部「设置」管理输入区的示例模型、连接及外观；故障场景从「验收工具 → 连接交互检查」进入。连接只接受 `demo-key`；不调用模型、不访问真实目录或保存凭据。所有状态仅在内存中，刷新恢复，产物位于 `.vite/ui-preview/`。范围、截图及全仓 CLI 失败见 [R2 实施与本地验收](docs/next-steps/ui-design-system.md#124-r2-会话工作区与分类设置实施记录)，完整 U3–U5 尚未验收。
 
@@ -377,4 +385,4 @@ Agent PPT 的默认运行方式是本地优先：
 
 ## 当前状态
 
-当前重点是通用 Harness 的模块边界与实际宿主消费：已独立通用执行和日志包，模型及工具能力继续按明确边界演进。现有 PPT 工作台保持运行，但不作为内核通用性的标准；生产切换、业务插件接入及尚未执行的可靠性计划分别验收，见项目规划。
+当前重点是通用 Harness 的模块边界与实际宿主消费：新桌面和 CLI 已消费通用执行链，PPT 领域与旧工作台实现保留，不作为内核通用性的标准；后续业务插件接入和其他可靠性计划分别验收，见项目规划。

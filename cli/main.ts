@@ -8,7 +8,7 @@ import {
   TERMINAL_HELP,
   TerminalArgumentError,
 } from "./commands/terminal-command.js";
-import type { NodeHostOptions, TerminalHost } from "./host/host-contract.js";
+import type { TerminalHost, TerminalHostOptions } from "./host/terminal-host-contract.js";
 import { runTerminalController } from "./terminal/terminal-controller.js";
 
 export interface CliEnvironment {
@@ -17,7 +17,7 @@ export interface CliEnvironment {
   readonly error?: Writable;
   readonly environment?: NodeJS.ProcessEnv;
   readonly workspaceRoot?: string;
-  readonly createHost?: (options: NodeHostOptions) => TerminalHost;
+  readonly createHost?: (options: TerminalHostOptions) => TerminalHost;
 }
 
 /** Callback-backed write observes drain/failure; no console output enters JSONL. */
@@ -126,7 +126,8 @@ export async function runCli(args: readonly string[], ports: CliEnvironment = {}
     const workspaceRoot = resolve(ports.workspaceRoot ?? environment.INIT_CWD ?? process.cwd());
     // The execution host loads platform-specific SQLite/credential capabilities.
     // Help and input-only paths must work when those capabilities are unavailable.
-    const createHost = ports.createHost ?? (await import("./host/node-host.js")).createNodeHost;
+    const createHost =
+      ports.createHost ?? (await import("./host/terminal-host.js")).createTerminalHost;
     const code = await runTerminalController({
       command,
       host: createHost({ dataRoot, workspaceRoot }),

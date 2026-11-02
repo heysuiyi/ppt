@@ -147,6 +147,7 @@ export function WorkspaceScreen({
               <button
                 type="button"
                 className="ui-workspace-group-button"
+                title={item.name}
                 aria-current={item.id === thread.workspaceId ? "true" : undefined}
                 onClick={() => {
                   dispatch({ type: "select-workspace", workspaceId: item.id });

@@ -10,9 +10,17 @@
 
 This project is evolving from a presentation application into a general-purpose Agent Harness: model-neutral execution, tool/plugin composition, authorization, canonical history, and recovery. The generic execution package is `@agent-harness/core`; diagnostics are independently provided by `@agent-harness/logs`. PPT is an optional business capability to integrate through public protocols, not the kernel's identity.
 
-## Existing Electron/PPT host
+## Current desktop entry
 
-The production UI and legacy Agent still form a local-first presentation workspace; they have not switched to the new Harness. The screenshots and PPT usage below describe that retained host, not completed generic-kernel adoption. Its product name, appId, `.agent-ppt` data directory, and `AGENT_PPT_DATA_DIR` remain unchanged for compatibility.
+`npm run dev` and the built desktop now open the new Harness conversation workspace. Configure a connection and discover or add models in Settings, then choose a real workspace directory. The composer no longer offers a tool-mode selector; new conversations enable workspace read/write tools by default, while model and directory bindings remain fixed. Approvals, rejection, cancellation, history, and persisted waiting recovery use the same execution mechanisms as the Node CLI.
+
+New conversations run workspace-scoped `read`, `glob`, and `grep` without approval prompts. In read/write conversations, `write` and `edit` still require explicit approval for each call. Workspace boundaries, file-version checks, and installed-tool restrictions remain enforced. Existing conversations retain their bound authorization policy, including pending read approvals; new conversations use the updated default.
+
+Desktop credentials remain protected by safeStorage; the CLI has a separate data root and Windows DPAPI protection. Credentials are not synchronized. New execution data lives under `~/.agent-ppt/harness/`, without migrating legacy PPT history. Main owns model transport; the renderer receives safe display projections. See the [desktop integration record](docs/next-steps/ui-design-system.md#125-新桌面-ui-真实接入) for verification limits.
+
+## Legacy Electron/PPT workspace
+
+The screenshots and PPT instructions below describe the retained legacy implementation, not capabilities available in the new home screen. Legacy Agent code, PPT services, and data are preserved. The new home does not yet expose slide preview/export, Skills, or subagents. Product identity and the `.agent-ppt` root remain unchanged.
 
 That host is useful when you want to:
 
@@ -225,10 +233,10 @@ PPTX exporter (hybrid: SVG background + editable text)
 
 Key areas:
 
-- `app/renderer/`: React workspace, chat stream, live PPT mirror, settings console; `app/renderer/src/App.tsx` directly owns the shared layout and workspace/settings view selection
+- `app/renderer/`: the default entry is `src/desktop/DesktopApp.tsx`, consuming real sessions and configuration through narrow IPC. Legacy React PPT workspace code remains, but is not the default entry.
   - Container-driven layout: the root bounds the window height and Flex/Grid allocates the remaining space. `useWorkbenchLayout` owns panel-width CSS variables and observes the actual container with `ResizeObserver`. Panels scroll independently and local responsive rules use container queries; shrinking the window preserves the saved preview-width preference. SVG previews retain their 16:9 ratio and 1280×720 authoring coordinates.
   - Panel resizing uses `app/renderer/src/components/ResizeHandle.tsx` with controlled `value/min/max/onValueChange`, an `axis` for horizontal or vertical movement, and a `direction` for growth. It owns idle/hover/dragging/disabled feedback, pointer capture, global cursors, and cleanup; arrow keys adjust by 10px and Home/End select bounds. Cancellation retains the last size. Disabling, blur, capture loss, unmounting, or changed bounds ends the drag; sizing policy and persistence remain in the layout layer.
-- `packages/harness/`: private npm workspace package `@agent-harness/core@0.1.0`, Node >=24 and ESM-only, independently emitting JS and declarations with Zod as its only runtime dependency. Normal consumers use exact exported subpaths, never source or private dist paths. Production UI still runs `app/main/agent/`.
+- `packages/harness/`: private npm workspace package `@agent-harness/core@0.1.0`, Node >=24 and ESM-only, independently emitting JS and declarations with Zod as its only runtime dependency. Normal consumers use exact exported subpaths, never source or private dist paths. The new desktop and CLI consume it; legacy `app/main/agent/` remains separate.
   - `src/agent/application/agent-application.ts`: `createAgentApplication()` is exposed through `@agent-harness/core/application/agent-application`. Its internal factory installs plugins, binds a model, publishes only ready instances, and rolls back failures. Closing rejects creation, interrupts and drains execution, then releases owned resources. Consumers never call the default factory directly. The directories below are inside `src/agent/`, not importable package subpaths.
   - `scope/`: Application → Agent → Run resource ownership, reverse-order disposal, and registration handles. Borrowed host services outlive individual Agents.
   - `runtime/`: mutually exclusive `run/resume`, independent event observation, Query checkpoint coordination, and model/tool turns. New queries accept user messages without forcing them into a business Task; Steps update snapshots at commit boundaries.
@@ -278,7 +286,7 @@ The public subpath inventory is in [M2-B](docs/next-steps/m2-b-package-boundary.
 
 `npm run check:agent-boundaries` checks the package and both application compiler projects, including source/declaration closures, dependency direction, exact public subpaths, resolved targets, triple-slash references, and exported type origins. Only designated behavior tests may import exact white-box dist modules from the same runtime graph. `typecheck` and `build` include this check; it is not a malicious-plugin sandbox.
 
-Dependency installation establishes the workspace link. `npm run build:harness` builds the package independently; application builds, tests, the development CLI, and preview build it before consumption. `npm run dev` waits for the initial successful emit, then watches package sources and Main's emitted JS dependencies. `npm run verify:harness-package` packs and installs a real tarball outside the repository, offline, checking native Node behavior and NodeNext/Bundler declaration consumers. `npm run test:integration:harness` runs the two existing Electron CLI integration files. Nothing was published to npm or switched in production UI/PPT.
+Dependency installation establishes workspace links. `npm run build:harness` builds Core independently; application builds and tests consume emitted packages. `npm run dev` waits for initial emits and watches package sources and Main's emitted dependencies. `npm run verify:harness-package` checks offline tarball consumption outside the repository. `npm run test:integration:harness` covers the independent Node CLI with local HTTP/SSE and persistence scenarios. No package was published and legacy PPT data was not migrated.
 
 - An Agent admits only one `run()` or `resume()` at a time, without an implicit queue. `handle.events` is single-consumer observation; skipping or leaving the stream does not cancel execution.
 - `waiting` persists the interaction and continuation, ends the current Run, and releases its lease. Answers must match the stored interaction, and resuming requires a fresh `runId`, never a client-reconstructed execution snapshot. New queries cannot bypass unfinished work on the thread.
@@ -286,7 +294,7 @@ Dependency installation establishes the workspace link. `npm run build:harness` 
 - History and checkpoints need not share a transaction: persist append intent, then commit history with a stable batch ID. Recovery reconciles receipts. Dispatched calls or consumed answers without durable results become `unknown`, without automatically repeating side effects. External operations are not claimed to be exactly once.
 - Streams require an authoritative completion response; provisional deltas are not canonical history. Truncation, missing completion, and persistence failure never count as success. Incompatible definition, plugin, or continuation changes require corresponding version increments.
 
-`tests/base-tools.test.ts` and `tests/general-agent-*.test.ts` cover real files, SQLite, Gateway/SDK transport to local HTTP endpoints, lifecycle, tool authorization, and recovery boundaries. Remote inference needs separately configured credentials; local verification is not a claim of remote LLM or production-UI cutover validation.
+`tests/desktop-*.test.*`, `tests/base-tools.test.ts`, and `tests/general-agent-*.test.ts` cover desktop consumer behavior, real files, SQLite, local SDK transport, lifecycle, authorization, and recovery boundaries. Local verification does not certify all remote vendors or PPT plugin integration.
 
 ### Independent UI preview
 
@@ -296,7 +304,7 @@ npm.cmd run ui:build
 npm.cmd run ui:typecheck
 ```
 
-Open `http://127.0.0.1:5178/`. This browser-only entry neither starts Electron/builds Harness nor replaces the production desktop. Following the supplied DeepSeek Harness / Cursor references, it opens on a workspace and conversation view: a centered composer for empty threads, messages above a bottom composer after local submission, and per-thread drafts/model choices retained across settings navigation.
+Open `http://127.0.0.1:5178/` for the independent browser-only design preview. It does not start Electron, build Harness, or call real services; use `npm run dev` for the connected desktop. The preview retains in-memory example messages, drafts, model choices, and settings for isolated component/layout inspection.
 
 “设置” (Settings) manages example models shown in the composer, connection examples, and appearance. Deterministic fault controls are under “验收工具 → 连接交互检查”. Connections accept only `demo-key`; no model calls, real directory access, or credential storage occur. State resets on reload and outputs stay under `.vite/ui-preview/`. See [R2 implementation and local verification](docs/next-steps/ui-design-system.md#124-r2-会话工作区与分类设置实施记录), including the outstanding full-suite CLI failures. Full U3–U5 remain unverified.
 

@@ -7,11 +7,11 @@ import type { ToolAuthorizationPolicy } from "@agent-harness/core/tools/tool-con
 import type { Logger } from "@agent-harness/logs/log-contract";
 import { createTools, prepareWorkspaceRoot } from "@agent-harness/tools/tools";
 import { z } from "zod";
-import type { TerminalToolsMode } from "./host-contract.js";
+import type { HostToolsMode } from "./host-contract.js";
 
 export interface WorkspaceConfigurationOptions {
   readonly workspaceRoot: string;
-  readonly toolMode?: TerminalToolsMode;
+  readonly toolMode?: HostToolsMode;
   readonly logger?: Logger;
   readonly requireReadApproval?: boolean;
 }
@@ -19,7 +19,7 @@ export interface WorkspaceConfigurationOptions {
 export interface WorkspaceConfiguration {
   readonly definition: AgentDefinition;
   readonly workspaceRoot: string;
-  readonly mode: TerminalToolsMode;
+  readonly mode: HostToolsMode;
   readonly plugins: readonly AgentPlugin[];
   readonly authorizeTool: ToolAuthorizationPolicy;
 }
@@ -54,10 +54,7 @@ export function parseWorkspaceApproval(interaction: InteractionRequest): Workspa
 }
 
 // 这是宿主选择的工作区助手配置，不是通用内核的默认业务或固定工作流。
-function workspaceDefinition(
-  mode: TerminalToolsMode,
-  requireReadApproval: boolean,
-): AgentDefinition {
+function workspaceDefinition(mode: HostToolsMode, requireReadApproval: boolean): AgentDefinition {
   return {
     id: "general-workspace-assistant",
     version: requireReadApproval ? "2-read-approval" : "2",

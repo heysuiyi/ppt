@@ -9,12 +9,14 @@ import type { RunIdentity } from "@agent-harness/core/protocol-values";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseSubmittedText, parseTerminalArguments } from "../cli/commands/terminal-command.js";
-import type { TerminalHost, TerminalSetupIO } from "../cli/host/host-contract.js";
+import type { HostHistoryEntry, HostModel } from "../cli/host/host-contract.js";
+import type { TerminalHost, TerminalSetupIO } from "../cli/host/terminal-host-contract.js";
+
 import { runCli } from "../cli/main.js";
 import * as rendererModule from "../cli/terminal/interactive-renderer.js";
 import type { TerminalTurnSettlement, TerminalView } from "../cli/terminal/renderer-contract.js";
 import { statusLines } from "../cli/terminal/status-line.js";
-import type { TerminalHistoryEntry, TerminalModelItem } from "../cli/terminal/terminal-contract.js";
+
 import { runTerminalController } from "../cli/terminal/terminal-controller.js";
 import { visibleWidth } from "../cli/terminal/terminal-text.js";
 import {
@@ -165,7 +167,7 @@ function observeViews(settlementBarrier?: Promise<void>) {
   const views: TerminalView[] = [];
   const bindings: Array<{
     view: TerminalView;
-    history: readonly TerminalHistoryEntry[];
+    history: readonly HostHistoryEntry[];
     tools: readonly string[];
   }> = [];
   const runs: RunIdentity[] = [];
@@ -1040,7 +1042,7 @@ describe("terminal controller result and lifecycle", () => {
       const observed = observeViews();
       const published = Promise.withResolvers<void>();
       const switchReady = Promise.withResolvers<void>();
-      const history: readonly TerminalHistoryEntry[] =
+      const history: readonly HostHistoryEntry[] =
         command === "resume"
           ? [
               { role: "user", text: "target question" },
@@ -1403,7 +1405,7 @@ describe("terminal controller result and lifecycle", () => {
     async (outcome) => {
       const io = surface(true);
       const observed = observeViews();
-      const catalog = Promise.withResolvers<readonly TerminalModelItem[]>();
+      const catalog = Promise.withResolvers<readonly HostModel[]>();
       const switching = Promise.withResolvers<void>();
       const entered = Promise.withResolvers<void>();
       const currentHost = host({
@@ -1749,7 +1751,7 @@ describe("terminal controller result and lifecycle", () => {
       const io = surface(true);
       const observed = observeViews();
       let saved = false;
-      const configured: TerminalModelItem = {
+      const configured: HostModel = {
         id: "added",
         label: "New connection / actual-model",
         modelName: "actual-model",

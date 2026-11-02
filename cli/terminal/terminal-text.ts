@@ -1,32 +1,18 @@
 import stringWidth from "string-width";
+import { escapeDisplayControls } from "../host/safe-display-text.js";
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-
-/** Content protection, not key parsing: only the renderer may emit terminal controls. */
-export function sanitizeTerminalText(text: string): string {
-  return text.replace(
-    /[\x00-\x08\x0b-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,
-    (character) => {
-      const code = character.codePointAt(0)!;
-      if (code === 0x1b) return "\\x1b";
-      if (code === 0x07) return "\\a";
-      if (code === 0x08) return "\\b";
-      if (code === 0x0d) return "\\r";
-      return `\\u${code.toString(16).padStart(4, "0")}`;
-    },
-  );
-}
 
 export function graphemes(text: string): string[] {
   return Array.from(segmenter.segment(text), (part) => part.segment);
 }
 
 export function visibleWidth(text: string): number {
-  return stringWidth(sanitizeTerminalText(text).replaceAll("\t", "    "));
+  return stringWidth(escapeDisplayControls(text).replaceAll("\t", "    "));
 }
 
 export function truncateTerminalText(text: string, columns: number): string {
-  const safe = sanitizeTerminalText(text).replaceAll("\t", "    ").replaceAll("\n", " ");
+  const safe = escapeDisplayControls(text).replaceAll("\t", "    ").replaceAll("\n", " ");
   const budget = Math.max(0, columns);
   if (stringWidth(safe) <= budget) return safe;
   let result = "";
@@ -43,7 +29,7 @@ export function truncateTerminalText(text: string, columns: number): string {
 export function wrapTerminalText(text: string, columns: number): string[] {
   const width = Math.max(1, Math.floor(columns));
   const lines: string[] = [];
-  for (const source of sanitizeTerminalText(text).split("\n")) {
+  for (const source of escapeDisplayControls(text).split("\n")) {
     let line = "";
     let used = 0;
     for (const cluster of graphemes(source)) {

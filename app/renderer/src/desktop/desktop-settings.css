@@ -1,0 +1,115 @@
+@import "../ui-preview/scenarios/settings.css";
+
+.ui-root .desktop-settings-screen .ui-settings-topbar {
+  padding-right: 150px;
+  -webkit-app-region: drag;
+}
+
+.ui-root .desktop-settings-form,
+.ui-root .desktop-settings-preferences,
+.ui-root .desktop-settings-model-editor,
+.ui-root .desktop-settings-model-card,
+.ui-root .desktop-settings-discovery {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.ui-root .desktop-settings-form {
+  line-height: var(--ui-line-height-body);
+}
+
+.ui-root .desktop-settings-preferences,
+.ui-root .desktop-settings-model-card {
+  padding: 20px;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: 10px;
+  background: var(--ui-surface-raised);
+}
+
+.ui-root .desktop-settings-model-editor {
+  padding-top: 20px;
+  border-top: 1px solid var(--ui-border-subtle);
+}
+
+.ui-root .desktop-settings-model-editor h3 {
+  margin-right: auto;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ui-root .desktop-settings-actions,
+.ui-root .desktop-settings-check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ui-root .desktop-settings-check {
+  min-height: 32px;
+  font-size: 14px;
+}
+
+.ui-root .desktop-settings-check input {
+  accent-color: var(--ui-action-primary);
+}
+
+.ui-root .desktop-settings-hint,
+.ui-root .desktop-settings-model-meta,
+.ui-root .desktop-settings-discovery-row small {
+  color: var(--ui-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.ui-root .desktop-settings-model-meta,
+.ui-root .desktop-settings-discovery-row small {
+  display: block;
+}
+
+.ui-root .desktop-settings-discovery {
+  max-height: 360px;
+  padding: 12px;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: 8px;
+  overflow-y: auto;
+}
+
+.ui-root .desktop-settings-discovery-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--ui-border-subtle);
+  overflow-wrap: anywhere;
+}
+
+.ui-root .desktop-settings-discovery-row > span {
+  min-width: 0;
+}
+
+.ui-root .desktop-settings-discovery-row button {
+  flex-shrink: 0;
+}
+
+.ui-root .desktop-settings-screen button:disabled,
+.ui-root .desktop-settings-form input:disabled,
+.ui-root .desktop-settings-screen input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 700px) {
+  .ui-root .desktop-settings-screen .ui-settings-connection-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .ui-root .desktop-settings-screen .ui-settings-main {
+    padding-inline: 20px;
+  }
+}

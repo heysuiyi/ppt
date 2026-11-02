@@ -4,6 +4,8 @@ import { AgentError } from "@agent-harness/core/protocol-errors";
 import type { RunIdentity } from "@agent-harness/core/protocol-values";
 import type { RuntimeEvent } from "@agent-harness/core/session/session-events";
 import { describe, expect, it, vi } from "vitest";
+import { projectHostError } from "../cli/host/host-projection.js";
+import { escapeDisplayControls } from "../cli/host/safe-display-text.js";
 import { composerContentWidth } from "../cli/terminal/composer-layout.js";
 import { createTerminalRenderer } from "../cli/terminal/interactive-renderer.js";
 import { createPreviewBuffer } from "../cli/terminal/preview-buffer.js";
@@ -14,14 +16,8 @@ import {
   projectTerminalEvent,
   projectTerminalResult,
   projectTerminalSettlement,
-  terminalError,
 } from "../cli/terminal/terminal-projection.js";
-import {
-  graphemes,
-  sanitizeTerminalText,
-  visibleWidth,
-  wrapTerminalText,
-} from "../cli/terminal/terminal-text.js";
+import { graphemes, visibleWidth, wrapTerminalText } from "../cli/terminal/terminal-text.js";
 
 const identity: RunIdentity = {
   agentId: "agent",
@@ -352,23 +348,23 @@ describe("terminal safe projection", () => {
 
   it("never serializes native errors or SDK error data", () => {
     expect(
-      terminalError(
+      projectHostError(
         Object.assign(new Error("API_KEY_PRIVATE"), { code: "SDK", request: "PRIVATE" }),
       ),
     ).toEqual({ code: "TERMINAL_OPERATION_FAILED", message: expect.any(String) });
-    expect(JSON.stringify(terminalError(new Error("PRIVATE")))).not.toContain("PRIVATE");
-    expect(terminalError(new AgentError("KNOWN", "safe\r\b"))).toEqual({
+    expect(JSON.stringify(projectHostError(new Error("PRIVATE")))).not.toContain("PRIVATE");
+    expect(projectHostError(new AgentError("KNOWN", "safe\r\b"))).toEqual({
       code: "KNOWN",
       message: "safe\\r\\b",
     });
     const sdk = { code: "SDK_PRIVATE", message: "Bearer API_KEY_PRIVATE", key: "API_KEY_PRIVATE" };
-    expect(terminalError(sdk)).toEqual({
+    expect(projectHostError(sdk)).toEqual({
       code: "TERMINAL_OPERATION_FAILED",
       message: expect.any(String),
     });
-    expect(JSON.stringify(terminalError(sdk))).not.toMatch(/SDK_PRIVATE|API_KEY_PRIVATE|Bearer/);
-    expect(terminalError({ code: "SDK_PRIVATE", message: "API_KEY_PRIVATE" })).toEqual(
-      terminalError(new Error("PRIVATE")),
+    expect(JSON.stringify(projectHostError(sdk))).not.toMatch(/SDK_PRIVATE|API_KEY_PRIVATE|Bearer/);
+    expect(projectHostError({ code: "SDK_PRIVATE", message: "API_KEY_PRIVATE" })).toEqual(
+      projectHostError(new Error("PRIVATE")),
     );
   });
 
@@ -1467,7 +1463,7 @@ describe("terminal Unicode and content safety", () => {
   });
 
   it("escapes cursor/OSC/bidi controls and preserves fenced code content", () => {
-    expect(sanitizeTerminalText("x\x1b]52;c;key\x07\b\r\u202e\ny")).toBe(
+    expect(escapeDisplayControls("x\x1b]52;c;key\x07\b\r\u202e\ny")).toBe(
       "x\\x1b]52;c;key\\a\\b\\r\\u202e\ny",
     );
     const code = `  const 文 = '👩‍💻';\t// ${"a".repeat(100)}`;

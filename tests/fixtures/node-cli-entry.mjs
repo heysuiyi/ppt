@@ -22,7 +22,7 @@ const { createAgentConfiguration } = await import("@agent-harness/configuration/
 const { createNodeCredentialProtection } = await import(
   "@agent-harness/configuration/node-credentials"
 );
-const { createNodeHost } = await import("../../cli/dist/host/node-host.js");
+const { createTerminalHost } = await import("../../cli/dist/host/terminal-host.js");
 const { runCli } = await import("../../cli/dist/main.js");
 const configuration = createAgentConfiguration({
   applicationDataRoot: root,
@@ -110,7 +110,7 @@ if (mode === "seed") {
     environment: { ...process.env, AGENT_HARNESS_CLI_DATA_DIR: root },
     workspaceRoot: process.env.CLI_TEST_WORKSPACE,
     createHost: (options) => {
-      const host = createNodeHost({
+      const host = createTerminalHost({
         ...options,
         configuration,
         requireReadApproval: process.env.CLI_TEST_REQUIRE_READ === "1",
