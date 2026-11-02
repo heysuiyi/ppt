@@ -203,6 +203,8 @@ npm.cmd run preview
 
 `npm run lint` builds the workspace packages before checking UI dependency boundaries and code style. A fresh install or clean CI checkout does not require running `typecheck` first.
 
+`npm test` builds both workspace packages and `cli/dist` before running non-integration tests: the default suite also contains real Windows CLI child-process tests. Its exclusion glob is quoted so Linux shells cannot expand it into positional arguments. Use `npm run test:integration:harness` for CLI/recovery integration; it also builds the CLI before running child-process fixtures. Real SQLite/filesystem cases in `base-tools.test.ts` have a file-local 30-second timeout; other tests keep their default timeout.
+
 Standalone CLI distribution and desktop packaging:
 
 ```powershell

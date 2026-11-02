@@ -205,6 +205,8 @@ npm.cmd run preview
 
 `npm run lint` 会先构建 workspace 包，再检查 UI 依赖边界与代码规范；首次安装或干净 CI 检出后不需要先手动运行 `typecheck`。
 
+`npm test` 先构建 workspace 包与 `cli/dist`，再运行非集成测试；默认测试集中也包含 Windows 真实 CLI 子进程用例，不能只构建 workspace 包。排除模式带引号，避免 Linux shell 将其展开成位置参数。CLI/恢复集成使用 `npm run test:integration:harness`，该入口同样先构建 CLI 再运行真实子进程夹具。`base-tools.test.ts` 的真实 SQLite/文件 I/O 用例使用文件级 30 秒时限，其余测试的默认时限不变。
+
 独立 CLI 分发包与桌面平台打包：
 
 ```powershell
