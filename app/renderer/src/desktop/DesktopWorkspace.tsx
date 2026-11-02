@@ -412,7 +412,13 @@ export function DesktopWorkspace({
           <div className="desktop-scroll-content" ref={streamRef}>
             {!hasMessages && (
               <section className="desktop-welcome" aria-labelledby={`${id}-welcome`}>
-                <img className="desktop-welcome-mark" src="./icon.svg" alt="" width={44} height={44} />
+                <img
+                  className="desktop-welcome-mark"
+                  src="./icon.svg"
+                  alt=""
+                  width={44}
+                  height={44}
+                />
                 <h1 id={`${id}-welcome`}>有什么可以一起完成？</h1>
                 <p>从一个问题开始，或描述你想在工作区完成的任务。</p>
               </section>

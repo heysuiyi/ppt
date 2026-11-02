@@ -194,11 +194,14 @@ Usage and billing live under **Settings -> 用量与费用**; metrics are stored
 
 ```powershell
 npm.cmd run dev
+npm.cmd run lint
 npm.cmd test
 npm.cmd run typecheck
 npm.cmd run build
 npm.cmd run preview
 ```
+
+`npm run lint` builds the workspace packages before checking UI dependency boundaries and code style. A fresh install or clean CI checkout does not require running `typecheck` first.
 
 Standalone CLI distribution and desktop packaging:
 

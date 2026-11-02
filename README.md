@@ -196,11 +196,14 @@ npm.cmd run dev
 
 ```powershell
 npm.cmd run dev
+npm.cmd run lint
 npm.cmd test
 npm.cmd run typecheck
 npm.cmd run build
 npm.cmd run preview
 ```
+
+`npm run lint` 会先构建 workspace 包，再检查 UI 依赖边界与代码规范；首次安装或干净 CI 检出后不需要先手动运行 `typecheck`。
 
 独立 CLI 分发包与桌面平台打包：
 

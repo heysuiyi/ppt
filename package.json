@@ -35,7 +35,7 @@
     "verify:harness-package": "npm run build:harness && node scripts/verify-harness-package.mjs",
     "check:agent-boundaries": "npm run build:packages && node scripts/check-agent-boundaries.mjs && node scripts/check-logs-boundaries.mjs && node scripts/check-models-boundaries.mjs && node scripts/check-tools-boundaries.mjs && node scripts/check-cli-boundaries.mjs",
     "typecheck": "npm run check:agent-boundaries && npm run ui:typecheck && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p cli/tsconfig.json",
-    "lint": "npm run check:ui-boundaries && biome check .",
+    "lint": "npm run build:packages && npm run check:ui-boundaries && biome check .",
     "lint:fix": "biome check --write .",
     "test": "npm run build:packages && vitest run --exclude tests/*.integration.test.ts",
     "test:integration:agent": "npm run build:packages && vitest run tests/agent-gateway.integration.test.ts tests/agent-loop.integration.test.ts",
