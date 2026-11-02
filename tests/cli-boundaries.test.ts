@@ -3,9 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const checker = new URL("../scripts/check-cli-boundaries.mjs", import.meta.url).href;
+// 每例启动真实编译器子进程；不把共享 CI 的冷启动开销当作五秒行为约束。
+vi.setConfig({ testTimeout: 30_000 });
 let root: string;
 function put(file: string, content: string) {
   const target = path.join(root, file);
@@ -51,7 +53,15 @@ beforeEach(() => {
     put(`packages/${folder}/src/public.ts`, "export interface PublicValue { id: string; }");
     paths[`@agent-harness/${name}/*`] = [`packages/${folder}/src/*.ts`];
   }
-  const compilerOptions = { module: "ESNext", moduleResolution: "Bundler", baseUrl: root, paths };
+  // 只检查显式模块图，不做类型检查；无需重复加载默认标准库或自动发现 @types。
+  const compilerOptions = {
+    module: "ESNext",
+    moduleResolution: "Bundler",
+    baseUrl: root,
+    paths,
+    noLib: true,
+    types: [],
+  };
   put(
     "cli/tsconfig.json",
     JSON.stringify({

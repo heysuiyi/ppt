@@ -30,7 +30,8 @@ export function cliChild(
     {
       cwd: process.cwd(),
       stdio: ["pipe", "pipe", "pipe"],
-      timeout: 25000,
+      // seed 串行执行真实 DPAPI 可用性探测与凭据保护，不能沿用普通执行的 25 秒预算。
+      timeout: mode === "seed" ? 90_000 : 25000,
       env: {
         ...process.env,
         TERM: "dumb",

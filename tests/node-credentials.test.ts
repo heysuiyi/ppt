@@ -39,7 +39,7 @@ describe("Node credential protection", () => {
         code: "PROTECTION_FAILED",
       });
     },
-    60_000,
+    180_000,
   );
 
   it.skipIf(!windows)(

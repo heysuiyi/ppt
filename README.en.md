@@ -203,7 +203,9 @@ npm.cmd run preview
 
 `npm run lint` builds the workspace packages before checking UI dependency boundaries and code style. A fresh install or clean CI checkout does not require running `typecheck` first.
 
-`npm test` builds both workspace packages and `cli/dist` before running non-integration tests: the default suite also contains real Windows CLI child-process tests. Its exclusion glob is quoted so Linux shells cannot expand it into positional arguments. Use `npm run test:integration:harness` for CLI/recovery integration; it also builds the CLI before running child-process fixtures. Real SQLite/filesystem cases in `base-tools.test.ts` have a file-local 30-second timeout; other tests keep their default timeout.
+`npm test` builds both workspace packages and `cli/dist` before running non-integration tests: the default suite also contains real Windows CLI child-process tests. Its exclusion glob is quoted so Linux shells cannot expand it into positional arguments. Use `npm run test:integration:harness` for CLI/recovery integration; it also builds the CLI before running child-process fixtures. Real SQLite/filesystem cases in `base-tools.test.ts` and compiler subprocess regressions in `cli-boundaries.test.ts` have file-local 30-second timeouts without changing the global default. Boundary fixtures disable unrelated standard-library and automatic `@types` loading while retaining real TypeScript module resolution.
+
+Windows regressions retain real CurrentUser DPAPI encryption, decryption, and cancellation checks rather than skipping unavailable CI protection. Each PowerShell protection process has a 60-second cold-start budget; CLI fixture credential seeding has a 90-second budget. Host cancellation still aborts protection processes immediately. Workspace identity assertions compare canonical paths, independent of runner long-path or 8.3 short-path spelling.
 
 Standalone CLI distribution and desktop packaging:
 
@@ -216,7 +218,7 @@ npm.cmd run build:linux
 
 ### GitHub builds and releases
 
-The [GitHub Actions workflow](.github/workflows/build.yml) uses Node.js 24. Pull requests run Linux lint, typechecking, and unit tests, plus Windows unit tests. Pushes to `main` / `master`, manual runs, and `v*.*.*` tags build two product types in parallel: **CLI** and **desktop**. A shared GitHub Release is published only after both finish successfully.
+The [GitHub Actions workflow](.github/workflows/build.yml) uses Node.js 24 and native Node 24 Actions. Linux checks, packaging, and releases are pinned to `ubuntu-24.04` to prevent silent environment changes when `ubuntu-latest` migrates. Pull requests run Linux lint, typechecking, and unit tests, plus Windows unit tests. Pushes to `main` / `master`, manual runs, and `v*.*.*` tags build two product types in parallel: **CLI** and **desktop**. A shared GitHub Release is published only after both finish successfully.
 
 | Product | Actions artifact | Release files / usage |
 | --- | --- | --- |

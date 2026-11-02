@@ -2034,6 +2034,6 @@ describe.skipIf(process.platform !== "win32")(
         await server.close();
         await rm(root, { recursive: true, force: true });
       }
-    }, 40000);
+    }, 120_000);
   },
 );

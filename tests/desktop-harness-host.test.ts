@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAgentConfiguration } from "@agent-harness/configuration/configuration";
@@ -1170,7 +1170,7 @@ describe("desktop Harness scope lifetime", () => {
       code: "ENOENT",
     });
     const second = f.open();
-    expect((await second.host.chooseWorkspace()).workspace?.path).toBe(f.workspace);
+    expect((await second.host.chooseWorkspace()).workspace?.path).toBe(await realpath(f.workspace));
   });
 
   it("keeps the selected waiting session, permission and original binding on picker cancel or invalid paths", async () => {

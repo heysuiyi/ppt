@@ -205,7 +205,9 @@ npm.cmd run preview
 
 `npm run lint` 会先构建 workspace 包，再检查 UI 依赖边界与代码规范；首次安装或干净 CI 检出后不需要先手动运行 `typecheck`。
 
-`npm test` 先构建 workspace 包与 `cli/dist`，再运行非集成测试；默认测试集中也包含 Windows 真实 CLI 子进程用例，不能只构建 workspace 包。排除模式带引号，避免 Linux shell 将其展开成位置参数。CLI/恢复集成使用 `npm run test:integration:harness`，该入口同样先构建 CLI 再运行真实子进程夹具。`base-tools.test.ts` 的真实 SQLite/文件 I/O 用例使用文件级 30 秒时限，其余测试的默认时限不变。
+`npm test` 先构建 workspace 包与 `cli/dist`，再运行非集成测试；默认测试集中也包含 Windows 真实 CLI 子进程用例，不能只构建 workspace 包。排除模式带引号，避免 Linux shell 将其展开成位置参数。CLI/恢复集成使用 `npm run test:integration:harness`，该入口同样先构建 CLI 再运行真实子进程夹具。`base-tools.test.ts` 的真实 SQLite/文件 I/O 用例与 `cli-boundaries.test.ts` 的编译器子进程回归使用文件级 30 秒时限，不改变全局默认时限；边界夹具关闭无关的标准库和自动 `@types` 加载，保留真实 TypeScript 模块解析。
+
+Windows 回归保留真实 CurrentUser DPAPI 加解密与取消测试，不因 CI 不可用而跳过。单次 PowerShell 保护进程有 60 秒冷启动预算，CLI 夹具的凭据 seed 使用 90 秒预算；宿主取消信号仍可立即中止保护进程。工作区身份断言使用规范路径，不依赖 runner 的长路径或 8.3 短路径拼写。
 
 独立 CLI 分发包与桌面平台打包：
 
@@ -218,7 +220,7 @@ npm.cmd run build:linux
 
 ### GitHub 构建与发布
 
-[GitHub Actions 工作流](.github/workflows/build.yml) 使用 Node.js 24：PR 执行 Linux lint、类型检查和单元测试，以及 Windows 单元测试；推送 `main` / `master`、手动触发或推送 `v*.*.*` 标签时，并行构建 **CLI** 和 **桌面端** 两类包，全部成功后发布到同一个 GitHub Release。
+[GitHub Actions 工作流](.github/workflows/build.yml) 使用 Node.js 24 与原生 Node 24 Actions；Linux 检查、打包和发布固定为 `ubuntu-24.04`，避免 `ubuntu-latest` 镜像迁移导致构建环境静默变化。PR 执行 Linux lint、类型检查和单元测试，以及 Windows 单元测试；推送 `main` / `master`、手动触发或推送 `v*.*.*` 标签时，并行构建 **CLI** 和 **桌面端** 两类包，全部成功后发布到同一个 GitHub Release。
 
 | 产品 | Actions 产物名 | Release 文件 / 使用方式 |
 | --- | --- | --- |

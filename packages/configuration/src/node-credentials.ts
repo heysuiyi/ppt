@@ -4,7 +4,8 @@ import type { CredentialProtection, CredentialStorageStatus } from "./credential
 
 const PREFIX = Buffer.from("agent-harness:windows-dpapi-current-user:v1\0", "ascii");
 const MAX_PIPE_BYTES = 131_072;
-const PROCESS_TIMEOUT_MS = 20_000;
+// 共享 Windows runner 的 PowerShell/.NET 冷启动可能超过二十秒；仍受宿主 signal 立即取消。
+const PROCESS_TIMEOUT_MS = 60_000;
 const SCRIPT_PREFIX = `
 $ErrorActionPreference = 'Stop'
 try {
