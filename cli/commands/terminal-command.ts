@@ -4,9 +4,12 @@ import type { TerminalHostCommand, TerminalLocalCommand } from "../terminal/term
 export const TERMINAL_HELP = `Agent Harness — Node CLI
 
 Usage:
+  agent-harness [options]
+  agent-harness --prompt <text> [--output human|jsonl]
+  agent-harness --thread <id> --resume <queryId>
+
+From source:
   npm run agent -- [options]
-  npm run agent -- --prompt <text> [--output human|jsonl]
-  npm run agent -- --thread <id> --resume <queryId>
 
 Options:
   --help, -h              Show help without loading configuration or storage

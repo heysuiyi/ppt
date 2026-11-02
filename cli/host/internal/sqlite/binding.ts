@@ -6,6 +6,7 @@ import {
   snapshotHostSessionBinding,
 } from "../../host-session-binding.js";
 import type { SqliteConnection } from "./connection.js";
+import { nextRevision } from "./revision.js";
 
 export function createSqliteBindingStore(connection: SqliteConnection): HostSessionBindingStore {
   const database = connection.database;
@@ -21,6 +22,31 @@ export function createSqliteBindingStore(connection: SqliteConnection): HostSess
   const existingThreadCheckpoint = database.prepare(
     "SELECT 1 FROM general_agent_checkpoints WHERE thread_id = ? LIMIT 1",
   );
+  const pendingThread = database.prepare(`
+    SELECT 1 FROM general_agent_checkpoints WHERE thread_id = ?
+      AND (owner_id IS NOT NULL OR status IN ('running', 'waiting', 'interrupted'))
+    LIMIT 1
+  `);
+  const messageCount = database.prepare(`
+    SELECT COALESCE(SUM(json_array_length(payload)), 0) AS count
+    FROM general_agent_history_batches WHERE thread_id = ?
+  `);
+  const updateBinding = database.prepare(
+    "UPDATE general_agent_host_bindings SET payload = ? WHERE thread_id = ? AND payload = ?",
+  );
+  function assertIdle(expected: HostSessionBinding): string {
+    const row = bindingRow.get(expected.threadId);
+    if (
+      !row ||
+      !sameValue(snapshotHostSessionBinding(JSON.parse(row.payload as string)), expected)
+    ) {
+      throw new AgentError("HOST_BINDING_CHANGED", "Host session binding has changed.");
+    }
+    if (pendingThread.get(expected.threadId)) {
+      throw new AgentError("HOST_THREAD_PENDING", "会话仍有活动写者或未完成 Query，不能切换模型。");
+    }
+    return row.payload as string;
+  }
   return {
     async read(threadId) {
       connection.assertOpen();
@@ -56,6 +82,34 @@ export function createSqliteBindingStore(connection: SqliteConnection): HostSess
         }
         insertBinding.run(detached.threadId, payload);
       });
+      connection.bind(detached);
+    },
+    async assertIdle(binding) {
+      const expected = snapshotHostSessionBinding(binding);
+      connection.transaction(() => assertIdle(expected));
+    },
+    async replaceModel(binding, model) {
+      const expected = snapshotHostSessionBinding(binding);
+      const next = connection.transaction(() => {
+        const payload = assertIdle(expected);
+        const count = messageCount.get(expected.threadId)!.count as number;
+        const replacement = snapshotHostSessionBinding({
+          ...expected,
+          schemaVersion: 3,
+          model: model.model,
+          connectionFingerprint: model.connectionFingerprint,
+          maxSteps: model.maxSteps,
+          generation: nextRevision(expected.generation ?? 0),
+          modelHistoryStart: count,
+        });
+        const result = updateBinding.run(JSON.stringify(replacement), expected.threadId, payload);
+        if (result.changes !== 1) {
+          throw new AgentError("HOST_BINDING_CHANGED", "Host session binding has changed.");
+        }
+        return replacement;
+      });
+      connection.bind(next);
+      return snapshotHostSessionBinding(next);
     },
   };
 }

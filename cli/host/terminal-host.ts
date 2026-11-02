@@ -213,6 +213,9 @@ export function createTerminalHost(options: TerminalHostIntegrationOptions): Ter
     selectSession(threadId) {
       return exclusive(() => node.selectSession(threadId));
     },
+    selectModel(modelId) {
+      return exclusive(() => node.selectModel(modelId));
+    },
     run(text) {
       return exclusive(async () => track(await node.run(text)));
     },

@@ -236,7 +236,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
         data-ui-region="sidebar"
         aria-label="折叠的工作台导航"
       >
-        <div className="sidebar-brand-mark" title="Agent PPT" aria-label="Agent PPT">
+        <div className="sidebar-brand-mark" title="Agent Harness" aria-label="Agent Harness">
           <img src="./icon.png" alt="" />
         </div>
         <IconButton
@@ -307,7 +307,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
         <div className="workbench-sidebar-heading">
           <div className="workbench-sidebar-brand">
             <img src="./icon.png" alt="" />
-            <span>Agent PPT</span>
+            <span>Agent Harness</span>
           </div>
         </div>
         <Button

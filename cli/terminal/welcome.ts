@@ -6,8 +6,12 @@ export function welcomeLines(columns: number, rows: number, color: boolean): rea
   const width = Math.max(1, columns);
   const brand =
     width >= 52 && rows >= 5
-      ? ["▄▀█ █ █    AGENT HARNESS", "█▀█ █▀█    通用 Agent 终端"]
-      : ["AGENT HARNESS"];
+      ? [
+          "▄█▀     ▀█▄    AGENT HARNESS  ",
+          "██   ◆   ██    通用 Agent 终端",
+          "▀█▄     ▄█▀                   ",
+        ]
+      : ["[◆] AGENT HARNESS"];
   const tips = wrapTerminalText("使用 /help 查看命令。", Math.max(1, Math.min(60, width - 4)));
   const gap = rows >= brand.length + tips.length + 1 ? [""] : [];
   const content = [...brand, ...gap, ...tips].slice(0, rows);
@@ -20,8 +24,8 @@ export function welcomeLines(columns: number, rows: number, color: boolean): rea
     }
     const text = truncateTerminalText(line, width);
     const padding = " ".repeat(Math.max(0, Math.floor((width - visibleWidth(text)) / 2)));
-    const styled =
-      color && index < brand.length ? `\x1b[1;${index === 0 ? 35 : 36}m${text}\x1b[0m` : text;
+    const tone = index === 0 ? 96 : index === 1 ? 97 : 95;
+    const styled = color && index < brand.length ? `\x1b[1;${tone}m${text}\x1b[0m` : text;
     lines.push(padding + styled);
   }
   while (lines.length < rows) lines.push("");

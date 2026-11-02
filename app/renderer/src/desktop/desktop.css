@@ -1,4 +1,5 @@
 @import "../ui-preview/scenarios/workspace.css";
+@import "./desktop-motion.css";
 
 .ui-root .desktop-app {
   position: fixed;
@@ -18,11 +19,17 @@
 .ui-root .desktop-workspace-view[hidden] {
   display: none;
 }
-.ui-root .ui-workspace-topbar {
-  padding-right: 150px;
+.ui-root .desktop-caption {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 140px 0 12px;
+  background: var(--ui-surface-raised);
   -webkit-app-region: drag;
 }
 
+.ui-root .desktop-caption button,
 .ui-root .ui-workspace-topbar button {
   -webkit-app-region: no-drag;
 }
@@ -32,77 +39,31 @@
 }
 
 .ui-root .desktop-theme-toggle {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.ui-root .desktop-workspace-picker {
-  min-width: 0;
-  margin-left: 0;
-  overflow: hidden;
-  color: var(--ui-text-muted);
-  font-size: var(--ui-font-size-12);
-  text-overflow: ellipsis;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.ui-root .desktop-stream-label {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--ui-text-muted);
-  font-size: var(--ui-font-size-12);
-}
-
-.ui-root .ui-workspace-local-status[data-quiet="true"] {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+  border: 0;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+}
+
+.ui-root .desktop-theme-toggle:hover {
+  background: var(--ui-action-neutral-hover);
+  color: var(--ui-text);
+}
+
+.ui-root .desktop-theme-toggle:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: -2px;
 }
 
 .ui-root .desktop-action-row:empty {
   display: none;
-}
-
-/* 动效围绕停止操作，不遮挡草稿，也不替代按钮的状态语义。 */
-.ui-root .desktop-app .ui-workspace-send {
-  position: relative;
-}
-
-.ui-root .desktop-app .ui-workspace-send[data-processing="true"]::after {
-  position: absolute;
-  inset: -5px;
-  border: 2px solid var(--ui-border);
-  border-top-color: var(--ui-text);
-  border-right-color: var(--ui-text);
-  border-radius: 50%;
-  content: "";
-  pointer-events: none;
-  animation: desktop-processing 1.8s linear infinite;
-}
-
-@keyframes desktop-processing {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ui-root .desktop-app .ui-workspace-send[data-processing="true"]::after {
-    animation: none;
-  }
-}
-
-@media (forced-colors: active) {
-  .ui-root .desktop-app .ui-workspace-send[data-processing="true"]::after {
-    border-color: ButtonText;
-    border-top-color: Highlight;
-  }
 }
 
 .ui-root .desktop-action-row {
@@ -131,37 +92,102 @@
 }
 
 .ui-root .desktop-user-message {
-  padding: 12px 16px;
-  border-radius: var(--ui-radius-control);
-  background: var(--ui-surface-inset);
+  justify-self: end;
+  align-self: flex-end;
+  width: fit-content;
+  max-width: min(calc(var(--desktop-chat-width, 748px) * 0.702), 82%);
+  padding: 0;
 }
 
 .ui-root .desktop-interaction {
   margin-top: 0;
+  padding: 0;
+  overflow: hidden;
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-dialog);
   white-space: normal;
+}
+
+.ui-root .desktop-interaction__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--ui-surface-inset);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+  font-weight: 500;
+}
+
+.ui-root .desktop-interaction__heading svg {
+  flex-shrink: 0;
 }
 
 .ui-root .desktop-interaction p {
   margin: 0;
+  padding: 12px 16px;
 }
 
+.ui-root .desktop-interaction__summary {
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.ui-root .desktop-interaction .desktop-action-row {
+  justify-content: flex-end;
+  margin-top: 0;
+  padding: 0 16px 14px;
+}
+
+.ui-root .desktop-interaction [data-choice="reject"]:hover:not(:disabled) {
+  --ui-button-text: var(--ui-status-error-text);
+}
+
+/* 与上游 ConversationRoot 的默认宽度轴一致；输入卡片比正文宽 32px。 */
+.ui-root .desktop-app .ui-workspace-main {
+  container-type: inline-size;
+  grid-row: 3;
+  background: var(--ui-surface);
+  --desktop-chat-width: clamp(680px, 64cqw, 920px);
+}
+
+.ui-root .desktop-app .desktop-composer {
+  max-width: calc(var(--desktop-chat-width) + 32px);
+}
+
+.ui-root .desktop-app .ui-workspace-main .ui-workspace-composer-area {
+  flex: 0 0 auto;
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+  padding: 0 16px 4px;
+  margin: 0 auto;
+}
+
+/* DeepSeek ChatView: process rows 6px apart, assistant boundaries 12px apart. */
 .ui-root .desktop-app .ui-workspace-message-column {
-  gap: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: var(--desktop-chat-width);
 }
 
-.ui-root .desktop-reasoning {
-  color: var(--ui-text-muted);
+.ui-root .desktop-app .ui-workspace-message-column > :not(:empty) ~ :not(:empty) {
+  margin-top: 6px;
 }
 
-.ui-root .desktop-reasoning summary {
-  cursor: pointer;
-  font-size: var(--ui-font-size-12);
+.ui-root .desktop-app .ui-workspace-message-column > [data-message-role="assistant"],
+.ui-root
+  .desktop-app
+  .ui-workspace-message-column
+  > [data-message-role="assistant"]
+  + :not(:empty) {
+  margin-top: 12px;
 }
 
-.ui-root .desktop-reasoning > .ui-markdown {
-  margin-top: 8px;
-  color: var(--ui-text-muted);
-  font-size: var(--ui-font-size-14);
+.ui-root .desktop-app .ui-workspace-message-column > [data-message-role="user"] + .desktop-process {
+  margin-top: 16px;
 }
 
 .ui-root .desktop-conversation-status {
@@ -170,7 +196,510 @@
   font-size: var(--ui-font-size-12);
 }
 
+.ui-root .desktop-preview {
+  display: grid;
+  gap: 12px;
+}
+
 .ui-root .ui-workspace-screen button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.ui-root .desktop-app .ui-workspace-screen {
+  --desktop-sidebar-width: 256px;
+  grid-template-columns: var(--desktop-sidebar-width) minmax(0, 1fr);
+  grid-template-rows: 32px 76px minmax(0, 1fr);
+  background: var(--ui-surface-raised);
+}
+
+.ui-root .desktop-app .ui-workspace-screen[data-has-messages="false"] {
+  grid-template-rows: 32px 48px minmax(0, 1fr);
+}
+
+.ui-root .desktop-app .ui-workspace-screen[data-navigation-hidden="true"] {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.ui-root .desktop-app .ui-workspace-navigation-toggle {
+  display: inline-flex;
+  width: 28px;
+  min-height: 28px;
+  padding: 5px;
+}
+
+.ui-root .desktop-app .ui-workspace-topbar {
+  grid-column: 2;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 30px auto;
+  align-items: center;
+  gap: 0;
+  padding: 10px 20px 0;
+  border-bottom: 0.5px solid var(--ui-border-subtle);
+  border-top-left-radius: 16px;
+  background: var(--ui-surface);
+}
+
+.ui-root .desktop-session-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ui-root .desktop-app .ui-workspace-topbar-title {
+  min-width: 0;
+  color: var(--ui-text);
+  font-size: var(--ui-font-size-14);
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.ui-root .desktop-session-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 35%;
+  color: var(--ui-text-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.ui-root .desktop-session-context .ui-workspace-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.ui-root .desktop-session-context > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-root .desktop-view-heading {
+  display: flex;
+  grid-column: 1 / -1;
+  align-self: end;
+  padding-left: 8px;
+}
+
+.ui-root .desktop-view-heading > span {
+  position: relative;
+  padding-bottom: 9px;
+  color: var(--ui-action-info);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.ui-root .desktop-view-heading > span::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: currentColor;
+  content: "";
+}
+
+.ui-root .desktop-app .ui-workspace-screen[data-has-messages="false"] .ui-workspace-topbar {
+  padding-top: 8px;
+  border-bottom: 0;
+}
+
+.ui-root .ui-workspace-screen[data-has-messages="false"] .desktop-session-heading {
+  visibility: hidden;
+}
+
+/* 侧栏外壳只固定首尾；工作区列表独立滚动，不把设置卷出视口。 */
+.ui-root .desktop-app .ui-workspace-sidebar {
+  grid-row: 2 / -1;
+  padding: 0;
+  border-right: 0;
+  overflow: hidden;
+}
+
+.ui-root .desktop-sidebar-content {
+  display: flex;
+  flex-direction: column;
+  width: var(--desktop-sidebar-width);
+  height: 100%;
+  min-height: 0;
+  padding: 6px 12px;
+}
+
+.ui-root .desktop-app .ui-workspace-brand {
+  flex-basis: 50px;
+  gap: 10px;
+  padding: 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+
+.ui-root .desktop-app .ui-workspace-new {
+  min-height: 38px;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  font-size: var(--ui-font-size-14);
+}
+
+.ui-root .desktop-navigation-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  min-height: 36px;
+  margin: 12px 0 4px;
+  padding-left: 8px;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+}
+
+.ui-root .desktop-navigation-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+}
+
+.ui-root .desktop-navigation-add:hover:not(:disabled) {
+  background: var(--ui-action-neutral-hover);
+  color: var(--ui-text);
+}
+
+.ui-root .desktop-navigation-add:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: -2px;
+}
+
+.ui-root .desktop-app .ui-workspace-navigation {
+  min-height: 0;
+  margin-top: 0;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.ui-root .desktop-app .ui-workspace-group {
+  margin-bottom: 8px;
+}
+
+.ui-root .desktop-app .ui-workspace-group-button {
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 8px;
+}
+
+.ui-root .desktop-workspace-glyph {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 20px;
+}
+
+.ui-root .desktop-workspace-glyph .ui-workspace-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.ui-root .desktop-workspace-chevron {
+  position: absolute;
+  opacity: 0;
+}
+
+.ui-root .ui-workspace-group-button[aria-expanded="true"] .desktop-workspace-chevron {
+  transform: rotate(90deg);
+}
+
+.ui-root .ui-workspace-group-button:is(:hover, :focus-visible) .desktop-workspace-chevron {
+  opacity: 1;
+}
+
+.ui-root
+  .ui-workspace-group-button:is(:hover, :focus-visible)
+  .desktop-workspace-glyph
+  > .ui-workspace-icon {
+  opacity: 0;
+}
+
+.ui-root .desktop-app .ui-workspace-thread-list {
+  gap: 2px;
+  margin: 2px 0 0 12px;
+}
+
+.ui-root .desktop-app .ui-workspace-thread {
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 8px;
+  line-height: 20px;
+}
+
+.ui-root .desktop-app .ui-workspace-thread[aria-current="page"] {
+  background: var(--ui-action-neutral-hover);
+  font-weight: 500;
+}
+
+.ui-root .ui-workspace-thread .desktop-thread-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  height: 20px;
+}
+
+.ui-root .desktop-thread-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ui-text-muted);
+}
+
+.ui-root .desktop-thread-dot[data-state="waiting"] {
+  border: 1.5px solid var(--ui-text);
+  background: transparent;
+}
+
+.ui-root .ui-workspace-thread .desktop-thread-title {
+  flex: 1;
+}
+
+.ui-root .ui-workspace-thread .desktop-thread-state {
+  flex: 0 0 auto;
+  max-width: 4em;
+  margin-left: 2px;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+  font-weight: 400;
+}
+
+.ui-root .desktop-navigation-empty {
+  padding: 6px 8px 6px 28px;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+  line-height: 20px;
+}
+
+.ui-root .desktop-app .ui-workspace-sidebar-footer {
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--ui-border-subtle);
+}
+
+.ui-root .desktop-app .ui-workspace-settings {
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 8px;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-14);
+}
+
+@media (any-pointer: coarse) {
+  .ui-root .desktop-workspace-chevron {
+    opacity: 1;
+  }
+
+  .ui-root .desktop-workspace-glyph > .ui-workspace-icon {
+    opacity: 0;
+  }
+}
+
+.ui-root .desktop-app .ui-workspace-message-scroll {
+  display: flex;
+  flex-direction: column;
+  margin-right: 2px;
+  padding: 0;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.ui-root .desktop-scroll-content {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+}
+
+.ui-root .desktop-transcript-seat {
+  flex: 1 0 auto;
+  padding: 16px 32px;
+}
+
+/* 固定 36px 渐隐带不随草稿增高而拉伸；正文可在卡片下方继续滚动。 */
+.ui-root .desktop-composer-seat {
+  position: sticky;
+  z-index: 7;
+  bottom: 0;
+  flex: 0 0 auto;
+  padding-top: 36px;
+  margin-top: -20px;
+  background: linear-gradient(180deg, transparent 0, var(--ui-surface) 36px);
+}
+
+.ui-root .ui-workspace-main[data-has-messages="false"] .desktop-scroll-content {
+  justify-content: center;
+  padding: 16px 0 32px;
+}
+
+.ui-root .ui-workspace-main[data-has-messages="false"] .desktop-composer-seat {
+  position: relative;
+  padding-top: 0;
+  margin-top: 0;
+  background: none;
+}
+
+.ui-root .ui-workspace-message-scroll::-webkit-scrollbar-track {
+  margin: 2px;
+}
+
+.ui-root .desktop-welcome {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 32px 8px;
+  text-align: center;
+}
+
+.ui-root .desktop-welcome-mark {
+  display: inline-block;
+  width: 44px;
+  height: 44px;
+}
+
+.ui-root .desktop-welcome h1 {
+  margin: 20px 0 10px;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.5px;
+}
+
+.ui-root .desktop-welcome p {
+  margin: 0;
+  color: var(--ui-text-muted);
+  line-height: var(--ui-line-height-body);
+}
+
+.ui-root .desktop-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-14);
+}
+
+.ui-root .desktop-thinking > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* 独立于输入区高度；暂停跟随时出现，不挤压正在阅读的消息。 */
+.ui-root .desktop-jump-row {
+  position: absolute;
+  z-index: 8;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  height: 0;
+  pointer-events: none;
+}
+
+.ui-root .desktop-jump-latest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-top: -24px;
+  padding: 0;
+  border: 0.5px solid var(--ui-border-subtle);
+  border-radius: 50%;
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: var(--ui-font-size-12);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.ui-root .desktop-jump-latest:hover {
+  background: var(--ui-action-neutral-hover);
+}
+
+.ui-root .desktop-jump-latest:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 680px) {
+  .ui-root .desktop-app .ui-workspace-screen {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ui-root .desktop-app .ui-workspace-topbar {
+    grid-column: 1;
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .ui-root .desktop-app .ui-workspace-main,
+  .ui-root .desktop-app .ui-workspace-sidebar {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .ui-root .desktop-sidebar-content {
+    width: 100%;
+  }
+
+  .ui-root .desktop-transcript-seat {
+    padding: 16px 24px;
+  }
+
+  .ui-root .desktop-session-context {
+    display: none;
+  }
+
+  .ui-root .desktop-welcome {
+    padding: 12px 24px 0;
+  }
+}
+
+@media (max-height: 540px) {
+  .ui-root .desktop-welcome {
+    padding-top: 8px;
+  }
+
+  .ui-root .desktop-welcome-mark,
+  .ui-root .desktop-welcome p {
+    display: none;
+  }
+
+  .ui-root .desktop-welcome h1 {
+    margin: 8px 0;
+    font-size: 22px;
+  }
 }

@@ -1,4 +1,4 @@
-name: Build
+name: Agent Harness Build
 
 on:
   pull_request:
@@ -32,7 +32,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -60,7 +60,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -69,8 +69,8 @@ jobs:
       - name: Unit tests
         run: npm.cmd test
 
-  package:
-    name: Package ${{ matrix.name }}
+  package-desktop:
+    name: Package desktop (${{ matrix.name }})
     needs:
       - check
       - windows-test
@@ -87,17 +87,17 @@ jobs:
           - name: Windows
             os: windows-latest
             target: win
-            artifact_name: agent-ppt-win
+            artifact_name: agent-harness-desktop-win
 
           - name: macOS
             os: macos-latest
             target: mac
-            artifact_name: agent-ppt-mac
+            artifact_name: agent-harness-desktop-mac
 
           - name: Linux
             os: ubuntu-latest
             target: linux
-            artifact_name: agent-ppt-linux
+            artifact_name: agent-harness-desktop-linux
 
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -109,7 +109,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install Linux packaging dependencies
@@ -124,9 +124,12 @@ jobs:
       - name: Verify icon assets
         shell: bash
         run: |
+          test -f build/icon.svg
           test -f build/icon.ico
           test -f build/icon.png
           test -f build/icon.icns
+          cmp build/icon.svg app/renderer/public/icon.svg
+          cmp build/icon.png app/renderer/public/icon.png
 
       - name: Build app
         run: npm run build
@@ -153,9 +156,48 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  package-cli:
+    name: Package CLI
+    needs:
+      - check
+      - windows-test
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package and smoke-test standalone CLI
+        run: npm run package:cli
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-harness-cli
+          path: dist/cli/agent-harness-cli-*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
   release:
     name: Publish GitHub Release
-    needs: package
+    needs:
+      - package-desktop
+      - package-cli
     if: >
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.ref, 'refs/tags/v') ||
@@ -178,14 +220,14 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             {
               echo "tag=${GITHUB_REF_NAME}"
-              echo "title=${GITHUB_REF_NAME}"
+              echo "title=Agent Harness ${GITHUB_REF_NAME}"
               echo "prerelease=false"
               echo "rolling=false"
             } >> "$GITHUB_OUTPUT"
           else
             {
               echo "tag=latest"
-              echo "title=Latest Build"
+              echo "title=Agent Harness — Latest Build"
               echo "prerelease=true"
               echo "rolling=true"
             } >> "$GITHUB_OUTPUT"

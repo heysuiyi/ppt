@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ChatScrollController,
   createChatScrollController,
-} from "../app/renderer/src/components/chat-scroll-controller";
+} from "../app/renderer/src/ui/patterns/chat-scroll-controller";
 
 function rectangle(top: number, height: number, width = 320): DOMRect {
   return {

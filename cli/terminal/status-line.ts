@@ -8,7 +8,7 @@ export function contextLines(view: TerminalView, columns: number, color = false)
   const { model, workspace } = view.context;
   // 先按纯文本分配列宽，最后才加样式；不把 ANSI 当作可见字符或再次转义。
   const separator = " › ";
-  const brand = "s";
+  const brand = "[◆]";
   const modelIcon = "◉ ";
   const folderIcon = "📁 ";
   const chromeWidth = visibleWidth(brand + separator + modelIcon + separator + folderIcon);
@@ -34,7 +34,7 @@ export function contextLines(view: TerminalView, columns: number, color = false)
   const parent = tail.slice(0, split);
   const leaf = tail.slice(split);
   const content =
-    `\x1b[90m${brand}${separator}\x1b[36m${modelIcon}${name}\x1b[39m` +
+    `\x1b[96m${brand}\x1b[90m${separator}\x1b[36m${modelIcon}${name}\x1b[39m` +
     (tail
       ? `\x1b[90m${separator}\x1b[33m${folderIcon}\x1b[90m${parent}\x1b[39m\x1b[1m${leaf}\x1b[22;39m`
       : "");

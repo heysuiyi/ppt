@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopWorkspace } from "../app/renderer/src/desktop/DesktopWorkspace";
@@ -69,6 +69,7 @@ function host(initial: HarnessSnapshot) {
     selectWorkspace: vi.fn(async () => ok(current)),
     newSession: vi.fn(async () => ok(current)),
     selectSession: vi.fn(async () => ok(current)),
+    selectModel: vi.fn(async () => ok(current)),
     run: vi.fn(async () => ok(identity)),
     setDefaultModel: vi.fn(async () => ok(current)),
     resume: vi.fn(async () => ok(identity)),
@@ -119,9 +120,60 @@ beforeEach(() => {
     "matchMedia",
     vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
   );
+  Object.defineProperty(HTMLElement.prototype, "showPopover", {
+    configurable: true,
+    value: function (this: HTMLElement) {
+      this.dataset.testPopoverOpen = "true";
+      this.style.display = "block";
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "hidePopover", {
+    configurable: true,
+    value: function (this: HTMLElement) {
+      delete this.dataset.testPopoverOpen;
+      this.style.display = "none";
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "checkVisibility", {
+    configurable: true,
+    value: () => true,
+  });
+  const matches = Element.prototype.matches;
+  vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector) {
+    return selector === ":popover-open"
+      ? (this as HTMLElement).dataset.testPopoverOpen === "true"
+      : matches.call(this, selector);
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+    x: 20,
+    y: 20,
+    top: 20,
+    left: 20,
+    bottom: 50,
+    right: 220,
+    width: 200,
+    height: 30,
+    toJSON: () => ({}),
+  });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal("CSS", { escape: (value: string) => value });
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -173,6 +225,11 @@ describe("真实桌面工作区的安全交互", () => {
     await waitFor(() => expect(controller.getState().loading).toBe(false));
     const firstDisplay = { title: "first.txt", input: [], output: ["first-safe-result"] };
     const secondDisplay = { title: "second.txt", input: [], output: ["second-safe-result"] };
+    function revealResults() {
+      for (const button of screen.getAllByRole("button", { name: "read 工具详情" })) {
+        if (button.getAttribute("aria-expanded") === "false") fireEvent.click(button);
+      }
+    }
     act(() => {
       bridge.emit({
         type: "tool.status",
@@ -199,6 +256,7 @@ describe("真实桌面工作区的安全交互", () => {
         display: secondDisplay,
       });
     });
+    revealResults();
     expect(screen.getByText("first-safe-result")).toBeTruthy();
     expect(screen.getByText("second-safe-result")).toBeTruthy();
     act(() =>
@@ -283,6 +341,7 @@ describe("真实桌面工作区的安全交互", () => {
       ),
     );
     await act(async () => handoff.resolve(ok(controller.getState().snapshot!)));
+    revealResults();
     expect(screen.getByText("first-safe-result")).toBeTruthy();
     expect(screen.getByText("second-safe-result")).toBeTruthy();
     expect(screen.queryByLabelText("工具状态 read")).toBeNull();
@@ -454,7 +513,7 @@ describe("真实桌面工作区的安全交互", () => {
     );
     await act(() => controller.refreshModels());
     expect(screen.getByRole("combobox", { name: "当前模型" }).textContent).toContain("original");
-    expect(screen.getByRole("combobox", { name: "当前模型" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("combobox", { name: "当前模型" }).hasAttribute("disabled")).toBe(false);
     expect((screen.getByRole("textbox", { name: "任务输入" }) as HTMLTextAreaElement).value).toBe(
       "保留草稿",
     );
@@ -462,6 +521,288 @@ describe("真实桌面工作区的安全交互", () => {
     await act(() => controller.send());
     expect(bridge.api.run).not.toHaveBeenCalled();
     expect(bridge.api.newSession).not.toHaveBeenCalled();
+  });
+
+  it("已有会话选择模型等待真实回包，串行阻止发送并保留切换期间编辑的草稿", async () => {
+    const initial = snapshot({
+      models: [
+        { id: "original", label: "Vendor / Original", modelName: "Original" },
+        { id: "replacement", label: "Vendor / Replacement", modelName: "Replacement" },
+      ],
+    });
+    const bridge = host(initial);
+    const delayed = Promise.withResolvers<HarnessReply<HarnessSnapshot>>();
+    vi.mocked(bridge.api.selectModel).mockReturnValueOnce(delayed.promise);
+    const controller = createWorkspaceController(bridge.api);
+    render(<Workspace controller={controller} />);
+    await waitFor(() => expect(controller.getState().loading).toBe(false));
+    act(() => controller.setDraft("切换前草稿"));
+    const menu = screen.getByRole("combobox", { name: "当前模型" });
+    expect(menu.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByRole("option", { name: "Vendor / Replacement" }));
+    expect(bridge.api.selectModel).toHaveBeenCalledWith({
+      sessionId: "session",
+      modelId: "replacement",
+    });
+    expect(controller.getState().pending).toBe(true);
+    expect(controller.getState().snapshot?.selectedModelId).toBe("original");
+    expect(menu.textContent).toContain("Original");
+    act(() => controller.setDraft("  切换期间编辑的完整草稿\n保留格式  "));
+    await act(async () => {
+      await controller.selectModel("replacement");
+      await controller.send();
+    });
+    expect(bridge.api.selectModel).toHaveBeenCalledTimes(1);
+    expect(bridge.api.run).not.toHaveBeenCalled();
+    const next = {
+      ...initial,
+      revision: 2,
+      selectedModelId: "replacement",
+      sessions: [{ ...initial.sessions[0], modelId: "replacement" }],
+    };
+    await act(async () => {
+      bridge.setSnapshot(next);
+      delayed.resolve(ok(next));
+    });
+    await waitFor(() => expect(controller.getState().pending).toBe(false));
+    expect(controller.getState().drafts.session).toBe("  切换期间编辑的完整草稿\n保留格式  ");
+    expect(screen.getByRole("combobox", { name: "当前模型" }).textContent).toContain("Replacement");
+    expect(controller.getState().snapshot?.selectedSessionId).toBe("session");
+    await act(() => controller.send());
+    expect(bridge.api.run).toHaveBeenCalledWith({
+      sessionId: "session",
+      text: "切换期间编辑的完整草稿\n保留格式",
+    });
+    expect(bridge.api.newSession).not.toHaveBeenCalled();
+  });
+
+  it.each(["reply", "exception"] as const)(
+    "切换模型%s失败不改绑定或草稿，原模型仍可发送",
+    async (failure) => {
+      const bridge = host(
+        snapshot({
+          models: [
+            { id: "original", label: "Original" },
+            { id: "replacement", label: "Replacement" },
+          ],
+        }),
+      );
+      if (failure === "reply")
+        vi.mocked(bridge.api.selectModel).mockResolvedValueOnce({
+          ok: false,
+          error: { code: "CLI_MODEL_UNAVAILABLE", message: "目标模型暂不可用" },
+        });
+      else vi.mocked(bridge.api.selectModel).mockRejectedValueOnce(new Error("private-sdk-secret"));
+      const controller = createWorkspaceController(bridge.api);
+      render(<Workspace controller={controller} />);
+      await waitFor(() => expect(controller.getState().loading).toBe(false));
+      act(() => controller.setDraft("  草稿不丢\n第二行  "));
+      await act(() => controller.selectModel("replacement"));
+      expect(controller.getState().pending).toBe(false);
+      expect(controller.getState().snapshot?.selectedModelId).toBe("original");
+      expect(controller.getState().drafts.session).toBe("  草稿不丢\n第二行  ");
+      expect(controller.getState().error).toBeTruthy();
+      expect(screen.queryByText(/private-sdk-secret/)).toBeNull();
+      await act(() => controller.send());
+      expect(bridge.api.run).toHaveBeenCalledWith({
+        sessionId: "session",
+        text: "草稿不丢\n第二行",
+      });
+      expect(bridge.api.newSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["running", "waiting", "interrupted"] as const)(
+    "%s 未完成请求同时禁止菜单和控制器切模型",
+    async (status) => {
+      const bridge = host(
+        snapshot({
+          models: [
+            { id: "original", label: "Original" },
+            { id: "replacement", label: "Replacement" },
+          ],
+          status,
+          activeRun: status === "running" ? identity : null,
+          sessions: [{ ...snapshot().sessions[0], unfinished: { queryId: "query", status } }],
+        }),
+      );
+      const controller = createWorkspaceController(bridge.api);
+      render(<Workspace controller={controller} />);
+      await waitFor(() => expect(controller.getState().loading).toBe(false));
+      expect(screen.getByRole("combobox", { name: "当前模型" }).hasAttribute("disabled")).toBe(
+        true,
+      );
+      await act(() => controller.selectModel("replacement"));
+      expect(bridge.api.selectModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "scope",
+    "session",
+    "foreign-scope",
+    "foreign-session",
+    "scope-error",
+    "session-error",
+  ] as const)("切模型旧%s回包不能替换当前上下文或草稿", async (change) => {
+    const initial = snapshot({
+      models: [
+        { id: "original", label: "Original" },
+        { id: "replacement", label: "Replacement" },
+      ],
+    });
+    const bridge = host(initial);
+    const delayed = Promise.withResolvers<HarnessReply<HarnessSnapshot>>();
+    vi.mocked(bridge.api.selectModel).mockReturnValueOnce(delayed.promise);
+    const controller = createWorkspaceController(bridge.api);
+    const first = render(<Workspace controller={controller} />);
+    await waitFor(() => expect(controller.getState().loading).toBe(false));
+    let switching: Promise<void> = Promise.resolve();
+    act(() => {
+      controller.setDraft("原会话草稿");
+      switching = controller.selectModel("replacement");
+    });
+    if (change.startsWith("scope")) {
+      first.unmount();
+      bridge.setSnapshot({ ...initial, scopeId: "new-scope" });
+      render(<Workspace controller={controller} />);
+      await waitFor(() => expect(controller.getState().snapshot?.scopeId).toBe("new-scope"));
+    } else if (change.startsWith("session")) {
+      act(() =>
+        bridge.publish({
+          ...initial,
+          revision: 2,
+          selectedSessionId: "other",
+          sessions: [...initial.sessions, { ...initial.sessions[0], id: "other" }],
+        }),
+      );
+    }
+    act(() => controller.setDraft("当前上下文草稿"));
+    await act(async () => {
+      if (change.endsWith("-error")) delayed.reject(new Error("private-old-model-error"));
+      else
+        delayed.resolve(
+          ok({
+            ...initial,
+            revision: 999,
+            ...(change === "foreign-scope" ? { scopeId: "foreign" } : {}),
+            selectedSessionId: change === "foreign-session" ? "foreign" : "session",
+            selectedModelId: "replacement",
+            sessions: [{ ...initial.sessions[0], modelId: "replacement" }],
+          }),
+        );
+      await switching;
+    });
+    expect(controller.getState().snapshot?.selectedModelId).toBe("original");
+    expect(controller.getState().snapshot?.selectedSessionId).toBe(
+      change.startsWith("session") ? "other" : "session",
+    );
+    expect(controller.getState().drafts[draftKey(controller.getState())]).toBe("当前上下文草稿");
+    expect(controller.getState().error).toBeNull();
+    expect(controller.getState().snapshot?.scopeId).toBe(
+      change.startsWith("scope") ? "new-scope" : "scope",
+    );
+  });
+
+  it("已有会话无绑定模型时不偷偷使用默认模型发送", async () => {
+    const bridge = host(
+      snapshot({
+        selectedModelId: null,
+        sessions: [{ ...snapshot().sessions[0], modelId: undefined }],
+      }),
+    );
+    const controller = createWorkspaceController(bridge.api);
+    render(<Workspace controller={controller} />);
+    await waitFor(() => expect(controller.getState().loading).toBe(false));
+    expect(screen.getByRole("combobox", { name: "当前模型" }).textContent).toContain("请选择模型");
+    act(() => controller.setDraft("保留缺少模型的草稿"));
+    await act(() => controller.send());
+    expect(bridge.api.run).not.toHaveBeenCalled();
+    expect(bridge.api.newSession).not.toHaveBeenCalled();
+    expect(controller.getState().drafts.session).toBe("保留缺少模型的草稿");
+  });
+
+  it("新会话模型仅本地选择，首次发送仍使用固定读写权限创建", async () => {
+    const initial = snapshot({
+      sessions: [],
+      selectedSessionId: null,
+      selectedModelId: null,
+      models: [
+        { id: "original", label: "Original" },
+        { id: "replacement", label: "Replacement" },
+      ],
+    });
+    const bridge = host(initial);
+    const controller = createWorkspaceController(bridge.api);
+    render(<Workspace controller={controller} />);
+    await waitFor(() => expect(controller.getState().loading).toBe(false));
+    fireEvent.click(screen.getByRole("combobox", { name: "当前模型" }));
+    fireEvent.click(screen.getByRole("option", { name: "Replacement" }));
+    expect(controller.getState().newModelId).toBe("replacement");
+    expect(bridge.api.selectModel).not.toHaveBeenCalled();
+    act(() => controller.setDraft("新会话请求"));
+    await act(() => controller.send());
+    expect(bridge.api.newSession).toHaveBeenCalledWith({
+      modelId: "replacement",
+      toolsMode: "read-write",
+    });
+  });
+
+  it("同名模型按真实连接区分，跨分组键盘导航跳过不可用项且取消不改变选择", async () => {
+    const initial = snapshot({
+      sessions: [],
+      selectedSessionId: null,
+      selectedModelId: null,
+      models: [
+        {
+          id: "original",
+          label: "连接一 / Shared",
+          modelName: "Shared",
+          vendor: { id: "one", label: "连接一" },
+        },
+        {
+          id: "offline",
+          label: "连接一 / Offline",
+          modelName: "Offline",
+          vendor: { id: "one", label: "连接一" },
+          availability: { state: "unavailable", reason: "disabled" },
+        },
+        {
+          id: "other",
+          label: "连接二 / Shared",
+          modelName: "Shared",
+          vendor: { id: "two", label: "连接二" },
+        },
+      ],
+    });
+    const bridge = host(initial);
+    const controller = createWorkspaceController(bridge.api);
+    render(<Workspace controller={controller} />);
+    await waitFor(() => expect(controller.getState().loading).toBe(false));
+    act(() => controller.setDraft("分组导航不清除的草稿"));
+    const menu = screen.getByRole("combobox", { name: "当前模型" });
+    fireEvent.click(menu);
+    const first = within(screen.getByRole("group", { name: "连接一" })).getByRole("option", {
+      name: "连接一 / Shared",
+    });
+    const other = within(screen.getByRole("group", { name: "连接二" })).getByRole("option", {
+      name: "连接二 / Shared",
+    });
+    expect(first.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(menu.getAttribute("aria-activedescendant")).toBe(other.id);
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(controller.getState().newModelId).toBe("original");
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    fireEvent.keyDown(menu, { key: "s" });
+    fireEvent.keyDown(menu, { key: "Enter" });
+    expect(controller.getState().newModelId).toBe("other");
+    expect((screen.getByRole("textbox", { name: "任务输入" }) as HTMLTextAreaElement).value).toBe(
+      "分组导航不清除的草稿",
+    );
+    expect(bridge.api.newSession).not.toHaveBeenCalled();
+    expect(bridge.api.selectModel).not.toHaveBeenCalled();
   });
 
   it("流式输出只作临时预览，完成时以权威历史替换并清理监听", async () => {
@@ -940,5 +1281,104 @@ describe("真实桌面工作区的安全交互", () => {
       interactionId: "second",
       choiceId: "reject",
     });
+  });
+
+  it("组合键与中文输入确认不提交，普通 Enter 仅提交一次当前草稿", async () => {
+    const bridge = host(snapshot());
+    const controller = createWorkspaceController(bridge.api);
+    render(<Workspace controller={controller} />);
+    await waitFor(() => expect(controller.getState().loading).toBe(false));
+    const input = screen.getByRole("textbox", { name: "任务输入" });
+    fireEvent.change(input, { target: { value: "保留中文\n和换行" } });
+    for (const modifier of ["shiftKey", "ctrlKey", "altKey", "metaKey"]) {
+      fireEvent.keyDown(input, { key: "Enter", [modifier]: true });
+    }
+    fireEvent.compositionStart(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(bridge.api.run).not.toHaveBeenCalled();
+    expect((input as HTMLTextAreaElement).value).toBe("保留中文\n和换行");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(bridge.api.run).toHaveBeenCalledExactlyOnceWith({
+        sessionId: "session",
+        text: "保留中文\n和换行",
+      }),
+    );
+  });
+
+  it("未选择工作区时保留只读草稿，选择取消及输入法确认均不发送", async () => {
+    const bridge = host(
+      snapshot({
+        workspace: null,
+        recentWorkspaces: [],
+        sessions: [],
+        selectedSessionId: null,
+        status: "idle",
+      }),
+    );
+    const controller = createWorkspaceController(bridge.api);
+    render(<Workspace controller={controller} />);
+    await waitFor(() => expect(controller.getState().loading).toBe(false));
+    act(() => controller.setDraft("保留尚未选择目录的草稿"));
+    const input = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(input.readOnly).toBe(true);
+    expect(screen.getByRole("button", { name: "发送任务" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.compositionStart(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(bridge.api.chooseWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(input);
+    await waitFor(() => expect(controller.getState().pending).toBe(false));
+    expect(bridge.api.chooseWorkspace).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe("保留尚未选择目录的草稿");
+    expect(input.readOnly).toBe(true);
+    fireEvent.keyDown(input, { key: " " });
+    await waitFor(() => expect(bridge.api.chooseWorkspace).toHaveBeenCalledTimes(2));
+    expect(bridge.api.run).not.toHaveBeenCalled();
+    expect(bridge.api.newSession).not.toHaveBeenCalled();
+  });
+
+  it("收起当前工作区只改变导航，不重新选择目录或丢失当前草稿", async () => {
+    const bridge = host(snapshot());
+    const controller = createWorkspaceController(bridge.api);
+    render(<Workspace controller={controller} />);
+    await waitFor(() => expect(controller.getState().loading).toBe(false));
+    const input = screen.getByRole("textbox", { name: "任务输入" });
+    fireEvent.change(input, { target: { value: "保留当前会话草稿" } });
+    const group = screen.getByRole("button", { name: "Work", exact: true });
+    fireEvent.click(group);
+    expect(group.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "Existing" })).toBeNull();
+    expect((input as HTMLTextAreaElement).value).toBe("保留当前会话草稿");
+    expect(bridge.api.selectWorkspace).not.toHaveBeenCalled();
+    expect(bridge.api.selectSession).not.toHaveBeenCalled();
+    fireEvent.click(group);
+    expect(group.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Existing" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect((input as HTMLTextAreaElement).value).toBe("保留当前会话草稿");
+  });
+
+  it("侧栏退场时立即移出可访问导航，重新展开仍保留当前会话和草稿", async () => {
+    const bridge = host(snapshot());
+    const controller = createWorkspaceController(bridge.api);
+    render(<Workspace controller={controller} />);
+    await waitFor(() => expect(controller.getState().loading).toBe(false));
+    const input = screen.getByRole("textbox", { name: "任务输入" });
+    fireEvent.change(input, { target: { value: "收展期间保留草稿" } });
+    fireEvent.click(screen.getByRole("button", { name: "收起会话导航" }));
+    expect(screen.queryByRole("navigation", { name: "工作区与会话" })).toBeNull();
+    expect((input as HTMLTextAreaElement).value).toBe("收展期间保留草稿");
+    expect(controller.getState().snapshot?.selectedSessionId).toBe("session");
+    fireEvent.click(screen.getByRole("button", { name: "展开会话导航" }));
+    expect(screen.getByRole("navigation", { name: "工作区与会话" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Existing" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect((input as HTMLTextAreaElement).value).toBe("收展期间保留草稿");
   });
 });

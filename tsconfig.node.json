@@ -33,7 +33,7 @@
     "src/design-system/**/*.ts",
     // Pure helpers still living in renderer that node/vitest imports directly
     "app/renderer/src/components/project-store.ts",
-    "app/renderer/src/components/chat-scroll-controller.ts",
+    "app/renderer/src/ui/patterns/chat-scroll-controller.ts",
     "app/renderer/src/components/usage-trend-axis.ts",
     "app/renderer/src/components/run-process/process-model.ts",
     "app/renderer/src/components/markdown/**/*.ts",

@@ -3,9 +3,17 @@ import { createPortal } from "react-dom";
 import { useUiEnvironment } from "../../internal/UiEnvironment";
 import { useAnchoredPosition } from "../../internal/useAnchoredPosition";
 
+export interface SelectOptionGroup {
+  id: string;
+  label: string;
+}
+
 export interface SelectOption {
   value: string;
   label: string;
+  /** 视觉短名与完整可访问名称分开，避免同名连接丢失身份。 */
+  displayLabel?: string;
+  group?: SelectOptionGroup;
   disabled?: boolean;
 }
 
@@ -13,10 +21,12 @@ export interface SelectProps {
   value: string;
   onValueChange: (value: string) => void;
   options: readonly SelectOption[];
-  variant?: "field" | "compact";
+  variant?: "field" | "compact" | "chip";
   align?: "start" | "end";
   disabled?: boolean;
   placeholder?: string;
+  /** 闭合控件可使用短名称；选项列表仍保留完整、可区分的标签。 */
+  valueLabel?: string;
   id?: string;
   className?: string;
   "aria-label"?: string;
@@ -33,6 +43,7 @@ export function Select({
   align = "start",
   disabled = false,
   placeholder,
+  valueLabel,
   id,
   className,
   "aria-label": ariaLabel,
@@ -57,6 +68,19 @@ export function Select({
   const firstEnabled = options.findIndex((option) => !option.disabled);
   let lastEnabled = options.length - 1;
   while (lastEnabled >= 0 && options[lastEnabled].disabled) lastEnabled -= 1;
+  const groups: {
+    key: number;
+    group: SelectOptionGroup | undefined;
+    options: { option: SelectOption; index: number }[];
+  }[] = [];
+  options.forEach((option, index) => {
+    const previous = groups[groups.length - 1];
+    if (previous && previous.group?.id === option.group?.id) {
+      previous.options.push({ option, index });
+    } else {
+      groups.push({ key: index, group: option.group, options: [{ option, index }] });
+    }
+  });
 
   const close = useCallback((restoreFocus = false) => {
     setOpen(false);
@@ -99,7 +123,8 @@ export function Select({
     popupRef,
     open: open && portalHost !== null,
     align,
-    minWidth: 200,
+    minWidth: variant === "chip" ? 240 : 200,
+    layout: variant === "chip" ? "menu" : "field",
     onAnchorHidden: closeHiddenAnchor,
   });
 
@@ -167,7 +192,10 @@ export function Select({
     for (let offset = 0; offset < options.length; offset += 1) {
       const index = (start + offset) % options.length;
       const option = options[index];
-      if (!option.disabled && option.label.trimStart().toLocaleLowerCase().startsWith(query)) {
+      if (
+        !option.disabled &&
+        (option.displayLabel ?? option.label).trimStart().toLocaleLowerCase().startsWith(query)
+      ) {
         setActiveValue(option.value);
         break;
       }
@@ -260,7 +288,7 @@ export function Select({
         }}
       >
         <span className="ui-choice-value" data-placeholder={!selected || undefined}>
-          {selected?.label ?? placeholder ?? ""}
+          {selected ? (valueLabel ?? selected.label) : (placeholder ?? "")}
         </span>
         <svg className="ui-choice-chevron" viewBox="0 0 16 16" aria-hidden="true">
           <path d="m4 6 4 4 4-4" />
@@ -273,31 +301,50 @@ export function Select({
             id={listboxId}
             className="ui-choice-popup"
             popover="auto"
+            data-variant={variant}
             data-ui-popup="select"
             role="listbox"
             aria-label={ariaLabel}
             aria-labelledby={ariaLabelledBy ?? (ariaLabel ? undefined : triggerId)}
           >
-            {options.map((option, index) => (
+            {groups.map(({ key, group, options: entries }) => (
               <div
-                key={option.value}
-                id={`${listboxId}-option-${index}`}
-                role="option"
-                aria-selected={option.value === value}
-                aria-disabled={option.disabled || undefined}
-                className="ui-choice-option"
-                data-option-value={option.value}
-                data-active={(index === activeIndex && open) || undefined}
-                onPointerDown={(event) => event.preventDefault()}
-                onPointerMove={() => {
-                  if (!option.disabled) setActiveValue(option.value);
-                }}
-                onClick={() => choose(option)}
+                key={key}
+                className="ui-choice-group"
+                role={group ? "group" : undefined}
+                aria-label={group?.label}
               >
-                <span className="ui-choice-option-label">{option.label}</span>
-                <svg className="ui-choice-check" viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="m3 8 3 3 7-7" />
-                </svg>
+                {group && (
+                  <div className="ui-choice-group-heading" aria-hidden="true">
+                    {group.label}
+                  </div>
+                )}
+                {entries.map(({ option, index }) => (
+                  <div
+                    key={option.value}
+                    id={`${listboxId}-option-${index}`}
+                    role="option"
+                    aria-label={option.displayLabel ? option.label : undefined}
+                    aria-selected={option.value === value}
+                    aria-disabled={option.disabled || undefined}
+                    title={option.label}
+                    className="ui-choice-option"
+                    data-option-value={option.value}
+                    data-active={(index === activeIndex && open) || undefined}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onPointerMove={() => {
+                      if (!option.disabled) setActiveValue(option.value);
+                    }}
+                    onClick={() => choose(option)}
+                  >
+                    <span className="ui-choice-option-label">
+                      {option.displayLabel ?? option.label}
+                    </span>
+                    <svg className="ui-choice-check" viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="m3 8 3 3 7-7" />
+                    </svg>
+                  </div>
+                ))}
               </div>
             ))}
           </div>,

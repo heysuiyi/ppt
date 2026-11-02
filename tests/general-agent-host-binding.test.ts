@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ModelMessage } from "@agent-harness/core/model/model-contract";
+import type { AgentCheckpoint } from "@agent-harness/core/session/session-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import type { HostSessionBinding } from "../cli/host/host-session-binding.js";
 import {
@@ -225,6 +226,110 @@ describe("persistent host session bindings", () => {
     await stores.bindings.ensure(original);
   });
 
+  it("CAS-rebinds only an idle thread and fences old connections even after selecting A again", async () => {
+    const path = databasePath();
+    const first = openStores(path);
+    const oldWindow = openStores(path);
+    const original = binding();
+    await first.bindings.ensure(original);
+    await oldWindow.bindings.ensure(original);
+    await first.history.append("thread", 0, [user], "before-switch");
+    const acquired = await oldWindow.checkpoints.acquire(
+      { agentId: "other-agent", threadId: "thread", queryId: "empty-query" },
+      "old-writer",
+    );
+    if (acquired.status !== "acquired") throw new Error("Expected checkpoint acquisition.");
+    const target = {
+      model: { providerId: "other-provider", modelId: "b" },
+      connectionFingerprint: "b".repeat(64),
+      maxSteps: 8,
+    };
+    await expect(first.bindings.replaceModel(original, target)).rejects.toMatchObject({
+      code: "HOST_THREAD_PENDING",
+    });
+    expect(await first.bindings.read("thread")).toEqual(original);
+    await oldWindow.checkpoints.release(acquired.lease);
+    const next = await first.bindings.replaceModel(original, target);
+    expect(next).toEqual({
+      ...original,
+      ...target,
+      schemaVersion: 3,
+      generation: 1,
+      modelHistoryStart: 1,
+    });
+    expect(await first.history.read("thread")).toMatchObject({ revision: 1, messages: [user] });
+    await expect(oldWindow.bindings.replaceModel(original, target)).rejects.toMatchObject(
+      changedError,
+    );
+    await expect(
+      oldWindow.history.append("thread", 0, [user], "before-switch"),
+    ).rejects.toMatchObject(changedError);
+    await expect(
+      oldWindow.checkpoints.acquire(
+        { agentId: original.agentId, threadId: "thread", queryId: "new-old-query" },
+        "stale",
+      ),
+    ).rejects.toMatchObject(changedError);
+    const restored = await first.bindings.replaceModel(next, original);
+    expect(restored).toEqual({
+      ...original,
+      schemaVersion: 3,
+      generation: 2,
+      modelHistoryStart: 1,
+    });
+    await expect(oldWindow.bindings.ensure(original)).rejects.toMatchObject(changedError);
+    await expect(
+      oldWindow.history.append("thread", 1, [user], "stale-append"),
+    ).rejects.toMatchObject(changedError);
+    await first.history.append("thread", 1, [user], "new-generation");
+    expect(await first.history.read("thread")).toMatchObject({ revision: 2 });
+  });
+
+  it("keeps a terminal checkpoint's unreleased owner as a blocker and never changes its payload", async () => {
+    const stores = openStores(databasePath());
+    const original = binding();
+    await stores.bindings.ensure(original);
+    const key = { agentId: original.agentId, threadId: original.threadId, queryId: "terminal" };
+    const acquired = await stores.checkpoints.acquire(key, "owner");
+    if (acquired.status !== "acquired") throw new Error("Expected checkpoint acquisition.");
+    const checkpoint: AgentCheckpoint = {
+      schemaVersion: 1,
+      ...key,
+      lastRunId: "run",
+      definition: original.definition,
+      plugins: original.plugins,
+      model: original.model,
+      maxSteps: original.maxSteps,
+      startMessageCount: 0,
+      extensions: [],
+      status: "completed",
+      committed: { historyRevision: 0, messages: [], step: 0 },
+    };
+    expect(await stores.checkpoints.save(acquired.lease, 0, checkpoint)).toEqual({
+      status: "saved",
+      revision: 1,
+    });
+    await expect(
+      stores.bindings.replaceModel(original, {
+        model: { providerId: "other", modelId: "b" },
+        connectionFingerprint: "b",
+        maxSteps: 3,
+      }),
+    ).rejects.toMatchObject({ code: "HOST_THREAD_PENDING" });
+    await stores.checkpoints.release(acquired.lease);
+    const next = await stores.bindings.replaceModel(original, {
+      model: { providerId: "other", modelId: "b" },
+      connectionFingerprint: "b",
+      maxSteps: 3,
+    });
+    expect(next.generation).toBe(1);
+    const terminal = await stores.checkpoints.acquire(key, "inspector");
+    if (terminal.status !== "acquired")
+      throw new Error("Expected terminal checkpoint acquisition.");
+    expect(terminal.checkpoint).toEqual(checkpoint);
+    await stores.checkpoints.release(terminal.lease);
+  });
+
   it("validates the full JSON boundary and never accepts credential or endpoint configuration", async () => {
     const stores = openStores(databasePath());
     const invalid: unknown[] = [
@@ -239,6 +344,10 @@ describe("persistent host session bindings", () => {
       binding({ maxSteps: -1 }),
       binding({ maxSteps: 1.5 }),
       binding({ maxSteps: Number.MAX_SAFE_INTEGER + 1 }),
+      binding({ generation: -1 }),
+      binding({ generation: 0.5 }),
+      binding({ modelHistoryStart: -1 }),
+      binding({ modelHistoryStart: 0.5 }),
       binding({ model: { providerId: "", modelId: "model" } }),
       binding({ model: { providerId: "provider", modelId: "" } }),
       binding({ model: { providerId: "provider", modelId: "model", reasoningEffort: "" } }),

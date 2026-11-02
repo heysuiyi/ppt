@@ -5,7 +5,11 @@ import type { HostToolsMode } from "./host-contract.js";
 
 /** 仅宿主保存的恢复边界，不进入内核协议，也不携带连接凭据或地址。 */
 export interface HostSessionBinding {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 2 | 3;
+  /** v2 不携带世代；仅显式且空闲的换模型事务升级到 v3。 */
+  readonly generation?: number;
+  /** v3：此边界以前的规范消息保留，但不向新模型重放私有状态。 */
+  readonly modelHistoryStart?: number;
   readonly agentId: string;
   readonly threadId: string;
   readonly workspaceRoot: string;
@@ -20,6 +24,11 @@ export interface HostSessionBinding {
 export interface HostSessionBindingStore {
   read(threadId: string): Promise<HostSessionBinding | null>;
   ensure(binding: HostSessionBinding): Promise<void>;
+  assertIdle(binding: HostSessionBinding): Promise<void>;
+  replaceModel(
+    expected: HostSessionBinding,
+    model: Pick<HostSessionBinding, "model" | "connectionFingerprint" | "maxSteps">,
+  ): Promise<HostSessionBinding>;
 }
 
 function objectWithKeys(
@@ -51,7 +60,8 @@ export function snapshotHostSessionBinding(binding: HostSessionBinding): HostSes
     detached !== null &&
     typeof detached === "object" &&
     "schemaVersion" in detached &&
-    detached.schemaVersion !== 2
+    detached.schemaVersion !== 2 &&
+    detached.schemaVersion !== 3
   ) {
     throw new AgentError(
       "HOST_BINDING_VERSION_UNSUPPORTED",
@@ -59,19 +69,29 @@ export function snapshotHostSessionBinding(binding: HostSessionBinding): HostSes
     );
   }
   if (
-    !objectWithKeys(detached, [
-      "schemaVersion",
-      "agentId",
-      "threadId",
-      "workspaceRoot",
-      "toolMode",
-      "model",
-      "connectionFingerprint",
-      "definition",
-      "plugins",
-      "maxSteps",
-    ]) ||
-    detached.schemaVersion !== 2 ||
+    !objectWithKeys(
+      detached,
+      [
+        "schemaVersion",
+        "agentId",
+        "threadId",
+        "workspaceRoot",
+        "toolMode",
+        "model",
+        "connectionFingerprint",
+        "definition",
+        "plugins",
+        "maxSteps",
+      ],
+      ["generation", "modelHistoryStart"],
+    ) ||
+    (detached.schemaVersion !== 2 && detached.schemaVersion !== 3) ||
+    (detached.schemaVersion === 2
+      ? Object.hasOwn(detached, "generation") || Object.hasOwn(detached, "modelHistoryStart")
+      : !Number.isSafeInteger(detached.generation) ||
+        (detached.generation as number) < 0 ||
+        !Number.isSafeInteger(detached.modelHistoryStart) ||
+        (detached.modelHistoryStart as number) < 0) ||
     !nonempty(detached.agentId) ||
     !nonempty(detached.threadId) ||
     !nonempty(detached.workspaceRoot) ||

@@ -53,7 +53,7 @@ export class TerminalTitle {
         view.phase === "running" ||
         view.phase === "settling" ||
         view.phase === "cancelling");
-    const next = `s ${separator} ${label}`;
+    const next = `[◆] ${separator} ${label}`;
     if (next === this.previous && active === this.progressActive) return;
     const claim = this.claimed ? "" : "\x1b[22;2t";
     const title = next === this.previous ? "" : `\x1b]0;${next}\x07`;

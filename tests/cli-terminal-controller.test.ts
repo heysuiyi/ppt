@@ -83,6 +83,7 @@ function host(overrides: Partial<TerminalHost>): TerminalHost {
     sessions: unsupported,
     newSession: unsupported,
     selectSession: unsupported,
+    selectModel: unsupported,
     run: unsupported,
     resume: unsupported,
     describeInteraction: () => ({

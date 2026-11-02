@@ -6,6 +6,7 @@ interface AnchoredPositionOptions {
   open: boolean;
   align: "start" | "end";
   minWidth: number;
+  layout?: "field" | "menu";
   onAnchorHidden: () => void;
 }
 
@@ -29,6 +30,7 @@ export function useAnchoredPosition({
   open,
   align,
   minWidth,
+  layout = "field",
   onAnchorHidden,
 }: AnchoredPositionOptions) {
   useLayoutEffect(() => {
@@ -63,21 +65,27 @@ export function useAnchoredPosition({
       }
 
       const zoom = effectiveZoom(popup);
-      const boundary = 16;
-      const gap = 4 * zoom;
+      const menu = layout === "menu";
+      const boundary = menu ? 12 : 16;
+      const gap = (menu ? 8 : 4) * zoom;
       const availableWidth = Math.max(0, viewportWidth - boundary * 2);
-      popup.style.maxWidth = `${availableWidth / zoom}px`;
-      popup.style.minWidth = `${Math.min(bounds.width, availableWidth) / zoom}px`;
-      popup.style.width = `${Math.min(Math.max(bounds.width, minWidth * zoom), availableWidth) / zoom}px`;
+      popup.style.maxWidth = `${Math.min(menu ? 420 : Infinity, availableWidth / zoom)}px`;
+      popup.style.minWidth = `${Math.min(menu ? minWidth * zoom : bounds.width, availableWidth) / zoom}px`;
+      popup.style.width = menu
+        ? "max-content"
+        : `${Math.min(Math.max(bounds.width, minWidth * zoom), availableWidth) / zoom}px`;
       const popupStyle = getComputedStyle(popup);
       const borders =
         Number.parseFloat(popupStyle.borderTopWidth) +
         Number.parseFloat(popupStyle.borderBottomWidth);
-      const desiredHeight = Math.min(popup.scrollHeight + borders, 320) * zoom;
+      const heightLimit = menu ? Math.max(0, Math.min(360, viewportHeight / zoom - 96)) : 320;
+      const desiredHeight = Math.min(popup.scrollHeight + borders, heightLimit) * zoom;
       const below = Math.max(0, viewportTop + viewportHeight - boundary - bounds.bottom - gap);
       const above = Math.max(0, bounds.top - viewportTop - boundary - gap);
-      const placeBelow = desiredHeight <= below || below >= above;
-      popup.style.maxHeight = `${Math.min(320, (placeBelow ? below : above) / zoom)}px`;
+      const placeBelow = menu
+        ? desiredHeight > above && below > above
+        : desiredHeight <= below || below >= above;
+      popup.style.maxHeight = `${Math.min(heightLimit, (placeBelow ? below : above) / zoom)}px`;
       const popupBounds = popup.getBoundingClientRect();
       const left = align === "end" ? bounds.right - popupBounds.width : bounds.left;
       const top = placeBelow ? bounds.bottom + gap : bounds.top - gap - popupBounds.height;
@@ -135,5 +143,5 @@ export function useAnchoredPosition({
       window.visualViewport?.removeEventListener("scroll", schedule);
       delete popup.dataset.positioned;
     };
-  }, [triggerRef, popupRef, open, align, minWidth, onAnchorHidden]);
+  }, [triggerRef, popupRef, open, align, minWidth, layout, onAnchorHidden]);
 }

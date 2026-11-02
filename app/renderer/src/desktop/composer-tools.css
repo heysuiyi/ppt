@@ -1,0 +1,242 @@
+.ui-root .desktop-composer-tools {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-root .desktop-composer-tools button {
+  box-sizing: border-box;
+  margin: 0;
+  font-family: inherit;
+  -webkit-app-region: no-drag;
+}
+
+.ui-root .desktop-composer-tools svg {
+  display: block;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ui-root .desktop-composer-tools-add {
+  anchor-name: var(--desktop-composer-actions-anchor);
+  display: inline-flex;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ui-composer-selector);
+  color: var(--ui-composer-text);
+  cursor: pointer;
+}
+
+.ui-root .desktop-composer-tools-add > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ui-root .desktop-composer-tools-permission {
+  anchor-name: var(--desktop-composer-permissions-anchor);
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border: 0;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-composer-control);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.ui-root .desktop-composer-tools-permission-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-root .desktop-composer-tools-shield {
+  width: 14px;
+  height: 14px;
+}
+
+.ui-root .desktop-composer-tools-chevron {
+  width: 12px;
+  height: 12px;
+}
+
+.ui-root .desktop-composer-tools-add[aria-expanded="true"],
+.ui-root .desktop-composer-tools-permission[aria-expanded="true"] {
+  background: var(--ui-action-neutral-active);
+}
+
+.ui-root .desktop-composer-tools button:focus-visible,
+.ui-root .desktop-composer-tools-permission-popup:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-root .desktop-composer-tools button:disabled {
+  color: var(--ui-text-disabled);
+  cursor: not-allowed;
+}
+
+.ui-root .desktop-composer-tools-popup {
+  position: fixed;
+  inset: auto;
+  bottom: calc(anchor(top) + 8px);
+  left: anchor(left);
+  position-try-fallbacks:
+    flip-block,
+    flip-inline,
+    flip-block flip-inline;
+  box-sizing: border-box;
+  max-width: calc(100dvw - 24px);
+  max-height: calc(100dvh - 24px);
+  margin: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: var(--ui-radius-dialog);
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
+  box-shadow: var(--ui-shadow-dialog);
+  font-family: var(--ui-font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  -webkit-app-region: no-drag;
+}
+
+.ui-root .desktop-composer-tools-menu {
+  position-anchor: var(--desktop-composer-actions-anchor);
+  width: 200px;
+  padding: 5px;
+}
+
+.ui-root .desktop-composer-tools-menu:popover-open {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ui-root .desktop-composer-tools-menu > button {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.ui-root .desktop-composer-tools-menu > button > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ui-root .desktop-composer-tools-menu > button:focus-visible {
+  outline-offset: -2px;
+  background: var(--ui-action-neutral-active);
+}
+
+.ui-root .desktop-composer-tools-permission-popup {
+  position-anchor: var(--desktop-composer-permissions-anchor);
+  width: 320px;
+  left: clamp(12px, anchor(left), calc(100dvw - min(320px, 100dvw - 24px) - 12px));
+  padding: 14px;
+}
+
+.ui-root .desktop-composer-tools-permission-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ui-root .desktop-composer-tools-permission-heading > h3 {
+  margin: 0;
+  color: var(--ui-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.ui-root .desktop-composer-tools-permission-heading > button {
+  display: inline-flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ui-composer-control);
+  cursor: pointer;
+}
+
+.ui-root .desktop-composer-tools-permission-heading > button > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ui-root .desktop-composer-tools-permission-popup p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-root .desktop-composer-tools-permission-popup p + p {
+  margin-top: 8px;
+  color: var(--ui-composer-caption);
+}
+
+@media (hover: hover) {
+  .ui-root .desktop-composer-tools-add:hover:not(:disabled),
+  .ui-root .desktop-composer-tools-permission:hover,
+  .ui-root .desktop-composer-tools-menu > button:hover:not(:disabled),
+  .ui-root .desktop-composer-tools-permission-heading > button:hover {
+    background: var(--ui-action-neutral-hover);
+    color: var(--ui-text);
+  }
+}
+
+@container (max-width: 560px) {
+  .ui-root .desktop-composer-tools {
+    gap: 8px;
+  }
+}
+
+@container (max-width: 460px) {
+  .ui-root .desktop-composer-tools-permission-label {
+    display: none;
+  }
+}

@@ -15,16 +15,12 @@ const display: HarnessToolDisplay = {
 };
 
 describe("ToolResult", () => {
-  it("shows readable result text immediately while keeping low-frequency parameters optional", () => {
-    const { container } = render(<ToolResult name="read" status="completed" display={display} />);
+  it("reveals safe result content and separately discloses parameters", () => {
+    render(<ToolResult name="read" status="completed" display={display} />);
+    fireEvent.click(screen.getByRole("button", { name: "read 工具详情" }));
     const output = screen.getByRole("region", { name: "工具结果预览" });
     expect(output.textContent).toBe(display.output.join("\n"));
-    expect(output.hidden).toBe(false);
-    expect(screen.getByTitle(display.title).textContent).toBe(display.title);
-    const parameters = container.querySelector("details");
-    expect(parameters?.open).toBe(false);
-    fireEvent.click(parameters!.querySelector("summary")!);
-    expect(parameters?.open).toBe(true);
+    fireEvent.click(screen.getByText("参数", { selector: "summary" }));
     expect(screen.getByRole("region", { name: "工具参数" }).textContent).toBe(
       display.input.join("\n"),
     );
@@ -41,10 +37,12 @@ describe("ToolResult", () => {
     const { container } = render(
       <ToolResult name="read" status="completed" display={{ ...display, output: lines }} />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "read 工具详情" }));
     const preview = screen.getByRole("region", { name: "工具结果预览" });
     expect(preview.textContent).toContain(lines[0]);
     expect(preview.textContent).not.toContain(lines.at(-1));
-    const expansion = container.querySelector("details")!;
+    const expansion = screen.getByText(/展开全部/, { selector: "summary" })
+      .parentElement as HTMLDetailsElement;
     fireEvent.click(expansion.querySelector("summary")!);
     await waitFor(() => expect(preview.hidden).toBe(true));
     expect(expansion.open).toBe(true);
@@ -91,7 +89,6 @@ describe("ToolResult", () => {
       <ToolResult name="read" status="recorded" display={{ title: "", input: [], output: [] }} />,
     );
     expect(screen.queryByRole("region", { name: "工具结果预览" })).toBeNull();
-    expect(container.querySelector("details, button")).toBeNull();
     rerender(<ToolResult name="read" status="dispatched" />);
     expect(screen.queryByRole("region", { name: "工具结果预览" })).toBeNull();
   });

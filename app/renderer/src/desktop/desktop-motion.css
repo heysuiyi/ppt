@@ -1,0 +1,152 @@
+/* 参考侧栏 300ms 收展、150ms 退出/200ms 进入；只在显式切换时缓动布局。 */
+.ui-root .desktop-app .ui-workspace-screen[data-navigation-animating] {
+  transition: grid-template-columns 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ui-root .desktop-sidebar-content {
+  opacity: 1;
+  transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ui-root .ui-workspace-screen[data-navigation-hidden="true"] .desktop-sidebar-content {
+  opacity: 0;
+  transition-duration: 150ms;
+  pointer-events: none;
+}
+
+.ui-root .desktop-session-heading,
+.ui-root .desktop-welcome,
+.ui-root .ui-workspace-message-column > article,
+.ui-root .ui-workspace-message-column > .desktop-process {
+  animation: desktop-content-in 200ms ease-out;
+}
+
+.ui-root .desktop-jump-latest {
+  animation: desktop-content-in 150ms ease-out;
+  transition:
+    background-color 100ms ease,
+    opacity 100ms ease;
+}
+
+.ui-root .desktop-workspace-glyph > svg {
+  transition:
+    opacity 80ms ease,
+    transform 150ms ease;
+}
+
+/* 预留滚动条占位，只淡出颜色；鼠标离开后保留两秒，不改变列宽。 */
+.ui-root .desktop-app .ui-workspace-navigation,
+.ui-root .desktop-app .ui-workspace-message-scroll {
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 150ms ease 2s;
+}
+
+.ui-root .desktop-app .ui-workspace-navigation:is(:hover, :focus-within),
+.ui-root .desktop-app .ui-workspace-message-scroll:is(:hover, :focus-within) {
+  scrollbar-color: var(--ui-border) transparent;
+  transition-delay: 0s;
+}
+
+/* hidden/inert 立即退出交互；支持离散 display 的浏览器在退场后移除布局。 */
+.ui-root .desktop-app .ui-workspace-screen .desktop-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 160ms ease,
+    margin-top 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    display 160ms allow-discrete;
+}
+
+.ui-root .desktop-fold > .desktop-fold__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ui-root .desktop-app .ui-workspace-screen .desktop-fold[hidden] {
+  display: none;
+  grid-template-rows: 0fr;
+  margin-top: 0;
+  opacity: 0;
+  transition:
+    grid-template-rows 110ms 50ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 70ms ease,
+    margin-top 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    display 160ms allow-discrete;
+}
+
+@starting-style {
+  .ui-root .desktop-app .ui-workspace-screen .desktop-fold:not([hidden]) {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+@supports (interpolate-size: allow-keywords) {
+  .ui-root .desktop-reasoning::details-content,
+  .ui-root .desktop-tool-result__details::details-content {
+    interpolate-size: allow-keywords;
+    block-size: 0;
+    overflow: clip;
+    opacity: 0;
+    transition:
+      block-size 160ms cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 160ms ease,
+      content-visibility 160ms allow-discrete;
+  }
+
+  .ui-root .desktop-reasoning[open]::details-content,
+  .ui-root .desktop-tool-result__details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+}
+
+@keyframes desktop-content-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  .ui-root .desktop-app .ui-workspace-screen[data-navigation-animating],
+  .ui-root .desktop-sidebar-content,
+  .ui-root .ui-workspace-screen[data-navigation-hidden="true"] .desktop-sidebar-content,
+  .ui-root .desktop-app .ui-workspace-screen .desktop-fold,
+  .ui-root .desktop-app .ui-workspace-screen .desktop-fold[hidden],
+  .ui-root .desktop-reasoning::details-content,
+  .ui-root .desktop-tool-result__details::details-content {
+    transition: none;
+  }
+
+  .ui-root .desktop-workspace-glyph > svg,
+  .ui-root .desktop-app .ui-workspace-navigation,
+  .ui-root .desktop-app .ui-workspace-message-scroll {
+    transition: none;
+  }
+
+  .ui-root .desktop-session-heading,
+  .ui-root .desktop-welcome,
+  .ui-root .ui-workspace-message-column > article,
+  .ui-root .ui-workspace-message-column > .desktop-process,
+  .ui-root .desktop-jump-latest {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .ui-root .desktop-composer-seat {
+    background: Canvas;
+  }
+}
+
+@media (any-pointer: coarse), (forced-colors: active) {
+  .ui-root .desktop-app .ui-workspace-navigation,
+  .ui-root .desktop-app .ui-workspace-message-scroll {
+    scrollbar-color: auto;
+  }
+}

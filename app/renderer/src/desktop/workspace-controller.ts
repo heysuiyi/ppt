@@ -9,6 +9,9 @@ import type {
   HarnessToolDisplay,
 } from "../../../shared/harness-ipc";
 
+/** 桌面新会话的固定能力配置；展示与签发请求使用同一来源。 */
+export const NEW_SESSION_TOOLS_MODE = "read-write" as const;
+
 export interface WorkspaceToolProgress {
   readonly identity: HarnessIdentity;
   readonly invocationIdentity?: HarnessIdentity;
@@ -45,6 +48,7 @@ export interface WorkspaceController {
   refreshModels(): Promise<void>;
   setDraft(text: string): void;
   setNewModel(modelId: string): void;
+  selectModel(modelId: string): Promise<void>;
   newSession(): void;
   chooseWorkspace(): Promise<void>;
   selectWorkspace(id: string): Promise<void>;
@@ -78,7 +82,7 @@ export function hasUnfinished(state: WorkspaceViewState): boolean {
 
 export function canSubmit(state: WorkspaceViewState): boolean {
   const session = selectedSession(state);
-  const modelId = session?.modelId ?? state.newModelId;
+  const modelId = session ? session.modelId : state.newModelId;
   return Boolean(
     state.snapshot?.workspace &&
       !isLocked(state) &&
@@ -324,6 +328,44 @@ export function createWorkspaceController(api: HarnessDesktopApi): WorkspaceCont
         update({ newModelId: modelId });
       }
     },
+    selectModel: (modelId: string) => {
+      const session = selectedSession(state);
+      const workspaceId = state.snapshot?.workspace?.id;
+      if (
+        !session ||
+        hasUnfinished(state) ||
+        state.snapshot?.status === "running" ||
+        state.snapshot?.status === "waiting" ||
+        modelId === session.modelId ||
+        !state.models.some(
+          (model) => model.id === modelId && model.availability?.state !== "unavailable",
+        )
+      )
+        return Promise.resolve();
+      return command(async (request) => {
+        let reply: HarnessReply<HarnessSnapshot>;
+        try {
+          reply = await api.selectModel({ sessionId: session.id, modelId });
+        } catch (error) {
+          if (
+            isCurrent(request) &&
+            selectedSession(state)?.id === session.id &&
+            state.snapshot?.workspace?.id === workspaceId
+          )
+            throw error;
+          return;
+        }
+        if (
+          !isCurrent(request) ||
+          selectedSession(state)?.id !== session.id ||
+          state.snapshot?.workspace?.id !== workspaceId
+        )
+          return;
+        const value = accept(reply, request);
+        if (value?.selectedSessionId === session.id && value.workspace?.id === workspaceId)
+          applySnapshot(value);
+      });
+    },
     newSession() {
       if (!admission() || isLocked(state) || state.snapshot?.status === "waiting") return;
       update({
@@ -370,7 +412,10 @@ export function createWorkspaceController(api: HarnessDesktopApi): WorkspaceCont
       return command(async (request) => {
         let sessionId = targetSessionId;
         if (!sessionId) {
-          const value = accept(await api.newSession({ modelId, toolsMode: "read-write" }), request);
+          const value = accept(
+            await api.newSession({ modelId, toolsMode: NEW_SESSION_TOOLS_MODE }),
+            request,
+          );
           if (!value?.selectedSessionId || !applySnapshot(value)) return;
           sessionId = value.selectedSessionId;
           const drafts = { ...state.drafts, [sessionId]: state.drafts[originalKey] ?? draft };

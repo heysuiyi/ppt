@@ -280,6 +280,27 @@ export function createNodeHost(options: NodeHostIntegrationOptions): NodeHost {
         return selected;
       });
     },
+    selectModel(modelId) {
+      return exclusive(async () => {
+        const opened = ensureOpen();
+        const model = (await catalog()).find(
+          (entry) => entry.id === modelId && entry.status === "ready",
+        );
+        if (!model)
+          throw new AgentError("CLI_MODEL_UNAVAILABLE", "所选模型没有就绪的受支持连接与凭据。");
+        await opened.selectModel(modelId);
+        context = Object.freeze({
+          ...context!,
+          model: Object.freeze({
+            id: model.id,
+            label: model.label,
+            vendor: model.vendor ? Object.freeze({ ...model.vendor }) : undefined,
+            modelName: model.modelName,
+            availability: model.availability,
+          }),
+        });
+      });
+    },
     run(text) {
       return exclusive(async () =>
         track(

@@ -28,7 +28,7 @@ export function createWindow(
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    title: "Agent PPT",
+    title: "Agent Harness",
     titleBarStyle: "hidden",
     titleBarOverlay: getWindowTitleBarOverlay(),
     backgroundColor: getWindowBackgroundColor(),

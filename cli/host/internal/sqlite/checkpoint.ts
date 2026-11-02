@@ -82,6 +82,7 @@ export function createSqliteCheckpointStore(connection: SqliteConnection): Check
       const detachedKey = snapshot(key);
       if (!ownerId) throw new AgentError("invalid-owner", "Checkpoint owner must not be empty.");
       return connection.transaction<CheckpointAcquireResult>(() => {
+        connection.assertBinding(detachedKey.threadId);
         const row = loadRow(detachedKey);
         const replace = options?.replace;
         // 先比较完整旧租约，再保留目标 Query 的非重入 busy 优先级。
@@ -137,6 +138,7 @@ export function createSqliteCheckpointStore(connection: SqliteConnection): Check
       }
       const payload = JSON.stringify(detached);
       return connection.transaction<CheckpointSaveResult>(() => {
+        connection.assertBinding(lease.key.threadId);
         const row = loadRow(lease.key);
         // 围栏优先于 revision；旧 writer 不能通过 CAS 错误掩盖 stale。
         if (!matches(row, lease)) return { status: "stale" };

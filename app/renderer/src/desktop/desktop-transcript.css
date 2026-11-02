@@ -1,0 +1,110 @@
+.ui-root .desktop-process {
+  min-width: 0;
+}
+
+.ui-root .desktop-process__heading,
+.ui-root .desktop-process__summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-muted);
+  font: inherit;
+  font-size: 14px;
+  line-height: 24px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-root .desktop-process__heading {
+  box-sizing: border-box;
+  width: 100%;
+  height: 33px;
+  gap: 4px;
+  padding: 0 0 8px;
+  border-bottom: 0.5px solid var(--ui-border-subtle);
+}
+
+.ui-root .desktop-process__content {
+  margin-top: 16px;
+}
+
+.ui-root .desktop-process__summary {
+  width: 100%;
+  gap: 6px;
+  padding: 0;
+}
+
+.ui-root .desktop-process__summary[aria-expanded="true"] {
+  padding-bottom: 8px;
+}
+
+.ui-root .desktop-process__summary > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-root .desktop-process__heading svg,
+.ui-root .desktop-process__summary svg {
+  flex: none;
+  transform: rotate(-90deg);
+  transition: transform var(--ui-motion-fast);
+}
+
+.ui-root .desktop-process__heading svg[data-open="true"],
+.ui-root .desktop-process__summary svg[data-open="true"] {
+  transform: rotate(180deg);
+}
+
+.ui-root .desktop-process__heading:hover,
+.ui-root .desktop-process__summary:hover {
+  color: var(--ui-text);
+}
+
+.ui-root .desktop-process__heading:focus-visible,
+.ui-root .desktop-process__summary:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-root .desktop-process__step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-root .desktop-process__step-list > .ui-workspace-message {
+  padding: 0;
+}
+
+.ui-root .desktop-process__content[hidden],
+.ui-root .desktop-process__steps[hidden] {
+  display: none;
+}
+
+.ui-root .desktop-process__risks {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.ui-root .desktop-process__risks p {
+  margin: 4px 0;
+}
+
+.ui-root .desktop-process__error {
+  color: var(--ui-status-error-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-root .desktop-process__heading svg,
+  .ui-root .desktop-process__summary svg {
+    transition: none;
+  }
+}

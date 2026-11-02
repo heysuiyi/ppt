@@ -277,6 +277,7 @@ export function checkUiBoundaries(root = defaultRoot) {
     return (
       normalized === "styles.css" ||
       normalized === "provider/uiprovider.tsx" ||
+      normalized === "patterns/chat-scroll-controller.ts" ||
       Boolean(component && component[2] === component[1].replaceAll("-", "")) ||
       /^patterns\/[a-z][a-z0-9]*\.tsx$/.test(normalized)
     );

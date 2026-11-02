@@ -13,7 +13,7 @@ import {
   type ChatScrollPosition,
   createChatScrollController,
   type FoldToken,
-} from "./chat-scroll-controller";
+} from "../ui/patterns/chat-scroll-controller";
 
 export type { ChatScrollPosition, FoldToken };
 

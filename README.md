@@ -1,12 +1,15 @@
 # Agent Harness
 
+<p><img src="./build/icon.svg" alt="Agent Harness 应用图标" width="96" height="96" /></p>
+
 [English](./README.en.md) · [文档索引](./docs/README.md) · [Docs (EN)](./docs/README.en.md)
 
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
-![Vitest](https://img.shields.io/badge/Vitest-3.2-6E9F18?logo=vitest&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-4.1-6E9F18?logo=vitest&logoColor=white)
 ![Local First](https://img.shields.io/badge/local--first-desktop-111827)
+![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24-5FA04E?logo=nodedotjs&logoColor=white)
 
 本项目正在从演示文稿应用演进为通用 Agent Harness：提供模型中立执行、工具与插件装配、授权、规范历史及恢复能力。通用内核为 `@agent-harness/core`，诊断日志为独立的 `@agent-harness/logs`；PPT 是后续按公开协议接入的可选业务能力，不是内核定位。
 
@@ -18,9 +21,11 @@
 
 桌面配置继续使用 safeStorage；CLI 使用独立数据根和 Windows DPAPI，两者不自动同步密钥。新执行数据位于 `~/.agent-ppt/harness/`，不迁移或混用旧 PPT 会话库。厂商网络请求由 Main 发起，renderer 只接收安全展示协议。细节及验证边界见 [桌面接入记录](docs/next-steps/ui-design-system.md#125-新桌面-ui-真实接入)。
 
+桌面显示名称为 **Agent Harness**。应用图标采用提亮的雾蓝至柔紫底板、亮青至亮紫渐变的双向支架与浅白菱形核心，与 CLI 欢迎区的三色配色呼应，不再使用 PPT 折纸标识；矢量源为 `build/icon.svg`，PNG、Windows ICO、macOS ICNS 与 renderer 图标同步生成。appId 与 `.agent-ppt` 数据根保留，已有安装身份与数据路径不变。
+
 ## 旧 Electron/PPT 工作台
 
-下方截图、主题和 PPT 使用说明描述保留的旧实现，不是新首页已接入的能力。旧 Agent、PPT 领域服务和历史数据未删除；新首页尚不提供幻灯片预览、PPT 导出、Skill 或子 Agent。产品名、appId 和 `.agent-ppt` 数据根保持不变。
+下方截图、主题和 PPT 使用说明描述保留的旧实现，不是新首页已接入的能力。旧 Agent、PPT 领域服务和历史数据未删除；新首页尚不提供幻灯片预览、PPT 导出、Skill 或子 Agent。
 
 该宿主适合这些场景：
 
@@ -172,6 +177,8 @@ flowchart LR
 
 ## 快速开始
 
+需要 **Node.js ≥24** 和 npm；以下为 Windows 命令，macOS/Linux 使用 `npm` 替代 `npm.cmd`。
+
 ```powershell
 npm.cmd install
 npm.cmd run dev
@@ -195,13 +202,39 @@ npm.cmd run build
 npm.cmd run preview
 ```
 
-平台打包：
+独立 CLI 分发包与桌面平台打包：
 
 ```powershell
+npm.cmd run package:cli
 npm.cmd run build:win
 npm.cmd run build:mac
 npm.cmd run build:linux
 ```
+
+### GitHub 构建与发布
+
+[GitHub Actions 工作流](.github/workflows/build.yml) 使用 Node.js 24：PR 执行 Linux lint、类型检查和单元测试，以及 Windows 单元测试；推送 `main` / `master`、手动触发或推送 `v*.*.*` 标签时，并行构建 **CLI** 和 **桌面端** 两类包，全部成功后发布到同一个 GitHub Release。
+
+| 产品 | Actions 产物名 | Release 文件 / 使用方式 |
+| --- | --- | --- |
+| CLI | `agent-harness-cli` | `agent-harness-cli-<version>.tgz`；内含运行依赖，需 Node.js ≥24，无需 Electron 或源码仓库 |
+| 桌面端 | `agent-harness-desktop-win`、`agent-harness-desktop-mac`、`agent-harness-desktop-linux` | 对应平台的 `.exe`、`.dmg`、`.AppImage` 安装包及更新元数据 |
+
+下载 CLI 的 `.tgz` 文件后，在文件所在目录安装：
+
+```powershell
+npm.cmd install --global --offline --ignore-scripts ./agent-harness-cli-1.1.0.tgz
+agent-harness --help
+agent-harness
+```
+
+示例中的 `1.1.0` 替换为下载版本。安装包捆绑五个私有 workspace 包及第三方运行依赖，不依赖 npm registry 上存在内部包；离线安装不等于模型可离线运行。CLI 的模型连接与桌面端独立，当前交互式凭据初始化仍需 Windows 安全终端与 CurrentUser DPAPI。
+
+Actions 产物保留 14 天。版本标签发布对应 GitHub Release；分支构建和手动构建更新 `latest` 预发布，两者都包含 CLI 和桌面端。桌面显示名称为 **Agent Harness**，签名身份自动发现已禁用，工作流不保证产物已签名或公证。
+
+打包前检查 SVG、PNG、ICO、ICNS 资源存在，并确认 renderer 的 SVG/PNG 与 `build/` 一致。调整图标时需要同步全部格式；旧 `.agent-ppt` 数据目录与 appId 保留，不随显示名称修改而迁移。
+
+`npm run package:cli` 生成 `dist/cli/agent-harness-cli-<version>.tgz`，并从最终归档在临时目录离线安装，烟测帮助入口与空配置下的 JSONL 安全错误；不读取用户凭据或调用模型。该包只含 Node CLI 及运行依赖，不含 Electron 或桌面 UI。
 
 ## 技术栈
 
@@ -325,6 +358,8 @@ npm.cmd run agent -- --thread "<threadId>" --resume "<queryId>"
 ```
 
 `npm run agent:dev` 编译并运行同一套入口，使用独立开发数据根和临时 emit，不启动 Electron、不占用第二个 stdin owner，也不替换生产 `cli/dist`。`npm run build` 同时生成 CLI 与桌面产物。机器消费可直接调用 `node cli/dist/main.js`，或使用 `npm --silent run agent -- ...`，避免 npm 自身的命令 banner 混入 stdout。
+
+CLI 与桌面使用同一套支架与菱形核心视觉标识。欢迎区在至少 52 列、可分配至少 5 行时显示三行大字符图案，采用亮青、浅白、亮紫；空间不足时显示 `[◆] AGENT HARNESS`。状态带与窗口标签使用紧凑标识；`NO_COLOR` / `--no-color` 保留布局但关闭颜色，不修改终端 profile 图标。交互细节见 [CLI 前端文档](cli/docs/README.md)。
 
 没有默认模型时，交互入口选择连接 → 隐藏输入 Key → 发现并选择受支持模型 → 保存连接和 CLI 默认模型；安全输入/保护不可用则在收集秘密前失败。print、JSONL、一次性 prompt 不弹出配置或审批菜单，缺配置明确报错。向导可新建 MiMo、OpenAI Responses、OpenAI Chat Completions 兼容和 Anthropic Messages 连接，也可复用已保存连接；普通连接按 provider/openaiApiMode 选择新适配器，不回退旧 Gateway。OpenAI 默认地址带 `/v1`，Anthropic 默认地址为 `https://api.anthropic.com`，由 SDK 添加 `/v1/messages`。MiMo 仍固定 CN 地址，自定义连接不自动升级为 MiMo。“配置就绪”不是远程鉴权或额度成功证明。协议映射、官方来源与本地验收见[协议补齐记录](docs/next-steps/models-package.md#13-旧-gateway-协议接入新模型端口)。
 

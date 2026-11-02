@@ -128,6 +128,7 @@ const harnessDesktop: HarnessDesktopApi = {
   setDefaultModel: (id) => ipcRenderer.invoke("harness:setDefaultModel", id),
   newSession: (options) => ipcRenderer.invoke("harness:newSession", options),
   selectSession: (id) => ipcRenderer.invoke("harness:selectSession", id),
+  selectModel: (request) => ipcRenderer.invoke("harness:selectModel", request),
   run: (request) => ipcRenderer.invoke("harness:run", request),
   resume: (request) => ipcRenderer.invoke("harness:resume", request),
   cancel: (request) => ipcRenderer.invoke("harness:cancel", request),

@@ -130,6 +130,11 @@ export interface HarnessDesktopApi {
     readonly toolsMode: HarnessToolsMode;
   }): Promise<HarnessReply<HarnessSnapshot>>;
   selectSession(sessionId: string): Promise<HarnessReply<HarnessSnapshot>>;
+  /** 只改变当前空闲会话后续请求的模型；未完成请求必须先恢复或取消。 */
+  selectModel(request: {
+    readonly sessionId: string;
+    readonly modelId: string;
+  }): Promise<HarnessReply<HarnessSnapshot>>;
   run(request: {
     readonly sessionId: string;
     readonly text: string;

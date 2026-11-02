@@ -4,6 +4,18 @@
   --ui-surface: var(--ui-palette-white);
   --ui-surface-raised: var(--ui-palette-white);
   --ui-surface-inset: var(--ui-palette-neutral-50);
+  /* ui-theme design-platform.css: input-major / selector / label / border-l2 aliases. */
+  --ui-composer-surface: #ffffff;
+  --ui-composer-selector: #f5f6f7;
+  --ui-composer-control: #61666b;
+  --ui-composer-caption: #adb2b8;
+  --ui-composer-text: #0f1115;
+  --ui-composer-stroke: rgba(0, 0, 0, 0.1);
+  /* DSH ModelSelect / MenuSurface：菜单材质与行交互独立于普通表单浮层。 */
+  --ui-menu-surface: rgba(248, 249, 250, 0.58);
+  --ui-menu-stroke: rgba(0, 0, 0, 0.04);
+  --ui-menu-heading: #81858c;
+  --ui-menu-hover: rgba(38, 49, 72, 0.06);
   --ui-text: var(--ui-palette-neutral-950);
   --ui-text-muted: var(--ui-palette-neutral-600);
   --ui-text-disabled: var(--ui-palette-neutral-600);
@@ -14,6 +26,9 @@
   --ui-action-primary-hover: var(--ui-palette-neutral-700);
   --ui-action-primary-active: var(--ui-palette-neutral-950);
   --ui-action-on-primary: var(--ui-palette-white);
+  --ui-action-info: #4176e6;
+  --ui-action-info-hover: #7aaaff;
+  --ui-action-on-info: var(--ui-palette-white);
   --ui-action-neutral: var(--ui-palette-white);
   --ui-action-neutral-hover: var(--ui-palette-neutral-50);
   --ui-action-neutral-active: var(--ui-palette-neutral-100);
@@ -41,6 +56,16 @@
   --ui-surface: var(--ui-palette-neutral-950);
   --ui-surface-raised: var(--ui-palette-neutral-900);
   --ui-surface-inset: var(--ui-palette-neutral-800);
+  --ui-composer-surface: #2c2c2e;
+  --ui-composer-selector: #353638;
+  --ui-composer-control: #cfd3d6;
+  --ui-composer-caption: #81858c;
+  --ui-composer-text: #f9fafb;
+  --ui-composer-stroke: rgba(255, 255, 255, 0.12);
+  --ui-menu-surface: rgba(67, 69, 74, 0.45);
+  --ui-menu-stroke: rgba(255, 255, 255, 0.16);
+  --ui-menu-heading: #adb2b8;
+  --ui-menu-hover: rgba(255, 255, 255, 0.08);
   --ui-text: var(--ui-palette-neutral-100);
   --ui-text-muted: var(--ui-palette-neutral-300);
   --ui-text-disabled: var(--ui-palette-neutral-300);
@@ -51,6 +76,9 @@
   --ui-action-primary-hover: var(--ui-palette-white);
   --ui-action-primary-active: var(--ui-palette-neutral-200);
   --ui-action-on-primary: var(--ui-palette-neutral-950);
+  --ui-action-info: #7aaaff;
+  --ui-action-info-hover: #4176e6;
+  --ui-action-on-info: var(--ui-palette-white);
   --ui-action-neutral: var(--ui-palette-neutral-900);
   --ui-action-neutral-hover: var(--ui-palette-neutral-800);
   --ui-action-neutral-active: var(--ui-palette-neutral-700);
@@ -78,6 +106,16 @@
     --ui-surface: Canvas;
     --ui-surface-raised: Canvas;
     --ui-surface-inset: Canvas;
+    --ui-composer-surface: Canvas;
+    --ui-composer-selector: ButtonFace;
+    --ui-composer-control: ButtonText;
+    --ui-composer-caption: GrayText;
+    --ui-composer-text: CanvasText;
+    --ui-composer-stroke: CanvasText;
+    --ui-menu-surface: Canvas;
+    --ui-menu-stroke: CanvasText;
+    --ui-menu-heading: CanvasText;
+    --ui-menu-hover: Highlight;
     --ui-text: CanvasText;
     --ui-text-muted: CanvasText;
     --ui-text-disabled: GrayText;
@@ -88,6 +126,9 @@
     --ui-action-primary-hover: Highlight;
     --ui-action-primary-active: Highlight;
     --ui-action-on-primary: ButtonText;
+    --ui-action-info: Highlight;
+    --ui-action-info-hover: Highlight;
+    --ui-action-on-info: HighlightText;
     --ui-action-neutral: ButtonFace;
     --ui-action-neutral-hover: Highlight;
     --ui-action-neutral-active: Highlight;

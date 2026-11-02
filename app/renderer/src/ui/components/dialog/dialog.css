@@ -5,12 +5,12 @@
   max-height: calc(100% - 32px);
   padding: 0;
   border: 1px solid var(--ui-border-subtle);
-  border-radius: var(--ui-radius-dialog);
+  border-radius: calc(var(--ui-radius-dialog) + 6px);
   background: var(--ui-surface-raised);
   color: var(--ui-text);
   box-shadow: var(--ui-shadow-dialog);
   font: inherit;
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 .ui-root .ui-dialog[open] {
@@ -32,15 +32,26 @@
 }
 .ui-root .ui-dialog-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--ui-space-16);
-  padding: var(--ui-space-16);
+  padding: var(--ui-space-24);
   flex: 0 0 auto;
 }
 .ui-root .ui-dialog-header > .ui-button {
   flex-shrink: 0;
   white-space: nowrap;
+}
+.ui-root .ui-dialog-header > div {
+  min-width: 0;
+}
+.ui-root .ui-dialog-close {
+  --ui-button-height: 32px;
+  --ui-button-padding-inline: 6px;
+  --ui-button-surface: transparent;
+  --ui-button-border: transparent;
+  --ui-button-text: var(--ui-text-muted);
+  width: 32px;
 }
 .ui-root .ui-dialog-title {
   margin: 0;
@@ -54,7 +65,7 @@
   font-size: var(--ui-font-size-14);
 }
 .ui-root .ui-dialog-body {
-  padding: 0 var(--ui-space-16) var(--ui-space-16);
+  padding: 0 var(--ui-space-24) var(--ui-space-24);
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -67,9 +78,20 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: var(--ui-space-8);
-  padding: var(--ui-space-12) var(--ui-space-16);
+  padding: var(--ui-space-16) var(--ui-space-24);
   border-top: 1px solid var(--ui-border-subtle);
   flex: 0 0 auto;
+}
+@media (max-width: 480px) {
+  .ui-root .ui-dialog-header {
+    padding: var(--ui-space-16);
+  }
+  .ui-root .ui-dialog-body {
+    padding: 0 var(--ui-space-16) var(--ui-space-16);
+  }
+  .ui-root .ui-dialog-footer {
+    padding: var(--ui-space-12) var(--ui-space-16);
+  }
 }
 @media (forced-colors: active) {
   .ui-root .ui-dialog {

@@ -2,16 +2,35 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { AgentError } from "@agent-harness/core/protocol-errors";
+import { sameValue } from "@agent-harness/core/protocol-values";
+import type { HostSessionBinding } from "../../host-session-binding.js";
 import { initializeSqliteSchema } from "./schema.js";
 
 /** 仅适配器内部共享；同一写连接协调 history/checkpoint/binding 的跨表不变量。 */
 export class SqliteConnection {
   private closed = false;
+  private readonly bindings = new Map<string, HostSessionBinding>();
 
   constructor(readonly database: DatabaseSync) {}
 
   assertOpen(): void {
     if (this.closed) throw new AgentError("store-disposed", "Agent stores have been disposed.");
+  }
+
+  bind(binding: HostSessionBinding): void {
+    this.bindings.set(binding.threadId, binding);
+  }
+
+  /** 必须在取得写事务之后检查，不能让旧窗口在重绑提交之后取得新写租约。 */
+  assertBinding(threadId: string): void {
+    const expected = this.bindings.get(threadId);
+    if (!expected) return;
+    const row = this.database
+      .prepare("SELECT payload FROM general_agent_host_bindings WHERE thread_id = ?")
+      .get(threadId);
+    if (!row || !sameValue(JSON.parse(row.payload as string), expected)) {
+      throw new AgentError("HOST_BINDING_CHANGED", "Host session binding has changed.");
+    }
   }
 
   transaction<T>(operation: () => T, mode: "read" | "write" = "write"): T {

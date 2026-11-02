@@ -45,6 +45,7 @@ export function createSqliteHistoryStore(connection: SqliteConnection): SessionH
       const detached = snapshot(messages);
       const payload = JSON.stringify(detached);
       return connection.transaction<SessionHistoryAppendResult>(() => {
+        connection.assertBinding(threadId);
         // 已提交收据先于 revision 比较，保留确认丢失后的原批次幂等语义。
         const receipt = batchReceipt.get(threadId, batchId) as
           | { revision: number; payload: string }

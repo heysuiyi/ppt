@@ -25,6 +25,7 @@
       "scripts/check-cli-boundaries.mjs",
       "scripts/check-ui-boundaries.mjs",
       "scripts/run-agent.mjs",
+      "scripts/package-cli.mjs",
       "packages/configuration/build.mjs",
       "cli/build.mjs",
       "tests/fixtures/node-cli-entry.mjs",

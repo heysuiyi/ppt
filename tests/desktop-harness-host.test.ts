@@ -87,11 +87,19 @@ async function fixture(
             openaiApiMode: "responses",
             enabled: true,
           },
+          {
+            id: "next-model",
+            name: "Next fixture",
+            model: "fixture-next",
+            openaiApiMode: "responses",
+            enabled: true,
+          },
         ],
       },
       credential: { type: "replace", apiKey: "private-credential" },
     });
   const requests: ModelRequest[] = [];
+  const requestModels: string[] = [];
   const provider: typeof createModelProvider = async (options) => ({
     adapterId: options.adapterId,
     dispose: async () => undefined,
@@ -102,10 +110,12 @@ async function fixture(
         capabilities: { streaming: true, toolCalls: true, reasoning: false, images: false },
         generate: async (request, signal) => {
           requests.push(request);
+          requestModels.push(selection.modelId);
           return respond(request, signal);
         },
         async *stream(request, signal) {
           requests.push(request);
+          requestModels.push(selection.modelId);
           const response = await respond(request, signal);
           // Both public channels describe the same text. Desktop must not display it twice.
           for (const [index, part] of response.message.content.entries()) {
@@ -178,6 +188,7 @@ async function fixture(
     configuration,
     workspaces,
     requests,
+    requestModels,
     provider,
     open,
     openWithReadApproval,
@@ -239,6 +250,151 @@ describe("desktop Harness consumer boundary", () => {
     await expect(
       host.resume({ sessionId: selected(session), queryId: "terminal-query" }),
     ).rejects.toMatchObject({ code: "STALE_QUERY" });
+  });
+
+  it("switches the same idle session through NodeHost, preserving canonical tool/replay history and restart selection", async () => {
+    const f = await fixture((request) =>
+      request.messages.some((message) => message.role === "tool")
+        ? text("read complete")
+        : readCall,
+    );
+    const first = f.open();
+    const workspace = (await first.host.chooseWorkspace()).workspace!;
+    const sessionId = selected(
+      await first.host.newSession({ modelId: "model", toolsMode: "read-only" }),
+    );
+    await first.host.run({ sessionId, text: "Read private.txt" });
+    const completed = await first.waitFor((snapshot) => snapshot.status === "completed");
+    const history = completed.sessions.find((session) => session.id === sessionId)!.history;
+    const checkpoint = await readHostCheckpoint(f.dataRoot, f.workspace, sessionId);
+    const stores = createSqliteAgentStores(join(f.dataRoot, "sessions.sqlite"));
+    cleanup.push(() => stores.dispose());
+    const canonical = await stores.history.read(sessionId);
+    const switched = await first.host.selectModel({ sessionId, modelId: "next-model" });
+    expect(switched).toMatchObject({
+      selectedSessionId: sessionId,
+      selectedModelId: "next-model",
+      toolsMode: "read-only",
+      status: "completed",
+    });
+    expect(switched.sessions).toHaveLength(1);
+    expect(switched.sessions[0]).toMatchObject({ id: sessionId, modelId: "next-model", history });
+    expect(await readHostCheckpoint(f.dataRoot, f.workspace, sessionId)).toEqual(checkpoint);
+    expect(await stores.history.read(sessionId)).toEqual(canonical);
+    expect(first.events).toContainEqual({ type: "snapshot", snapshot: switched });
+    await expect(
+      first.host.resume({ sessionId, queryId: checkpoint!.queryId }),
+    ).rejects.toMatchObject({ code: "STALE_QUERY" });
+    await first.host.close();
+    const reopened = f.open();
+    await reopened.host.selectWorkspace(workspace.id);
+    const restored = await reopened.host.selectSession(sessionId);
+    expect(restored).toMatchObject({ selectedSessionId: sessionId, selectedModelId: "next-model" });
+    expect(restored.sessions[0]?.history).toEqual(history);
+    await reopened.host.run({ sessionId, text: "Continue with the new model" });
+    await reopened.waitFor(
+      (snapshot) =>
+        snapshot.status === "completed" && snapshot.sessions[0]!.history.length > history.length,
+    );
+    expect(f.requestModels).toEqual(["fixture", "fixture", "fixture-next"]);
+    expect(
+      f.requests[2]!.messages.filter((message) => message.role !== "system").slice(
+        0,
+        canonical.messages.length,
+      ),
+    ).toEqual(
+      canonical.messages.map((message) =>
+        message.role === "assistant"
+          ? {
+              role: message.role,
+              content: message.content.filter((part) => part.type !== "reasoning"),
+            }
+          : message,
+      ),
+    );
+    expect(
+      (await stores.history.read(sessionId)).messages.slice(0, canonical.messages.length),
+    ).toEqual(canonical.messages);
+    expect(canonical.messages).toContainEqual(readCall.message);
+    expect(JSON.stringify(f.requests[2]!.messages)).not.toContain("private-replay");
+    expect(JSON.stringify(f.requests[2]!.messages)).toContain("private-tool-output");
+    expect(JSON.stringify(switched)).not.toContain("private-credential");
+    expect(JSON.stringify(switched)).not.toContain("private-replay");
+  });
+
+  it("failed model preparation keeps the original session, binding and model usable", async () => {
+    const f = await fixture(() => text("original model still works"));
+    const { host, waitFor } = f.open({
+      createHost: (options) =>
+        createNodeHost({
+          ...options,
+          createProvider: async (providerOptions, signal) => {
+            const provider = await f.provider(providerOptions, signal);
+            return {
+              ...provider,
+              create: async (selection, signal) => {
+                if (selection.modelId === "fixture-next") throw new Error("private-sdk-credential");
+                return provider.create(selection, signal);
+              },
+            };
+          },
+        }),
+    });
+    await host.chooseWorkspace();
+    const sessionId = selected(await host.newSession({ modelId: "model", toolsMode: "none" }));
+    const stores = createSqliteAgentStores(join(f.dataRoot, "sessions.sqlite"));
+    cleanup.push(() => stores.dispose());
+    const binding = await stores.bindings.read(sessionId);
+    await expect(
+      host.selectModel({ sessionId: "stale-session", modelId: "next-model" }),
+    ).rejects.toMatchObject({ code: "STALE_SESSION" });
+    await expect(host.selectModel({ sessionId, modelId: "missing" })).rejects.toMatchObject({
+      code: "CLI_MODEL_UNAVAILABLE",
+    });
+    await expect(host.selectModel({ sessionId, modelId: "next-model" })).rejects.toBeDefined();
+    expect(await stores.bindings.read(sessionId)).toEqual(binding);
+    expect(await host.snapshot()).toMatchObject({
+      selectedSessionId: sessionId,
+      selectedModelId: "model",
+      status: "idle",
+    });
+    await host.run({ sessionId, text: "Still using the original model" });
+    await waitFor((snapshot) => snapshot.status === "completed");
+    expect(f.requestModels).toEqual(["fixture"]);
+  });
+
+  it("independently blocks a waiting checkpoint before invoking NodeHost.selectModel", async () => {
+    const f = await fixture(() => readCall);
+    const selectModel = vi.fn();
+    const { host, waitFor } = f.open({
+      createHost: (options) => {
+        const node = createNodeHost({
+          ...options,
+          createProvider: f.provider,
+          requireReadApproval: true,
+        });
+        selectModel.mockImplementation(node.selectModel.bind(node));
+        node.selectModel = selectModel;
+        return node;
+      },
+    });
+    await host.chooseWorkspace();
+    const sessionId = selected(await host.newSession({ modelId: "model", toolsMode: "read-only" }));
+    await host.run({ sessionId, text: "Read private.txt" });
+    const waiting = await waitFor((snapshot) => snapshot.status === "waiting");
+    const checkpoint = await readHostCheckpoint(f.dataRoot, f.workspace, sessionId);
+    await expect(host.selectModel({ sessionId, modelId: "next-model" })).rejects.toMatchObject({
+      code: "HOST_QUERY_UNFINISHED",
+    });
+    expect(selectModel).not.toHaveBeenCalled();
+    expect(await readHostCheckpoint(f.dataRoot, f.workspace, sessionId)).toEqual(checkpoint);
+    expect(await host.snapshot()).toMatchObject({
+      selectedSessionId: sessionId,
+      selectedModelId: "model",
+      pendingApproval: waiting.pendingApproval,
+      status: "waiting",
+    });
+    expect(f.requestModels).toEqual(["fixture"]);
   });
 
   it("derives the desktop title from the first persisted request and keeps it across turns and host restarts", async () => {
@@ -804,6 +960,9 @@ describe("desktop Harness consumer boundary", () => {
     expect(() => first.host.selectWorkspace(workspace.id)).toThrow(
       expect.objectContaining({ code: "HOST_BUSY" }),
     );
+    expect(() => first.host.selectModel({ sessionId, modelId: "next-model" })).toThrow(
+      expect.objectContaining({ code: "HOST_BUSY" }),
+    );
     await expect(
       first.host.cancel({ sessionId, queryId: identity.queryId, runId: "other-run" }),
     ).rejects.toMatchObject({ code: "STALE_RUN" });
@@ -819,6 +978,11 @@ describe("desktop Harness consumer boundary", () => {
     expect(await restarted.host.selectSession(sessionId)).toMatchObject({
       status: "interrupted",
       activeRun: null,
+    });
+    await expect(
+      restarted.host.selectModel({ sessionId, modelId: "next-model" }),
+    ).rejects.toMatchObject({
+      code: "HOST_QUERY_UNFINISHED",
     });
   });
 
@@ -865,6 +1029,73 @@ describe("desktop Harness consumer boundary", () => {
     expect(await handlers.get("harness:snapshot")!(trusted)).toMatchObject({
       ok: true,
       value: { status: "idle" },
+    });
+  });
+
+  it("routes selectModel through trusted IPC with strict input and current-session identity", async () => {
+    const f = await fixture(() => text("unused"));
+    const createHost = nodeHostModule.createNodeHost;
+    vi.spyOn(nodeHostModule, "createNodeHost").mockImplementation((options) =>
+      createHost({ ...options, createProvider: f.provider }),
+    );
+    const handlers = new Map<string, (event: IpcMainInvokeEvent, argument?: unknown) => unknown>();
+    const mainFrame = { url: "file:///trusted/index.html" };
+    const sender = { id: 1, mainFrame, isDestroyed: () => false, send: vi.fn() };
+    const trusted = { sender, senderFrame: mainFrame } as unknown as IpcMainInvokeEvent;
+    const registration = registerDesktopHarnessIpc({
+      ipcMain: {
+        handle: (channel, handler) => {
+          handlers.set(channel, handler);
+        },
+        removeHandler: (channel) => {
+          handlers.delete(channel);
+        },
+      },
+      configuration: f.configuration,
+      dataRoot: f.dataRoot,
+      assertTrusted: (event) => {
+        if (event.sender !== trusted.sender || event.senderFrame !== mainFrame)
+          throw new Error("private-sender-diagnostic");
+      },
+      chooseDirectory: async () => f.workspace,
+    });
+    cleanup.push(() => registration.close());
+    await registration.documentCommitted(sender.id);
+    await handlers.get("harness:chooseWorkspace")!(trusted);
+    const created = (await handlers.get("harness:newSession")!(trusted, {
+      modelId: "model",
+      toolsMode: "none",
+    })) as { ok: true; value: HarnessSnapshot };
+    expect(created.ok).toBe(true);
+    const sessionId = selected(created.value);
+    const switchModel = handlers.get("harness:selectModel")!;
+    const request = { sessionId, modelId: "next-model" };
+    const child = { ...trusted, senderFrame: { url: mainFrame.url } };
+    const foreign = { ...trusted, sender: { ...sender, id: 2 } };
+    for (const event of [child, foreign]) {
+      const reply = await switchModel(event as IpcMainInvokeEvent, request);
+      expect(reply).toMatchObject({ ok: false });
+      expect(JSON.stringify(reply)).not.toContain("private-sender-diagnostic");
+    }
+    for (const invalid of [
+      { modelId: "next-model" },
+      { ...request, apiKey: "not-accepted" },
+      { ...request, modelId: "" },
+    ])
+      expect(await switchModel(trusted, invalid)).toMatchObject({ ok: false });
+    expect(await switchModel(trusted, { ...request, sessionId: "old-session" })).toMatchObject({
+      ok: false,
+      error: { code: "STALE_SESSION" },
+    });
+    expect(await switchModel(trusted, request)).toMatchObject({
+      ok: true,
+      value: { selectedSessionId: sessionId, selectedModelId: "next-model", toolsMode: "none" },
+    });
+    expect(JSON.stringify(sender.send.mock.calls)).not.toContain("private-credential");
+    await registration.invalidateDocument(sender.id);
+    expect(await switchModel(trusted, request)).toMatchObject({
+      ok: false,
+      error: { code: "HOST_CLOSED" },
     });
   });
 });

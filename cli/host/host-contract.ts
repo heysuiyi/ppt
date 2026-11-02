@@ -102,6 +102,7 @@ export interface NodeHost {
     readonly toolsMode?: HostToolsMode;
   }): Promise<void>;
   selectSession(threadId: string): Promise<HostSession>;
+  selectModel(modelId: string): Promise<void>;
   run(text: string): Promise<AgentRunHandle>;
   resume(queryId: string, response?: InteractionResponse): Promise<AgentRunHandle>;
   describeInteraction(request: InteractionRequest): HostInteractionDisplay;

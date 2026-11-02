@@ -148,8 +148,24 @@ function MountedDialog({
               </p>
             )}
           </div>
-          <Button onClick={() => onRequestClose("close-button")} aria-label={`关闭${title}`}>
-            关闭
+          <Button
+            className="ui-dialog-close"
+            onClick={() => onRequestClose("close-button")}
+            aria-label={`关闭${title}`}
+            title="关闭"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
           </Button>
         </header>
         <div className="ui-dialog-body">{children}</div>

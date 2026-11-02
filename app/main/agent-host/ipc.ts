@@ -21,6 +21,7 @@ const newSessionSchema = z
   })
   .strict();
 const runSchema = z.object({ sessionId: idSchema, text: z.string() }).strict();
+const selectModelSchema = z.object({ sessionId: idSchema, modelId: idSchema }).strict();
 const resumeSchema = z
   .object({
     sessionId: idSchema,
@@ -136,6 +137,7 @@ export function registerDesktopHarnessIpc(options: {
     setDefaultModel: (host, id) => host.setDefaultModel(idSchema.optional().parse(id)),
     newSession: (host, request) => host.newSession(newSessionSchema.parse(request)),
     selectSession: (host, id) => host.selectSession(idSchema.parse(id)),
+    selectModel: (host, request) => host.selectModel(selectModelSchema.parse(request)),
     run: (host, request) => host.run(runSchema.parse(request)),
     resume: (host, request) => host.resume(resumeSchema.parse(request)),
     cancel: (host, request) => host.cancel(cancelSchema.parse(request)),

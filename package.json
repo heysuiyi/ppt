@@ -17,6 +17,7 @@
     "agent:dev": "node scripts/run-agent.mjs",
     "agent": "node cli/dist/main.js",
     "build:cli": "npm run build:packages && node cli/build.mjs",
+    "package:cli": "npm run build:cli && node scripts/package-cli.mjs",
     "build": "npm run typecheck && node cli/build.mjs && electron-vite build",
     "preview": "node scripts/start-electron.mjs preview",
     "ui:dev": "npm run check:ui-boundaries && vite --config vite.ui.config.ts",
@@ -87,7 +88,7 @@
   },
   "build": {
     "appId": "com.agent-ppt.app",
-    "productName": "Agent PPT",
+    "productName": "Agent Harness",
     "directories": {
       "output": "dist"
     },

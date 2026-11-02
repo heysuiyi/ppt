@@ -1,0 +1,276 @@
+.ui-root .desktop-message {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-root .desktop-message__generation {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-8);
+  min-height: 24px;
+  margin-bottom: var(--ui-space-8);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+  font-weight: 400;
+  line-height: var(--ui-line-height-control);
+}
+
+.ui-root .desktop-message__generation-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ui-root .desktop-message__body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-root .desktop-message__body > .ui-markdown {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.ui-root .desktop-message__body .ui-markdown h2.ui-markdown__heading {
+  font-size: 18px;
+}
+
+.ui-root .desktop-message__body .ui-markdown h3.ui-markdown__heading {
+  font-size: 16px;
+}
+
+.ui-root .desktop-message--user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.ui-root .desktop-message__bubble {
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px 16px;
+  border-radius: 16px;
+  background: var(--ui-surface-inset);
+  color: var(--ui-text);
+  font-size: 14px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ui-root .desktop-message__actions {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  margin-top: 8px;
+}
+
+.ui-root .desktop-message--user .desktop-message__actions {
+  grid-template-columns: minmax(0, 1fr) 28px;
+  margin-top: 6px;
+}
+
+.ui-root .desktop-message--user .desktop-message__copy svg {
+  width: 15px;
+  height: 15px;
+}
+
+.ui-root .desktop-message--user .desktop-message__copy {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.ui-root .desktop-message--user .desktop-message__status {
+  grid-column: 1;
+  grid-row: 1;
+  text-align: right;
+}
+
+.ui-root .desktop-message .desktop-message__copy {
+  --ui-button-height: 28px;
+  --ui-button-padding-inline: 6px;
+  --ui-button-surface: transparent;
+  --ui-button-text: var(--ui-text-muted);
+  --ui-button-border: transparent;
+  width: 28px;
+  align-self: start;
+  transition:
+    opacity 80ms ease,
+    background-color var(--ui-motion-fast),
+    color var(--ui-motion-fast);
+}
+
+.ui-root .desktop-message[data-copy-status="copied"] .desktop-message__copy {
+  --ui-button-text: var(--ui-status-success-text);
+}
+
+.ui-root .desktop-message[data-copy-status="failed"] .desktop-message__copy {
+  --ui-button-text: var(--ui-status-error-text);
+}
+
+.ui-root .desktop-message__copy:focus-visible,
+.ui-root .desktop-message-reasoning > summary:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-root .desktop-message__copy svg {
+  flex-shrink: 0;
+}
+
+.ui-root .desktop-message__status {
+  display: grid;
+  min-width: 0;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-12);
+  line-height: var(--ui-line-height-control);
+  overflow-wrap: anywhere;
+}
+
+.ui-root .desktop-message__status > span {
+  grid-area: 1 / 1;
+}
+
+/* Reserve the feedback row even while idle so copying does not resize the message. */
+.ui-root .desktop-message__status-reserve {
+  visibility: hidden;
+}
+
+.ui-root .desktop-message__status[data-error="true"] {
+  color: var(--ui-status-error-text);
+}
+
+.ui-root .desktop-message-reasoning {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.ui-root .desktop-reasoning.desktop-message-reasoning > summary {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 24px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  margin: 0;
+  border-radius: var(--ui-radius-control);
+  color: var(--ui-text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 24px;
+  list-style: none;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--ui-motion-fast),
+    color var(--ui-motion-fast);
+}
+
+.ui-root .desktop-message-reasoning > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ui-root .desktop-message-reasoning > summary > svg {
+  flex: none;
+}
+
+.ui-root .desktop-message-reasoning__icon {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  padding: 1px;
+}
+
+.ui-root .desktop-message-reasoning__title {
+  flex: none;
+}
+
+.ui-root .desktop-message-reasoning__preview {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ui-root .desktop-message-reasoning__separator {
+  flex: none;
+}
+
+.ui-root .desktop-message-reasoning__preview-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-root .desktop-message-reasoning[open] .desktop-message-reasoning__preview {
+  display: none;
+}
+
+.ui-root .desktop-message-reasoning__body {
+  min-width: 0;
+  margin: 0;
+  padding: 4px 0 4px 22px;
+}
+
+.ui-root .desktop-message-reasoning__body > .ui-markdown {
+  color: var(--ui-text-muted);
+  font-size: 13px;
+}
+
+.ui-root .desktop-message-reasoning[data-streaming="true"] .desktop-message-reasoning__icon {
+  color: var(--ui-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ui-root
+    .desktop-message[data-copy-status="idle"]:not(:hover):not(:focus-within)
+    .desktop-message__copy {
+    opacity: 0;
+  }
+
+  .ui-root
+    .ui-workspace-message-column
+    > article:last-of-type
+    .desktop-message[data-copy-status="idle"]
+    .desktop-message__copy,
+  .ui-root
+    .ui-workspace-message-column
+    > article[data-message-role="user"]:not(:has(~ article[data-message-role="user"]))
+    .desktop-message[data-copy-status="idle"]
+    .desktop-message__copy {
+    opacity: 1;
+  }
+
+  .ui-root .desktop-message-reasoning > summary:hover {
+    color: var(--ui-text);
+    background: var(--ui-action-neutral-hover);
+  }
+}
+
+@media (any-pointer: coarse) {
+  .ui-root
+    .desktop-message[data-copy-status="idle"]:not(:hover):not(:focus-within)
+    .desktop-message__copy {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-root .desktop-message .desktop-message__copy,
+  .ui-root .desktop-message-reasoning > summary {
+    transition: none;
+  }
+}

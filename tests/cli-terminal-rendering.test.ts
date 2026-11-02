@@ -226,7 +226,7 @@ function cellAt(line: string, column: number): string | undefined {
 }
 
 function composerFrame(screen: TerminalScreen, columns: number) {
-  const header = screen.lines.slice(0, screen.row).findLastIndex((line) => line.startsWith("s › "));
+  const header = screen.lines.slice(0, screen.row).findLastIndex((line) => line.includes(" › ◉ "));
   const top = header >= 0 ? header : screen.row - 1;
   expect(top).toBeGreaterThanOrEqual(0);
   const body: string[] = [];
@@ -634,10 +634,12 @@ describe("interactive conversation presentation", () => {
       const { renderer, output } = capture("tui", columns, rows, color);
       await renderer.view(idle);
       const initial = terminalState(output);
-      const brand = initial.lines.find((line) => line.includes("AGENT HARNESS"))!;
-      const padding = brand.length - brand.trimStart().length;
-      const free = columns - 1 - visibleWidth(brand.trim());
-      expect(Math.abs(padding * 2 - free)).toBeLessThanOrEqual(1);
+      const welcome = initial.lines
+        .slice(0, composerFrame(initial, columns).top)
+        .filter((line) => line.trim());
+      const left = Math.min(...welcome.map((line) => line.length - line.trimStart().length));
+      const right = Math.max(...welcome.map((line) => visibleWidth(line.trimEnd())));
+      expect(Math.abs(left - (columns - 1 - right))).toBeLessThanOrEqual(1);
       const items = Array.from({ length: 12 }, (_, index) => ({
         id: `cmd-${index}`,
         label: `/cmd-${index}`,

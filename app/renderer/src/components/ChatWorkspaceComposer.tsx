@@ -234,7 +234,7 @@ export function ChatWorkspaceComposer({
           >
             {centered ? (
               <div className="center-welcome-header">
-                <h1 className="center-welcome-title">Agent PPT</h1>
+                <h1 className="center-welcome-title">Agent Harness</h1>
                 <p className="center-welcome-subtitle">
                   说明受众、场景和核心结论，从零生成一套演示文稿。
                 </p>

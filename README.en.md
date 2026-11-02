@@ -1,12 +1,15 @@
 # Agent Harness
 
+<p><img src="./build/icon.svg" alt="Agent Harness application icon" width="96" height="96" /></p>
+
 [中文](./README.md) · [Docs](./docs/README.en.md) · [文档索引](./docs/README.md)
 
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
-![Vitest](https://img.shields.io/badge/Vitest-3.2-6E9F18?logo=vitest&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-4.1-6E9F18?logo=vitest&logoColor=white)
 ![Local First](https://img.shields.io/badge/local--first-desktop-111827)
+![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24-5FA04E?logo=nodedotjs&logoColor=white)
 
 This project is evolving from a presentation application into a general-purpose Agent Harness: model-neutral execution, tool/plugin composition, authorization, canonical history, and recovery. The generic execution package is `@agent-harness/core`; diagnostics are independently provided by `@agent-harness/logs`. PPT is an optional business capability to integrate through public protocols, not the kernel's identity.
 
@@ -18,9 +21,11 @@ New conversations run workspace-scoped `read`, `glob`, and `grep` without approv
 
 Desktop credentials remain protected by safeStorage; the CLI has a separate data root and Windows DPAPI protection. Credentials are not synchronized. New execution data lives under `~/.agent-ppt/harness/`, without migrating legacy PPT history. Main owns model transport; the renderer receives safe display projections. See the [desktop integration record](docs/next-steps/ui-design-system.md#125-新桌面-ui-真实接入) for verification limits.
 
+The desktop display name is **Agent Harness**. Its icon uses a brighter misty-blue-to-soft-violet tile, paired brackets with a bright cyan-to-violet gradient, and a soft-white diamond core, matching the CLI welcome palette instead of the PPT folded-paper mark. `build/icon.svg` is the vector source for the synchronized PNG, Windows ICO, macOS ICNS, and renderer assets. The appId and `.agent-ppt` data root are preserved to retain installation identity and data paths.
+
 ## Legacy Electron/PPT workspace
 
-The screenshots and PPT instructions below describe the retained legacy implementation, not capabilities available in the new home screen. Legacy Agent code, PPT services, and data are preserved. The new home does not yet expose slide preview/export, Skills, or subagents. Product identity and the `.agent-ppt` root remain unchanged.
+The screenshots and PPT instructions below describe the retained legacy implementation, not capabilities available in the new home screen. Legacy Agent code, PPT services, and data are preserved. The new home does not yet expose slide preview/export, Skills, or subagents.
 
 That host is useful when you want to:
 
@@ -170,6 +175,8 @@ Export the current presentation as PPTX.
 
 ## Quick Start
 
+Requires **Node.js ≥24** and npm. The commands below use Windows `npm.cmd`; use `npm` on macOS/Linux.
+
 ```powershell
 npm.cmd install
 npm.cmd run dev
@@ -193,13 +200,39 @@ npm.cmd run build
 npm.cmd run preview
 ```
 
-Platform packaging:
+Standalone CLI distribution and desktop packaging:
 
 ```powershell
+npm.cmd run package:cli
 npm.cmd run build:win
 npm.cmd run build:mac
 npm.cmd run build:linux
 ```
+
+### GitHub builds and releases
+
+The [GitHub Actions workflow](.github/workflows/build.yml) uses Node.js 24. Pull requests run Linux lint, typechecking, and unit tests, plus Windows unit tests. Pushes to `main` / `master`, manual runs, and `v*.*.*` tags build two product types in parallel: **CLI** and **desktop**. A shared GitHub Release is published only after both finish successfully.
+
+| Product | Actions artifact | Release files / usage |
+| --- | --- | --- |
+| CLI | `agent-harness-cli` | `agent-harness-cli-<version>.tgz`; bundles runtime dependencies, requires Node.js ≥24, no Electron or source checkout |
+| Desktop | `agent-harness-desktop-win`, `agent-harness-desktop-mac`, `agent-harness-desktop-linux` | Platform `.exe`, `.dmg`, `.AppImage` installers and update metadata |
+
+Download the CLI `.tgz`, then install it from its directory:
+
+```powershell
+npm.cmd install --global --offline --ignore-scripts ./agent-harness-cli-1.1.0.tgz
+agent-harness --help
+agent-harness
+```
+
+Replace `1.1.0` with the downloaded version. The archive bundles all five private workspace packages and third-party runtime dependencies; internal packages need not exist on the npm registry. Offline installation does not mean offline model execution. CLI connections remain separate from desktop configuration; interactive credential initialization currently requires a secure Windows terminal and CurrentUser DPAPI.
+
+Actions artifacts have 14-day retention. Version tags publish their corresponding GitHub Release; branch and manual builds update the `latest` prerelease. Both include CLI and desktop downloads. Desktop installers use the **Agent Harness** display name. Signing identity auto-discovery is disabled; the workflow does not guarantee signed or notarized output.
+
+Before packaging, the workflow checks that SVG, PNG, ICO, and ICNS assets exist and that renderer SVG/PNG files match `build/`. Keep all formats synchronized when updating the icon. The legacy `.agent-ppt` data root and appId are preserved; changing the display name does not migrate data.
+
+`npm run package:cli` produces `dist/cli/agent-harness-cli-<version>.tgz`, installs the final archive offline into a temporary directory, and smoke-tests help plus the safe JSONL error for missing configuration. It does not read user credentials or call a model. The package contains only the Node CLI and runtime dependencies, not Electron or desktop UI.
 
 ## Tech Stack
 
@@ -319,6 +352,8 @@ npm.cmd run agent:dev -- --help
 npm.cmd --silent run agent -- --prompt "Summarize this workspace" --output jsonl
 npm.cmd run agent -- --prompt "Hello" --tools none --print
 ```
+
+The CLI shares the desktop's bracket-and-diamond identity. The welcome area shows a three-line character mark in bright cyan, soft white, and bright violet when at least 52 columns and five welcome rows are available; smaller layouts use `[◆] AGENT HARNESS`. The status band and window title use the compact mark. `NO_COLOR` / `--no-color` disables colors without changing layout or terminal profile icons. See the [CLI frontend documentation](cli/docs/README.md).
 
 Interactive setup saves a connection, securely collects its credential, discovers supported models, and selects the CLI default. Windows CurrentUser DPAPI protects credentials; unavailable secure input or protection fails before collecting a secret. MiMo Token Plan CN, OpenAI Responses, OpenAI Chat Completions-compatible, and Anthropic Messages connections use native model adapters. `--model` takes a configured model ID, not a remote model name.
 

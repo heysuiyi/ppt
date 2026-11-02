@@ -454,6 +454,30 @@ export class DesktopHarnessHost {
     return this.host;
   }
 
+  selectModel(request: {
+    readonly sessionId: string;
+    readonly modelId: string;
+  }): Promise<HarnessSnapshot> {
+    return this.exclusive(async () => {
+      const host = this.assertSession(request?.sessionId);
+      if (typeof request.modelId !== "string" || !request.modelId)
+        throw new AgentError("HOST_OPTIONS_INVALID", "请选择模型。");
+      const checkpoint = await readHostCheckpoint(
+        this.options.dataRoot,
+        this.workspace!.path,
+        request.sessionId,
+      );
+      this.ensureAvailable();
+      if (checkpoint && ["running", "waiting", "interrupted"].includes(checkpoint.status))
+        throw new AgentError("HOST_QUERY_UNFINISHED", "请先恢复或取消未完成的请求，再切换模型。");
+      await host.selectModel(request.modelId);
+      this.ensureAvailable();
+      this.adoptContext();
+      this.error = null;
+      return this.publish();
+    });
+  }
+
   run(request: { readonly sessionId: string; readonly text: string }): Promise<HarnessIdentity> {
     return this.exclusive(async () => {
       const host = this.assertSession(request?.sessionId);

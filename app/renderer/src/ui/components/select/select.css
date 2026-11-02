@@ -1,4 +1,4 @@
-/* root 仅承担布局；field / compact 的控件配方不交给消费页面覆写。 */
+/* root 仅承担布局；field / compact / chip 的控件配方不交给消费页面覆写。 */
 .ui-root .ui-choice {
   display: inline-flex;
   width: 100%;
@@ -42,6 +42,27 @@
   padding-inline: var(--ui-space-12);
 }
 
+.ui-root .ui-choice[data-variant="chip"] {
+  width: auto;
+}
+
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-trigger {
+  justify-content: flex-start;
+  gap: var(--ui-space-4);
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-composer-control);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-value[data-placeholder] {
+  color: var(--ui-composer-control);
+}
+
 .ui-root .ui-choice-value {
   display: block;
   min-width: 0;
@@ -68,6 +89,13 @@
 
 .ui-root .ui-choice-chevron {
   color: var(--ui-text-muted);
+}
+
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-chevron {
+  flex-basis: 12px;
+  width: 12px;
+  height: 12px;
+  color: var(--ui-composer-caption);
 }
 
 @media (hover: hover) {
@@ -99,6 +127,30 @@
 .ui-root .ui-choice-trigger:disabled .ui-choice-value,
 .ui-root .ui-choice-trigger:disabled .ui-choice-chevron {
   color: var(--ui-text-disabled);
+}
+
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-trigger:focus,
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-trigger[aria-expanded="true"] {
+  box-shadow: none;
+}
+
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--ui-focus-ring);
+}
+
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-trigger:is(:disabled, [aria-disabled="true"]) {
+  background: transparent;
+  color: var(--ui-composer-control);
+  cursor: default;
+  opacity: 1;
+}
+
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-trigger:disabled .ui-choice-value {
+  color: var(--ui-composer-control);
+}
+
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-trigger:disabled .ui-choice-chevron {
+  color: var(--ui-composer-caption);
 }
 
 .ui-root .ui-choice-popup {
@@ -179,6 +231,72 @@
   color: var(--ui-text-disabled);
 }
 
+.ui-root .ui-choice[data-variant="chip"] .ui-choice-trigger:not(:disabled):hover {
+  background: var(--ui-menu-hover);
+}
+
+/* 输入卡片的模型列表使用 DSH 紧凑菜单；不改变设置页 field 配方。 */
+.ui-root .ui-choice-popup[data-variant="chip"] {
+  border: 0;
+  border-radius: 16px;
+  background: var(--ui-menu-surface);
+  backdrop-filter: blur(40px) saturate(150%);
+  color: var(--ui-composer-text);
+  box-shadow:
+    0 0 0 0.5px var(--ui-menu-stroke),
+    0 3px 8px 0 rgba(0, 0, 0, 0.04),
+    0 0 20px 0 rgba(0, 0, 0, 0.05);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ui-root .ui-choice-popup[data-variant="chip"] .ui-choice-group + .ui-choice-group {
+  margin-top: 3px;
+}
+
+.ui-root .ui-choice-group-heading {
+  padding: 4px 7px 2px;
+  overflow: hidden;
+  color: var(--ui-menu-heading);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-root .ui-choice-popup[data-variant="chip"] .ui-choice-option {
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 12px;
+  color: inherit;
+  font-weight: 400;
+}
+
+.ui-root .ui-choice-popup[data-variant="chip"] .ui-choice-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-root .ui-choice-popup[data-variant="chip"] .ui-choice-check {
+  flex-basis: 14px;
+  width: 14px;
+  height: 14px;
+  color: inherit;
+}
+
+.ui-root .ui-choice-popup[data-variant="chip"] .ui-choice-option[data-active="true"],
+.ui-root .ui-choice-popup[data-variant="chip"] .ui-choice-option:not([aria-disabled="true"]):hover {
+  background: var(--ui-menu-hover);
+}
+
+.ui-root .ui-choice-popup[data-variant="chip"] .ui-choice-option[aria-disabled="true"] {
+  color: var(--ui-text-disabled);
+}
+
 @media (forced-colors: active) {
   .ui-root .ui-choice .ui-choice-trigger {
     border-color: ButtonText;
@@ -199,11 +317,26 @@
     color: GrayText;
   }
 
+  .ui-root .ui-choice[data-variant="chip"] .ui-choice-trigger {
+    background: transparent;
+    box-shadow: none;
+  }
+
   .ui-root .ui-choice-popup {
     border-color: CanvasText;
     background: Canvas;
     color: CanvasText;
     box-shadow: none;
+  }
+
+  .ui-root .ui-choice-popup[data-variant="chip"] {
+    border: 1px solid CanvasText;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+
+  .ui-root .ui-choice-popup[data-variant="chip"] .ui-choice-option[data-active="true"] {
+    color: HighlightText;
   }
 
   .ui-root .ui-choice-option[data-active="true"] {
