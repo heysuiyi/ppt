@@ -3,11 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const checker = new URL("../scripts/check-cli-boundaries.mjs", import.meta.url).href;
-// 每例启动真实编译器子进程；不把共享 CI 的冷启动开销当作五秒行为约束。
-vi.setConfig({ testTimeout: 30_000 });
 let root: string;
 function put(file: string, content: string) {
   const target = path.join(root, file);

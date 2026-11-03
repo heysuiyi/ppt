@@ -205,9 +205,11 @@ npm.cmd run preview
 
 `npm run lint` 会先构建 workspace 包，再检查 UI 依赖边界与代码规范；首次安装或干净 CI 检出后不需要先手动运行 `typecheck`。
 
-`npm test` 先构建 workspace 包与 `cli/dist`，再运行非集成测试；默认测试集中也包含 Windows 真实 CLI 子进程用例，不能只构建 workspace 包。排除模式带引号，避免 Linux shell 将其展开成位置参数。CLI/恢复集成使用 `npm run test:integration:harness`，该入口同样先构建 CLI 再运行真实子进程夹具。`base-tools.test.ts` 的真实 SQLite/文件 I/O 用例与 `cli-boundaries.test.ts` 的编译器子进程回归使用文件级 30 秒时限，不改变全局默认时限；边界夹具关闭无关的标准库和自动 `@types` 加载，保留真实 TypeScript 模块解析。
+`npm test` 先构建 workspace 包与 `cli/dist`，再运行非集成测试；默认测试集也包含真实 CLI 子进程用例，不能只构建 workspace 包。排除模式带引号，避免 Linux shell 将其展开成位置参数。CLI/恢复集成使用 `npm run test:integration:harness`，该入口同样先构建 CLI 再运行真实子进程夹具。默认套件混合真实文件、SQLite、HTTP 与子进程回归，测试和清理 hook 统一使用 30 秒时限；专项用例可显式设置更长预算。CI worker 上限为 2，本地为 4，不重试或跳过失败用例。边界夹具关闭无关的标准库和自动 `@types` 加载，保留真实 TypeScript 模块解析。
 
-Windows 回归保留真实 CurrentUser DPAPI 加解密与取消测试，不因 CI 不可用而跳过。单次 PowerShell 保护进程有 60 秒冷启动预算，CLI 夹具的凭据 seed 使用 90 秒预算；宿主取消信号仍可立即中止保护进程。工作区身份断言使用规范路径，不依赖 runner 的长路径或 8.3 短路径拼写。
+Windows 专项回归保留真实 CurrentUser DPAPI 加解密与取消测试，不因 CI 不可用而跳过。单次 PowerShell 保护进程有 60 秒冷启动预算，默认真实凭据 seed 使用 90 秒预算；宿主取消信号仍可立即中止保护进程。输出背压回归只为固定公开测试凭据显式注入受控保护端口，CLI、SDK、本地 HTTP、SQLite 与 Writable 仍走真实路径，不再串行依赖七次 PowerShell；默认 CLI 集成仍使用真实 DPAPI。子进程非正常退出报告信号、是否超时、耗时及阶段，不回显输出、命令参数、环境或异常正文。工作区身份断言使用规范路径，不依赖 runner 的长路径或 8.3 短路径拼写。
+
+开发宿主测试夹具在初始化前注册唯一 disposer；清理先取消并排空已开始的配置事务、宿主创建与目录读取，再关闭宿主和 HTTP 服务，最后删除临时目录。关闭后拒绝新工作，避免用例超时后继续写入已删除的目录；不使用删除重试掩盖资源竞态。
 
 独立 CLI 分发包与桌面平台打包：
 

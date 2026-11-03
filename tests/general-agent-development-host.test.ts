@@ -60,121 +60,252 @@ const fakeProtection = {
 async function fixture(
   respond: (body: Record<string, unknown>, response: ServerResponse) => void | Promise<void>,
 ) {
-  const directory = await mkdtemp(join(tmpdir(), "general-agent-development-"));
-  cleanup.push(() => rm(directory, { recursive: true, force: true }));
-  const workspace = join(directory, "workspace");
-  await mkdir(workspace);
-  await writeFile(join(workspace, "notes.txt"), "first file revision", "utf8");
-  const requests: Record<string, unknown>[] = [];
-  const authorizations: Array<string | undefined> = [];
-  const publicURLs: string[] = [];
+  const lifetime = new AbortController();
+  const pending = new Set<Promise<unknown>>();
+  const handlers = new Set<Promise<void>>();
+  const resources: Array<() => void | Promise<void>> = [];
+  const cancellations: Array<() => void> = [];
   const fixtureErrors: unknown[] = [];
-  cleanup.push(async () => {
-    if (fixtureErrors.length === 1) throw fixtureErrors[0];
-    if (fixtureErrors.length)
-      throw new AggregateError(fixtureErrors, "Local Responses fixture failed");
+  let directory: string | undefined;
+  let closing: Promise<void> | undefined;
+  const perform = <T>(operation: () => Promise<T>): Promise<T> => {
+    const work = (async () => {
+      lifetime.signal.throwIfAborted();
+      const result = await operation();
+      lifetime.signal.throwIfAborted();
+      return result;
+    })();
+    pending.add(work);
+    void work.then(
+      () => pending.delete(work),
+      () => pending.delete(work),
+    );
+    return work;
+  };
+  const defer = (close: () => void | Promise<void>) => {
+    lifetime.signal.throwIfAborted();
+    resources.push(close);
+  };
+  const own = <T extends { close(): void | Promise<void> }>(resource: T): T => {
+    defer(() => resource.close());
+    return resource;
+  };
+  const onCancel = (cancel: () => void) => {
+    lifetime.signal.throwIfAborted();
+    cancellations.push(cancel);
+  };
+  // Register before mkdtemp: a timed-out setup still owns its eventual directory and writes.
+  cleanup.push(() => {
+    closing ??= (async () => {
+      const errors: unknown[] = [];
+      lifetime.abort(new Error("Development-host fixture disposed"));
+      for (const cancel of cancellations) {
+        try {
+          cancel();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      // Configuration does not expose cancellation. Let started transactions release their
+      // locks, but reject their results so the expired test cannot start another operation.
+      await Promise.allSettled(pending);
+      for (const close of resources.reverse()) {
+        try {
+          await close();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      await Promise.allSettled(handlers);
+      // A failed close cannot establish that filesystem users have drained.
+      if (!errors.length && directory) {
+        try {
+          await rm(directory, { recursive: true, force: true });
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      errors.push(...fixtureErrors);
+      if (errors.length === 1) throw errors[0];
+      if (errors.length)
+        throw new AggregateError(errors, "Development-host fixture disposal failed");
+    })();
+    return closing;
   });
-  const server = createServer((request, response) => {
-    void (async () => {
-      const chunks: Buffer[] = [];
-      for await (const chunk of request) chunks.push(Buffer.from(chunk));
-      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
-      expect(request.url).toBe("/responses");
-      expect(request.method).toBe("POST");
-      authorizations.push(request.headers.authorization);
-      requests.push(body);
-      await respond(body, response);
-    })().catch((error: unknown) => {
-      fixtureErrors.push(error);
-      if (!response.headersSent) response.writeHead(500);
-      response.end();
+  return perform(async () => {
+    const root = await mkdtemp(join(tmpdir(), "general-agent-development-"));
+    directory = root;
+    lifetime.signal.throwIfAborted();
+    const workspace = join(root, "workspace");
+    await mkdir(workspace);
+    lifetime.signal.throwIfAborted();
+    await writeFile(join(workspace, "notes.txt"), "first file revision", "utf8");
+    lifetime.signal.throwIfAborted();
+    const requests: Record<string, unknown>[] = [];
+    const authorizations: Array<string | undefined> = [];
+    const publicURLs: string[] = [];
+    const server = createServer((request, response) => {
+      const handling = (async () => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+        expect(request.url).toBe("/responses");
+        expect(request.method).toBe("POST");
+        authorizations.push(request.headers.authorization);
+        requests.push(body);
+        await respond(body, response);
+      })().catch((error: unknown) => {
+        fixtureErrors.push(error);
+        if (!response.headersSent) response.writeHead(500);
+        response.end();
+      });
+      handlers.add(handling);
+      void handling.then(() => handlers.delete(handling));
     });
-  });
-  const listening = once(server, "listening");
-  server.listen(0, "127.0.0.1");
-  await listening;
-  cleanup.push(async () => {
-    const closed = once(server, "close");
-    server.close();
-    server.closeAllConnections();
-    await closed;
-  });
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Expected HTTP endpoint");
-  const endpoint = `http://127.0.0.1:${address.port}`;
-  vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
-    const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.href !== `${mimoBaseURL}/responses`) {
-      const error = new Error(`Unexpected native test destination: ${url.href}`);
-      fixtureErrors.push(error);
-      throw error;
-    }
-    publicURLs.push(url.href);
-    const target = `${endpoint}/responses`;
-    return nativeFetch(input instanceof Request ? new Request(target, input) : target, init);
-  });
-  const configure = async (key = "first-stored-key"): Promise<AgentConfiguration> => {
-    const configuration = createAgentConfiguration({
-      applicationDataRoot: directory,
-      credentialProtection: fakeProtection,
-      defaultTemplateId: "none",
-      environment: {},
+    defer(async () => {
+      if (!server.listening) return;
+      const closed = once(server, "close");
+      server.close();
+      server.closeAllConnections();
+      await closed;
     });
-    await configuration.management.initialize({
-      vendors: [
-        {
-          id: "loopback",
-          kind: "mimo-token-plan-cn",
-          label: "Native consumer fixture",
-          protocol: "openai",
-          baseURL: mimoBaseURL,
-          enabled: true,
-          models: [
+    const listening = once(server, "listening");
+    server.listen(0, "127.0.0.1");
+    await listening;
+    lifetime.signal.throwIfAborted();
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected HTTP endpoint");
+    const endpoint = `http://127.0.0.1:${address.port}`;
+    vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+      lifetime.signal.throwIfAborted();
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.href !== `${mimoBaseURL}/responses`) {
+        const error = new Error(`Unexpected native test destination: ${url.href}`);
+        fixtureErrors.push(error);
+        throw error;
+      }
+      publicURLs.push(url.href);
+      const target = `${endpoint}/responses`;
+      const signals = [lifetime.signal];
+      if (input instanceof Request) signals.push(input.signal);
+      if (init?.signal) signals.push(init.signal);
+      return nativeFetch(input instanceof Request ? new Request(target, input) : target, {
+        ...init,
+        signal: AbortSignal.any(signals),
+      });
+    });
+    const configure = (key = "first-stored-key"): Promise<AgentConfiguration> =>
+      perform(async () => {
+        const configuration = createAgentConfiguration({
+          applicationDataRoot: root,
+          credentialProtection: fakeProtection,
+          defaultTemplateId: "none",
+          environment: {},
+        });
+        const management = configuration.management;
+        configuration.management = {
+          getSnapshot: () => perform(() => management.getSnapshot()),
+          initialize: (legacy) => perform(() => management.initialize(legacy)),
+          saveVendor: (request) => perform(() => management.saveVendor(request)),
+          deleteVendor: (vendorId) => perform(() => management.deleteVendor(vendorId)),
+          savePreferences: (preferences) => perform(() => management.savePreferences(preferences)),
+          saveCliPreferences: (preferences) =>
+            perform(() => management.saveCliPreferences(preferences)),
+          updateSearchCredential: (request) =>
+            perform(() => management.updateSearchCredential(request)),
+          listRemoteModels: (request, signal) =>
+            perform(() =>
+              management.listRemoteModels(
+                request,
+                signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal,
+              ),
+            ),
+        };
+        const runtime = configuration.runtime;
+        configuration.runtime = {
+          loadExecutionPlan: (modelId, reasoningEffort) =>
+            perform(() => runtime.loadExecutionPlan(modelId, reasoningEffort)),
+          resolveRuntime: (plan) => perform(() => runtime.resolveRuntime(plan)),
+        };
+        await configuration.management.initialize({
+          vendors: [
             {
-              id: "configured-model",
-              name: "MiMo Flash",
-              model: "mimo-v2.6-flash",
+              id: "loopback",
+              kind: "mimo-token-plan-cn",
+              label: "Native consumer fixture",
+              protocol: "openai",
+              baseURL: mimoBaseURL,
               enabled: true,
-              openaiApiMode: "responses",
+              models: [
+                {
+                  id: "configured-model",
+                  name: "MiMo Flash",
+                  model: "mimo-v2.6-flash",
+                  enabled: true,
+                  openaiApiMode: "responses",
+                },
+              ],
             },
           ],
-        },
-      ],
-      gateway: { timeoutMs: 5000, maxOutputTokens: 1024 },
-      stepLimits: { enabled: true, mainMaxSteps: 4, subMaxSteps: 2 },
-      executionStrategy: "REQUEST_APPROVAL",
-      defaultTemplateId: "builtin/swiss-minimal",
-    });
-    const snapshot = await configuration.management.getSnapshot();
-    if (!snapshot) throw new Error("Expected initialized configuration");
-    await configuration.management.saveVendor({
-      vendor: snapshot.settings.vendors[0],
-      credential: { type: "replace", apiKey: key },
-    });
-    return configuration;
-  };
-  const open = async (
-    configuration: AgentConfiguration,
-    overrides: {
-      workspaceRoot?: string;
-      resume?: boolean;
-      modelId?: string;
-      toolMode?: ToolsMode;
-      requireReadApproval?: boolean;
-    } = {},
-  ): Promise<AgentHost> => {
-    const host = await createAgentHost({
-      configuration: configuration.runtime,
-      applicationDataRoot: directory,
-      workspaceRoot: workspace,
-      modelId: "configured-model",
-      threadId: "thread",
-      ...overrides,
-    });
-    cleanup.push(() => host.close());
-    return host;
-  };
-  return { directory, workspace, requests, authorizations, publicURLs, configure, open };
+          gateway: { timeoutMs: 5000, maxOutputTokens: 1024 },
+          stepLimits: { enabled: true, mainMaxSteps: 4, subMaxSteps: 2 },
+          executionStrategy: "REQUEST_APPROVAL",
+          defaultTemplateId: "builtin/swiss-minimal",
+        });
+        const snapshot = await configuration.management.getSnapshot();
+        if (!snapshot) throw new Error("Expected initialized configuration");
+        await configuration.management.saveVendor({
+          vendor: snapshot.settings.vendors[0],
+          credential: { type: "replace", apiKey: key },
+        });
+        return configuration;
+      });
+    const open = (
+      configuration: AgentConfiguration,
+      overrides: {
+        workspaceRoot?: string;
+        resume?: boolean;
+        modelId?: string;
+        toolMode?: ToolsMode;
+        requireReadApproval?: boolean;
+      } = {},
+    ): Promise<AgentHost> =>
+      perform(async () => {
+        const host = await createAgentHost({
+          configuration: configuration.runtime,
+          applicationDataRoot: root,
+          workspaceRoot: workspace,
+          modelId: "configured-model",
+          threadId: "thread",
+          ...overrides,
+          signal: lifetime.signal,
+        });
+        // A late successful creation must be closed even when perform rejects its result.
+        resources.push(() => host.close());
+        return host;
+      });
+    return {
+      get directory() {
+        lifetime.signal.throwIfAborted();
+        return root;
+      },
+      get workspace() {
+        lifetime.signal.throwIfAborted();
+        return workspace;
+      },
+      requests,
+      authorizations,
+      publicURLs,
+      configure,
+      open,
+      own,
+      defer,
+      onCancel,
+      // Host catalog reads have no transition for host.close() to drain.
+      work: perform,
+      readFile: (path: string, encoding?: "utf8") => perform(() => readFile(path, encoding)),
+    };
+  });
 }
 
 function textOutput(text: string) {
@@ -321,7 +452,7 @@ describe("independent configured Agent host", () => {
     expect(host.binding.toolMode).toBe("read-only");
     const tools = f.requests[0].tools as Array<{ name: string }>;
     expect(tools.map((tool) => tool.name).sort()).toEqual(["glob", "grep", "read"]);
-    await expect(readFile(join(f.workspace, "deck/snapshot.json"))).rejects.toMatchObject({
+    await expect(f.readFile(join(f.workspace, "deck/snapshot.json"))).rejects.toMatchObject({
       code: "ENOENT",
     });
   });
@@ -355,7 +486,7 @@ describe("independent configured Agent host", () => {
       },
     });
     expect(f.requests).toHaveLength(1);
-    await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+    await expect(f.readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
       code: "ENOENT",
     });
     await host.close();
@@ -369,7 +500,7 @@ describe("independent configured Agent host", () => {
     } finally {
       await stored.dispose();
     }
-    await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+    await expect(f.readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
       code: "ENOENT",
     });
     host = await f.open(await f.configure("rotated-stored-key"), {
@@ -383,7 +514,7 @@ describe("independent configured Agent host", () => {
     });
     const result = await resumed.completed;
     expect(result.status).toBe("completed");
-    expect(await readFile(join(f.workspace, "created.txt"), "utf8")).toBe(createdContent);
+    expect(await f.readFile(join(f.workspace, "created.txt"), "utf8")).toBe(createdContent);
     const projections: object[] = [
       ...projectTerminalResult(result, () => ({ support: "unsupported" })),
     ];
@@ -440,7 +571,7 @@ describe("independent configured Agent host", () => {
       if (waiting.status !== "waiting") throw new Error("Expected write approval.");
       await host.close();
       const inspection = new DatabaseSync(join(f.directory, "sessions.sqlite"), { readOnly: true });
-      cleanup.push(async () => inspection.close());
+      f.own(inspection);
       const before = inspection.prepare("SELECT * FROM general_agent_checkpoints").all();
       const bound = inspection.prepare("SELECT * FROM general_agent_host_bindings").all();
       const stored = createSqliteAgentStores(join(f.directory, "sessions.sqlite"));
@@ -451,7 +582,7 @@ describe("independent configured Agent host", () => {
         await stored.dispose();
       }
       const other = join(f.directory, "other-workspace");
-      await mkdir(other);
+      await f.work(() => mkdir(other));
       const snapshot = await configuration.management.getSnapshot();
       if (!snapshot) throw new Error("Expected saved configuration.");
       const preferences = {
@@ -486,10 +617,12 @@ describe("independent configured Agent host", () => {
       expect(inspection.prepare("SELECT * FROM general_agent_checkpoints").all()).toEqual(before);
       expect(inspection.prepare("SELECT * FROM general_agent_host_bindings").all()).toEqual(bound);
       expect(f.requests).toHaveLength(1);
-      await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+      await expect(f.readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
         code: "ENOENT",
       });
-      await expect(readFile(join(other, "created.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(f.readFile(join(other, "created.txt"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
       await configuration.management.savePreferences(preferences);
       const restored = await f.open(configuration, { toolMode: "read-write", resume: true });
       expect(restored.binding).toEqual(originalBinding);
@@ -501,7 +634,7 @@ describe("independent configured Agent host", () => {
         })
       ).completed;
       expect(completed.status).toBe("completed");
-      expect(await readFile(join(f.workspace, "created.txt"), "utf8")).toBe(createdContent);
+      expect(await f.readFile(join(f.workspace, "created.txt"), "utf8")).toBe(createdContent);
       expect(f.requests).toHaveLength(2);
       await restored.close();
       const finalStores = createSqliteAgentStores(join(f.directory, "sessions.sqlite"));
@@ -559,8 +692,8 @@ describe("independent configured Agent host", () => {
       }
       const tools = f.requests[0].tools as Array<{ name: string }>;
       expect(tools.map((installed) => installed.name).sort()).toEqual(["glob", "grep", "read"]);
-      expect(await readFile(join(f.workspace, "notes.txt"), "utf8")).toBe("first file revision");
-      await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+      expect(await f.readFile(join(f.workspace, "notes.txt"), "utf8")).toBe("first file revision");
+      await expect(f.readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
         code: "ENOENT",
       });
     },
@@ -601,7 +734,7 @@ describe("independent configured Agent host", () => {
         data: { tool: "write", path: "created.txt", workspaceId: expect.any(String) },
       });
       expect(JSON.stringify(waiting.interaction.payload)).not.toContain(content);
-      await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+      await expect(f.readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
         code: "ENOENT",
       });
       const result = await (
@@ -614,9 +747,9 @@ describe("independent configured Agent host", () => {
         })
       ).completed;
       expect(result.status).toBe("completed");
-      if (approve) expect(await readFile(join(f.workspace, "created.txt"), "utf8")).toBe(content);
+      if (approve) expect(await f.readFile(join(f.workspace, "created.txt"), "utf8")).toBe(content);
       else {
-        await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+        await expect(f.readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
           code: "ENOENT",
         });
       }
@@ -673,7 +806,7 @@ describe("independent configured Agent host", () => {
         data: { tool: "edit", path: "notes.txt", workspaceId: expect.any(String) },
       });
       expect(JSON.stringify(editing.interaction.payload)).not.toContain(replacement);
-      expect(await readFile(join(f.workspace, "notes.txt"), "utf8")).toBe("first file revision");
+      expect(await f.readFile(join(f.workspace, "notes.txt"), "utf8")).toBe("first file revision");
       const completed = await (
         await host.resume({
           queryId: "query",
@@ -686,7 +819,7 @@ describe("independent configured Agent host", () => {
       expect(completed.status).toBe("completed");
       if (approve) expect(editedVersion).toEqual(expect.any(String));
       else expect(editedVersion).toBeUndefined();
-      expect(await readFile(join(f.workspace, "notes.txt"), "utf8")).toBe(
+      expect(await f.readFile(join(f.workspace, "notes.txt"), "utf8")).toBe(
         approve ? replacement : "first file revision",
       );
       const tools = f.requests[0].tools as Array<{ name: string }>;
@@ -763,7 +896,7 @@ describe("independent configured Agent host", () => {
           respondNative(response, [textOutput("The path is unavailable.")]);
         }
       });
-      await writeFile(join(f.directory, "private.txt"), secret, "utf8");
+      await f.work(() => writeFile(join(f.directory, "private.txt"), secret, "utf8"));
       const host = await f.open(await f.configure(), { toolMode });
       const run = await host.run(question);
       const result = await run.completed;
@@ -954,8 +1087,8 @@ describe("independent configured Agent host", () => {
       configuration,
       credentialProtection: fakeProtection,
     });
-    cleanup.push(() => host.close());
-    expect(await host.connections()).toEqual([
+    f.own(host);
+    expect(await f.work(() => host.connections())).toEqual([
       {
         id: "vendor:loopback",
         label: "Native consumer fixture",
@@ -983,7 +1116,7 @@ describe("independent configured Agent host", () => {
     expect(discover).not.toHaveBeenCalled();
     expect(f.requests).toEqual([]);
     await host.close();
-    await expect(host.connections()).rejects.toMatchObject({ code: "HOST_CLOSED" });
+    await expect(f.work(() => host.connections())).rejects.toMatchObject({ code: "HOST_CLOSED" });
   });
 
   it("runs no-plugin conversations through the production host and retains real persistent sessions", async () => {
@@ -997,9 +1130,9 @@ describe("independent configured Agent host", () => {
       workspaceRoot: f.workspace,
       configuration,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     await host.open({ toolsMode: "none" });
-    expect(await host.models()).toEqual([
+    expect(await f.work(() => host.models())).toEqual([
       expect.objectContaining({
         id: "configured-model",
         label: "Native consumer fixture / MiMo Flash",
@@ -1012,7 +1145,7 @@ describe("independent configured Agent host", () => {
     const result = await first.completed;
     expect(result.status).toBe("completed");
     expect(f.requests[0].tools ?? []).toEqual([]);
-    const sessions = await host.sessions();
+    const sessions = await f.work(() => host.sessions());
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toMatchObject({
       id: host.context.threadId,
@@ -1041,11 +1174,12 @@ describe("independent configured Agent host", () => {
       configuration,
       credentialProtection: fakeProtection,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     await host.open({ toolsMode: "none" });
     const original = host.context;
     const before = await configuration.management.getSnapshot();
     const selection = Promise.withResolvers<string | undefined>();
+    f.onCancel(() => selection.resolve(undefined));
     const entered = Promise.withResolvers<void>();
     const setup: TerminalSetupIO = {
       select: vi.fn(async () => {
@@ -1090,14 +1224,14 @@ describe("independent configured Agent host", () => {
       await release.promise;
       respondNative(response, [textOutput("Execution finished before setup")]);
     });
-    cleanup.push(async () => release.resolve());
+    f.onCancel(() => release.resolve());
     const host = createTerminalHost({
       dataRoot: f.directory,
       workspaceRoot: f.workspace,
       configuration: await f.configure(),
       credentialProtection: fakeProtection,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     await host.open({ modelId: "configured-model", toolsMode: "none" });
     const original = host.context;
     const setup: TerminalSetupIO = {
@@ -1137,12 +1271,13 @@ describe("independent configured Agent host", () => {
       configuration,
       credentialProtection: fakeProtection,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     await host.open({ modelId: "configured-model", toolsMode: "none" });
     const original = host.context;
     const snapshot = await configuration.management.getSnapshot();
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
+    f.onCancel(() => release.resolve());
     vi.spyOn(configuration.management, "getSnapshot").mockImplementationOnce(async () => {
       entered.resolve();
       await release.promise;
@@ -1185,7 +1320,7 @@ describe("independent configured Agent host", () => {
       configuration,
       credentialProtection: fakeProtection,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     await host.open({ toolsMode: "none" });
     const original = host.context;
     expect(original.model).toMatchObject({
@@ -1200,14 +1335,15 @@ describe("independent configured Agent host", () => {
       response.end(JSON.stringify({ object: "list", data: [{ id: "second-conversation" }] }));
     });
     const listening = once(discovery, "listening");
-    discovery.listen(0, "127.0.0.1");
-    await listening;
-    cleanup.push(async () => {
+    f.defer(async () => {
+      if (!discovery.listening) return;
       const closed = once(discovery, "close");
       discovery.close();
       discovery.closeAllConnections();
       await closed;
     });
+    discovery.listen(0, "127.0.0.1");
+    await listening;
     const address = discovery.address();
     if (!address || typeof address === "string") throw new Error("Expected discovery endpoint");
     const baseURL = `http://127.0.0.1:${address.port}/v1`;
@@ -1240,7 +1376,7 @@ describe("independent configured Agent host", () => {
     expect(snapshot.settings.cli?.defaultModelId).toBe(modelId);
     expect(snapshot.settings.vendors).toHaveLength(2);
     const added = snapshot.settings.vendors.find((vendor) => vendor.id !== "loopback")!;
-    const models = await host.models();
+    const models = await f.work(() => host.models());
     expect(models).toEqual([
       expect.objectContaining({
         id: "configured-model",
@@ -1276,7 +1412,7 @@ describe("independent configured Agent host", () => {
       configuration,
       credentialProtection: fakeProtection,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     await host.open({ modelId: "configured-model", toolsMode: "none" });
     const original = host.context;
     const privateError = "untrusted-error-containing-private-key";
@@ -1316,10 +1452,11 @@ describe("independent configured Agent host", () => {
       configuration: await f.configure(),
       credentialProtection: fakeProtection,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     await host.open({ modelId: "configured-model" });
     const entered = Promise.withResolvers<void>();
     const pending = Promise.withResolvers<string | undefined>();
+    f.onCancel(() => pending.resolve(undefined));
     const setup: TerminalSetupIO = {
       select: async () => {
         entered.resolve();
@@ -1364,10 +1501,10 @@ describe("independent configured Agent host", () => {
       workspaceRoot: f.workspace,
       configuration,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     await host.open({ modelId: "configured-model", toolsMode: "none" });
     const original = host.context;
-    const models = await host.models();
+    const models = await f.work(() => host.models());
     expect(models).toEqual([
       expect.objectContaining({
         id: "configured-model",
@@ -1392,7 +1529,9 @@ describe("independent configured Agent host", () => {
     await host.newSession({ modelId: "other" });
     expect(host.context.model.id).toBe("other");
     expect(host.context.threadId).not.toBe(original.threadId);
-    const oldSession = (await host.sessions()).find((session) => session.id === original.threadId);
+    const oldSession = (await f.work(() => host.sessions())).find(
+      (session) => session.id === original.threadId,
+    );
     expect(oldSession?.modelId).toBe(original.model.id);
     await host.selectSession(original.threadId);
     expect(host.context.model.id).toBe(original.model.id);
@@ -1412,14 +1551,14 @@ describe("independent configured Agent host", () => {
       configuration,
       requireReadApproval: true,
     });
-    cleanup.push(() => firstHost.close());
+    f.own(firstHost);
     await firstHost.open({ modelId: "configured-model" });
     const first = await firstHost.run("Read notes.txt");
     const waiting = await first.completed;
     if (waiting.status !== "waiting") throw new Error("Expected read approval.");
     expect(f.requests).toHaveLength(1);
     const threadId = firstHost.context.threadId;
-    expect((await firstHost.sessions())[0]?.history).toEqual([
+    expect((await f.work(() => firstHost.sessions()))[0]?.history).toEqual([
       { role: "user", text: "Read notes.txt" },
     ]);
     await firstHost.close();
@@ -1429,7 +1568,7 @@ describe("independent configured Agent host", () => {
       configuration,
       requireReadApproval: true,
     });
-    cleanup.push(() => resumedHost.close());
+    f.own(resumedHost);
     await resumedHost.open({ threadId });
     const probe = await resumedHost.resume(first.identity.queryId);
     expect(probe.identity.queryId).toBe(first.identity.queryId);
@@ -1453,7 +1592,7 @@ describe("independent configured Agent host", () => {
     const resumed = await resumedHost.resume(first.identity.queryId, answer);
     expect(resumed.identity.runId).not.toBe(probe.identity.runId);
     expect((await resumed.completed).status).toBe("completed");
-    expect((await resumedHost.sessions())[0]?.history).toEqual([
+    expect((await f.work(() => resumedHost.sessions()))[0]?.history).toEqual([
       { role: "user", text: "Read notes.txt" },
       { role: "reasoning", text: "public reasoning provided by the model" },
       { role: "assistant", text: "Inspecting notes." },
@@ -1486,7 +1625,7 @@ describe("independent configured Agent host", () => {
       configuration,
       requireReadApproval: true,
     });
-    cleanup.push(() => protectedHost.close());
+    f.own(protectedHost);
     await protectedHost.open({ modelId: "configured-model" });
     const run = await protectedHost.run("Read notes.txt");
     const waiting = await run.completed;
@@ -1494,7 +1633,7 @@ describe("independent configured Agent host", () => {
     const threadId = protectedHost.context.threadId;
     await protectedHost.close();
     const inspection = new DatabaseSync(join(f.directory, "sessions.sqlite"), { readOnly: true });
-    cleanup.push(async () => inspection.close());
+    f.own(inspection);
     const before = inspection.prepare("SELECT * FROM general_agent_checkpoints").all();
     const unprotectedHost = createNodeHost({
       dataRoot: f.directory,
@@ -1502,7 +1641,7 @@ describe("independent configured Agent host", () => {
       configuration,
       requireReadApproval: false,
     });
-    cleanup.push(() => unprotectedHost.close());
+    f.own(unprotectedHost);
     await expect(unprotectedHost.open({ threadId })).rejects.toMatchObject({
       code: "HOST_BINDING_CHANGED",
     });
@@ -1514,7 +1653,7 @@ describe("independent configured Agent host", () => {
       configuration,
       requireReadApproval: true,
     });
-    cleanup.push(() => restored.close());
+    f.own(restored);
     await restored.open({ threadId });
     const resumed = await restored.resume(
       run.identity.queryId,
@@ -1545,7 +1684,7 @@ describe("independent configured Agent host", () => {
       workspaceRoot: f.workspace,
       configuration,
     });
-    cleanup.push(() => firstHost.close());
+    f.own(firstHost);
     await firstHost.open({ modelId: "configured-model", toolsMode: "read-write" });
     expect((await (await firstHost.run("Create the file")).completed).status).toBe("waiting");
     const threadId = firstHost.context.threadId;
@@ -1559,7 +1698,7 @@ describe("independent configured Agent host", () => {
       defaultTemplateId: snapshot.settings.defaultTemplateId,
     });
     const inspection = new DatabaseSync(join(f.directory, "sessions.sqlite"), { readOnly: true });
-    cleanup.push(async () => inspection.close());
+    f.own(inspection);
     const before = inspection
       .prepare("SELECT * FROM general_agent_checkpoints ORDER BY query_id")
       .all();
@@ -1568,8 +1707,8 @@ describe("independent configured Agent host", () => {
       workspaceRoot: f.workspace,
       configuration,
     });
-    cleanup.push(() => host.close());
-    expect(await host.sessions()).toEqual([
+    f.own(host);
+    expect(await f.work(() => host.sessions())).toEqual([
       expect.objectContaining({
         id: threadId,
         modelId: undefined,
@@ -1591,7 +1730,7 @@ describe("independent configured Agent host", () => {
       inspection.prepare("SELECT * FROM general_agent_checkpoints ORDER BY query_id").all(),
     ).toEqual(before);
     expect(f.requests).toHaveLength(1);
-    await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+    await expect(f.readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
       code: "ENOENT",
     });
   });
@@ -1622,7 +1761,7 @@ describe("independent configured Agent host", () => {
         workspaceRoot: f.workspace,
         configuration: await f.configure(),
       });
-      cleanup.push(() => host.close());
+      f.own(host);
       await host.open({ modelId: "configured-model", toolsMode: "read-write" });
       const run = await host.run("Perform the requested modification");
       const waiting = await run.completed;
@@ -1637,8 +1776,8 @@ describe("independent configured Agent host", () => {
       expect(() => host.answerInteraction(waiting.interaction, "allow", "wrong-id")).toThrow(
         expect.objectContaining({ code: "STALE_INTERACTION" }),
       );
-      expect(await readFile(join(f.workspace, "notes.txt"), "utf8")).toBe("first file revision");
-      await expect(readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
+      expect(await f.readFile(join(f.workspace, "notes.txt"), "utf8")).toBe("first file revision");
+      await expect(f.readFile(join(f.workspace, "created.txt"))).rejects.toMatchObject({
         code: "ENOENT",
       });
       const answer = host.answerInteraction(waiting.interaction, "allow", waiting.interaction.id);
@@ -1646,7 +1785,7 @@ describe("independent configured Agent host", () => {
         "completed",
       );
       expect(
-        await readFile(join(f.workspace, tool === "write" ? "created.txt" : "notes.txt"), "utf8"),
+        await f.readFile(join(f.workspace, tool === "write" ? "created.txt" : "notes.txt"), "utf8"),
       ).toBe(tool === "write" ? createdContent : "approved edit");
     },
   );
@@ -1661,7 +1800,7 @@ describe("independent configured Agent host", () => {
       configuration: await f.configure(),
       credentialProtection: fakeProtection,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     const secret = vi.fn();
     await expect(
       host.open({
@@ -1674,7 +1813,7 @@ describe("independent configured Agent host", () => {
       }),
     ).rejects.toMatchObject({ code: "CLI_SETUP_CANCELLED" });
     expect(secret).not.toHaveBeenCalled();
-    expect(await host.sessions()).toEqual([]);
+    expect(await f.work(() => host.sessions())).toEqual([]);
     expect(f.requests).toEqual([]);
   });
 
@@ -1704,7 +1843,7 @@ describe("independent configured Agent host", () => {
           }
         },
       });
-      cleanup.push(() => host.close());
+      f.own(host);
       const opening = host.open({ modelId: "configured-model" });
       const rejected = expect(opening).rejects.toMatchObject({ code: "HOST_CLOSED" });
       await entered.promise;
@@ -1725,9 +1864,10 @@ describe("independent configured Agent host", () => {
       configuration: await f.configure(),
       credentialProtection: fakeProtection,
     });
-    cleanup.push(() => host.close());
+    f.own(host);
     const entered = Promise.withResolvers<void>();
     const selection = Promise.withResolvers<string | undefined>();
+    f.onCancel(() => selection.resolve(undefined));
     const opening = host.open({
       setup: {
         select: async () => {

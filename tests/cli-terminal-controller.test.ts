@@ -22,6 +22,7 @@ import { visibleWidth } from "../cli/terminal/terminal-text.js";
 import {
   type CliChild,
   cliChild,
+  cliProcessDiagnostics,
   cliSdkServer,
   jsonlRecords,
   queryRecord,
@@ -1955,85 +1956,128 @@ describe("terminal controller result and lifecycle", () => {
   });
 });
 
-describe.skipIf(process.platform !== "win32")(
-  "real Node CLI asynchronous output observation",
-  () => {
-    it("completes and releases SQLite while a run.started Writable callback remains paused", async () => {
+describe("real Node CLI asynchronous output observation", () => {
+  it.each(["failure", "timeout", "signal"] as const)(
+    "reports a child %s without exposing its output in lifecycle diagnostics",
+    async (termination) => {
       const root = await mkdtemp(join(tmpdir(), "node-cli-slow-output-"));
-      const answer = `authoritative-slow-output-${crypto.randomUUID()}`;
-      const server = await cliSdkServer(() => answer);
-      let execution: CliChild | undefined;
+      const execution = cliChild(
+        root,
+        "http://127.0.0.1:1",
+        [],
+        termination === "failure" ? "invalid-controlled-mode" : "seed",
+        false,
+        {
+          credentialProtection: "controlled",
+          timeoutMs: termination === "timeout" ? 1 : 25_000,
+        },
+      );
       try {
-        await mkdir(join(root, "workspace"));
-        expect((await runCliChild(root, server.endpoint, [], "", "seed")).code).toBe(0);
-        execution = cliChild(
-          root,
-          server.endpoint,
-          ["--prompt", "finite slow output", "--tools", "none", "--output", "jsonl"],
-          "slow-output",
-        );
-        const [line] = await execution.waitFor(
-          "stderr",
-          /^\{"type":"slow-output.observation".*\}\r?$/m,
-        );
-        const observation = JSON.parse(line);
-        expect(observation).toMatchObject({
-          type: "slow-output.observation",
-          identity: {
-            agentId: expect.any(String),
-            threadId: expect.any(String),
-            queryId: expect.any(String),
-            runId: expect.any(String),
-          },
-          completedStatus: "completed",
-          checkpointStatus: "completed",
-          checkpointRunId: observation.identity.runId,
-          leaseReleased: true,
-          cliSettled: false,
-          callbackPending: true,
-        });
-        expect(execution.child.exitCode).toBeNull();
-        execution.child.stdin.end("flush\n");
+        execution.child.stdin.end();
+        if (termination === "signal") expect(execution.child.kill()).toBe(true);
         const result = await execution.finished;
-        expect(result.code).toBe(0);
-        const records = jsonlRecords(result);
-        const query = queryRecord(result);
-        expect(query).toMatchObject({ identity: observation.identity, status: "completed" });
-        for (const record of records.filter((record) => record.identity))
-          expect(record.identity).toEqual(observation.identity);
-        expect(
-          records.filter((record) => record.type === "progress").map((record) => record.phase),
-        ).toEqual([
-          "run.started",
-          "step.committed",
-          "step.started",
-          "step.committed",
-          "run.completed",
-        ]);
-        expect(records.filter((record) => record.type === "assistant.message")).toEqual([
-          expect.objectContaining({
-            identity: observation.identity,
-            content: [{ contentIndex: 0, text: answer }],
-          }),
-        ]);
-        expect(records.filter((record) => record.type === "query.result")).toHaveLength(1);
-        expect(records.at(-1)).toMatchObject({
-          type: "process.finished",
-          exitCode: 0,
-          reason: "completed",
-          lastRun: { identity: observation.identity, status: "completed" },
-        });
-        expect(records.filter((record) => record.type === "process.finished")).toHaveLength(1);
-        expect(server.requests).toHaveLength(1);
-        expect(server.errors).toEqual([]);
-      } finally {
-        if (execution?.child.exitCode === null) {
-          execution.child.kill();
-          await execution.finished;
+        const diagnostics = cliProcessDiagnostics(result);
+        expect(result.timedOut, diagnostics).toBe(termination === "timeout");
+        expect(result.elapsedMs, diagnostics).toBeGreaterThanOrEqual(0);
+        expect(result.phase, diagnostics).not.toBe("");
+        if (termination === "failure") {
+          expect(result.code, diagnostics).toBe(1);
+          expect(result.signal, diagnostics).toBeNull();
+        } else if (termination === "signal") {
+          expect(result.code, diagnostics).toBeNull();
+          expect(result.signal, diagnostics).toBe("SIGTERM");
         }
-        await server.close();
+        expect(diagnostics).not.toContain(root);
+        expect(diagnostics).not.toContain("controlled-cli-integration-key");
+        expect(JSON.parse(diagnostics)).not.toHaveProperty("stdout");
+        expect(JSON.parse(diagnostics)).not.toHaveProperty("stderr");
+      } finally {
+        await execution.stop();
         await rm(root, { recursive: true, force: true });
       }
-    }, 120_000);
-  },
-);
+    },
+  );
+
+  it("completes and releases SQLite while a run.started Writable callback remains paused", async () => {
+    const root = await mkdtemp(join(tmpdir(), "node-cli-slow-output-"));
+    const answer = `authoritative-slow-output-${crypto.randomUUID()}`;
+    const server = await cliSdkServer(() => answer);
+    let execution: CliChild | undefined;
+    try {
+      await mkdir(join(root, "workspace"));
+      // This test owns CLI/SQLite/output ordering, not OS credential availability.
+      // Real DPAPI remains covered by node-credentials and the default CLI integrations.
+      const seeded = await runCliChild(root, server.endpoint, [], "", "seed", false, {
+        credentialProtection: "controlled",
+        timeoutMs: 25_000,
+      });
+      expect(seeded.code, cliProcessDiagnostics(seeded)).toBe(0);
+      execution = cliChild(
+        root,
+        server.endpoint,
+        ["--prompt", "finite slow output", "--tools", "none", "--output", "jsonl"],
+        "slow-output",
+        false,
+        { credentialProtection: "controlled" },
+      );
+      const [line] = await execution.waitFor(
+        "stderr",
+        /^\{"type":"slow-output.observation".*\}\r?$/m,
+      );
+      const observation = JSON.parse(line);
+      expect(observation).toMatchObject({
+        type: "slow-output.observation",
+        identity: {
+          agentId: expect.any(String),
+          threadId: expect.any(String),
+          queryId: expect.any(String),
+          runId: expect.any(String),
+        },
+        completedStatus: "completed",
+        checkpointStatus: "completed",
+        checkpointRunId: observation.identity.runId,
+        leaseReleased: true,
+        cliSettled: false,
+        callbackPending: true,
+      });
+      expect(execution.child.exitCode).toBeNull();
+      execution.child.stdin.end("flush\n");
+      const result = await execution.finished;
+      expect(result.code, cliProcessDiagnostics(result)).toBe(0);
+      const records = jsonlRecords(result);
+      const query = queryRecord(result);
+      expect(query).toMatchObject({ identity: observation.identity, status: "completed" });
+      for (const record of records.filter((record) => record.identity))
+        expect(record.identity).toEqual(observation.identity);
+      expect(
+        records.filter((record) => record.type === "progress").map((record) => record.phase),
+      ).toEqual([
+        "run.started",
+        "step.committed",
+        "step.started",
+        "step.committed",
+        "run.completed",
+      ]);
+      expect(records.filter((record) => record.type === "assistant.message")).toEqual([
+        expect.objectContaining({
+          identity: observation.identity,
+          content: [{ contentIndex: 0, text: answer }],
+        }),
+      ]);
+      expect(records.filter((record) => record.type === "query.result")).toHaveLength(1);
+      expect(records.at(-1)).toMatchObject({
+        type: "process.finished",
+        exitCode: 0,
+        reason: "completed",
+        lastRun: { identity: observation.identity, status: "completed" },
+      });
+      expect(records.filter((record) => record.type === "process.finished")).toHaveLength(1);
+      expect(server.requests).toHaveLength(1);
+      expect(server.errors).toEqual([]);
+    } finally {
+      if (execution) await execution.stop();
+      await server.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+});

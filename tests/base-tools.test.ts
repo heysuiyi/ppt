@@ -49,10 +49,6 @@ import type { ToolExecutionResult } from "../packages/harness/dist/agent/tools/t
 import { ToolPipeline } from "../packages/harness/dist/agent/tools/tool-pipeline.js";
 import { ToolRegistry } from "../packages/harness/dist/agent/tools/tool-registry.js";
 
-// 每例会串行提交多次真实 SQLite 检查点与文件 I/O；给共享 CI 磁盘留出时间，
-// 不改变纯内存测试的默认时限，也不削弱权限、恢复或落盘断言。
-vi.setConfig({ testTimeout: 30_000 });
-
 const allow: ToolAuthorizationPolicy = () => ({ type: "allow" });
 const versionOf = (content: string) =>
   `sha256:${createHash("sha256").update(content, "utf8").digest("hex")}`;

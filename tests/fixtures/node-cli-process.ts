@@ -8,6 +8,12 @@ import { z } from "zod";
 
 export interface CliProcessResult {
   readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly timedOut: boolean;
+  readonly elapsedMs: number;
+  readonly phase: string;
+  readonly spawnErrorCode: string | null;
+  readonly stdinErrorCode: string | null;
   readonly stdout: string;
   readonly stderr: string;
 }
@@ -15,6 +21,25 @@ export interface CliChild {
   readonly child: ChildProcessWithoutNullStreams;
   readonly finished: Promise<CliProcessResult>;
   waitFor(channel: "stdout" | "stderr", pattern: RegExp): Promise<RegExpMatchArray>;
+  stop(): Promise<CliProcessResult>;
+}
+
+interface CliProcessOptions {
+  readonly credentialProtection?: "controlled";
+  readonly timeoutMs?: number;
+}
+
+/** Deliberately excludes argv, environment, stdout, stderr, and exception messages. */
+export function cliProcessDiagnostics(result: CliProcessResult): string {
+  return JSON.stringify({
+    code: result.code,
+    signal: result.signal,
+    timedOut: result.timedOut,
+    elapsedMs: result.elapsedMs,
+    phase: result.phase,
+    spawnErrorCode: result.spawnErrorCode,
+    stdinErrorCode: result.stdinErrorCode,
+  });
 }
 
 export function cliChild(
@@ -23,15 +48,19 @@ export function cliChild(
   args: readonly string[],
   mode = "run",
   requireReadApproval = false,
+  options: CliProcessOptions = {},
 ): CliChild {
+  const started = performance.now();
+  const timeoutMs = options.timeoutMs ?? (mode === "seed" ? 90_000 : 25_000);
+  // Real DPAPI integrations retain their existing seed budget; the controller
+  // fixture explicitly opts out of its seven serial PowerShell operations.
+  // Node 的 stdio 三元组类型未覆盖第四个 IPC 通道；前三个通道明确为 pipe。
   const child = spawn(
     process.execPath,
     [resolve("tests/fixtures/node-cli-entry.mjs"), mode, ...args],
     {
       cwd: process.cwd(),
-      stdio: ["pipe", "pipe", "pipe"],
-      // seed 串行执行真实 DPAPI 可用性探测与凭据保护，不能沿用普通执行的 25 秒预算。
-      timeout: mode === "seed" ? 90_000 : 25000,
+      stdio: ["pipe", "pipe", "pipe", "ipc"],
       env: {
         ...process.env,
         TERM: "dumb",
@@ -39,12 +68,79 @@ export function cliChild(
         CLI_TEST_WORKSPACE: join(root, "workspace"),
         CLI_TEST_HTTP_ENDPOINT: endpoint,
         CLI_TEST_REQUIRE_READ: requireReadApproval ? "1" : "0",
+        CLI_TEST_CREDENTIAL_PROTECTION: options.credentialProtection ?? "dpapi",
       },
     },
-  );
+  ) as ChildProcessWithoutNullStreams;
   let stdout = "";
   let stderr = "";
   let ended = false;
+  let signal: NodeJS.Signals | null = null;
+  let timedOut = false;
+  let phase = "starting";
+  let spawnErrorCode: string | null = null;
+  let stdinErrorCode: string | null = null;
+  let forceStop: NodeJS.Timeout | undefined;
+  const stop = () => {
+    if (ended || child.exitCode !== null || child.signalCode !== null) return;
+    // Let the owning scope abort and drain an in-flight DPAPI child before forcing exit.
+    if (child.connected) child.send({ type: "cli-test.stop" }, () => {});
+    forceStop ??= setTimeout(() => {
+      if (process.platform !== "win32" || child.pid === undefined) {
+        child.kill();
+        return;
+      }
+      // A forced Windows exit must include any still-draining PowerShell descendant.
+      const systemRoot = process.env.SystemRoot || "C:\\Windows";
+      const killer = spawn(
+        join(systemRoot, "System32", "taskkill.exe"),
+        ["/PID", String(child.pid), "/T", "/F"],
+        {
+          windowsHide: true,
+          stdio: "ignore",
+          env: { SystemRoot: systemRoot },
+          timeout: 5_000,
+        },
+      );
+      killer.once("error", () => child.kill());
+      killer.once("close", (code) => {
+        if (code !== 0) child.kill();
+      });
+    }, 5_000);
+  };
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    stop();
+  }, timeoutMs);
+  const result = (): CliProcessResult => ({
+    code: child.exitCode,
+    signal,
+    timedOut,
+    elapsedMs: Math.round(performance.now() - started),
+    phase,
+    spawnErrorCode,
+    stdinErrorCode,
+    stdout,
+    stderr,
+  });
+  child.on("message", (message: unknown) => {
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      "type" in message &&
+      message.type === "cli-test.phase" &&
+      "phase" in message &&
+      typeof message.phase === "string" &&
+      /^[a-z.-]+$/.test(message.phase)
+    )
+      phase = message.phase;
+  });
+  child.on("error", (error: NodeJS.ErrnoException) => {
+    spawnErrorCode = error.code ?? "UNKNOWN";
+  });
+  child.stdin.on("error", (error: NodeJS.ErrnoException) => {
+    stdinErrorCode = error.code ?? "UNKNOWN";
+  });
   const waiting: Array<{
     channel: "stdout" | "stderr";
     pattern: RegExp;
@@ -59,7 +155,11 @@ export function cliChild(
         entry.resolve(match);
       } else if (ended) {
         waiting.splice(waiting.indexOf(entry), 1);
-        entry.reject(new Error("CLI exited before expected terminal state"));
+        entry.reject(
+          new Error(
+            `CLI exited before expected terminal state: ${cliProcessDiagnostics(result())}`,
+          ),
+        );
       }
     }
   };
@@ -73,14 +173,23 @@ export function cliChild(
     stderr += chunk;
     update();
   });
-  const finished = once(child, "close").then(([code]) => {
+  const completion = Promise.withResolvers<CliProcessResult>();
+  const finished = completion.promise;
+  child.once("close", (_code, closeSignal) => {
+    signal = closeSignal;
     ended = true;
+    clearTimeout(timeout);
+    clearTimeout(forceStop);
     update();
-    return { code: code as number | null, stdout, stderr };
+    completion.resolve(result());
   });
   return {
     child,
     finished,
+    stop() {
+      stop();
+      return finished;
+    },
     waitFor(channel, pattern) {
       const pending = Promise.withResolvers<RegExpMatchArray>();
       waiting.push({ channel, pattern, resolve: pending.resolve, reject: pending.reject });
@@ -97,10 +206,20 @@ export async function runCliChild(
   input = "",
   mode = "run",
   requireReadApproval = false,
+  options: CliProcessOptions = {},
 ): Promise<CliProcessResult> {
-  const launched = cliChild(root, endpoint, args, mode, requireReadApproval);
+  const launched = cliChild(root, endpoint, args, mode, requireReadApproval, options);
   launched.child.stdin.end(input);
-  return launched.finished;
+  const result = await launched.finished;
+  if (
+    result.code === null ||
+    result.timedOut ||
+    result.signal !== null ||
+    result.spawnErrorCode !== null ||
+    result.stdinErrorCode !== null
+  )
+    throw new Error(`CLI child did not exit normally: ${cliProcessDiagnostics(result)}`);
+  return result;
 }
 
 export function jsonlRecords(result: CliProcessResult): Array<Record<string, unknown>> {
